@@ -8,25 +8,11 @@ import { useSession } from '../session';
 import { useLayout } from '../layout';
 import { Btn, Card, Empty, ErrorBox, Field, H1, H2, Loading, Screen, Seg, Sheet, T } from '../ui';
 import { MenuField } from '../menu-field';
-import { PersonRow, Small } from '../social/people';
+import { ConnectButtons, PersonRow, Small } from '../social/people';
 import { c } from '../theme';
 import { t } from '../i18n';
 
 const SECTIONS = ['following', 'followers', 'friends', 'requests', 'suggestions'];
-
-/** Follow / friend actions for someone who is not yet connected. */
-function ConnectButtons({ p, onDone }) {
-  const { toast } = useSession();
-  const [state, setState] = useState({});
-  const go = (key, fn) => async () => { try { const r = await fn(); setState((s) => ({ ...s, [key]: r.status ?? 'active' })); onDone?.(); } catch (e) { toast(e.message); } };
-  const label = (s, base) => (s === 'pending' ? t('social.waiting') : s === 'guardian_pending' ? t('social.waiting_guardian') : base);
-  return (
-    <>
-      <Small label={state.follow ? label(state.follow, t('social.following')) : t('social.follow')} disabled={!!state.follow} onPress={go('follow', () => api.post('/me/follows', { subject_type: 'athlete', subject_id: p.id }))} />
-      <Small label={state.friend ? label(state.friend, t('social.friends')) : t('social.add_friend')} disabled={!!state.friend} onPress={go('friend', () => api.post('/me/friends', { user_id: p.id }))} />
-    </>
-  );
-}
 
 function Following({ data, reload }) {
   const { toast } = useSession();

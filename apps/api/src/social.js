@@ -258,3 +258,17 @@ export async function activityFeed(viewer, { scope = 'following', sport, limit =
     ...(scope === 'mine' ? { hidden: r.hidden } : {}),
   }));
 }
+
+/**
+ * One activity item of `userId`, projected from the canonical record (or null when it is not theirs, was reversed, or was removed by moderation).
+ * Used to share an achievement into a community: only the person's own verified record can be shared, and it disappears when the record does.
+ */
+export async function activityItem(userId, kind, sourceId) {
+  if (!KINDS.includes(kind)) return null;
+  const r = await one(
+    `WITH items AS (${ITEMS})
+     SELECT i.kind, i.source_id, i.at, i.sport, i.sport_name, i.data
+       FROM items i LEFT JOIN activity_item_settings s ON s.actor_id=i.actor_id AND s.kind=i.kind AND s.source_id=i.source_id
+      WHERE i.kind=$2 AND i.source_id=$3 AND s.moderated_at IS NULL`, [[userId], kind, String(sourceId)]);
+  return r ? { kind: r.kind, source_id: r.source_id, at: r.at, sport: r.sport ? { slug: r.sport, name: r.sport_name } : null, data: r.data } : null;
+}

@@ -8,6 +8,7 @@ import { api } from '../api';
 import { useLoad } from '../hooks';
 import { useSession } from '../session';
 import { useNav } from '../nav';
+import { PersonActions } from '../social/people';
 import { Field, Avatar, Btn, Bubble, Card, Chip, Empty, ErrorBox, GradCard, H1, H2, Loading, Row, Screen, Seg, Section, StatPill, T, Tag } from '../ui';
 import { AdSlot } from '../ads';
 import { AcademiesTab, SuppliersTab } from './directory';
@@ -241,6 +242,7 @@ export function Person({ id }) {
         {x.bio ? <T color="#fff" style={{ marginTop: 10 }}>{x.bio}</T> : null}
       </GradCard>
       <View style={{ marginTop: 12, alignItems: 'flex-start' }}><Btn small title="360° view" color={c.paper} ink={c.ink} onPress={() => push('Athlete360', { id })} accessibilityLabel="Open the 360 view" /></View>
+      <PersonActions p={x} />
       <View style={{ flexDirection: 'row', gap: 10, marginTop: 14, flexWrap: 'wrap' }}>
         <StatPill value={stats.data?.total_points ?? '–'} label="OFFICIAL PTS" color={c.lime} /><StatPill value={awards.data?.length ?? '–'} label="AWARDS" color={c.sun} /><StatPill value={x.rating?.avg ?? '–'} label="RATING" color={c.pinkSoft} />
       </View>

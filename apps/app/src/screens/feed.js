@@ -98,6 +98,7 @@ export function Feed({ header, narrow }) {
     <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
       <View style={{ flex: 1 }}><Seg options={[{ value: 'market', label: t('social.feed_market') }, { value: 'following', label: t('social.feed_following') }]} value={mode} onChange={setMode} /></View>
       <Small label={t('social.title')} onPress={() => push('Network')} />
+      <Small label={t('community.title')} onPress={() => push('Communities')} />
     </View>
   );
   const feed = mode === 'following' ? (

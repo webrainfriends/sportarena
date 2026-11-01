@@ -5,6 +5,7 @@ import { cap, id, page } from '../registry.js';
 import { one, many, tx, pool } from '../db.js';
 import { badRequest, conflict, forbidden, notFound } from '../errors.js';
 import { mustFind, sportBySlugOrId, isAdmin } from '../helpers.js';
+import { SOCIAL_CATEGORIES } from '../communities.js';
 import { notify, notifyVenueTeam, inbox, DEFAULT_PREFS } from '../notify.js';
 import { validTimezone } from '../quiet-hours.js';
 import { maintenanceCycle } from '../worker.js';
@@ -377,7 +378,8 @@ cap({
 });
 // times arrive as HH:MM and leave as HH:MM (Postgres returns HH:MM:SS)
 const hhmm = z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, 'Use a 24-hour time like 22:00');
-const shapePrefs = (p) => ({ quiet_tz: 'Asia/Kolkata', quiet_weekdays_only: false, quiet_urgent_override: true, escalate_after_minutes: null, escalation_off: false, ...p, quiet_start: p.quiet_start ? String(p.quiet_start).slice(0, 5) : null, quiet_end: p.quiet_end ? String(p.quiet_end).slice(0, 5) : null });
+const socialSwitches = (muted = []) => Object.fromEntries(Object.entries(SOCIAL_CATEGORIES).map(([k, kinds]) => [k, !kinds.every((x) => muted.includes(x))]));
+const shapePrefs = (p) => ({ social_categories: socialSwitches(p.muted_kinds), quiet_tz: 'Asia/Kolkata', quiet_weekdays_only: false, quiet_urgent_override: true, escalate_after_minutes: null, escalation_off: false, ...p, quiet_start: p.quiet_start ? String(p.quiet_start).slice(0, 5) : null, quiet_end: p.quiet_end ? String(p.quiet_end).slice(0, 5) : null });
 cap({
   name: 'get_notification_preferences', method: 'GET', path: '/me/notification-preferences', tag: 'Notifications', summary: 'Which channels you get notifications on (in-app, push, email, WhatsApp, SMS), how far ahead booking reminders arrive, muted kinds, the WhatsApp/SMS message categories you switched off and your message language, quiet hours (and whether urgent notices break through) and how soon an unanswered urgent notice escalates.',
   handler: async ({ user }) => shapePrefs((await one('SELECT in_app, email, push, whatsapp, sms, reminder_hours, muted_kinds, comm_categories_off, comm_locale, quiet_start, quiet_end, quiet_tz, quiet_weekdays_only, quiet_urgent_override, escalate_after_minutes, escalation_off FROM notification_prefs WHERE user_id=$1', [user.id])) ?? DEFAULT_PREFS),
@@ -385,10 +387,15 @@ cap({
 cap({
   name: 'update_notification_preferences', method: 'PATCH', path: '/me/notification-preferences', tag: 'Notifications',
   summary: 'Turn notification channels on/off (in_app, email, push, whatsapp, sms), set the booking reminder lead time in hours, mute kinds (e.g. new_booking), switch off WhatsApp/SMS message categories (fees, sessions, bookings, events, business) and choose the language of templated messages. WhatsApp and SMS need a verified number first; turning one on or off is recorded as consent evidence.',
-  input: z.object({ in_app: z.boolean().optional(), email: z.boolean().optional(), push: z.boolean().optional(), whatsapp: z.boolean().optional(), sms: z.boolean().optional(), reminder_hours: z.number().int().min(1).max(168).optional(), muted_kinds: z.array(z.string().max(40)).max(30).optional(), comm_categories_off: z.array(z.enum(CATEGORIES.map(([k]) => k))).max(10).optional(), comm_locale: z.enum(LOCALE_CODES).optional(), quiet_start: hhmm.nullable().optional(), quiet_end: hhmm.nullable().optional(), quiet_tz: z.string().max(60).refine(validTimezone, 'Unknown time zone').optional(), quiet_weekdays_only: z.boolean().optional(), quiet_urgent_override: z.boolean().optional(), escalate_after_minutes: z.number().int().min(5).max(1440).nullable().optional(), escalation_off: z.boolean().optional() }).refine((x) => (x.quiet_start === undefined) === (x.quiet_end === undefined), { message: 'Set both the start and the end of quiet hours (or clear both)', path: ['quiet_end'] }),
+  input: z.object({ in_app: z.boolean().optional(), email: z.boolean().optional(), push: z.boolean().optional(), whatsapp: z.boolean().optional(), sms: z.boolean().optional(), reminder_hours: z.number().int().min(1).max(168).optional(), muted_kinds: z.array(z.string().max(40)).max(30).optional(), comm_categories_off: z.array(z.enum(CATEGORIES.map(([k]) => k))).max(10).optional(), comm_locale: z.enum(LOCALE_CODES).optional(), quiet_start: hhmm.nullable().optional(), quiet_end: hhmm.nullable().optional(), quiet_tz: z.string().max(60).refine(validTimezone, 'Unknown time zone').optional(), quiet_weekdays_only: z.boolean().optional(), quiet_urgent_override: z.boolean().optional(), escalate_after_minutes: z.number().int().min(5).max(1440).nullable().optional(), escalation_off: z.boolean().optional(), social_categories: z.partialRecord(z.enum(Object.keys(SOCIAL_CATEGORIES)), z.boolean()).optional().describe('switch whole groups of social notifications on or off: people (follows, friends), communities, comments (decisions about your own content are never switched off)') }).refine((x) => (x.quiet_start === undefined) === (x.quiet_end === undefined), { message: 'Set both the start and the end of quiet hours (or clear both)', path: ['quiet_end'] }),
   async handler({ user }, i) {
     const cur = (await one('SELECT * FROM notification_prefs WHERE user_id=$1', [user.id])) ?? DEFAULT_PREFS;
-    const n = { ...cur, ...Object.fromEntries(Object.entries(i).filter(([, v]) => v !== undefined)) };
+    const n = { ...cur, ...Object.fromEntries(Object.entries(i).filter(([k, v]) => v !== undefined && k !== 'social_categories')) };
+    // social switches are the same muted_kinds list the app already had, grouped: off adds the group's kinds, on removes them
+    if (i.social_categories) for (const [k, on] of Object.entries(i.social_categories)) {
+      const kinds = SOCIAL_CATEGORIES[k];
+      n.muted_kinds = on ? n.muted_kinds.filter((x) => !kinds.includes(x)) : [...new Set([...n.muted_kinds, ...kinds])];
+    }
     if (i.whatsapp === true && !(await one('SELECT 1 FROM whatsapp_contacts WHERE user_id=$1 AND verified_at IS NOT NULL AND opted_out_at IS NULL', [user.id]))) throw badRequest('Verify your WhatsApp number first');
     if (i.sms === true && !(await one('SELECT 1 FROM sms_contacts WHERE user_id=$1 AND verified_at IS NOT NULL AND opted_out_at IS NULL', [user.id]))) throw badRequest('Verify your mobile number for SMS first');
     return tx(async (c) => {
