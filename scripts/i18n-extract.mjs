@@ -2,6 +2,7 @@
 // Finds user-facing strings in apps/app/src that bypass t(). Shared by the usage test and used to drive conversion.
 //   node scripts/i18n-extract.mjs            -> per-file counts (descending) and a total
 //   node scripts/i18n-extract.mjs <file>     -> every hit in that file with line numbers
+//   node scripts/i18n-extract.mjs --write-baseline  -> rewrite scripts/i18n-baseline.json (the ratchet: counts may only go down)
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -53,7 +54,11 @@ export function scanAll() {
 
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
   const arg = process.argv[2];
-  if (arg) {
+  if (arg === '--write-baseline') {
+    const counts = Object.fromEntries(Object.entries(scanAll()).map(([f, h]) => [f, h.length]).sort());
+    fs.writeFileSync(path.resolve(path.dirname(fileURLToPath(import.meta.url)), 'i18n-baseline.json'), JSON.stringify(counts, null, 1) + '\n');
+    console.log(`baseline written: ${Object.values(counts).reduce((a, b) => a + b, 0)} strings in ${Object.keys(counts).length} files`);
+  } else if (arg) {
     for (const h of scan(path.resolve(ROOT, arg))) console.log(`${h.line}\t${h.kind}\t${h.text}`);
   } else {
     const all = scanAll();
