@@ -147,6 +147,8 @@ export function parseTarget(t) {
   if (kind === 'tickets' && id) return ['Tickets', { id }];   // buy tickets for an event
   if (kind === 'event-tickets' && id) return ['EventCommand', { id, tab: 'tickets' }];   // the organiser's ticketing tab
   if (kind === 'my-tickets') return ['MyTickets', {}];
+  if (kind === 'venue-seating' && id) return ['Manage', { id, tab: 'seating' }];   // a venue's capacity and seating map
+  if (kind === 'venue-setup' && id) return ['Manage', { id, wizard: true, step: extra === 'seating' ? 3 : undefined }];   // the venue onboarding wizard
   if (kind === 'tender-orders') return ['TenderOrders', {}];
   if (kind === 'tender-reports') return ['TenderReports', {}];
   if (kind === 'tender-order' && id) return ['TenderOrder', { id }];

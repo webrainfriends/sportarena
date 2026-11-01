@@ -8,7 +8,7 @@ import { canManageTeam } from './teams.js';
 import { hasOrgGrant } from '../org-access.js';
 import { reserve } from './venues.js';
 import { notify } from '../notify.js';
-import { onEventCancelled, onFixtureChanged } from '../ticketing.js';
+import { onEventCancelled, onFixtureChanged, refundTicketsNow } from '../ticketing.js';
 import { WHO_FOR, levels as LEVELS_FIELD, ageBand, AGE_BAND_MSG } from '../opportunity-fields.js';
 import { afterResult, decideWinner } from '../tournament/advance.js';
 import { createRequest } from '../event-planning.js';
@@ -203,7 +203,7 @@ cap({
     brand_kit_id: id.nullable().optional().describe('the brand kit whose logo appears on this event\'s documents (null clears it)'),
   }),
   async handler({ user }, i) {
-    return tx(async (c) => {
+    const res = await tx(async (c) => {
       const ev = (await c.query('SELECT * FROM events WHERE id=$1 FOR UPDATE', [i.id])).rows[0];
       if (!ev) throw notFound('Event');
       mustOwn(user, ev.organizer_id, 'event');
@@ -232,6 +232,8 @@ cap({
       }
       return out;
     });
+    if (i.status === 'cancelled') await refundTicketsNow(i.id);   // the transaction has committed: pay the spectators back now (the sweep only retries what fails)
+    return res;
   },
 });
 
@@ -399,7 +401,7 @@ cap({
   summary: 'Move, re-time, assign a referee to (invitation), or cancel a fixture. Officials are re-validated against the new time; confirmed officials must acknowledge a change.',
   input: z.object({ id, scheduled_at: dt.optional(), duration_min: z.number().int().min(10).max(600).optional(), referee_id: id.optional(), status: z.enum(['scheduled', 'live', 'cancelled']).optional() }),
   async handler({ user }, i) {
-    return tx(async (c) => {
+    const res = await tx(async (c) => {
       const f = (await c.query('SELECT * FROM fixtures WHERE id=$1 FOR UPDATE', [i.id])).rows[0];
       if (!f) throw notFound('fixture');
       const ev = await eventForOrganizer(user, f.event_id, c);
@@ -441,6 +443,8 @@ cap({
       }
       return (await c.query('SELECT * FROM fixtures WHERE id=$1', [f.id])).rows[0];
     });
+    if (i.status === 'cancelled') await refundTicketsNow(res.event_id);
+    return res;
   },
 });
 
