@@ -149,6 +149,9 @@ test('relationship history and renewal pipeline stages', async () => {
   const a = await w.deal();
   const hist = must(await api('GET', '/sponsor-relationship-history', { token: a.sponsor.token, query: { sponsor_id: a.brand.id, target_type: 'event', target_id: w.ev.id } }));
   assert.equal(hist.agreements.length, 1); assert.ok(hist.events.length > 0);
+  const one = must(await api('GET', `/sponsorships/${a.id}`, { token: a.sponsor.token }));
+  assert.equal(one.sponsor.id, a.brand.id, 'the app reads the sponsor id from get_sponsorship.sponsor.id');
+  assert.ok(one.target_type && one.target_id, 'and the target from target_type/target_id');
   const stranger = await signup(['sponsor']);
   assert.equal((await api('GET', '/sponsor-relationship-history', { token: stranger.token, query: { sponsor_id: a.brand.id, target_type: 'event', target_id: w.ev.id } })).status, 404);
   const list = must(await api('GET', '/sponsorship-renewals', { token: a.sponsor.token }));
