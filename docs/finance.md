@@ -52,6 +52,19 @@ settlements & payouts, other. `commissions` = provider/platform fees taken from 
 A checkout that was started for a source that already has an obligation is not posted as a second receivable; an earlier open checkout charge is cancelled when the obligation appears.
 Outstanding on a charge = charge less the settled payments the ledger holds for the same source, so partial payments age correctly.
 
+**Further sources** (same sync, same idempotency, each with its own tests in `test/finance-sources-*.test.js`):
+| Source | Posted as | Key |
+|---|---|---|
+| Agent commission statements (athlete pays agent) | open `charge` per issued statement, module `agents`, category `commissions`; confirmed (`payment_settled`) payments allocated oldest statement first; refund entries post a `refund` | `obl:representation_statement:<id>`, `receipt:representation_commission_entry:<entry>:<stmt>` |
+| Player payout lines (club pays player) | open `charge` once the run is approved (payer org = team or event organisation), cumulative receipt when paid, `tax_minor` = withheld | `obl:player_payout_line:<id>` |
+| Official fees marked due by the organiser | open `charge` (payer org = event organisation); a fee paid directly adds a receipt, one paid through a payout batch settles with none (the payout row already exists) | `obl:official_fee:<id>` |
+| Trip claims and payments | approved claim = open payable; payments recorded outside the event budget post as spend and are reversed when voided (event-budget payments already post as event spend) | `obl:trip_claim:<id>`, `receipt:trip_payment:<id>` |
+| Front-desk (POS) cash, card-terminal, UPI and bank tenders and their refunds | `payment` / `refund`, provider = method, tax pro-rated from the sale (online tenders are already posted through payments) | `receipt:pos_sale_payment:<id>`, `refund:pos_sale_payment:<id>` |
+| Wallet-paid venue invoices | `payment` (provider `wallet`) and refund of what was returned; loyalty points and passes are not money and are not posted | `receipt:invoice_credit:<id>` |
+| Supplier credit notes | `credit_note` against the invoice it adjusts; outstanding nets it | `crn:service_invoice:<id>` |
+| Sponsorship | online payments now carry sponsor and recipient organisations and net the due through `sponsorship_payments.obligation_id`; offline refunds post the delta and reopen the due | `refund:sponsorship_payment:<id>:<refunded>` |
+Organisations of payout rows for officials fees paid through a batch are filled from the event. Outstanding on a charge = charge less settled payments and credit notes for the same source (plus refunds for sponsorship dues).
+
 **API / MCP**: `get_finance_summary` (now also `by_category`, `commissions`, `taxes`, `level`; filters `season_ids`, `event_ids`, `team_ids`, `workspace_ids`, `categories`),
 `list_finance_transactions`, `get_finance_filters`, `get_finance_ageing`, `list_finance_obligations` (upcoming cash, bucket drill-down), `list_finance_settlements`,
 `list_finance_audit`, `list_finance_access`, `set_finance_access`, `resolve_organisation_finance_reconciliation_item`; `export_finance_transactions` now returns a manifest
@@ -66,11 +79,11 @@ Outsiders get 404; a member without a finance level gets 403. Platform view stay
 All text is translated through `t()` (`fin.*`); machine-drafted languages stay `reviewed: false`.
 
 ## Migration status (honest)
-Covered now: every purpose that settles through `payments` (shop, coaching, doctor / physio, venue invoices and plans, POS online, wallet, gift cards,
-sponsorship, academy and team charges / contributions, media rights fees, advertising funding, supplier invoices, insurance), plus refunds,
-chargebacks and provider payouts; and, from #593, unpaid obligations and staff-recorded receipts for academy/team charges, registration instalments, supplier invoices and
-sponsorship dues, and event budget payments.
-Still module-local (tracked, not hidden): player-contract payouts, agent commissions, trip payments, officials pay, POS cash, rewards and wallet ledgers; credit notes and
-amendments after an obligation was posted (the obligation keeps its original amount); partial online payments against a sponsorship due (the due settles when confirmed
-payments cover it); payouts are attributed to an organisation through its owners/admins/finance staff; invoice / allocation / instalment / deposit objects as canonical
-tables; tax models, rounding rules and provider configuration per entity.
+Covered: every purpose that settles through `payments`, refunds, chargebacks, provider payouts, and (from #593) the obligations, staff-recorded receipts, spend and credits listed above for registration and team charges, instalments, suppliers, sponsorship, event budget, agent commissions, player payouts, official fees, trips, front-desk tenders and wallet tenders.
+Still outside the ledger, by design or not yet built:
+- Drawer movements (cash drops, paid-outs, float) are cash handling, not income, and stay in the shift record.
+- Loyalty points and pass credits have no currency value and are not posted.
+- A credit note on a venue invoice reduces money only through the refund that pays it back; a credit note on a still-unpaid venue invoice does not change a receivable (venue invoices are not obligations here).
+- Player-contract credit notes and expense reimbursements are covered only through the payout line that pays them.
+- A supplier invoice keeps the amount it was first posted with; later credit is a separate `credit_note` row.
+- Tax: figures are those the source module computed (supplier tax, GST on venue invoices, POS tax, provider ledger tax, payout withholding). A per-entity tax engine with its own rounding rules and provider configuration is not part of this plane.

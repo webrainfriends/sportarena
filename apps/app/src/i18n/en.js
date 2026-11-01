@@ -4646,4 +4646,8 @@ export default {
   'invoice.pdf': 'Download invoice PDF',
   'invoice.receipt_pdf': 'Download receipt PDF',
   'invoice.credit_note_pdf': 'Download credit note PDF',
+  'fin.cat.commissions': 'Agent commissions',
+  'fin.cat.contracts': 'Player & official pay',
+  'fin.cat.travel': 'Travel & trips',
+  'fin.mod.contracts': 'Player contracts',
 };

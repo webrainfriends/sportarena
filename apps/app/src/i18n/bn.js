@@ -4626,4 +4626,8 @@ export default {
   'invoice.pdf': 'ইনভয়েস PDF ডাউনলোড করুন',
   'invoice.receipt_pdf': 'রসিদ PDF ডাউনলোড করুন',
   'invoice.credit_note_pdf': 'ক্রেডিট নোট PDF ডাউনলোড করুন',
+  'fin.cat.commissions': 'এজেন্ট কমিশন',
+  'fin.cat.contracts': 'খেলোয়াড় ও কর্মকর্তাদের বেতন',
+  'fin.cat.travel': 'ভ্রমণ ও সফর',
+  'fin.mod.contracts': 'খেলোয়াড় চুক্তি',
 };

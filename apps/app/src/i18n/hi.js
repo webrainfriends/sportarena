@@ -4626,4 +4626,8 @@ export default {
   'invoice.pdf': 'इनवॉइस PDF डाउनलोड करें',
   'invoice.receipt_pdf': 'रसीद PDF डाउनलोड करें',
   'invoice.credit_note_pdf': 'क्रेडिट नोट PDF डाउनलोड करें',
+  'fin.cat.commissions': 'एजेंट कमीशन',
+  'fin.cat.contracts': 'खिलाड़ी और अधिकारियों का वेतन',
+  'fin.cat.travel': 'यात्रा और दौरे',
+  'fin.mod.contracts': 'खिलाड़ी अनुबंध',
 };

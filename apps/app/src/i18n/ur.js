@@ -4626,4 +4626,8 @@ export default {
   'invoice.pdf': 'انوائس PDF ڈاؤن لوڈ کریں',
   'invoice.receipt_pdf': 'رسید PDF ڈاؤن لوڈ کریں',
   'invoice.credit_note_pdf': 'کریڈٹ نوٹ PDF ڈاؤن لوڈ کریں',
+  'fin.cat.commissions': 'ایجنٹ کمیشن',
+  'fin.cat.contracts': 'کھلاڑیوں اور آفیشلز کی تنخواہ',
+  'fin.cat.travel': 'سفر اور دورے',
+  'fin.mod.contracts': 'کھلاڑیوں کے معاہدے',
 };
