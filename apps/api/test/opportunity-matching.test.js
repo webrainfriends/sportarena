@@ -46,12 +46,12 @@ const opening = (over = {}) => ({ kind: 'team_opening', id: 'a', title: 't', spo
 
 test('scorer: unknown is never a match, a mismatch is explained, missing data names who can fix it', () => {
   const r = evaluate(subject(), opening(), new Date());
-  assert.equal(r.fit, 'strong', 'only the sport is known: nothing to count against');
+  assert.equal(r.fit, 'unknown', 'only the sport is known: that alone is not a fit'); assert.equal(r.score, null);
   assert.deepEqual(r.missing.map((m) => [m.dimension, m.who]).sort(), [['availability', 'organiser'], ['level', 'organiser'], ['position', 'organiser'], ['region', 'organiser']]);
   const bare = evaluate(subject({ profile: { level: null, position: null, positions: [], region: null } }), opening({ positions: ['Goalkeeper'], levels: ['pro'], region: 'Kochi, Kerala', starts_on: '2030-01-01', date: '2030-01-01' }), new Date());
   assert.ok(bare.missing.every((m) => m.who === 'player'));
   assert.deepEqual(bare.missing.map((m) => m.dimension).sort(), ['availability', 'level', 'position', 'region']);
-  assert.equal(bare.score, 100, 'the sport is the only known rule');
+  assert.equal(bare.score, null, 'the sport is the only known rule: no score'); assert.equal(bare.fit, 'unknown');
   const bad = evaluate(subject(), opening({ positions: ['Goalkeeper'], levels: ['pro'], region: 'Delhi' }), new Date());
   assert.equal(rule(bad, 'position').status, 'mismatch'); assert.equal(rule(bad, 'level').status, 'mismatch'); assert.equal(rule(bad, 'region').status, 'mismatch');
   assert.equal(bad.eligible, true, 'position, level and region are soft'); assert.equal(bad.fit, 'weak');
@@ -157,6 +157,8 @@ test('journey: every kind is matched from real records, explained, filtered by s
   const bare = must(await matches(q, { kinds: 'team_opening' })).items.find((m) => m.opportunity.id === post.id);
   assert.ok(bare.missing.some((m) => m.dimension === 'position' && m.who === 'player' && m.where === 'SportProfile'));
   assert.equal(rule(bare, 'position').status, 'unknown');
+  const keeperBare = must(await matches(q, { kinds: 'team_opening' })).items.find((m) => m.opportunity.id === other.id);
+  assert.equal(keeperBare.fit, 'unknown', 'a card with nothing else known is not a fit for anything'); assert.equal(keeperBare.score, null);
   assert.ok(must(await matches(q)).gaps.some((g) => g.who === 'player'), 'gaps are summarised');
 
   // sport scoping: a card id that is not yours
