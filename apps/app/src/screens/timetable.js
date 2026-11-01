@@ -92,7 +92,7 @@ function BulkSlotsSheet({ venue, data, onClose, onDone }) {
         </View>
         <View style={{ flexDirection: 'row', gap: 10 }}>
           <View style={{ flex: 1 }}><TimeField label="From" value={start} onChange={setStart} step={30} /></View>
-          <View style={{ flex: 1 }}><TimeField label="Until" value={end} onChange={setEnd} step={30} /></View>
+          <View style={{ flex: 1 }}><TimeField label="Until" value={end} onChange={setEnd} step={30} endOfDay /></View>
         </View>
         <View style={{ gap: 6 }}>
           <T weight="800" size={13}>Price category</T>

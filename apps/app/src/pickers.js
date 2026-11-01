@@ -1,10 +1,12 @@
 import React, { useMemo, useState } from 'react';
-import { Pressable, View } from 'react-native';
+import { Platform, Pressable, View } from 'react-native';
 import { Btn, Chip, Field, HScroll, Sheet, T } from './ui';
 export { HScroll };
 import { c } from './theme';
 import { addDays, moneyIn, WEEKDAYS } from './vtime';
 import { locale } from './locale';
+import { NATIVE_PICKER, NativeWheel, openDialog, parseDay, fmtDay, parseClock, fmtClock } from './native-picker';
+import { select, tapped } from './haptics';
 
 const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
 export const shiftMonth = (m, n) => { const [y, mo] = m.split('-').map(Number); const d = new Date(Date.UTC(y, mo - 1 + n, 1)); return d.toISOString().slice(0, 7); };
@@ -73,16 +75,24 @@ export function Calendar({ month, onMonth, value, onChange, days, minDate, maxDa
 export function DateField({ label, value, onChange, optional, min, max, hint }) {
   const [open, setOpen] = useState(false);
   const [month, setMonth] = useState((value ?? todayLocal()).slice(0, 7));
+  const android = NATIVE_PICKER && Platform.OS === 'android';
+  const start = () => {
+    if (android) return openDialog({ mode: 'date', value: parseDay(value) ?? new Date(), min: parseDay(min), max: parseDay(max), onPick: (d) => onChange(fmtDay(d)) });
+    setMonth((value ?? todayLocal()).slice(0, 7)); setOpen(true);
+  };
   return (
     <View style={{ gap: 6 }}>
       {label ? <T weight="600" size={12} color={c.mute} style={{ letterSpacing: 0.4 }}>{(label + (optional ? ' (optional)' : '')).toUpperCase()}</T> : null}
-      <Pressable onPress={() => { setMonth((value ?? todayLocal()).slice(0, 7)); setOpen(true); }} style={{ borderWidth: 1.5, borderColor: c.line, borderRadius: 12, backgroundColor: c.paper, paddingHorizontal: 16, minHeight: 50, justifyContent: 'center', flexDirection: 'row', alignItems: 'center' }}>
+      <Pressable onPress={start} style={{ borderWidth: 1.5, borderColor: c.line, borderRadius: 12, backgroundColor: c.paper, paddingHorizontal: 16, minHeight: 50, justifyContent: 'center', flexDirection: 'row', alignItems: 'center' }}>
         <T style={{ flex: 1 }} color={value ? c.ink : c.mute} weight="600">{value ? new Date(`${value}T00:00:00Z`).toLocaleDateString(locale, { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC' }) : 'Pick a date'}</T>
         <T size={18}>📅</T>
       </Pressable>
       {hint ? <T size={12} color={c.mute}>{hint}</T> : null}
+      {android && optional && value ? <Btn small title="Clear" color={c.paper} ink={c.ink} onPress={() => onChange(undefined)} style={{ alignSelf: 'flex-start' }} /> : null}
       <Sheet visible={open} onClose={() => setOpen(false)} title={label ?? 'Pick a date'}>
-        <Calendar month={month} onMonth={setMonth} value={value} minDate={min} maxDate={max} onChange={(d) => { onChange(d); setOpen(false); }} />
+        {NATIVE_PICKER
+          ? <NativeWheel mode="date" value={parseDay(value) ?? new Date()} min={parseDay(min)} max={parseDay(max)} onChange={(d) => { select(); onChange(fmtDay(d)); setOpen(false); }} />
+          : <Calendar month={month} onMonth={setMonth} value={value} minDate={min} maxDate={max} onChange={(d) => { onChange(d); setOpen(false); }} />}
         {optional && value ? <Btn small title="Clear" color={c.paper} onPress={() => { onChange(undefined); setOpen(false); }} /> : null}
       </Sheet>
     </View>
@@ -128,19 +138,31 @@ export function byPartOfDay(items, hourOf) {
 }
 
 /** A time field: chips every `step` minutes, grouped by part of day. value/onChange use 'HH:MM'. */
-export function TimeField({ label, value, onChange, optional, step = 30, hint }) {
+export function TimeField({ label, value, onChange, optional, step = 30, hint, endOfDay }) {
   const [open, setOpen] = useState(false);
+  const [draft, setDraft] = useState(null);
+  // The phone's own picker, except where "End of day" (24:00) must stay choosable: it only exists as a chip.
+  const native = NATIVE_PICKER && !endOfDay && value !== '24:00';
+  const android = native && Platform.OS === 'android';
+  const start = () => {
+    if (android) return openDialog({ mode: 'time', value: parseClock(value), onPick: (d) => onChange(fmtClock(d)) });
+    setDraft(parseClock(value)); setOpen(true);
+  };
   const times = Array.from({ length: (24 * 60) / step + 1 }, (_, i) => i * step).filter((m) => m <= 1440).map((m) => `${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`);
   const fmt = (t) => { if (t === '24:00') return 'End of day'; const [h, m] = t.split(':').map(Number); return `${h % 12 || 12}:${String(m).padStart(2, '0')} ${h < 12 || h === 24 ? 'AM' : 'PM'}`; };
   return (
     <View style={{ gap: 6 }}>
       {label ? <T weight="600" size={12} color={c.mute} style={{ letterSpacing: 0.4 }}>{(label + (optional ? ' (optional)' : '')).toUpperCase()}</T> : null}
-      <Pressable onPress={() => setOpen(true)} style={{ borderWidth: 1.5, borderColor: c.line, borderRadius: 12, backgroundColor: c.paper, paddingHorizontal: 16, minHeight: 50, justifyContent: 'center', flexDirection: 'row', alignItems: 'center' }}>
+      <Pressable onPress={start} style={{ borderWidth: 1.5, borderColor: c.line, borderRadius: 12, backgroundColor: c.paper, paddingHorizontal: 16, minHeight: 50, justifyContent: 'center', flexDirection: 'row', alignItems: 'center' }}>
         <T style={{ flex: 1 }} color={value ? c.ink : c.mute} weight="600">{value ? fmt(value) : 'Pick a time'}</T><T size={18}>🕒</T>
       </Pressable>
       {hint ? <T size={12} color={c.mute}>{hint}</T> : null}
+      {android && optional && value ? <Btn small title="Clear" color={c.paper} ink={c.ink} onPress={() => onChange(undefined)} style={{ alignSelf: 'flex-start' }} /> : null}
       <Sheet visible={open} onClose={() => setOpen(false)} title={label ?? 'Pick a time'}>
-        {byPartOfDay(times, (t) => Number(t.slice(0, 2))).map((g) => (
+        {native ? <>
+          <NativeWheel mode="time" value={draft ?? new Date()} step={step} onChange={setDraft} />
+          <Btn title="Done" onPress={() => { onChange(fmtClock(draft ?? new Date())); setOpen(false); }} />
+        </> : byPartOfDay(times, (t) => Number(t.slice(0, 2))).map((g) => (
           <View key={g.label} style={{ gap: 8 }}>
             <T weight="700" size={13} color={c.mute}>{g.label}</T>
             <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>{g.items.map((t) => <Chip key={t} label={fmt(t)} active={value === t} onPress={() => { onChange(t); setOpen(false); }} />)}</View>
@@ -173,7 +195,7 @@ export function DateTimeField({ label, value, onChange, optional, min, step = 15
 /** − 2 + control for quantities (units, players, hours). */
 export function Counter({ value, onChange, min = 1, max = 99, label, suffix, step = 1, a11y }) {
   const btn = (txt, d, off) => (
-    <Pressable disabled={off} onPress={() => onChange(Math.min(max, Math.max(min, Math.round((value + d * step) * 100) / 100)))} accessibilityRole="button" accessibilityLabel={`${a11y ?? label ? `${a11y ?? label} ` : ''}${d > 0 ? 'more' : 'fewer'}`} style={{ width: 44, height: 44, borderRadius: 20, borderWidth: 1.5, borderColor: off ? c.line : c.pink, alignItems: 'center', justifyContent: 'center', opacity: off ? 0.4 : 1 }}>
+    <Pressable disabled={off} onPress={tapped(() => onChange(Math.min(max, Math.max(min, Math.round((value + d * step) * 100) / 100))))} accessibilityRole="button" accessibilityLabel={`${a11y ?? label ? `${a11y ?? label} ` : ''}${d > 0 ? 'more' : 'fewer'}`} style={{ width: 44, height: 44, borderRadius: 20, borderWidth: 1.5, borderColor: off ? c.line : c.pink, alignItems: 'center', justifyContent: 'center', opacity: off ? 0.4 : 1 }}>
       <T size={20} weight="700" color={c.pink}>{txt}</T>
     </Pressable>
   );

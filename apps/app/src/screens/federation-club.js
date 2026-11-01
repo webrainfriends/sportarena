@@ -14,6 +14,8 @@ import { A, ABtn, ACard, AEmpty, AT, ASection, ATag } from '../arena';
 import { Counter, DateField } from '../pickers';
 import { explain, LoadError } from '../access';
 import { c } from '../theme';
+import { t } from '../i18n';
+import { LicenceCardSheet } from './licence-card';
 import { Banner, BodyPicker, JurisdictionPick, Checks, StatusTag, fmtDate, fmtRange, issueDocument, money, statusLabel } from '../federation-ui';
 
 const thisYear = new Date().getFullYear();
@@ -178,6 +180,7 @@ function LicenceCard({ l, L, onChanged }) {
   const { push } = useNav();
   const { toast } = useSession();
   const [busy, setBusy] = useState(null);
+  const [showCard, setShowCard] = useState(false);
   const run = async (key, fn) => { setBusy(key); try { await fn(); } catch (e) { toast(explain(e)); } finally { setBusy(null); } };
   const open = () => push('FederationRecord', { type: 'licence', id: l.id });
   const days = l.days_to_expiry;
@@ -200,6 +203,7 @@ function LicenceCard({ l, L, onChanged }) {
             {['draft', 'needs_info'].includes(l.status) ? <Btn small title={l.status === 'draft' ? 'Add documents and submit' : 'Respond'} onPress={open} /> : null}
             {renewable ? <Btn small title="Renew" loading={busy === 'renew'} onPress={renew} /> : null}
             {l.holder_role === 'official' && l.status === 'active' ? <Btn small title="Development" color={c.paper} ink={c.ink} onPress={() => push('OfficialsDevelopment')} /> : null}
+            {l.licence_no && ['active', 'suspended', 'expired', 'revoked'].includes(l.status) ? <Btn small title={t('fedx.card.show')} onPress={() => setShowCard(true)} accessibilityLabel={`${t('fedx.card.show')}: ${l.type_name}`} /> : null}
             {l.status === 'active' ? <Btn small title="Licence document" color={c.paper} ink={c.ink} loading={busy === 'doc'} onPress={() => run('doc', () => issueDocument('licence', l.id))} /> : null}
             {l.public_code && l.status === 'active' ? <Btn small title="Share code" color={c.paper} ink={c.ink} onPress={() => run('share', async () => { const m = await shareCode(l); if (m) toast(m); })} /> : null}
             {l.public_code ? <Btn small title="Check" color={c.paper} ink={c.ink} onPress={() => push('VerifyLicence', { code: l.public_code })} /> : null}
@@ -207,6 +211,7 @@ function LicenceCard({ l, L, onChanged }) {
           {l.public_code && l.status === 'active' ? <T size={11} color={c.mute} accessibilityLabel={`Verification code ${l.public_code.split('').join(' ')}`}>Verification code {l.public_code}</T> : null}
         </View>
       </Card>
+      <LicenceCardSheet licence={l} visible={showCard} onClose={() => setShowCard(false)} />
     </View>
   );
 }

@@ -200,7 +200,7 @@ function BookSheet({ e, toast, onClose, onBooked }) {
           <DateRangeField label="Event days" from={range.from} to={range.to} min={todayLocal()} onChange={setRange} hint="Pick the first and last day you need the courts." />
           <View style={{ flexDirection: 'row', gap: 10 }}>
             <View style={{ flex: 1 }}><TimeField label="From" value={start} onChange={setStart} step={30} /></View>
-            <View style={{ flex: 1 }}><TimeField label="Until" value={end} onChange={setEnd} step={30} /></View>
+            <View style={{ flex: 1 }}><TimeField label="Until" value={end} onChange={setEnd} step={30} endOfDay /></View>
           </View>
           <Chip label={holidays ? '✓ Skip public holidays' : 'Include public holidays'} active={holidays} onPress={() => setHolidays(!holidays)} />
           {plan ? (

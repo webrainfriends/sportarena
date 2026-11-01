@@ -22,6 +22,7 @@
     },
     "android": {
       "package": "dev.gotmygame.app",
+      "softwareKeyboardLayoutMode": "resize",
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#E5EAF5"
