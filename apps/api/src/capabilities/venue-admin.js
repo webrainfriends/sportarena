@@ -128,23 +128,23 @@ const ownerOnly = async (user, venueId) => {
 };
 cap({
   name: 'add_venue_staff', method: 'POST', path: '/venues/:id/staff', tag: TAG, status: 201,
-  summary: 'Give another user (by handle) access to run this venue: bookings, blocks, pricing, discounts, reports, and the front desk as its manager. Owner only. (A front-desk cashier who should do nothing else is added with add_pos_cashier.)',
-  input: z.object({ id, handle: z.string().min(3).max(24) }),
+  summary: 'Give another user (by handle) access to this venue. Owner only. role "manager" (default) runs everything: bookings, blocks, pricing, discounts, reports, finance, roster. role "staff" is floor staff: check-in, incidents, readiness checks, work orders and their own shifts, nothing else. `duty` says what they do (reception, maintenance, lifeguard, groundskeeper …) for rostering and work-order assignment. Calling it again changes role/duty. (A front-desk cashier who should do nothing else is added with add_pos_cashier.)',
+  input: z.object({ id, handle: z.string().min(3).max(24), role: z.enum(['manager', 'staff']).default('manager'), duty: z.enum(['general', 'reception', 'maintenance', 'lifeguard', 'groundskeeper', 'coach_liaison']).default('general') }),
   async handler({ user }, i) {
     await ownerOnly(user, i.id);
     const u = await one('SELECT id, handle, display_name FROM users WHERE handle=$1', [i.handle.toLowerCase()]);
     if (!u) throw notFound('User');
-    await one("INSERT INTO venue_staff(venue_id, user_id, role) VALUES ($1,$2,'manager') ON CONFLICT (venue_id, user_id) DO UPDATE SET removed_at=NULL RETURNING user_id", [i.id, u.id]);
-    await notify(null, u.id, { kind: 'venue_staff_added', title: 'You can now manage a venue', body: `${user.display_name} added you to the team.`, data: { venue_id: i.id } });
-    return { ...u, role: 'manager' };
+    await one("INSERT INTO venue_staff(venue_id, user_id, role, duty) VALUES ($1,$2,$3,$4) ON CONFLICT (venue_id, user_id) DO UPDATE SET removed_at=NULL, role=EXCLUDED.role, duty=EXCLUDED.duty RETURNING user_id", [i.id, u.id, i.role, i.duty]);
+    await notify(null, u.id, { kind: 'venue_staff_added', title: i.role === 'staff' ? 'You joined a venue team' : 'You can now manage a venue', body: `${user.display_name} added you to the team.`, data: { venue_id: i.id } });
+    return { ...u, role: i.role, duty: i.duty };
   },
 });
 cap({
   name: 'list_venue_staff', method: 'GET', path: '/venues/:id/staff', tag: TAG, summary: 'Owner and staff of a venue (team only).', input: z.object({ id }),
   async handler({ user }, i) {
     await mustManage(user, i.id);
-    return many(`SELECT u.id, u.handle, u.display_name, 'owner' AS role FROM venues v JOIN users u ON u.id=v.owner_id WHERE v.id=$1
-                 UNION ALL SELECT u.id, u.handle, u.display_name, s.role FROM venue_staff s JOIN users u ON u.id=s.user_id WHERE s.venue_id=$1 AND s.removed_at IS NULL`, [i.id]);
+    return many(`SELECT u.id, u.handle, u.display_name, 'owner' AS role, 'general' AS duty FROM venues v JOIN users u ON u.id=v.owner_id WHERE v.id=$1
+                 UNION ALL SELECT u.id, u.handle, u.display_name, s.role, s.duty FROM venue_staff s JOIN users u ON u.id=s.user_id WHERE s.venue_id=$1 AND s.removed_at IS NULL`, [i.id]);
   },
 });
 cap({
@@ -428,7 +428,7 @@ cap({
       `SELECT b.id, b.reservation_id, b.resource_id, r.name AS resource_name, b.starts_at, b.ends_at, b.quantity, b.slots, b.players, b.status, b.source, b.price_cents, b.discount_cents, b.payment_status, b.note, b.cancel_reason,
               u.id AS customer_id, u.display_name AS customer, b.guest_name_enc, b.guest_phone_enc, rs.code AS reservation_code,
               oi.id AS open_invoice_id, (oi.total_cents - oi.credits_cents) AS open_invoice_due_cents,
-              b.event_id, ev.name AS event_name, ev.starts_on::text AS event_starts_on, ev.ends_on::text AS event_ends_on
+              b.event_id, ev.name AS event_name, ev.starts_on::text AS event_starts_on, ev.ends_on::text AS event_ends_on, b.checked_in_at, rs.walk_in
          FROM bookings b JOIN resources r ON r.id=b.resource_id JOIN users u ON u.id=b.user_id LEFT JOIN reservations rs ON rs.id=b.reservation_id LEFT JOIN events ev ON ev.id=b.event_id
          LEFT JOIN invoices oi ON oi.reservation_id=b.reservation_id AND oi.venue_id=r.venue_id AND oi.kind='invoice' AND oi.status='open'
         WHERE r.venue_id=$1 AND b.starts_at < $3 AND b.ends_at > $2 AND ($4::uuid IS NULL OR b.resource_id=$4) AND ($5 OR b.status <> 'cancelled') ORDER BY b.starts_at, r.name`,

@@ -1,5 +1,6 @@
 // The shop cart and wishlist. The cart lives on the server so it follows the person from phone to laptop; lines are never deleted
 // (removed_at), prices and stock are always read live, and one checkout turns the whole cart into orders paid with a single payment.
+import { countryOfCurrency } from '../payments/countries.js';
 import { z } from 'zod';
 import { randomUUID } from 'node:crypto';
 import { cap, id } from '../registry.js';
@@ -85,7 +86,7 @@ cap({
           throw conflict(`${n} is no longer available in that quantity — update your cart`);
         }
         if (p.seller_id === user.id) throw badRequest('You cannot buy your own product');
-        const status = paymentsEnabled() && Number(p.price_cents) > 0 ? 'awaiting_payment' : 'placed';
+        const status = paymentsEnabled(countryOfCurrency(p.currency)) && Number(p.price_cents) > 0 ? 'awaiting_payment' : 'placed';
         const { rows: [o] } = await c.query(
           'INSERT INTO shop_orders(buyer_id, seller_id, product_id, quantity, unit_price_cents, total_cents, status, ship_to_enc, checkout_id, currency) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING id, product_id, quantity, unit_price_cents, total_cents, currency, status',
           [user.id, p.seller_id, p.id, l.quantity, p.price_cents, Number(p.price_cents) * l.quantity, status, shipTo, checkoutId, p.currency]);

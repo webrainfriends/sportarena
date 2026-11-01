@@ -43,6 +43,8 @@ export async function activateUserPlan(c, id) {
     kind: 'plan_active', title: `${p.name} is active ✓`,
     body: p.kind === 'membership' ? (p.discount_bp ? `${p.discount_bp / 100}% off every booking at ${place.name} until ${until}.` : `Active at ${place.name} until ${until}.`) : `${p.sessions_total} sessions at ${place.name}, use them by ${until}.`,
     data: p.venue_id ? { venue_id: place.id } : { organisation_id: place.id } });
+  // a membership opens the venue's hardware by itself (access grants); the worker retries anything unreachable
+  if (p.kind === 'membership' && p.venue_id && c.afterCommit) c.afterCommit(() => import('./../access-layer.js').then((m) => m.syncMembershipGrants()).catch(() => {}));
   return true;
 }
 

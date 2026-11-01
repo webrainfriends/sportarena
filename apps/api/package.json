@@ -16,6 +16,7 @@
     "@aws-sdk/client-kms": "^3.1147.0",
     "@modelcontextprotocol/sdk": "^1.32.1",
     "@node-saml/node-saml": "^5.2.0",
+    "@resvg/resvg-js": "^2.6.2",
     "@xmldom/xmldom": "^0.9.12",
     "cors": "^2.8.5",
     "express": "^5.2.1",

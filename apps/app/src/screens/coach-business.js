@@ -15,7 +15,7 @@ import { c } from '../theme';
 import { t } from '../i18n';
 import { addDays, moneyIn, todayIn, WEEKDAYS } from '../vtime';
 import { LoyaltyConsole } from './rewards';
-import { CoachSubscribers } from './coach-subscriptions';
+import { CoachLatePayments, CoachSubscribers } from './coach-subscriptions';
 
 const deviceTz = (() => { try { return Intl.DateTimeFormat().resolvedOptions().timeZone; } catch { return 'UTC'; } })();
 const LEVELS = ['beginner', 'amateur', 'semi_pro', 'pro'].map((value) => ({ value, label: nice(value).replace(/^./, (x) => x.toUpperCase()) }));
@@ -117,7 +117,7 @@ export function CoachRates() {
         ))}
       </View>
 
-      {cards.data?.some((k) => k.unit === 'month') ? <CoachSubscribers /> : null}
+      {cards.data?.some((k) => k.unit === 'month') ? <><CoachSubscribers /><CoachLatePayments /></> : null}
 
       <Section title="Specialisations" action="+ Add" onAction={() => setSpec({})}>
         {specs.error ? <ErrorBox error={specs.error} onRetry={specs.reload} /> : !specs.data?.length ? <T size={13} color={c.mute}>Say what you are known for — it shows on your profile, helps search find you and groups your reports.</T> : specs.data.map((z) => (

@@ -18,6 +18,7 @@ const scopeShape = z.object({
   season: z.number().int().min(1900).max(2200).optional(),
   event_id: id.optional(),
   region: z.string().min(2).max(60).optional().describe('the city where the competition was played'),
+  venue_id: id.optional().describe('the venue where the competition was played'),
   format: z.enum(['tournament', 'league', 'friendly', 'camp', 'trial']).optional(),
   position: z.string().min(1).max(40).optional(),
 }).strict();
@@ -53,7 +54,7 @@ const publicVersion = (v) => v && ({
 cap({
   name: 'list_ranking_definitions', method: 'GET', path: '/rankings', tag: TAG, auth: 'public',
   summary: 'The published rankings: sport, player or team, scope, formula and minimum sample. Public rankings use approved competition results only. Club rankings are listed only to members of that club. can_define tells the caller whether they may publish one; families lists the native model per kind of sport (and which sports use a labelled fallback).',
-  input: z.object({ sport: z.string().optional(), subject: z.enum(['player', 'team']).optional(), include_retired: z.coerce.boolean().default(false), ...page }),
+  input: z.object({ sport: z.string().optional(), subject: z.enum(['player', 'team']).optional(), region: z.string().max(60).optional().describe('only rankings scoped to this city'), venue_id: id.optional().describe('only rankings scoped to this venue'), include_retired: z.coerce.boolean().default(false), ...page }),
   async handler({ user }, i) {
     const sport = i.sport ? await sportBySlugOrId(i.sport) : null;
     if (i.sport && !sport) throw notFound('Sport');
@@ -62,7 +63,8 @@ cap({
          FROM ranking_definitions d JOIN sports s ON s.id=d.sport_id LEFT JOIN ranking_definition_versions v ON v.definition_id=d.id AND v.version=d.current_version
         WHERE d.current_version > 0 AND ($1::uuid IS NULL OR d.sport_id=$1) AND ($2::text IS NULL OR d.subject=$2) AND ($3 OR d.status='published')
           AND (d.visibility='public' OR EXISTS (SELECT 1 FROM team_members tm WHERE tm.team_id=d.scope_team_id AND tm.user_id=$4 AND tm.status='active'))
-        ORDER BY s.name, d.subject, d.name LIMIT $5 OFFSET $6`, [sport?.id ?? null, i.subject ?? null, i.include_retired, user?.id ?? null, i.limit, i.offset]);
+          AND ($7::text IS NULL OR lower(v.scope->>'region') = lower($7)) AND ($8::text IS NULL OR v.scope->>'venue_id' = $8)
+        ORDER BY s.name, d.subject, d.name LIMIT $5 OFFSET $6`, [sport?.id ?? null, i.subject ?? null, i.include_retired, user?.id ?? null, i.limit, i.offset, i.region ?? null, i.venue_id ?? null]);
     // the choices a definition form offers come from real data: positions people list for this sport and cities where it was played
     const info = sport ? {
       family: familyOf(sport), ...FAMILIES[familyOf(sport)], can_define: await canGovern(user, sport.id),
@@ -160,6 +162,8 @@ cap({
     if (i.evidence === 'development' && i.visibility !== 'club') throw unprocessable('Practice and imported data can power club development rankings only; public rankings use approved competition results');
     if (i.formula_kind !== 'rating' && i.visibility === 'public' && !i.scope.event_id && (i.min_samples < 3 || i.min_distinct_events < 2)) throw unprocessable('A public ranking needs at least 3 results across at least 2 events, unless it is scoped to one event');
     if (i.scope.event_id && !(await one('SELECT 1 AS ok FROM events WHERE id=$1 AND sport_id=$2', [i.scope.event_id, sport.id]))) throw unprocessable('That event is not in this sport');
+    if (i.scope.venue_id && i.formula_kind === 'rating') throw unprocessable('A skill-rating ranking is not built from results at a venue; pick a results-based formula for a venue leaderboard');
+    if (i.scope.venue_id && !(await one('SELECT 1 AS ok FROM venues WHERE id=$1 AND active', [i.scope.venue_id]))) throw unprocessable('That venue was not found');
     let direction = 'higher', unit = null;
     if (i.formula_kind === 'rating') { unit = 'level'; if (i.evidence !== 'official') throw unprocessable('A skill level is built from approved competition results only'); }
     else if (i.formula_kind !== 'team_form') {

@@ -6,7 +6,8 @@ import { useLoad } from '../hooks';
 import { useSession } from '../session';
 import { Btn, Card, Chip, Empty, ErrorBox, Loading, Row, Section, Sheet, T, Tag } from '../ui';
 import { FormSheet } from '../FormSheet';
-import { Calendar } from '../pickers';
+import { Calendar, Counter } from '../pickers';
+import { t } from '../i18n';
 import { useNav } from '../nav';
 import { c } from '../theme';
 import { KIND } from './book';
@@ -27,6 +28,7 @@ export function DayBoard({ v }) {
   const [pick, setPick] = useState(null);       // a booking
   const [cancel, setCancel] = useState(null);
   const [method, setMethod] = useState('cash');
+  const [guests, setGuests] = useState(0);
   const from = localToIso(date, '00:00', tz), to = localToIso(addDays(date, 1), '00:00', tz);
   const avail = useLoad(() => api.get(`/venues/${v.id}/availability`, { date }), [v.id, date]);
   const sched = useLoad(() => api.get(`/venues/${v.id}/schedule`, { from, to }), [v.id, date]);
@@ -81,7 +83,7 @@ export function DayBoard({ v }) {
                     if (b) {
                       const paid = b.payment_status === 'paid';
                       bg = paid ? '#BBF7D0' : '#FED7AA';
-                      body = startsHere || m === rows[0] ? <T size={11} weight="700" numberOfLines={2}>{b.event_name ? `🏆 ${b.event_name}` : (b.guest?.name ?? b.customer)}{b.quantity > 1 ? ` ×${b.quantity}` : ''}</T> : null;
+                      body = startsHere || m === rows[0] ? <T size={11} weight="700" numberOfLines={2}>{b.checked_in_at ? '✓ ' : ''}{b.event_name ? `🏆 ${b.event_name}` : (b.guest?.name ?? b.customer)}{b.quantity > 1 ? ` ×${b.quantity}` : ''}</T> : null;
                       onPress = () => setPick(b);
                     } else if (blk) { bg = '#E2E8F0'; body = <T size={11} color={c.mute}>⛔ {blk.kind}</T>; onPress = () => toast(`Blocked: ${blk.kind}${blk.reason ? ` · ${blk.reason}` : ''}`); }
                     else if (s && s.status === 'free') { bg = '#fff'; body = <T size={11} color={c.mute}>{moneyIn(s.price_cents, v.currency)}</T>; onPress = () => open(r, s.starts_at); }
@@ -107,7 +109,7 @@ export function DayBoard({ v }) {
             {pick.event_name ? <T size={13} color={c.mute}>Event booking · {pick.event_starts_on ? `${pick.event_starts_on} → ${pick.event_ends_on ?? '…'}` : 'dates not set'} · booked by {pick.customer}</T> : null}
             {pick.guest?.phone ? <T color={c.mute}>☎ {pick.guest.phone}</T> : null}
             <T size={13} color={c.mute}>{pick.reservation_code ? `Booking ${pick.reservation_code}` : pick.event_name ? 'Event court booking' : 'Venue booking'}{pick.source === 'admin' ? ' · made by the venue' : ''}</T>
-            <View style={{ flexDirection: 'row', gap: 6 }}><Tag label={pick.status.replace('_', ' ')} color={pick.status === 'confirmed' ? c.mint : c.orange} /><Tag label={pick.payment_status.replace('_', ' ')} color={pick.payment_status === 'paid' ? c.mint : c.sun} /></View>
+            <View style={{ flexDirection: 'row', gap: 6 }}><Tag label={pick.status.replace('_', ' ')} color={pick.status === 'confirmed' ? c.mint : c.orange} />{pick.checked_in_at ? <Tag label={`✓ ${t('vf.ci.badge')}`} color={c.mint} /> : null}<Tag label={pick.payment_status.replace('_', ' ')} color={pick.payment_status === 'paid' ? c.mint : c.sun} /></View>
             <T weight="700">{moneyIn(pick.price_cents, v.currency)}{pick.open_invoice_due_cents ? ` · ${moneyIn(pick.open_invoice_due_cents, v.currency)} due` : ''}</T>
             {pick.open_invoice_id ? (
               <View style={{ gap: 6 }}>
@@ -116,6 +118,13 @@ export function DayBoard({ v }) {
                 <Btn title={`Record ${moneyIn(pick.open_invoice_due_cents, v.currency)} received`} onPress={() => act(() => api.post(`/invoices/${pick.open_invoice_id}/paid`, { method }), 'Payment recorded — receipt sent')} />
               </View>
             ) : !pick.reservation_id && pick.payment_status !== 'paid' ? <Btn title="Mark as paid" onPress={() => act(() => api.post(`/bookings/${pick.id}/payment`, { status: 'paid' }), 'Marked paid')} /> : null}
+            {pick.status === 'confirmed' && !pick.checked_in_at && new Date(pick.starts_at) < new Date(Date.now() + 3 * 3600_000) && new Date(pick.ends_at) > new Date() ? (
+              <View style={{ gap: 8 }}>
+                {!pick.walk_in ? <Counter label={t('vf.ent.guests')} value={guests} onChange={setGuests} min={0} max={20} /> : null}
+                <Btn title={`✓ ${t('vf.ci.button')}`} color={c.mint} ink={c.ink} accessibilityLabel={t('vf.ci.button')}
+                  onPress={async () => { try { const r = await api.post(`/bookings/${pick.id}/check-in`, { guests: pick.walk_in ? 0 : guests }); if (r.verdict === 'denied') toast(r.message ?? r.reason_code); else { toast(t('vf.ci.done', { name: pick.guest?.name ?? pick.customer })); setPick(null); setGuests(0); board.reload(); } } catch (e) { toast(e.message); } }} />
+              </View>
+            ) : null}
             <View style={{ flexDirection: 'row', gap: 8, flexWrap: 'wrap' }}>
               {pick.reservation_id ? <Btn small title="Open booking" color={c.paper} onPress={() => { setPick(null); push('Reservation', { id: pick.reservation_id }); }} /> : null}
               {new Date(pick.starts_at) < new Date() && pick.status === 'confirmed' ? <Btn small title="No-show" color={c.paper} onPress={() => act(() => api.post(`/bookings/${pick.id}/no-show`), 'Marked no-show')} /> : null}

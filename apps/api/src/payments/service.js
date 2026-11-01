@@ -1,7 +1,9 @@
 import { one, many, tx, pool } from '../db.js';
+import { decrypt } from '../crypto.js';
 import { config } from '../config.js';
 import { AppError, badRequest, conflict, forbidden, notFound } from '../errors.js';
-import { provider, paymentsEnabled, enabledProviders } from './providers.js';
+import { provider, configuredProviders } from './providers.js';
+import { paymentsEnabled, enabledProviders, enabledMethods, resolveCountry, venueOfPurpose, defaultMethodFor, METHODS } from './countries.js';
 import { markInvoicePaid } from '../booking/invoices.js';
 import { completeTopup, activateGiftCard } from '../wallet.js';
 import { activateUserPlan } from '../booking/plans.js';
@@ -24,7 +26,7 @@ import { recordCharge, closeCharge, recordPayment, recordRefund } from '../finan
 import { describeSubscription, fulfilSubscriptionPaid } from '../commercial/engine.js';
 import { confirmOrder } from '../ticketing.js';
 
-export { paymentsEnabled, enabledProviders };
+export { paymentsEnabled, enabledProviders, enabledMethods };
 
 /** What a payment is for, who may pay it, how much, and whether it can still be paid. Amounts always come from the DB. */
 export async function describePurpose(c, type, id) {
@@ -268,10 +270,19 @@ async function checkPayScope(c, userId, type, id) {
   if (r) await checkGuardianScope(userId, r.child_id, 'pay', r.org_id, c);
 }
 
+/** Razorpay needs an email and a mobile number for a UPI payment: the person's own, or the number they typed for this payment. */
+async function upiPayer(userId, upi) {
+  const u = await one('SELECT email_enc, phone_enc FROM users WHERE id=$1', [userId]);
+  const email = u?.email_enc ? decrypt(u.email_enc, 'users.email') : null;
+  const contact = upi.contact ?? (u?.phone_enc ? decrypt(u.phone_enc, 'users.phone') : null);
+  if (!contact) throw badRequest('A mobile number is needed to pay by UPI. Enter it with the payment.');
+  return { email, contact };
+}
+
 export async function startCheckout(user, i) {
-  if (!enabledProviders().includes(i.provider)) throw badRequest(`${i.provider} is not enabled on this server`);
+  if (!configuredProviders().includes(i.provider)) throw badRequest(`${i.provider} is not enabled on this server`);
   const client = await pool.connect();
-  let paymentId, d, currency;
+  let paymentId, d, currency, country, method;
   try {
     await client.query('BEGIN');
     d = await describePurpose(client, i.purpose_type, i.purpose_id);
@@ -283,7 +294,14 @@ export async function startCheckout(user, i) {
     if (d.payerId === user.id) await checkPayScope(client, user.id, i.purpose_type, i.purpose_id);
     if (!d.payable) throw conflict('Nothing to pay: it is already paid, cancelled or free');
     if (d.amount <= 0) throw conflict('Nothing to pay');
-    const row = (await client.query('INSERT INTO payments(payer_id, provider, purpose_type, purpose_id, amount_cents, currency, cover_mandate_id) VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING id', [user.id, i.provider, i.purpose_type, i.purpose_id, d.amount, currency, cover?.id ?? null])).rows[0];
+    // the platform admin decides, country by country, which methods exist: re-checked here so the UI is never the only guard
+    country = await resolveCountry({ country: i.country, userId: d.payerId, currency, venueId: await venueOfPurpose(client, i.purpose_type, i.purpose_id) });
+    const offered = await enabledMethods(country);
+    if (!offered.providers.includes(i.provider)) throw conflict(`${i.provider} payments are not switched on for ${country ?? 'this country'}`);
+    method = i.upi ? 'upi' : (i.method ?? defaultMethodFor(i.provider));
+    if (i.upi && i.provider !== 'razorpay') throw badRequest('UPI collect and intent are paid through Razorpay');
+    if (!METHODS[method]?.providers.includes(i.provider) || !offered.methods.includes(method)) throw conflict(`${method} is not switched on for ${country}`);
+    const row = (await client.query('INSERT INTO payments(payer_id, provider, purpose_type, purpose_id, amount_cents, currency, cover_mandate_id, method, country) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING id', [user.id, i.provider, i.purpose_type, i.purpose_id, d.amount, currency, cover?.id ?? null, method, country])).rows[0];
     paymentId = row.id;
     await recordCharge(client, { id: paymentId, payer_id: user.id, purpose_type: i.purpose_type, purpose_id: i.purpose_id, amount_cents: d.amount, currency, provider: i.provider });   // the canonical charge, open until paid
     if (cover) await startUse(client, cover, { paymentId, userId: user.id, purposeType: i.purpose_type, purposeId: i.purpose_id, amount: d.amount, currency });
@@ -293,9 +311,11 @@ export async function startCheckout(user, i) {
   const base = safeReturnBase(i.return_url);
   const mk = (r) => `${base}/?payment=${paymentId}&result=${r}`;
   try {
-    const out = await provider(i.provider).createCheckout({ paymentId, amount: d.amount, currency, name: d.name, successUrl: mk('success'), cancelUrl: mk('cancel') });
+    const out = i.upi
+      ? await provider(i.provider).createUpi({ paymentId, amount: d.amount, currency, name: d.name, upi: i.upi, payer: await upiPayer(user.id, i.upi) })
+      : await provider(i.provider).createCheckout({ paymentId, amount: d.amount, currency, name: d.name, successUrl: mk('success'), cancelUrl: mk('cancel') });
     await one('UPDATE payments SET provider_ref=$2 WHERE id=$1', [paymentId, out.ref]);
-    return { id: paymentId, provider: i.provider, amount_cents: d.amount, currency, checkout_url: out.url };
+    return { id: paymentId, provider: i.provider, method, country, amount_cents: d.amount, currency, checkout_url: out.url ?? null, ...(i.upi ? { upi_flow: i.upi.flow, upi_intent_url: out.intent_url ?? null } : {}) };
   } catch (e) {
     await one("UPDATE payments SET status='failed' WHERE id=$1", [paymentId]);
     await closeCharge(null, paymentId, 'failed');

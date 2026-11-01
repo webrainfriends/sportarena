@@ -14,7 +14,7 @@ import { c } from '../theme';
 import { explain, LoadError } from '../access';
 import { useNav } from '../nav';
 import { t } from '../i18n';
-import { Lifecycle, ActivationCalendar, RenewalPipeline } from './sponsor-lifecycle';
+import { Lifecycle, ActivationCalendar, RenewalPipeline, RelationshipHistory } from './sponsor-lifecycle';
 
 const fmt = (cents, cur) => { if (cents == null) return '—'; try { const f = new Intl.NumberFormat(undefined, { style: 'currency', currency: cur }); return f.format(cents / 10 ** f.resolvedOptions().maximumFractionDigits); } catch { return `${cents} ${cur ?? ''}`; } };
 const num = (n) => (n == null ? '—' : Number(n).toLocaleString());
@@ -22,7 +22,7 @@ const today = () => new Date().toISOString().slice(0, 10);
 const ago = (d) => new Date(Date.now() - d * 864e5).toISOString().slice(0, 10);
 const word = (k) => String(k).replace(/_/g, ' ').replace(/^./, (x) => x.toUpperCase());
 const STATE_TONE = { accepted: c.lime, awaiting_review: c.sunSoft, rework: c.pinkSoft, overdue: c.pinkSoft, upcoming: c.violetSoft, excepted: c.paper, cancelled: c.paper };
-const BASIS = { platform_measured: ['Measured by Sportarena', c.lime], provider_reported: ['Reported by a provider', c.sunSoft] };
+const BASIS = { platform_measured: ['Measured by Sportarena', c.lime], provider_reported: ['Imported from a provider', c.sunSoft] };
 const CATEGORIES = ['beverage', 'nutrition', 'apparel', 'footwear', 'equipment', 'banking_finance', 'insurance', 'telecom', 'automotive', 'technology', 'healthcare', 'education', 'travel_hospitality', 'media', 'retail', 'other'].map((v) => ({ value: v, label: word(v) }));
 const DELIVERABLES = ['appearance', 'content', 'hospitality', 'challenge_reward', 'activation', 'other'].map((v) => ({ value: v, label: word(v) }));
 const PLATFORMS = ['linear_tv', 'ott', 'web', 'mobile_app', 'social', 'radio', 'in_venue', 'print'];
@@ -147,7 +147,7 @@ function Estimate({ deal }) {
             <Tag label="ESTIMATE — assumption-based, not a measured fact" color={c.paper} />
             <T size={24} weight="800">{fmt(e.estimated_value_cents, e.currency)}</T>
             <T size={12} color={c.mute}>Model “{e.model.name}” version {e.model.version}. Why these rates: {e.model.basis_note}</T>
-            {e.lines.map((l) => <T key={l.metric} size={13}>• {word(l.metric)}: {num(l.measured_value)} {l.measured_basis === 'platform_measured' ? 'measured by Sportarena' : 'reported by a provider'}, at {fmt(l.rate_cents, e.currency)} per {l.rate_per === 1 ? 'unit' : '1,000 units'} = {fmt(l.value_cents, e.currency)}</T>)}
+            {e.lines.map((l) => <T key={l.metric} size={13}>• {word(l.metric)}: {num(l.measured_value)} {l.measured_basis === 'platform_measured' ? 'measured by Sportarena' : 'imported from a provider'}, at {fmt(l.rate_cents, e.currency)} per {l.rate_per === 1 ? 'unit' : '1,000 units'} = {fmt(l.value_cents, e.currency)}</T>)}
             {e.excluded.length ? <T size={12} color={c.mute}>Not valued by this model: {e.excluded.map(word).join(', ')}.</T> : null}
             <T size={13} weight="700">{e.return_on_spend.ratio != null ? `Estimated value ÷ confirmed spend: ${e.return_on_spend.ratio} (estimate)` : e.return_on_spend.note}</T>
           </View>
@@ -189,7 +189,7 @@ function ProviderFigures({ id, reload }) {
 }
 
 function AgreementPanel({ deal, role, onClose }) {
-  const tabs = ['Lifecycle', ...(role === 'sponsor' ? ['Exposure', 'Deliverables', 'Estimate', 'Renewal pack', 'Inventory'] : ['Exposure', 'Deliverables', 'Renewal pack', 'Inventory'])];
+  const tabs = ['Lifecycle', 'Relationship', ...(role === 'sponsor' ? ['Exposure', 'Deliverables', 'Estimate', 'Renewal pack', 'Inventory'] : ['Exposure', 'Deliverables', 'Renewal pack', 'Inventory'])];
   const [tab, setTab] = useState('Lifecycle');
   const exp = useLoad(() => api.get(`/sponsorships/${deal.id}/exposure`), [deal.id]);
   const inv = useLoad(() => (tab === 'Inventory' ? api.get(`/sponsorships/${deal.id}/inventory`) : Promise.resolve(null)), [deal.id, tab]);
@@ -197,8 +197,9 @@ function AgreementPanel({ deal, role, onClose }) {
     <Card color={c.paper}>
       <View style={{ gap: 10 }}>
         <Row><Btn small title="← Back" color={c.paper} ink={c.ink} onPress={onClose} accessibilityLabel="Back to the list" /><T weight="800" size={16} style={{ flex: 1 }}>{deal.beneficiary} · {deal.sponsor}{deal.ref ? ` · ${deal.ref}` : ''}</T></Row>
-        <Row>{tabs.map((x) => <Chip key={x} label={x === 'Lifecycle' ? t('spl.lifecycle') : x} active={tab === x} onPress={() => setTab(x)} />)}</Row>
+        <Row>{tabs.map((x) => <Chip key={x} label={x === 'Lifecycle' ? t('spl.lifecycle') : x === 'Relationship' ? t('spl.relationship') : x} active={tab === x} onPress={() => setTab(x)} />)}</Row>
         {tab === 'Lifecycle' ? <Lifecycle id={deal.id} /> : null}
+        {tab === 'Relationship' ? <RelationshipHistory id={deal.id} /> : null}
         {tab === 'Exposure' ? (exp.error ? <LoadError error={exp.error} onRetry={exp.reload} /> : exp.data ? <View style={{ gap: 10 }}>{role !== 'sponsor' ? <ProviderFigures id={deal.id} reload={exp.reload} /> : null}<Metrics exposure={exp.data} />
           {exp.data.signals.length ? <T size={12} color={c.mute}>Provider figures on file: {exp.data.signals.filter((s) => !s.superseded_at).length} (corrections keep the earlier value in history).</T> : null}</View> : <Loading />) : null}
         {tab === 'Deliverables' ? <Deliverables id={deal.id} role={role} /> : null}

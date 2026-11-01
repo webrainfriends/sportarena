@@ -1,7 +1,7 @@
 // The Match Centre, and the Games tab of the event console: the referee's live console (kick off, score with the sport's own buttons, track
 // fouls and cards, undo, pause, full time) that doubles as a live scoreboard for everyone else.
 import { locale } from '../locale';
-import React, { useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Pressable, View } from 'react-native';
 import { api } from '../api';
 import { useLoad } from '../hooks';
@@ -11,6 +11,8 @@ import { useSession } from '../session';
 import { useNav } from '../nav';
 import { A, ABracket, ABtn, ACard, AChip, AEmpty, AScreen, ASection, AT, LiveBadge, ReasonSheet, ScoreTicker } from '../arena';
 import { Loading, Sheet, T } from '../ui';
+import { t } from '../i18n';
+import { StaffOps } from './live-centre-modules';
 import { c } from '../theme';
 import { GamesByDay, SchedulePlanner } from './event-schedule';
 import { StageDesk, StagesView } from '../bracket-studio';
@@ -55,6 +57,10 @@ export function MatchCentre({ id }) {
   const { push: go } = useNav();
   const L = useLayout();
   const feed = useLiveFixture(id);
+  const [ops, setOps] = useState(null);
+  const loadOps = useCallback(() => api.get(`/fixtures/${id}/live`, { limit: 1 }).then((r) => setOps(r.ops ?? null)).catch(() => {}), [id]);
+  useEffect(() => { loadOps(); }, [loadOps]);
+  usePoll(loadOps, 10000);
   const { mode, push, refresh, revoked } = feed;
   const pack = useSavedGame(user?.id, id, feed.state);   // the encrypted copy of this game for scoring with no signal
   const proj = useLoad(() => api.get(`/fixtures/${id}/projection`), [id, feed.state?.version]);
@@ -242,6 +248,8 @@ export function MatchCentre({ id }) {
   return (
     <AScreen>
       <ScoreTicker g={g} />
+      <StaffOps ops={ops} />
+      <ABtn small tone="ghost" title={`👁 ${t('livec.staff.preview')}`} onPress={() => go('LiveCentre', { id })} />
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
         {['provisional', 'final', 'corrected'].includes(g.live?.state) ? <LiveBadge status={LIVE_STATE[g.live.state]} label={LIVE_LABEL[g.live.state]} /> : null}
         {g.live?.corrected && g.live.state === 'live' ? <AT size={12} weight="800" color={A.sun}>✎ includes corrections</AT> : null}

@@ -4,12 +4,15 @@ import { useSession } from '../session';
 import { useNav } from '../nav';
 import { useLayout } from '../layout';
 import { useGo, useWorkspace } from '../workspace';
-import { Avatar, Btn, Card, Chip, Empty, ErrorBox, H1, Loading, Screen, ScreenHeaderProvider, Tag, T } from '../ui';
+import { Btn, Card, Chip, Empty, ErrorBox, H1, Loading, Screen, ScreenHeaderProvider, Tag, T } from '../ui';
 import { roleLabel } from '../roles';
 import { workspaceOf } from './more-catalog';
 import { HScroll } from '../pickers';
 import { SetupCard } from './setup';
 import { c, day, when } from '../theme';
+import { api } from '../api';
+import { useLoad } from '../hooks';
+import { PlayerHero } from '../hero';
 
 // Home and Workbench: the two role-driven tabs of the mobile shell (issue #599). Both read the one workspace the API composes for the active
 // role. Home answers "what is on today and what is waiting on me"; Workbench is the role's one page: its queue and fast actions on top of its own screen.
@@ -132,19 +135,16 @@ export function RoleHome() {
   const { goTab, push } = useNav();
   const { tablet } = useLayout();
   const go = useGo();
+  const sports = useLoad(() => api.get('/me/sport-profiles'), []);
+  const main = (sports.data ?? []).find((p) => p.is_default) ?? sports.data?.[0];
   const d = ws.data;
   const early = gate(ws);
   if (early) return early;
   const top = d.work.slice(0, 3);
-  const first = (user?.display_name ?? '').split(' ')[0];
   return (
       <Screen onRefresh={ws.reload} refreshing={ws.loading} wide>
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, marginTop: 4 }}>
-          <Avatar user={user} size={46} />
-          <View style={{ flex: 1 }}>
-            <T size={13} color={c.mute} weight="700">{d.role_label ?? 'Welcome'}{d.generic && d.role ? ' · basic workspace' : ''}</T>
-            <H1 style={{ fontSize: 26, letterSpacing: -0.8 }}>{first ? `Hello, ${first}` : 'Hello'}</H1>
-          </View>
+        <View style={{ marginTop: 4, borderRadius: 24, overflow: 'hidden', borderWidth: 1, borderColor: c.line }}>
+          <PlayerHero user={user} profile={main} pad={16} onAvatar={() => goTab('Me')} />
         </View>
         <View style={{ marginTop: 14 }}><Context ws={ws} /></View>
         <SetupCard />

@@ -5,6 +5,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { Image, Modal, PanResponder, Platform, Pressable, ScrollView, TextInput, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { API, api, authHeader } from '../api';
+import { openBlob } from '../open-file';
 import { useLayout } from '../layout';
 import { useSession } from '../session';
 import { Btn, Chip, Field, Seg, T } from '../ui';
@@ -216,7 +217,7 @@ export function TemplateEditor({ tpl, kits, pickedKit, onClose, onNewKit, onPubl
   const preview = async () => {
     try {
       const blob = await api.postBlob('/branded-documents/preview', { layout, ...(kitId ? { kit_id: kitId } : {}) });
-      if (Platform.OS === 'web') { const url = URL.createObjectURL(blob); window.open(url, '_blank', 'noopener'); setTimeout(() => URL.revokeObjectURL(url), 120000); } else toast('Open the web app to preview the PDF');
+      await openBlob(blob, 'preview', 'pdf');
     } catch (e) { toast(e.message); }
   };
   const publish = async () => {

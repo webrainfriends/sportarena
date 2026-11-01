@@ -3,6 +3,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { View } from 'react-native';
 import { api } from '../api';
+import { saveExport } from '../open-file';
 import { useLoad } from '../hooks';
 import { useNav } from '../nav';
 import { useSession } from '../session';
@@ -74,7 +75,8 @@ export function SponsorPortfolio() {
     setExporting(true);
     try {
       const out = await api.get('/beneficiary-portfolio-export', filters);
-      if (typeof document !== 'undefined') { const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([out.csv], { type: 'text/csv' })); a.download = out.filename; a.click(); toast(`Exported ${out.rows} rows`); } else toast(`${out.rows} rows ready — open this on the web to download`);
+      await saveExport({ filename: out.filename, content_type: 'text/csv', encoding: 'utf8', content: out.csv });
+      toast(`Exported ${out.rows} rows`);
     } catch (e) { toast(explain(e)); } finally { setExporting(false); }
   };
 

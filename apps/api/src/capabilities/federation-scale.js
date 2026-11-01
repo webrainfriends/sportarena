@@ -8,6 +8,7 @@ import { badRequest, conflict, forbidden, notFound } from '../errors.js';
 import { audit, PUBLIC_USER } from '../helpers.js';
 import { notify } from '../notify.js';
 import { ROLES, ROLE_LABEL, POLICY_KINDS, authority, need, can, bodyById, lineage, subtree, logFed, historyOf, policyAt, paramsOf, today, AFF_STATUS, LIC_STATUS } from '../federation.js';
+import { METRICS as KPI_METRICS, describeMetric } from '../kpi/catalogue.js';
 import { APPROVAL_ACTIONS, hashOf, ruleFor, rulesFor, checkerAuthority } from '../federation-approvals.js';
 
 const TAG = 'Federation';
@@ -276,8 +277,11 @@ export const METRICS = {
 
 cap({
   name: 'list_federation_metric_definitions', method: 'GET', path: '/federation/metric-definitions', tag: TAG, auth: 'public',
-  summary: 'The published definition of every number on the federation dashboards and reports, the unit, and whether it counts people (and is therefore suppressed in small cells).',
-  handler: () => Object.entries(METRICS).map(([key, m]) => ({ key, ...m, min_cell: m.person_level ? MIN_CELL : null })),
+  summary: 'The published definition of every number on the federation dashboards and reports, the unit, and whether it counts people (and is therefore suppressed in small cells). It includes the census measures (members, new members, renewals, renewal rate), which come from the governed KPI layer: their `source` is `kpi_layer`, with the version and definition hash to quote.',
+  handler: () => [
+    ...Object.entries(METRICS).map(([key, m]) => ({ key, ...m, min_cell: m.person_level ? MIN_CELL : null })),
+    ...KPI_METRICS.filter((m) => m.census).map((m) => { const d = describeMetric(m); return { key: m.key, label: m.label, unit: m.unit, definition: m.formula, person_level: m.unit === 'count', min_cell: m.minCell ?? m.minGroup ?? null, source: 'kpi_layer', version: m.version, definition_hash: d.definition_hash, dimensions: m.dimensions }; }),
+  ],
 });
 
 async function rollup(focal, { sportId = null, seasonYear = null } = {}) {

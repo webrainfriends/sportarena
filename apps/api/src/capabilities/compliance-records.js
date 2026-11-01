@@ -163,7 +163,11 @@ cap({
     if ((i.decision === 'reject' && !backgrounds || i.decision === 'revoke') && (i.reason ?? '').length < 5) throw badRequest('Give a reason of at least 5 characters');
     if (i.decision === 'revoke' ? r.status !== 'valid' : r.status !== 'submitted') throw conflict(`This record is ${r.status}, so it cannot be ${i.decision === 'approve' ? 'approved' : i.decision === 'reject' ? 'rejected' : 'revoked'}`, { code: 'wrong_state', status: r.status });
     if (i.row_version && i.row_version !== r.row_version) throw conflict('This record changed while you were looking at it. Reload it.', { code: 'stale' });
+    // a check ordered from a provider can only be approved once the provider has reported it clear; the reviewer's confirmation is kept either way (#703)
+    const vendor = backgrounds ? await one('SELECT id, state FROM comp_check_vendor WHERE record_id=$1', [r.id]) : null;
+    if (vendor && i.decision === 'approve' && vendor.state !== 'clear') throw conflict('The provider has not reported this check as clear, so it cannot be approved.', { code: 'vendor_not_clear', state: vendor.state });
     return tx(async (c) => {
+      if (vendor && i.decision !== 'revoke') await c.query('UPDATE comp_check_vendor SET confirmed_by=$2, confirmed_at=now() WHERE id=$1 AND confirmed_at IS NULL', [vendor.id, user.id]);
       const outcome = backgrounds ? (i.decision === 'approve' ? 'clear' : i.decision === 'reject' ? 'not_clear' : r.outcome) : r.outcome;
       const row = (await c.query(
         `UPDATE comp_records SET status=$2, outcome=$3, decided_by=$4, decided_at=now(), decision_reason=$5, updated_at=now(), row_version=row_version+1

@@ -14,6 +14,7 @@ import { clawBackPoints } from '../booking/loyalty.js';
 import { startUserPlan } from '../booking/plans.js';
 import { kickRefunds } from '../booking/refunds.js';
 import { startCheckout, enabledProviders, settle } from '../payments/service.js';
+import { gstBreakup, validGstin, stateOfGstin } from '../gst.js';
 import { provider } from '../payments/providers.js';
 import { posRole, getSettings, requireApproval, assertManualMethod } from './access.js';
 import { allocate, discountCents, priceLine, shareOf, taxOf } from './pricing.js';
@@ -263,7 +264,7 @@ export async function addPayment(user, saleId, tender) {
 }
 
 /** Ask the payment provider to collect what is left. The sale only becomes paid when the provider confirms - never because staff picked a label. */
-export async function startOnlinePayment(user, saleId, { provider, return_url }) {
+export async function startOnlinePayment(user, saleId, { provider, method, return_url }) {
   const s = await one('SELECT * FROM pos_sales WHERE id=$1', [saleId]);
   if (!s) throw notFound('Sale');
   await posRole(user, s.venue_id);
@@ -278,7 +279,7 @@ export async function startOnlinePayment(user, saleId, { provider, return_url })
     return { due: await saleDue(c, saleId), shiftId: (await currentShift(c, sale.venue_id))?.id ?? null };
   });
   if (out.due.total <= 0) throw conflict('Nothing is left to pay on this sale');
-  const checkout = await startCheckout({ id: s.cashier_id }, { provider, purpose_type: 'pos_sale', purpose_id: saleId, return_url });
+  const checkout = await startCheckout({ id: s.cashier_id }, { provider, method, purpose_type: 'pos_sale', purpose_id: saleId, return_url });
   await one("INSERT INTO pos_sale_payments(sale_id, shift_id, kind, method, status, amount_cents, payment_id, recorded_by) VALUES ($1,$2,'payment','online','pending',$3,$4,$5) ON CONFLICT DO NOTHING RETURNING id",
     [saleId, out.shiftId, checkout.amount_cents, checkout.id, user.id]);
   return { sale_id: saleId, payment_id: checkout.id, provider, amount_cents: checkout.amount_cents, currency: checkout.currency, checkout_url: checkout.checkout_url, status: 'pending' };
@@ -521,21 +522,24 @@ export async function receiptFor(user, saleId) {
     try { buyer = first?.buyer_enc ? JSON.parse(decrypt(first.buyer_enc, 'invoices.buyer')) : null; } catch { buyer = null; }
     const m = (n) => `${v.currency} ${toMajor(Number(n), v.currency)}`;
     const paid = v.payments.filter((p) => p.kind === 'payment' && p.status === 'confirmed').map((p) => ({ method: p.method, label: METHOD_LABEL[p.method], confirmed_by: p.method === 'online' ? 'payment provider' : 'staff (recorded by hand)', amount_cents: Number(p.amount_cents), tendered_cents: p.tendered_cents == null ? null : Number(p.tendered_cents), change_cents: p.tendered_cents == null ? 0 : Number(p.tendered_cents) - Number(p.amount_cents), reference: p.reference }));
+    // India GST: when the venue has a GST profile (INR), show the CGST+SGST or IGST split on the sale total instead of the plain venue tax line
+    const gstp = v.currency === 'INR' ? await one("SELECT * FROM gst_profiles WHERE owner_kind='venue' AND owner_id=$1 AND archived_at IS NULL", [venue.id ?? v.venue_id]) : null;
+    const gstSplit = gstp ? { ...gstBreakup({ amount_cents: Number(v.total_cents), rate_bp: gstp.rate_bp, inclusive: true, supplier_state: gstp.state_code, place_of_supply: validGstin(buyer?.tax_id) ? stateOfGstin(buyer.tax_id) : gstp.state_code }), supplier_gstin: gstp.gstin, buyer_gstin: validGstin(buyer?.tax_id) ? String(buyer.tax_id).toUpperCase() : null, sac: gstp.default_sac } : null;
     const receipt = {
       sale_id: v.id, status: v.status, issued_at: v.paid_at ?? v.created_at, currency: v.currency,
-      seller: seller(venue), tax: { name: venue.tax_name, rate_bp: venue.tax_rate_bp, inclusive: venue.tax_inclusive, amount_cents: Number(v.tax_cents), profile: 'venue_basic' },
+      seller: seller(venue), tax: gstSplit ? { name: 'GST', rate_bp: gstSplit.rate_bp, inclusive: true, amount_cents: gstSplit.tax_cents, profile: 'gst_india', gst: gstSplit } : { name: venue.tax_name, rate_bp: venue.tax_rate_bp, inclusive: venue.tax_inclusive, amount_cents: Number(v.tax_cents), profile: 'venue_basic' },
       customer: buyer ? { name: buyer.name ?? v.customer?.name ?? null, tax_id: buyer.tax_id ?? null } : (v.customer ? { name: v.customer.name, tax_id: null } : null),
       cashier: v.cashier_name,
       documents: v.documents.map((d) => ({ number: d.number, kind: d.kind, role: d.role, status: d.status })),
       lines: v.lines.map((l) => ({ description: l.description, qty: l.qty, unit_price_cents: Number(l.unit_price_cents), discount_cents: Number(l.discount_cents), tax_cents: Number(l.tax_cents), total_cents: Number(l.total_cents) })),
       totals: { subtotal_cents: Number(v.subtotal_cents), discount_cents: Number(v.discount_cents), tax_cents: Number(v.tax_cents), total_cents: Number(v.total_cents), paid_cents: paid.reduce((x, p) => x + p.amount_cents, 0), due_cents: Number(v.amount_due_cents), refunded_cents: Number(v.refunded_cents) },
       payments: paid, credit_notes: v.refunds.map((r) => ({ number: r.number, total_cents: Number(r.total_cents), refund_status: r.refund_status })),
-      notice: 'Shows the venue\'s configured tax name, rate and tax ID. India GST fields (HSN/SAC, CGST/SGST/IGST split) arrive with the shared GST billing profile (#503).',
+      notice: gstSplit ? 'GST invoice: CGST + SGST for supplies within the state, IGST across states.' : 'Shows the venue\'s configured tax name, rate and tax ID. Add a GST billing profile to the venue to show the India GST split (CGST/SGST/IGST, SAC).',
     };
     receipt.text = [
       `${receipt.seller.name}`, receipt.seller.address, receipt.seller.tax_id ? `${venue.tax_name ?? 'Tax'} ID: ${receipt.seller.tax_id}` : null, '',
       `Receipt ${receipt.documents.map((d) => d.number).join(', ')}`, ...receipt.lines.map((l) => `${l.qty > 1 ? `${l.qty} × ` : ''}${l.description}  ${m(l.total_cents)}`), '',
-      receipt.totals.discount_cents ? `Discount −${m(receipt.totals.discount_cents)}` : null, receipt.totals.tax_cents ? `${venue.tax_name ?? 'Tax'} ${venue.tax_inclusive ? 'included' : 'added'}: ${m(receipt.totals.tax_cents)}` : null,
+      receipt.totals.discount_cents ? `Discount −${m(receipt.totals.discount_cents)}` : null, ...(gstSplit ? [gstSplit.supply === 'intra_state' ? `CGST ${m(gstSplit.cgst_cents)} · SGST ${m(gstSplit.sgst_cents)} (included)` : `IGST ${m(gstSplit.igst_cents)} (included)`, `GSTIN ${gstSplit.supplier_gstin}${gstSplit.sac ? ` · SAC ${gstSplit.sac}` : ''}`] : [receipt.totals.tax_cents ? `${venue.tax_name ?? 'Tax'} ${venue.tax_inclusive ? 'included' : 'added'}: ${m(receipt.totals.tax_cents)}` : null]),
       `Total ${m(receipt.totals.total_cents)}`, ...paid.map((p) => `Paid ${m(p.amount_cents)} · ${p.label}${p.reference ? ` (${p.reference})` : ''}`), receipt.totals.due_cents ? `Still due ${m(receipt.totals.due_cents)}` : null, 'Thank you!',
     ].filter((x) => x !== null).join('\n');
     return receipt;

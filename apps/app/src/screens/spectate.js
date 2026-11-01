@@ -18,6 +18,7 @@ import { StageBoard } from '../bracket-board';
 import { StandingsTable } from '../blocks';
 import { c } from '../theme';
 import { openStored } from '../tender-ui';
+import LiveModules, { ClockBadge, ConnectionBanner } from './live-centre-modules';
 
 // ---------------------------------------------------------------- labels
 export const STATE = { live: ['LIVE', c.red], upcoming: ['UPCOMING', c.cyan], in_progress: ['UNDER WAY', c.mint], paused: ['PAUSED', c.sun], completed: ['COMPLETED', c.lime], cancelled: ['CANCELLED', c.mute] };
@@ -335,7 +336,7 @@ export function EventFacts({ p }) {
 
 // ---------------------------------------------------------------- the signed-out page
 /** Signed-out visitors opening a shared link (?event=…&fixture=…): a small navigator that can only open public screens. */
-export function PublicShell({ eventId, fixtureId, renderEvent }) {
+export function PublicShell({ eventId, fixtureId, renderEvent, onExit }) {
   const { stack, back } = useNav();
   const signIn = useSignIn();
   const top = stack[stack.length - 1];
@@ -343,7 +344,7 @@ export function PublicShell({ eventId, fixtureId, renderEvent }) {
   return (
     <View style={{ flex: 1, backgroundColor: c.bg }}>
       <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16, height: 52, borderBottomWidth: 1, borderColor: c.line }}>
-        {top ? <Pressable onPress={back} accessibilityRole="button" accessibilityLabel="Back" style={{ minHeight: 44, minWidth: 44, justifyContent: 'center' }}><T weight="700" color={c.pink}>‹ Back</T></Pressable> : <T weight="800" size={17}>Gotmygame</T>}
+        {top || onExit ? <Pressable onPress={top ? back : onExit} accessibilityRole="button" accessibilityLabel="Back" style={{ minHeight: 44, minWidth: 44, justifyContent: 'center' }}><T weight="700" color={c.pink}>‹ Back</T></Pressable> : <T weight="800" size={17}>Gotmygame</T>}
         <Btn small title="Sign in" onPress={signIn} />
       </View>
       {view.name === 'LiveCentre' ? <LiveCentre {...view.params} /> : renderEvent(view.params)}
@@ -357,21 +358,29 @@ const adapt = (v) => ({
   score: { ...v.score, sets: v.score.sets ?? [] }, ruleset: v.ruleset && { label: v.ruleset.label, kind: v.ruleset.kind, periods: { label: v.ruleset.period_label } }, phase: v.phase ?? {},
 });
 
-/** Live updates of the public view: a stream on the web, short polling elsewhere (and as the fallback). */
+/** Live updates of the public view: a stream on the web, short polling elsewhere (and as the fallback). Failures back off (5s, 10s … 60s) and
+ *  never blank the screen: the last good frame stays visible and `offline` drives the reconnecting banner. */
 function usePublicLive(id, enabled) {
-  const [live, setLive] = useState(null);
+  const [state, setState] = useState({ live: null, offline: false, at: null });
+  const kick = useRef(() => {});
   useEffect(() => {
     if (!enabled) return undefined;
-    let es = null, timer = null, alive = true;
-    const poll = async () => { try { const f = await api.get(`/public/fixtures/${id}`, { refresh: true }); if (alive) setLive(f.live); } catch { /* keep the last view */ } if (alive) timer = setTimeout(poll, 5000); };
+    let es = null, timer = null, alive = true, fails = 0;
+    const ok = (live) => { fails = 0; if (alive) setState({ live, offline: false, at: new Date().toLocaleTimeString(locale, { hour: 'numeric', minute: '2-digit', second: '2-digit' }) }); };
+    const poll = async () => {
+      try { const f = await api.get(`/public/fixtures/${id}`, { refresh: true }); ok(f.live); }
+      catch { fails += 1; if (alive) setState((s) => ({ ...s, offline: true })); }
+      if (alive) timer = setTimeout(poll, Math.min(60000, 5000 * 2 ** Math.min(fails, 4)));
+    };
+    kick.current = () => { clearTimeout(timer); poll(); };
     if (Platform.OS === 'web' && typeof EventSource !== 'undefined') {
       es = new EventSource(`${API}/live/public/fixtures/${id}`);
-      es.addEventListener('state', (e) => { try { if (alive) setLive(JSON.parse(e.data)); } catch { /* ignore a bad frame */ } });
+      es.addEventListener('state', (e) => { try { ok(JSON.parse(e.data)); } catch { /* ignore a bad frame */ } });
       es.onerror = () => { es?.close(); es = null; poll(); };
     } else poll();
     return () => { alive = false; es?.close(); clearTimeout(timer); };
   }, [id, enabled]);
-  return live;
+  return { ...state, retry: () => kick.current() };
 }
 
 export function LiveCentre({ id }) {
@@ -383,7 +392,7 @@ export function LiveCentre({ id }) {
   const reload = useCallback(() => api.get(`/public/fixtures/${id}`, { refresh: true }).then(setFresh).catch(() => {}), [id]);
   usePoll(reload, 30000);
   const view = fresh ?? first.data;
-  const streamed = usePublicLive(id, !!view && ['live', 'paused', 'finished'].includes(view.fixture.status));
+  const { live: streamed, offline, at: updatedAt, retry } = usePublicLive(id, !!view && ['live', 'paused', 'finished'].includes(view.fixture.status));
   const v = { loading: first.loading, data: view, error: first.error, reload: first.error ? first.reload : reload };
   if (v.loading && !v.data) return <AScreen><Loading /></AScreen>;
   if (v.error && !v.data) return <AScreen><ErrorBox error={v.error} onRetry={v.reload} /></AScreen>;
@@ -406,6 +415,7 @@ export function LiveCentre({ id }) {
       <ScoreTicker g={adapt({ ...live, status, round: f.round })} />
       <View style={{ flexDirection: 'row', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
         {label ? <View style={{ backgroundColor: `${label[1]}33`, borderRadius: 999, paddingHorizontal: 12, paddingVertical: 6 }}><AT size={12} weight="900" color={status === 'finished' ? A.sun : A.ink}>{label[0]}</AT></View> : <AT size={13} weight="700" color={A.mute}>{stamp(f.scheduled_at, f.timezone)}{f.venue ? ` · ${f.venue.name}` : ''}</AT>}
+        <ClockBadge clock={view.centre?.clock} />
         {f.corrected ? <View style={{ backgroundColor: `${A.orange}33`, borderRadius: 999, paddingHorizontal: 12, paddingVertical: 6 }}><AT size={12} weight="900" color={A.orange}>RESULT CORRECTED</AT></View> : null}
       </View>
       <View style={{ flexDirection: 'row', gap: 8, flexWrap: 'wrap' }}>
@@ -413,6 +423,7 @@ export function LiveCentre({ id }) {
         <ShareButton card={view.share.result ?? view.share.fixture} arena label={view.share.result ? 'Share result' : 'Share'} />
         <ABtn small tone="ghost" title={`‹ ${view.event.name}`} onPress={() => push('Event', { id: view.event.id })} />
       </View>
+      <ConnectionBanner offline={offline} updatedAt={updatedAt} onRetry={retry} />
       {status === 'finished' ? <AT size={12.5} color={A.mute}>Full time. This result is provisional until the organiser approves the score sheet.</AT> : null}
 
       {view.streams.filter((s) => s.playback_ref || s.archive_ref).map((s) => (
@@ -438,6 +449,8 @@ export function LiveCentre({ id }) {
           <AT size={14} weight="700" style={{ flex: 1 }}>{e.label}{e.side ? ` · ${e.side === 'home' ? f.home.name : f.away.name}` : ''}{e.player ? ` — ${e.player.display_name}` : ''}</AT>
         </View>
       ))}</ACard> : <AEmpty emoji="⏱️" title="Nothing yet" sub={status === 'scheduled' ? 'Events appear here as the game is played.' : 'No events were logged.'} />}
+
+      <LiveModules centre={view.centre} fixture={f} />
 
       {eng.mvp_vote.enabled ? (
         <>

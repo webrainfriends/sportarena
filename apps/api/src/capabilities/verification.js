@@ -1,5 +1,6 @@
 // Verification service: users, sponsors and events can ask the platform team for a verified badge. Each request is a case with
 // evidence, a reviewer checklist, a decision and an expiry. The badge is public; evidence never is.
+import { B64_MAX_CHARS, documentMaxBytes } from '../platform-settings.js';
 import { createHash } from 'node:crypto';
 import { z } from 'zod';
 import { cap, id, page } from '../registry.js';
@@ -13,12 +14,12 @@ import { PACK_CODES } from '../legal/packs.js';
 import { EVIDENCE_KINDS, OPEN, RULES, RULES_VERSION, TYPES, badgesFor, missingEvidence } from '../verification.js';
 
 const TAG = 'Verification';
-const MAX_FILE = 5 * 2 ** 20, MAX_EVIDENCE = 12, RENEW_WINDOW_DAYS = 30;
+const MAX_EVIDENCE = 12, RENEW_WINDOW_DAYS = 30;
 const kind = z.enum(Object.keys(EVIDENCE_KINDS));
 const evidenceIn = z.object({
   kind, label: z.string().max(120).optional(),
   reference: z.string().min(2).max(500).optional().describe('licence / registration number or https link'),
-  file_name: z.string().max(120).optional(), data: z.string().max(7_200_000).optional().describe('base64 file: PDF, JPEG, PNG or WebP, up to 5 MB'),
+  file_name: z.string().max(120).optional(), data: z.string().max(B64_MAX_CHARS).optional().describe('base64 file: PDF, JPEG, PNG or WebP, up to the platform document limit'),
 }).refine((e) => e.reference || e.data, 'Give a reference (number or link) or attach a file');
 
 const stateSql = "CASE WHEN c.status='approved' AND c.expires_at <= now() THEN 'expired' ELSE c.status END";
@@ -42,7 +43,7 @@ function prepEvidence(e) {
     const b64 = e.data.replace(/^data:[^,]*,/, '');
     const buf = Buffer.from(b64, 'base64');
     if (buf.length < 16) throw badRequest('That file is empty');
-    if (buf.length > MAX_FILE) throw badRequest(`Files can be up to ${MAX_FILE / 2 ** 20} MB`);
+    if (buf.length > documentMaxBytes()) throw badRequest(`Files can be up to ${documentMaxBytes() / 2 ** 20} MB`);
     const t = sniffDoc(buf);
     if (!t) throw badRequest('Unsupported file. Use PDF, JPEG, PNG or WebP.');
     Object.assign(out, { file_name: (e.file_name ?? 'document').replace(/[^\w. -]/g, '_').slice(0, 120), content_type: t.type, size_bytes: buf.length, sha256: createHash('sha256').update(buf).digest('hex'), file_enc: encrypt(b64, 'verification_evidence.file') });

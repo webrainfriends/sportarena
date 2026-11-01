@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { docMaxMb } from '../upload-limits';
 import { Linking, Platform, View } from 'react-native';
 import { api } from '../api';
 import { useLoad } from '../hooks';
@@ -245,7 +246,7 @@ export function SponsorBudget({ id }) {
         ]}
         onSubmit={async (v) => { await api.post(`/sponsorship-budgets/${b.id}/references`, v); reloadAll(); return 'Reference added'; }} />
       {docs ? <DocumentsSheet subject={{ subject_type: 'budget', subject_id: b.id }} canEdit={may} title="Budget documents" kinds={['approval', 'forecast', 'contract', 'invoice', 'report', 'other']} onClose={() => setDocs(false)}
-        blurb="PDF or photo, up to 10 MB each. Files are encrypted on the server and open only to the people who can see this budget; managers and finance add and hide them. Removing one only hides it." /> : null}
+        blurb={`PDF or photo, up to ${docMaxMb()} MB each. Files are encrypted on the server and open only to the people who can see this budget; managers and finance add and hide them. Removing one only hides it.`} /> : null}
       <FormSheet visible={form === 'rate'} onClose={() => setForm(null)} title="Record an FX rate" submitLabel="Save rate"
         fields={[
           { key: 'currency', label: 'Currency to convert from', type: 'currency' },

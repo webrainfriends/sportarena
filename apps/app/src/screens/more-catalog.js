@@ -40,6 +40,7 @@ export const WORKSPACES = [
   ['athlete', 'Passport', 'Player passport & QR'],
   ['admin', 'PartnerConsole', 'Partners & platform team', null, 'Platform team console'],
   ['platform_admin', 'CommercialConsole', 'Catalogue, pricing & entitlements', null, 'Commercial console'],
+  ['platform_admin', 'IntegrationRequests', 'Price and enable integrations for organisations', null, 'Integration requests'],
   ['platform_admin', 'PlatformSecurity', 'Encryption keys & audit log', null, 'Keys & audit console'],
 ];
 

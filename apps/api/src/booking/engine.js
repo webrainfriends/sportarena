@@ -1,6 +1,7 @@
 // The booking engine: slot grid, opening hours, pricing rules, discounts, race-free placement and cancellation policy.
 // Everything that touches capacity runs inside a caller-supplied transaction after taking the per-resource advisory lock,
 // so no combination of concurrent requests can oversell an area.
+import { countryOfCurrency } from '../payments/countries.js';
 import { randomBytes } from 'node:crypto';
 import { linkedForReservation } from '../session-links.js';
 import { pool } from '../db.js';
@@ -270,7 +271,7 @@ export async function createReservation(c, { user, userId = user.id, items, prom
 }
 
 /** How a venue is really paid: online modes need a payment provider to be switched on, otherwise it is pay-at-venue. */
-export const effectivePaymentMode = (venue) => (venue.payment_mode !== 'pay_at_venue' && paymentsEnabled() ? venue.payment_mode : 'pay_at_venue');
+export const effectivePaymentMode = (venue) => (venue.payment_mode !== 'pay_at_venue' && paymentsEnabled(countryOfCurrency(venue.currency)) ? venue.payment_mode : 'pay_at_venue');
 
 /** Venues that insist on online payment give the customer a few minutes to pay before the slots are released. */
 export async function applyPaymentDeadline(c, reservationId, venueIds) {
@@ -449,13 +450,21 @@ export async function nextFreeSlot(c, ctx, resources, { from = new Date(), days 
   return best;
 }
 
+// canManage = owner, manager-role staff, organisation admin. canWork also admits floor staff (venue_staff.role 'staff'): they run the day
+// (check-in, incidents, readiness, their own shifts) but cannot change pricing, plans, finance or the roster. Existing rows are all managers.
+const staffRoles = (floor) => (floor ? "('manager','staff')" : "('manager')");
+const teamSql = (floor) => `SELECT 1 FROM venues WHERE id=$1 AND owner_id=$2 UNION ALL SELECT 1 FROM venue_staff WHERE venue_id=$1 AND user_id=$2 AND removed_at IS NULL AND role IN ${staffRoles(floor)} UNION ALL SELECT 1 FROM venues v JOIN organisations o ON o.id=v.organisation_id AND o.status='active' JOIN organisation_members m ON m.organisation_id=o.id AND m.status='active' AND m.role IN ('owner','admin') WHERE v.id=$1 AND m.user_id=$2`;
+export const canWork = async (user, venueId, c = pool) => !!user && (user.roles?.includes('admin') || (await c.query(teamSql(true), [venueId, user.id])).rowCount > 0);
+export async function mustWork(user, venueId, c = pool) {
+  if (!(await c.query('SELECT 1 FROM venues WHERE id=$1', [venueId])).rowCount) throw notFound('Venue');
+  if (!(await canWork(user, venueId, c))) throw forbidden('Only the venue team can do that');
+}
 export const canManage = async (user, venueId, c = pool) => {
   if (!user) return false;
   if (user.roles?.includes('admin')) return true;
-  const r = await c.query('SELECT 1 FROM venues WHERE id=$1 AND owner_id=$2 UNION ALL SELECT 1 FROM venue_staff WHERE venue_id=$1 AND user_id=$2 AND removed_at IS NULL UNION ALL SELECT 1 FROM venues v JOIN organisations o ON o.id=v.organisation_id AND o.status=\'active\' JOIN organisation_members m ON m.organisation_id=o.id AND m.status=\'active\' AND m.role IN (\'owner\',\'admin\') WHERE v.id=$1 AND m.user_id=$2', [venueId, user.id]);
+  const r = await c.query(teamSql(false), [venueId, user.id]);
   return r.rowCount > 0;
 };
-
 export async function mustManage(user, venueId, c = pool) {
   const exists = (await c.query('SELECT 1 FROM venues WHERE id=$1', [venueId])).rowCount;
   if (!exists) throw notFound('Venue');

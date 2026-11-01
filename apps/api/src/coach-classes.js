@@ -2,6 +2,7 @@
 // occurrence of a coach's `group` rate card; seats are `coach_class_seats`. Seat changes always run under a row lock on the class so
 // capacity, waitlist promotion and retries stay consistent. A held seat (awaiting payment) counts against capacity, so seats are never oversold.
 // Shape follows open-games.js on purpose: same statuses, same youth/guardian handling, same generic wording to guardians.
+import { countryOfCurrency } from './payments/countries.js';
 import { badRequest, conflict } from './errors.js';
 import { notify } from './notify.js';
 import { hasConsent, isYouth } from './youth.js';
@@ -53,7 +54,7 @@ export async function notifySeat(c, seat, { kind, title, body, key }, k) {
 }
 
 /** A seat is due when the class costs money and payments are on. Free classes (or payments off) confirm straight away. */
-export const needsPayment = (k) => Number(k.price_cents) > 0 && paymentsEnabled();
+export const needsPayment = (k) => Number(k.price_cents) > 0 && paymentsEnabled(countryOfCurrency(k.currency));
 
 /** Give a freed seat to this person: held until paid for a paid class, confirmed for a free one. */
 export async function grantSeat(c, k, seat) {
