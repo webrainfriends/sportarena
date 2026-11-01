@@ -156,6 +156,7 @@ import './sponsor-identities.js';
 import './sponsorship-programs.js';
 import './sponsorship-evaluation.js';
 import './sponsorship-application-forms.js';
+import './sponsorship-screening.js';
 import './registration-engine.js';
 import './competitions.js';
 import './competition-operations.js';
