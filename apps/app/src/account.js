@@ -2,6 +2,10 @@ import React, { useState } from 'react';
 import { Platform, Pressable, View } from 'react-native';
 import { useSession } from './session';
 import { Btn, Chip, Field, Sheet, T } from './ui';
+import { SwitchRow } from './federation-bits';
+import { api } from './api';
+import { useLoad } from './hooks';
+import { setTrackingConsent } from './track';
 import { Icon } from './icons';
 import { c, themeMode, THEME_KEY } from './theme';
 import { LOCALE_KEY, LOCALES, deviceZone, followsDevice, locale, localeLabel, asLocale, fmtDateTime, localeSearchText } from './locale';
@@ -9,6 +13,7 @@ import { storage } from './storage';
 import { useNav } from './nav';
 import { useWorkspace } from './workspace';
 import { t, languageMeta } from './i18n';
+import { CensusInfoSheet } from './census-info';
 
 // Theme and language are read when the app loads (screens bake the tokens in), so a change is stored and the app restarts.
 async function restart() {
@@ -24,10 +29,19 @@ export function AccountSheet({ visible, onClose }) {
   const { user, signOut } = useSession();
   const [q, setQ] = useState('');
   const [open, setOpen] = useState(false);
+  const [census, setCensus] = useState(false);
   const pickTheme = async (m) => { if (m === themeMode) return; await remember(THEME_KEY, m === 'system' ? null : m); restart(); };
   const pickLocale = async (tag) => { if (tag === locale && !followsDevice) return; await remember(LOCALE_KEY, tag); restart(); };
   const list = LOCALES.filter((t) => localeSearchText(t).includes(q.trim().toLowerCase())).slice(0, 40);
   const typed = asLocale(q);
+  const analytics = useLoad(() => (visible && user ? api.get('/analytics/consent').catch(() => null) : Promise.resolve(null)), [visible, user?.id]);
+  const [analyticsOn, setAnalyticsOn] = useState(null);
+  const consentOn = analyticsOn ?? analytics.data?.granted ?? false;
+  const chooseAnalytics = async (on) => {
+    const before = consentOn;
+    setAnalyticsOn(on); setTrackingConsent(on);
+    try { await api.post('/analytics/consent', { granted: on }); } catch { setAnalyticsOn(before); setTrackingConsent(before); }
+  };
   return (
     <Sheet visible={visible} onClose={onClose} title={user ? `@${user.handle}` : t('account.title')}>
       <View style={{ gap: 6 }}>
@@ -56,7 +70,14 @@ export function AccountSheet({ visible, onClose }) {
         ) : null}
         <T size={12} color={c.mute}>{t('account.format_note')} {languageMeta.reviewed ? '' : t('account.review_note')}</T>
       </View>
+      {user && analytics.data ? (
+        <View style={{ gap: 6 }}>
+          {analytics.data.available ? <SwitchRow label={t('account.analytics')} sub={t('account.analytics_sub')} value={consentOn} onChange={chooseAnalytics} /> : <T size={12} color={c.mute}>{t('account.analytics_youth')}</T>}
+        </View>
+      ) : null}
+      {user ? <Btn title={t('fedx.demo.title')} color={c.paper} ink={c.ink} onPress={() => setCensus(true)} accessibilityLabel={t('fedx.demo.title')} /> : null}
       <Btn title={t('account.logout')} color={c.ink} onPress={() => { onClose(); signOut(); }} />
+      {user ? <CensusInfoSheet visible={census} onClose={() => setCensus(false)} /> : null}
     </Sheet>
   );
 }

@@ -14,6 +14,8 @@ import { hasConsent, requireConsent, isYouth } from '../youth.js';
 import { openException, authority, need, jurisdictionScope, mustBeJurisdictionOf, mustBeActive, bodyById, lockBody, logFed, historyOf, nextNumber, policyAt, paramsOf, check, blocking, LIC_STATUS, AFF_STATUS, addMonths, today, isGuardianOf, subtree } from '../federation.js';
 import { developmentChecks } from '../officials-development.js';
 import { gate } from '../federation-approvals.js';
+import { readCardToken, TOKEN_RE } from '../licence-card.js';
+import { AppError } from '../errors.js';
 import { subjectFor, needStaff, staffCan, staffRecipients, evidenceIn, addEvidence, evidenceList, readEvidence, removeEvidence, missingDocuments } from '../federation-subjects.js';
 
 const TAG = 'Federation';
@@ -315,7 +317,7 @@ cap({
     if (!i.body_id && !i.mine) throw badRequest('Give body_id, or mine');
     let ids = null, bodyIds = null, scope = null;
     if (i.mine) {
-      ids = [user.id, ...(await many("SELECT child_id FROM guardian_links WHERE guardian_id=$1 AND status='active' AND revoked_at IS NULL AND (expires_at IS NULL OR expires_at > now())", [user.id])).map((r) => r.child_id)];
+      ids = [user.id, ...(await many("SELECT child_id FROM guardian_links WHERE guardian_id=$1 AND status='active' AND revoked_at IS NULL AND (expires_at IS NULL OR expires_at > now()) AND 'calendar' = ANY(scopes)", [user.id])).map((r) => r.child_id)];
     }
     if (i.body_id) {
       const auth = await authority(user, i.body_id, { optional: true });
@@ -356,14 +358,20 @@ cap({
 
 cap({
   name: 'verify_licence', method: 'GET', path: '/federation/verify/:code', tag: TAG, auth: 'public',
-  summary: 'Check a licence from the code printed on it (public, for officials, clubs and organisers). Shows whether it is in good standing today, its type, grade, validity and issuing body; the holder\'s name only for an adult.',
-  input: z.object({ code: z.string().trim().toUpperCase().regex(/^[A-F0-9]{12}$/, 'a 12-character licence code') }),
+  summary: 'Check a licence from the code printed on it, or from the QR on its card (public, for officials, clubs and organisers). A card QR is a signed code that changes every minute, so a copy of it stops working; an expired one is a 410. Shows whether it is in good standing today, its type, grade, validity and issuing body; the holder\'s name only for an adult.',
+  input: z.object({ code: z.string().trim().refine((v) => /^[A-Fa-f0-9]{12}$/.test(v) || TOKEN_RE.test(v), 'a 12-character licence code, or the code from a licence card QR') }),
   async handler(_ctx, i) {
+    let viaToken = null;
+    if (TOKEN_RE.test(i.code)) {
+      viaToken = readCardToken(i.code);
+      if (viaToken.error === 'expired') throw new AppError(410, 'card_code_expired', 'This card code has expired. Ask the holder to open their card again, or enter the code printed on it.');
+      if (viaToken.error) throw notFound('Licence');
+    }
     const r = await one(`SELECT l.id, ${LIC_STATUS('l')} AS status, l.licence_no, l.issued_on::text AS issued_on, l.expires_on::text AS expires_on, l.grade, t.name AS type_name, t.holder_role, s.name AS sport_name, t.discipline, bo.name AS body_name, b.abbreviation, u.display_name,
         (u.youth_until IS NOT NULL AND u.youth_until > current_date) AS youth FROM fed_licences l JOIN fed_licence_types t ON t.id=l.type_id JOIN sports s ON s.id=t.sport_id JOIN governing_bodies b ON b.id=l.body_id JOIN organisations bo ON bo.id=b.organisation_id JOIN users u ON u.id=l.holder_id
-        WHERE l.public_code=$1`, [i.code]);
+        WHERE ${viaToken ? 'l.id=$1' : 'l.public_code=$1'}`, [viaToken ? viaToken.licenceId : i.code.toUpperCase()]);
     if (!r) throw notFound('Licence');
     return { valid: r.status === 'active', status: r.status, standing: STANDING[r.status] ?? 'pending', licence_no: r.licence_no, type_name: r.type_name, holder_role: r.holder_role, sport_name: r.sport_name, discipline: r.discipline, grade: r.grade,
-      issued_on: r.issued_on, expires_on: r.expires_on, body_name: r.body_name, body_abbreviation: r.abbreviation, holder_name: r.youth ? 'Registered athlete (name withheld)' : r.display_name };
+      issued_on: r.issued_on, expires_on: r.expires_on, body_name: r.body_name, body_abbreviation: r.abbreviation, holder_name: r.youth ? 'Registered athlete (name withheld)' : r.display_name, checked_via: viaToken ? 'card_qr' : 'code', checked_at: new Date().toISOString() };
   },
 });

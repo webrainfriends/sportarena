@@ -16,6 +16,7 @@ import { explain, LoadError } from '../access';
 import { c, grad } from '../theme';
 import { Banner, Metric, money } from '../federation-ui';
 import { openPdf } from '../open-file';
+import { t } from '../i18n';
 import { Cols } from '../federation-bits';
 import { VerificationSection } from './verification';
 import { MatchDayPack } from './match-day-pack';
@@ -263,12 +264,14 @@ function AvailabilityTab({ sports }) {
 // ------------------------------------------------------------------ payment actions (the official's side)
 function PayActions({ a, reload }) {
   const { toast } = useSession();
+  const { push: go } = useNav();
   const [dispute, setDispute] = useState(false);
   if (!['due', 'paid'].includes(a.pay_status) || a.fee_minor == null) return null;
   const send = async (response, note) => { try { await api.post(`/official-assignments/${a.id}/payment-response`, { response, note }); toast(response === 'confirm' ? 'Receipt confirmed' : 'The organiser has been told'); await reload(); } catch (e) { toast(explain(e)); throw e; } };
   return (
     <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
       {a.pay_status === 'paid' && !a.pay_confirmed_at ? <Btn small title="I received this" onPress={() => send('confirm')} style={{ minHeight: 44 }} /> : null}
+      {a.pay_status === 'paid' ? <Btn small title={t('payout.statement')} color={c.violet} accessibilityLabel={t('payout.statement')} onPress={() => go('Earnings')} style={{ minHeight: 44 }} /> : null}
       <Btn small title="Something is wrong" color={c.paper} ink={c.ink} onPress={() => setDispute(true)} style={{ minHeight: 44 }} />
       <FormSheet visible={dispute} onClose={() => setDispute(false)} title="Dispute this payment" submitLabel="Tell the organiser" onSubmit={async (v) => { await send('dispute', v.note); setDispute(false); }}
         fields={[{ key: 'note', label: 'What is wrong (amount, date, not received)', type: 'multiline' }]} />
@@ -496,6 +499,8 @@ export function OfficialMatch({ id, report: openReport }) {
   const [busy, setBusy] = useState(null);
   const [fee, setFee] = useState(null);
   const [rate, setRate] = useState(null);
+  const isOrg = ['organiser', 'admin'].includes(q.data?.my_role);
+  const pays = useLoad(() => (isOrg && q.data?.fixture.event_id ? api.get(`/events/${q.data.fixture.event_id}/official-payouts`).catch(() => []) : Promise.resolve([])), [id, isOrg, q.data?.fixture.event_id]);
   const due = useLoad(() => api.get('/me/officials/feedback-due', { limit: 50 }).catch(() => []), [id]);
   if (q.error && !q.data) return <Screen><H1>Match briefing</H1><LoadError error={q.error} onRetry={q.reload} /></Screen>;
   if (!q.data) return <Screen><Loading /></Screen>;
@@ -512,6 +517,7 @@ export function OfficialMatch({ id, report: openReport }) {
         <Card key={m.id} pad={12} style={{ minWidth: 150 }}>
           <T weight="800">{m.display_name}</T>
           <View style={{ marginTop: 4, alignSelf: 'flex-start', flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>{roleTag(m.role)}{payTag(m)}</View>
+          {(() => { const p = (pays.data ?? []).find((x) => x.assignment_id === m.id); return p?.payout_status ? <T size={12} color={c.mute} style={{ marginTop: 4 }}>{t('payout.officials_status', { status: t(`payout.status_${p.payout_status}`) })}{p.reference ? ` · ${p.reference}` : ''}</T> : p?.pay_status === 'due' ? <T size={12} color={c.mute} style={{ marginTop: 4 }}>{t('payout.officials_waiting')}</T> : null; })()}
           {['organiser', 'admin'].includes(b.my_role) && m.pay_status !== 'paid' ? <Btn small title={m.fee_minor == null ? 'Set fee' : 'Update fee'} color={c.paper} ink={c.ink} onPress={() => setFee(m)} style={{ marginTop: 8, minHeight: 44, alignSelf: 'flex-start' }} /> : null}
         </Card>
       ))}</View>
@@ -593,9 +599,9 @@ export function OfficialMatch({ id, report: openReport }) {
         fields={[{ key: 'category', label: 'Type', type: 'chips', options: REPORT_TYPES }, { key: 'summary', label: 'One-line summary', type: 'text' }, { key: 'note', label: 'Details (kept encrypted)', type: 'multiline', optional: true },
           { key: 'visibility', label: 'Who can read the details', type: 'choice', options: [{ value: 'organiser', label: 'Organiser' }, { value: 'author', label: 'Only me' }] }]}
         initial={{ category: 'match_report', visibility: 'organiser' }} />
-      <FormSheet visible={!!fee} onClose={() => setFee(null)} title={`Fee for ${fee?.display_name ?? ''}`} submitLabel="Save" notice="This records the agreed fee and where payment stands. It does not move money; payments made through SportArena settle through the payment system."
+      <FormSheet visible={!!fee} onClose={() => setFee(null)} title={`Fee for ${fee?.display_name ?? ''}`} submitLabel="Save" notice="This records the agreed fee. Mark it due and the platform team pays it in a payout; it shows as paid once the payout is recorded."
         onSubmit={async (v) => { try { await api.post(`/official-assignments/${fee.id}/fee`, { fee_minor: v.fee, currency: v.currency, status: v.status, note: v.note || undefined }); toast('Fee recorded'); setFee(null); await q.reload(); } catch (e) { toast(explain(e)); throw e; } }}
-        fields={[{ key: 'fee', label: 'Fee', type: 'money', currency: (v) => v.currency }, { key: 'currency', label: 'Currency', type: 'currency' }, { key: 'status', label: 'Status', type: 'choice', options: [{ value: 'agreed', label: 'Agreed' }, { value: 'due', label: 'Due' }, { value: 'paid', label: 'Paid' }] }, { key: 'note', label: 'Note (optional)', optional: true }]}
+        fields={[{ key: 'fee', label: 'Fee', type: 'money', currency: (v) => v.currency }, { key: 'currency', label: 'Currency', type: 'currency' }, { key: 'status', label: 'Status', type: 'choice', options: [{ value: 'agreed', label: 'Agreed' }, { value: 'due', label: 'Due (the platform team pays it)' }] }, { key: 'note', label: 'Note (optional)', optional: true }]}
         initial={{ fee: fee?.fee_minor ?? '', currency: fee?.fee_currency ?? undefined, status: fee?.pay_status && fee.pay_status !== 'none' && fee.pay_status !== 'disputed' ? fee.pay_status : 'agreed' }} />
       <FormSheet visible={!!rate} onClose={() => setRate(null)} title={`Feedback on ${rate?.official_name ?? ''}`} submitLabel="Send feedback"
         onSubmit={async (v) => { try { await api.post(`/official-assignments/${rate.official_assignment_id}/feedback`, { ratings: { communication: v.communication, consistency: v.consistency, game_control: v.game_control, positioning_fitness: v.positioning_fitness, conduct: v.conduct }, comment: v.comment || undefined }); toast('Thank you. Your feedback was recorded.'); setRate(null); await due.reload(); } catch (e) { toast(explain(e)); throw e; } }}

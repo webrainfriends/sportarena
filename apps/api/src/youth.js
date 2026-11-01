@@ -2,13 +2,13 @@
 // Rules live here so every capability (REST, OpenAPI, MCP) enforces the same thing. Nothing in this file claims legal
 // compliance: policies are configuration an operator reviews for their jurisdiction.
 import { one, many, query } from './db.js';
-import { AppError, conflict, forbidden } from './errors.js';
+import { AppError, conflict, forbidden, notFound } from './errors.js';
 import { decrypt } from './crypto.js';
 import { audit, isAdmin } from './helpers.js';
 
 export const PURPOSES = ['participation', 'medical', 'media', 'contact', 'coaching', 'recruitment', 'recruitment_sharing', 'calendar_sharing'];
 /** What a guardian may do for a young person. A link carries a subset (all by default); an organisation can reserve some for the primary guardian. */
-export const SCOPES = ['pay', 'register', 'rsvp', 'travel_consent', 'consent', 'calendar'];
+export const SCOPES = ['pay', 'register', 'rsvp', 'travel_consent', 'consent', 'calendar', 'social'];
 export const RELATIONSHIPS = ['parent', 'legal_guardian', 'foster_carer', 'other'];
 
 /** Built-in policy used when no row exists for a jurisdiction. Operators override it with set_age_policy (a new version each time). */
@@ -47,19 +47,20 @@ export async function refreshYouth(userId, actor, client) {
   const db = client ?? { query };
   const u = (await db.query('SELECT dob_enc, jurisdiction FROM users WHERE id=$1', [userId])).rows[0];
   if (!u) return null;
-  let until = null;
+  let until = null, birthYear = null;
   if (u.dob_enc) {
     await audit(client ?? null, actor ?? null, 'derive_youth_status', 'users', userId);
     const dob = decrypt(u.dob_enc, 'users.dob');
+    birthYear = isNaN(new Date(dob)) ? null : new Date(dob).getUTCFullYear(); // coarse, kept so census age bands never need a decrypt
     until = independentOn(dob, (await getPolicy(u.jurisdiction, client)).independent_age);
   }
-  await db.query('UPDATE users SET youth_until=$2, youth_checked_at=now() WHERE id=$1', [userId, until]);
+  await db.query('UPDATE users SET youth_until=$2, birth_year=$3, youth_checked_at=now() WHERE id=$1', [userId, until, birthYear]);
   return until;
 }
 
 /** Existing accounts that have a DOB but were never evaluated. Idempotent; runs after migrations. */
 export async function backfillYouth() {
-  const { rows } = await query('SELECT id FROM users WHERE dob_enc IS NOT NULL AND youth_checked_at IS NULL');
+  const { rows } = await query('SELECT id FROM users WHERE dob_enc IS NOT NULL AND (youth_checked_at IS NULL OR birth_year IS NULL)');
   for (const r of rows) await refreshYouth(r.id, null);
   return rows.length;
 }
@@ -139,4 +140,20 @@ export async function hiddenYouth(viewer, ids) {
   const hidden = new Set();
   for (const y of youth) if (!(await canSeeYouth(viewer, y))) hidden.add(y);
   return hidden;
+}
+
+/**
+ * Who is acting for `subjectId` on a personal matter (consent, a personal choice): the adult themself, or the verified guardian of a young person who holds `scope`.
+ * A young person acts through a guardian; anyone else gets a 404.
+ * @returns {Promise<'self'|'guardian'>}
+ */
+export async function actingFor(user, subjectId, scope) {
+  if (subjectId === user.id && !(await isYouth(subjectId))) return 'self';
+  const link = await guardianLink(user.id, subjectId);
+  if (link) {
+    if (!(await guardianCan(link, scope))) throw scopeDenied(scope);
+    return 'guardian';
+  }
+  if (subjectId === user.id) throw forbidden('A young person\'s guardian does this for them');
+  throw notFound('Person');
 }

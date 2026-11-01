@@ -9,6 +9,8 @@
 // stay readable forever (kpi_definition_versions is append-only), so a figure quoted last quarter can always be traced to the formula that produced it.
 import { createHash } from 'node:crypto';
 import { YOUTH_SQL } from '../youth.js';
+import { ACTIVITY_SOURCES, completedActivitySql } from './activity.js';
+import { LIC_STATUS } from '../federation.js';
 
 /** Parameters every facts query receives: $1 event ids, $2 venue ids, $3 team ids, $4 organisation id, $5 unrestricted, $6 from (date), $7 to (date, inclusive), $9 sponsor ids. */
 const FROM = '$6::date';
@@ -19,6 +21,11 @@ const person = (u) => `CASE WHEN ${YOUTH_SQL.replaceAll('u.', `${u}.`)} THEN 'Yo
 const TYPES = { rec_id: 'text', rec_kind: 'text', label: 'text', at: 'timestamptz', subject: 'text', sport_id: 'uuid', event_id: 'uuid', venue_id: 'uuid', team_id: 'uuid', org_id: 'uuid', sponsor_id: 'uuid', currency: 'text', amount: 'bigint', num: 'numeric', den: 'numeric', channel: 'text', flag: 'text', link_kind: 'text', link_id: 'uuid' };
 /** One SELECT list with every fact column typed, so each UNION branch lines up and a missing column is NULL rather than a different shape. */
 const fact = (o) => Object.entries(TYPES).map(([k, t]) => `${o[k] ?? 'NULL'}::${t} AS ${k}`).join(', ');
+/** Same, plus the provider a record belongs to (only the metrics readable in a person's own "provider" scope carry it; the other metrics' SQL is unchanged). */
+const factP = (o) => `${fact(o)}, ${o.provider_id ?? 'NULL'}::uuid AS provider_id`;
+/** How a person arrived: invited by a member (the loyalty referral record), else the first-touch source they consented to share, else direct. */
+const ACQUISITION = (u) => `CASE WHEN EXISTS (SELECT 1 FROM loyalty_referrals lr WHERE lr.invitee_id=${u}.id AND lr.status NOT IN ('blocked','void')) THEN 'referral'
+  ELSE coalesce((SELECT aa.source FROM analytics_attributions aa JOIN analytics_consents ac ON ac.user_id=aa.user_id AND ac.granted WHERE aa.user_id=${u}.id), 'direct') END`;
 
 export const AUDIENCES = {
   // who may read the metric in an organisation scope (organisation_members.role)
@@ -26,7 +33,27 @@ export const AUDIENCES = {
   finance: ['owner', 'admin', 'finance', 'auditor'],
   squad: ['owner', 'admin', 'manager', 'coach'],
 };
-export const SCOPE_TYPES = ['platform', 'organisation', 'venue', 'event', 'team', 'sponsor'];
+export const SCOPE_TYPES = ['platform', 'organisation', 'venue', 'event', 'team', 'sponsor', 'provider', 'federation'];
+
+// ---- federation census (#703): codes the census dimensions use, and the facts columns only census metrics carry
+export const AGE_BANDS = { under_13: 'Under 13', '13_17': '13 to 17', '18_24': '18 to 24', '25_34': '25 to 34', '35_44': '35 to 44', '45_54': '45 to 54', '55_64': '55 to 64', '65_plus': '65 and over', unknown: 'Not stated' };
+/** Gender is held only when the person chose to give it (person_demographics); `key` is what is stored (encrypted, with a blind index of `gender|key`). */
+export const GENDERS = [{ key: 'female', label: 'Female' }, { key: 'male', label: 'Male' }, { key: 'non_binary', label: 'Non-binary' }, { key: 'self_described', label: 'Self-described' }];
+export const STANDING_LABELS = { active: 'In good standing', suspended: 'Suspended', expired: 'Expired' };
+const CENSUS_TYPES = { body_id: 'uuid', region: 'text', age_band: 'text', gender: 'text', status: 'text' };
+const censusFact = (o) => `${fact(o)}, ${Object.entries(CENSUS_TYPES).map(([k, t]) => `${o[k] ?? 'NULL'}::${t} AS ${k}`).join(', ')}`;
+/** Year of birth is kept coarse (users.birth_year), so an age band is the difference of years at the end of the period: never a decrypt, accurate to a year. */
+const AGE_BAND_SQL = `CASE WHEN u.birth_year IS NULL THEN 'unknown' WHEN extract(year FROM $7::date) - u.birth_year < 13 THEN 'under_13' WHEN extract(year FROM $7::date) - u.birth_year < 18 THEN '13_17'
+  WHEN extract(year FROM $7::date) - u.birth_year < 25 THEN '18_24' WHEN extract(year FROM $7::date) - u.birth_year < 35 THEN '25_34' WHEN extract(year FROM $7::date) - u.birth_year < 45 THEN '35_44'
+  WHEN extract(year FROM $7::date) - u.birth_year < 55 THEN '45_54' WHEN extract(year FROM $7::date) - u.birth_year < 65 THEN '55_64' ELSE '65_plus' END`;
+const CENSUS_FROM = `fed_licences l JOIN fed_licence_types t ON t.id=l.type_id JOIN governing_bodies gb ON gb.id=l.body_id JOIN users u ON u.id=l.holder_id
+        LEFT JOIN fed_affiliations af ON af.id=l.affiliation_id LEFT JOIN person_demographics pd ON pd.user_id=u.id AND pd.withdrawn_at IS NULL`;
+const CENSUS_COLS = (at, subject) => ({ rec_id: 'l.id::text', rec_kind: "'licence'", label: "'Licence'", at, subject, sport_id: 't.sport_id', org_id: 'af.organisation_id', body_id: 'l.body_id',
+  region: "coalesce(gb.region, gb.state, gb.country, 'Not stated')", age_band: AGE_BAND_SQL, gender: "coalesce(pd.gender_idx, 'not_stated')", status: LIC_STATUS('l'), link_kind: "'Licence'", link_id: 'l.id' });
+const HELD = "l.status IN ('active','suspended','expired')";   // a licence that was issued; drafts, rejections, withdrawals and revocations are never members
+const CENSUS = { census: true, minCell: 5, scopes: ['federation', 'platform'], audience: 'ops', owner: 'Federation Governance', domain: 'Federation', pointInTime: false,
+  drillScopes: [], drillNote: 'The census is an aggregate: it is read by body, region, club, sport, age band, gender and standing, never person by person. Use the licence register for individual records.',
+  dimensions: ['body', 'region', 'sport', 'club', 'age_band', 'gender', 'status', 'month'] };
 
 const CHANNEL = `CASE WHEN i.academy_charge_id IS NOT NULL THEN 'academy' WHEN i.team_charge_id IS NOT NULL THEN 'team' WHEN i.marketplace_engagement_id IS NOT NULL THEN 'marketplace'
   WHEN i.svc_order_id IS NOT NULL THEN 'services' WHEN i.pos_sale_id IS NOT NULL THEN 'pos' WHEN i.venue_id IS NOT NULL THEN 'venue_booking' ELSE 'other' END`;
@@ -198,6 +225,143 @@ export const METRICS = [
         FROM team_members m JOIN teams t ON t.id=m.team_id AND t.archived_at IS NULL JOIN users u ON u.id=m.user_id
        WHERE m.status='active' AND m.role IN ('player','captain')`,
   },
+  // ------------------------------------------------------------------------------------------------ growth & participation (#73)
+  {
+    key: 'first_completed_activity', version: 1, label: 'First completed activity', domain: 'Growth', unit: 'count', aggregation: 'distinct_count', audience: 'ops',
+    owner: 'Participation & Competition', scopes: ['platform', 'organisation', 'venue', 'event', 'team'], dimensions: ['sport', 'event', 'venue', 'team', 'city', 'month', 'channel'],
+    formula: 'Distinct people whose very first completed activity on the platform happened in the period. A completed activity is a game that reached "completed", a started or substitute match appearance, a confirmed venue booking that was checked in, academy attendance marked present, or a team check-in. Created, open, cancelled, postponed and no-show items never count, and a booking cancelled after check-in does not count. Attributed to where that first activity took place; "channel" is how the person arrived (invited by a member, a source they consented to share, or direct).',
+    sources: ACTIVITY_SOURCES,
+    flags: {},
+    drilldown: 'The first completed activity of each person',
+    facts: () => `
+      SELECT ${fact({ rec_id: 'a.rec_id', rec_kind: 'a.kind', label: `${person('u')} || ' · first activity'`, at: 'a.at', subject: 'a.user_id::text', sport_id: 'a.sport_id', event_id: 'a.event_id', venue_id: 'a.venue_id', team_id: 'a.team_id', org_id: 'a.org_id', channel: ACQUISITION('u'), link_kind: "'Person'", link_id: 'a.user_id' })}
+        FROM (SELECT DISTINCT ON (x.user_id) x.* FROM (${completedActivitySql()}) x ORDER BY x.user_id, x.at, x.rec_id) a JOIN users u ON u.id=a.user_id
+       WHERE ${inRange('a.at')}`,
+  },
+  {
+    key: 'repeat_participants', version: 1, label: 'Repeat participants', domain: 'Growth', unit: 'count', aggregation: 'distinct_count', audience: 'ops',
+    owner: 'Participation & Competition', scopes: ['platform', 'organisation', 'venue', 'event', 'team'], dimensions: ['sport', 'event', 'venue', 'team', 'city', 'month'],
+    formula: 'Distinct people who completed an activity in the period on a later calendar day than their first completed activity ever. A second activity on the same day as the first does not make someone a repeat participant. Uses the same completed-activity definition as "First completed activity".',
+    sources: ACTIVITY_SOURCES,
+    flags: {},
+    drilldown: 'The repeat activities behind each person',
+    facts: () => `
+      SELECT ${fact({ rec_id: 'a.rec_id', rec_kind: 'a.kind', label: `${person('u')} || ' · repeat activity'`, at: 'a.at', subject: 'a.user_id::text', sport_id: 'a.sport_id', event_id: 'a.event_id', venue_id: 'a.venue_id', team_id: 'a.team_id', org_id: 'a.org_id', link_kind: "'Person'", link_id: 'a.user_id' })}
+        FROM (SELECT x.*, min(x.at::date) OVER (PARTITION BY x.user_id) AS first_day FROM (${completedActivitySql()}) x) a JOIN users u ON u.id=a.user_id
+       WHERE a.at::date > a.first_day AND ${inRange('a.at')}`,
+  },
+  {
+    key: 'activation_rate', version: 1, label: 'Activation rate', domain: 'Growth', unit: 'percent', aggregation: 'ratio', audience: 'ops', noSportFilter: true,
+    owner: 'Growth', scopes: ['platform'], dimensions: ['month', 'channel'],
+    formula: 'Of the people who signed up in the period, the share who completed their first activity within 14 days of signing up (same completed-activity definition as "First completed activity"). Sign-ups still inside their 14-day window are counted in the denominator and flagged, so a recent period reads low until the window closes. It cannot be split or filtered by sport, because someone who has not yet played has no sport.',
+    sources: [{ key: 'signup', label: 'Sign-ups' }],
+    flags: { window_open: 'still inside their 14-day activation window' },
+    drilldown: 'Sign-ups and whether each activated',
+    facts: () => `
+      WITH act AS (${completedActivitySql()}),
+      activated AS (SELECT DISTINCT a.user_id FROM act a JOIN users s ON s.id=a.user_id AND a.at >= s.created_at AND a.at < s.created_at + interval '14 days')
+      SELECT ${fact({ rec_id: 'u.id::text', rec_kind: "'signup'", label: `${person('u')} || CASE WHEN ac.user_id IS NOT NULL THEN ' · activated' ELSE ' · not yet' END`, at: 'u.created_at', subject: 'u.id::text', channel: ACQUISITION('u'),
+        num: '(ac.user_id IS NOT NULL)::int', den: '1', flag: "CASE WHEN ac.user_id IS NULL AND u.created_at > now() - interval '14 days' THEN 'window_open' END", link_kind: "'Person'", link_id: 'u.id' })}
+        FROM users u LEFT JOIN activated ac ON ac.user_id=u.id
+       WHERE ${inRange('u.created_at')}`,
+  },
+  {
+    key: 'vacancy_fill_rate', version: 1, label: 'Vacancy fill rate', domain: 'Growth', unit: 'percent', aggregation: 'ratio', audience: 'ops',
+    owner: 'Find & Join Games', scopes: ['platform', 'organisation', 'venue', 'event', 'team'], dimensions: ['sport', 'event', 'venue', 'team', 'city', 'month'],
+    formula: 'Of the places offered in open games that start in the period, the share taken by confirmed players (never more than the places offered). Cancelled games are excluded. Requested, waitlisted, declined and cancelled places are not filled places. Games that have not started yet are included at their current fill.',
+    sources: [{ key: 'open_game', label: 'Open games' }],
+    flags: {},
+    drilldown: 'Open games with places filled and offered',
+    facts: () => `
+      SELECT ${fact({ rec_id: 'og.id::text', rec_kind: "'open_game'", label: "g.title || ' · ' || LEAST(coalesce(m.n, 0), og.max_players) || '/' || og.max_players", at: 'g.starts_at', subject: 'og.id::text', sport_id: 'g.sport_id', event_id: 'g.competition_id', venue_id: 'g.venue_id', team_id: 'og.team_id', org_id: 'v.organisation_id',
+        num: 'LEAST(coalesce(m.n, 0), og.max_players)', den: 'og.max_players', link_kind: "'Game'", link_id: 'g.id' })}
+        FROM open_games og JOIN games g ON g.id=og.game_id LEFT JOIN venues v ON v.id=g.venue_id
+        LEFT JOIN LATERAL (SELECT count(*)::int AS n FROM open_game_members mm WHERE mm.open_game_id=og.id AND mm.status='confirmed') m ON true
+       WHERE og.status IN ('open','completed') AND ${inRange('g.starts_at')}`,
+  },
+  {
+    key: 'booking_failure_rate', version: 1, label: 'Booking failure rate', domain: 'Venues', unit: 'percent', aggregation: 'ratio', audience: 'ops',
+    owner: 'Venue Operations', scopes: ['platform', 'organisation', 'venue', 'event', 'team'], dimensions: ['sport', 'event', 'venue', 'team', 'city', 'month'],
+    formula: 'Of the bookings starting in the period that the customer did not cancel themselves, the share that failed: ended as a no-show, or were cancelled by the venue or by the system (for example an unpaid hold that expired). Bookings the customer cancelled are excluded from both sides, so changing your mind is not a failure.',
+    sources: [{ key: 'booking', label: 'Venue bookings' }],
+    flags: {},
+    drilldown: 'Bookings and how each ended',
+    facts: () => `
+      SELECT ${fact({ rec_id: 'b.id::text', rec_kind: "'booking'", label: "rs.name || ' · ' || b.status", at: 'b.starts_at', subject: 'b.id::text', sport_id: 'rs.sport_id', event_id: 'b.event_id', venue_id: 'rs.venue_id', team_id: 'b.team_id',
+        num: "(b.status IN ('no_show','cancelled'))::int", den: '1', link_kind: "'Reservation'", link_id: 'b.reservation_id' })}
+        FROM bookings b JOIN resources rs ON rs.id=b.resource_id
+       WHERE NOT (b.status = 'cancelled' AND b.cancelled_by IS NOT NULL AND b.cancelled_by = b.user_id) AND ${inRange('b.starts_at')}`,
+  },
+  {
+    key: 'payment_failure_rate', version: 1, label: 'Payment failure rate', domain: 'Finance', unit: 'percent', aggregation: 'ratio', audience: 'finance',
+    owner: 'Payments', scopes: ['platform', 'organisation', 'venue', 'team'], dimensions: ['venue', 'team', 'channel', 'month'],
+    formula: 'Of the card and wallet payments started in the period that reached an outcome, the share that failed. Payments still pending are left out until they resolve; paid and refunded payments count as successful attempts. Inside an organisation, venue or team only venue-invoice payments can be attributed; the platform scope covers every payment purpose.',
+    sources: [{ key: 'payment', label: 'Payments' }],
+    flags: {},
+    drilldown: 'Payments and their outcome',
+    facts: () => `
+      SELECT ${fact({ rec_id: 'p.id::text', rec_kind: "'payment'", label: "p.purpose_type || ' · ' || p.status", at: 'p.created_at', subject: 'p.id::text', venue_id: 'i.venue_id', team_id: 'i.team_id', org_id: 'i.organisation_id', currency: 'p.currency', channel: 'p.purpose_type',
+        num: "(p.status = 'failed')::int", den: '1', link_kind: "'Invoice'", link_id: 'i.id' })}
+        FROM payments p LEFT JOIN invoices i ON p.purpose_type='venue_invoice' AND i.id=p.purpose_id
+       WHERE p.status IN ('paid','failed','refunded') AND ${inRange('p.created_at')}`,
+  },
+  {
+    key: 'provider_earnings', version: 1, label: 'Provider earnings', domain: 'Finance', unit: 'money', aggregation: 'sum_money', audience: 'finance',
+    owner: 'Marketplace', scopes: ['platform', 'provider'], dimensions: ['sport', 'channel', 'month'],
+    formula: 'Payments received for a provider\'s coaching sessions and marketplace engagements, dated by the day they were paid. Refunded and failed payments never count. It is the amount the customer paid, before any platform fee, in the payment currency and never added across currencies. A provider sees only their own earnings; the platform scope shows the total with no provider named.',
+    sources: [{ key: 'coach_hire', label: 'Coaching session payments' }, { key: 'marketplace_engagement', label: 'Marketplace engagement payments' }],
+    flags: {},
+    drilldown: 'Payments received',
+    facts: () => `
+      SELECT ${factP({ rec_id: 'p.id::text', rec_kind: "'coach_hire'", label: "'Coaching session'", at: 'p.paid_at', subject: 'p.id::text', sport_id: 'ch.sport_id', currency: 'p.currency', amount: 'p.amount_cents', channel: "'coach_hire'", provider_id: 'ch.coach_id' })}
+        FROM payments p JOIN coach_hires ch ON ch.id=p.purpose_id
+       WHERE p.purpose_type='coach_hire' AND p.status='paid' AND p.paid_at IS NOT NULL AND ${inRange('p.paid_at')}
+      UNION ALL
+      SELECT ${factP({ rec_id: 'p.id::text', rec_kind: "'marketplace_engagement'", label: "me.title", at: 'p.paid_at', subject: 'p.id::text', sport_id: 'me.sport_id', currency: 'p.currency', amount: 'p.amount_cents', channel: "'marketplace_engagement'", provider_id: 'me.provider_id' })}
+        FROM payments p JOIN marketplace_engagements me ON me.id=p.purpose_id
+       WHERE p.purpose_type='marketplace_engagement' AND p.status='paid' AND p.paid_at IS NOT NULL AND ${inRange('p.paid_at')}`,
+  },
+  {
+    ...CENSUS, key: 'members', version: 1, label: 'Federation members', unit: 'count', aggregation: 'distinct_count',
+    formula: 'Distinct people holding a federation licence that was in force on at least one day of the period: issued on or before the end, expiring on or after the start, and not revoked, rejected or withdrawn. A person with several licences counts once. Region is the issuing body\'s region; the age band is the year difference to the end of the period; gender is only counted for people who chose to give it. Counts below 5 are hidden.',
+    sources: [{ key: 'licence', label: 'Federation licences' }], flags: {},
+    drilldown: 'Aggregate only: split by body, region, sport, club, age band, gender and standing',
+    facts: () => `
+      SELECT ${censusFact(CENSUS_COLS('l.issued_on::timestamptz', 'l.holder_id::text'))}
+        FROM ${CENSUS_FROM}
+       WHERE ${HELD} AND l.issued_on <= $7::date AND l.expires_on >= $6::date`,
+  },
+  {
+    ...CENSUS, key: 'new_members', version: 1, label: 'New federation members', unit: 'count', aggregation: 'distinct_count',
+    formula: 'Distinct people whose first licence with the issuing body was issued in the period (a renewal, or a person who held a licence with that body before, is not new). Grouped by month this is the membership growth. Counts below 5 are hidden.',
+    sources: [{ key: 'licence', label: 'Federation licences' }], flags: {},
+    drilldown: 'Aggregate only: split by body, region, sport, club, age band, gender and month',
+    facts: () => `
+      SELECT ${censusFact(CENSUS_COLS('l.issued_on::timestamptz', 'l.holder_id::text'))}
+        FROM ${CENSUS_FROM}
+       WHERE ${HELD} AND l.issued_on BETWEEN $6::date AND $7::date
+         AND NOT EXISTS (SELECT 1 FROM fed_licences p WHERE p.body_id=l.body_id AND p.holder_id=l.holder_id AND p.id <> l.id AND p.issued_on < l.issued_on AND p.status IN ('active','suspended','expired','revoked'))`,
+  },
+  {
+    ...CENSUS, key: 'licence_renewals', version: 1, label: 'Licence renewals', unit: 'count', aggregation: 'distinct_count',
+    formula: 'Licences issued in the period as the renewal of an earlier licence (they point at the licence they renew). Counts below 5 are hidden.',
+    sources: [{ key: 'licence', label: 'Federation licences' }], flags: {},
+    drilldown: 'Aggregate only: split by body, region, sport, club, age band, gender and month',
+    facts: () => `
+      SELECT ${censusFact(CENSUS_COLS('l.issued_on::timestamptz', 'l.id::text'))}
+        FROM ${CENSUS_FROM}
+       WHERE ${HELD} AND l.previous_id IS NOT NULL AND l.issued_on BETWEEN $6::date AND $7::date`,
+  },
+  {
+    ...CENSUS, key: 'renewal_rate', version: 1, label: 'Licence renewal rate', unit: 'percent', aggregation: 'ratio',
+    formula: 'Of the licences that ran out in the period (expiry date in the period; revoked ones are not a lapse), the share that have been renewed by a later licence. A licence still inside its renewal notice period counts as not renewed yet. Groups of fewer than 5 licences are hidden.',
+    sources: [{ key: 'licence', label: 'Federation licences' }], flags: {}, minGroup: 5, minCell: undefined,
+    drilldown: 'Aggregate only: split by body, region, sport, club, age band, gender and month',
+    facts: () => `
+      SELECT ${censusFact({ ...CENSUS_COLS('l.expires_on::timestamptz', 'l.id::text'), num: "(EXISTS (SELECT 1 FROM fed_licences n WHERE n.previous_id=l.id AND n.status IN ('active','suspended','expired')))::int", den: '1' })}
+        FROM ${CENSUS_FROM}
+       WHERE ${HELD} AND l.expires_on BETWEEN $6::date AND $7::date`,
+  },
 ];
 
 export const byKey = (key) => METRICS.find((m) => m.key === key);
@@ -210,5 +374,5 @@ export function describeMetric(m) {
 
 /** Hash of everything that changes what a number means (the formula text, the SQL and the shape); a change forces a version bump. */
 export function hashOf(m) {
-  return createHash('sha256').update(JSON.stringify([m.key, m.unit, m.aggregation, m.formula, m.dimensions, m.scopes, m.sources, m.flags, m.pointInTime ?? false, m.minGroup ?? 0, m.facts()])).digest('hex');
+  return createHash('sha256').update(JSON.stringify([m.key, m.unit, m.aggregation, m.formula, m.dimensions, m.scopes, m.sources, m.flags, m.pointInTime ?? false, m.minGroup ?? 0, ...(m.minCell ? [m.minCell] : []), m.facts()])).digest('hex');
 }

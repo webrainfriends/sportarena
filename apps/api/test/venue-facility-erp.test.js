@@ -1,3 +1,4 @@
+import http from 'node:http';
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 
@@ -8,6 +9,8 @@ const { createApp } = await import('../src/http.js');
 const { fromLocal, addDays } = await import('../src/booking/time.js');
 const { raisePreventiveWork } = await import('../src/booking/venue-ops.js');
 const { READINESS } = await import('../src/capabilities/venue-facility.js');
+const { syncMembershipGrants } = await import('../src/access-layer.js');
+const { sweepAccessGrants } = await import('../src/access-grants.js');
 
 let server, base, n = 0;
 const api = async (method, path, { token, body, query } = {}) => {
@@ -189,4 +192,134 @@ test('income reconciliation and the multi-venue command dashboard', async () => 
   assert.equal(net.attention.serious_incidents, 1);
   assert.ok(net.venues.every((x) => 'utilisation' in x && 'maintenance' in x && 'readiness' in x));
   assert.equal(must(await api('GET', '/venue-network', { token: stranger.token })).venues.length, 0);
+});
+
+const nowBooking = async (venueId, courtId, user, startMin = -10, endMin = 50) => {
+  const rs = (await pool.query("INSERT INTO reservations(code, user_id, currency, status) VALUES ($1,$2,'INR','confirmed') RETURNING id", [`VF${Math.random().toString(36).slice(2, 9)}`, user.id])).rows[0];
+  return (await pool.query("INSERT INTO bookings(resource_id, user_id, reservation_id, starts_at, ends_at, status) VALUES ($1,$2,$3, now() + ($4 * interval '1 minute'), now() + ($5 * interval '1 minute'), 'confirmed') RETURNING id", [courtId, user.id, rs.id, startMin, endMin])).rows[0];
+};
+
+test('Today board: check in a booking through the access layer; floor staff can, outsiders cannot', async () => {
+  const mgr = await signup(['venue_manager']), floor = await signup(), booker = await signup(), outsider = await signup();
+  const { v, court } = await venue(mgr);
+  await addStaff(mgr, v, floor, 'staff');
+  const now = await nowBooking(v.id, court.id, booker), later = await nowBooking(v.id, court.id, booker, 60 * 30, 60 * 31);
+  assert.equal((await api('POST', `/bookings/${now.id}/check-in`, { token: outsider.token, body: {} })).status, 404, 'no leaking');
+  const early = must(await api('POST', `/bookings/${later.id}/check-in`, { token: mgr.token, body: {} }), 201);
+  assert.equal(early.verdict, 'denied', 'exactly this booking is judged: it is not open yet, even though the person has another one running now');
+  assert.equal(early.reason_code, 'booking_not_now');
+  const ok = must(await api('POST', `/bookings/${now.id}/check-in`, { token: floor.token, body: {} }), 201);
+  assert.equal(ok.verdict, 'granted'); assert.ok(ok.checked_in_at);
+  assert.ok((await pool.query('SELECT checked_in_at FROM bookings WHERE id=$1', [now.id])).rows[0].checked_in_at);
+  const sched = must(await api('GET', `/venues/${v.id}/schedule`, { token: mgr.token, query: { from: iso(-120), to: iso(120) } }));
+  assert.ok(sched.bookings.find((b) => b.id === now.id).checked_in_at, 'the board shows the arrival');
+  assert.equal((await pool.query("SELECT count(*)::int AS n FROM access_points WHERE venue_id=$1", [v.id])).rows[0].n, 1, 'one front-desk door, created on first use');
+  const stranger = await signup();
+  assert.equal(must(await api('POST', `/bookings/${(await nowBooking(v.id, court.id, stranger, 120, 180)).id}/check-in`, { token: mgr.token, body: {} }), 201).verdict, 'denied', 'not their time: recorded as denied with a reason');
+  await pool.query("UPDATE bookings SET status='cancelled' WHERE id=$1", [now.id]);
+  assert.equal((await api('POST', `/bookings/${now.id}/check-in`, { token: mgr.token, body: {} })).status, 409);
+});
+
+test('guest quota: the plan decides how many guests a member may bring', async () => {
+  const mgr = await signup(['venue_manager']), member = await signup();
+  const { v } = await venue(mgr);
+  const plan = must(await api('POST', `/venues/${v.id}/plans`, { token: mgr.token, body: { kind: 'membership', name: 'Plus', price_cents: 100000, duration_days: 30, discount_bp: 1000, entitlements: { guest_quota: 1 } } }), 201);
+  assert.equal(plan.entitlements.guest_quota, 1);
+  const point = must(await api('POST', '/access/points', { token: mgr.token, body: { venue_id: v.id, name: 'Door', kind: 'door', provider: 'manual' } }), 201);
+  await pool.query("INSERT INTO user_plans(plan_id, venue_id, user_id, kind, name, status, price_cents, currency, discount_bp, duration_days, starts_at, expires_at) SELECT id, venue_id, $2, kind, name, 'active', price_cents, 'INR', discount_bp, 30, now(), now() + interval '30 days' FROM venue_plans WHERE id=$1", [plan.id, member.id]);
+  const enter = (guests) => api('POST', '/access/captures', { token: mgr.token, body: { idempotency_key: `g${Math.random()}`, domain: 'venue_access', subject_ref: point.id, method: 'manual', user_id: member.id, reason_code: 'roster_tap', guests } });
+  assert.equal(must(await enter(1), 201).capture.verdict, 'granted');
+  const over = must(await enter(2), 201).capture;
+  assert.equal(over.verdict, 'denied'); assert.equal(over.reason_code, 'membership_guest_quota');
+  assert.match(over.message, /guests/);
+  assert.equal((await pool.query("SELECT guests FROM access_captures WHERE access_point_id=$1 AND verdict='granted'", [point.id])).rows[0].guests, 1, 'guests are recorded');
+  assert.equal((await api('POST', '/access/captures', { token: mgr.token, body: { domain: 'venue_access', subject_ref: point.id, method: 'manual', user_id: member.id, reason_code: 'roster_tap', guests: 99 } })).status, 400);
+});
+
+test('membership access grants: issued by themselves, once, and revoked when the membership ends', async () => {
+  const mgr = await signup(['venue_manager']), member = await signup();
+  const { v } = await venue(mgr);
+  const ctl = await new Promise((resolve) => { const srv = http.createServer((req, res) => { req.resume(); req.on('end', () => { res.setHeader('content-type', 'application/json'); res.end(JSON.stringify({ ok: true, ref: 'prov-1' })); }); }); srv.listen(0, '127.0.0.1', () => resolve({ srv, url: `http://127.0.0.1:${srv.address().port}/ctl` })); });
+  after(() => ctl.srv.close());
+  const point = must(await api('POST', '/access/points', { token: mgr.token, body: { venue_id: v.id, name: 'Turnstile', kind: 'turnstile', provider: 'webhook', endpoint_url: ctl.url } }), 201);
+  const plan = must(await api('POST', `/venues/${v.id}/plans`, { token: mgr.token, body: { kind: 'membership', name: 'Gold', price_cents: 100000, duration_days: 30, discount_bp: 1000 } }), 201);
+  assert.equal(await syncMembershipGrants(), 0, 'no members yet: nothing issued');
+  const up = (await pool.query("INSERT INTO user_plans(plan_id, venue_id, user_id, kind, name, status, price_cents, currency, discount_bp, duration_days, starts_at, expires_at) SELECT id, venue_id, $2, kind, name, 'active', price_cents, 'INR', discount_bp, 30, now(), now() + interval '30 days' FROM venue_plans WHERE id=$1 RETURNING id", [plan.id, member.id])).rows[0];
+  assert.equal(await syncMembershipGrants(), 1);
+  assert.equal(await syncMembershipGrants(), 0, 'idempotent');
+  const grants = must(await api('GET', `/access/points/${point.id}/grants`, { token: mgr.token }));
+  assert.equal(grants.length, 1); assert.equal(grants[0].source_type, 'membership'); assert.equal(grants[0].status, 'active');
+  await pool.query("UPDATE user_plans SET status='cancelled' WHERE id=$1", [up.id]);
+  await sweepAccessGrants();
+  assert.equal(must(await api('GET', `/access/points/${point.id}/grants`, { token: mgr.token }))[0].status, 'revoked', 'ended membership closes the door credential');
+  assert.equal(await syncMembershipGrants(), 0, 'a cancelled membership gets nothing');
+});
+
+test('booking QR: every confirmed booking has its own code; the venue team confirms the arrival by scanning it', async () => {
+  const mgr = await signup(['venue_manager']), floor = await signup(), booker = await signup(), other = await signup(), outsider = await signup();
+  const { v, court } = await venue(mgr);
+  await addStaff(mgr, v, floor, 'staff');
+  const a = await nowBooking(v.id, court.id, booker), b = await nowBooking(v.id, court.id, booker, 60 * 5, 60 * 6), c3 = await nowBooking(v.id, court.id, other, 120, 180);
+  const passA = must(await api('GET', `/bookings/${a.id}/pass`, { token: booker.token })), passB = must(await api('GET', `/bookings/${b.id}/pass`, { token: booker.token }));
+  assert.match(passA.token, /^GQ1\.B\.v\./); assert.notEqual(passA.token, passB.token, 'one code per slot');
+  assert.equal(must(await api('GET', `/bookings/${a.id}/pass`, { token: booker.token })).token, passA.token, 'stable, so it can be printed or sent');
+  assert.equal(must(await api('GET', `/bookings/${a.id}/pass`, { token: floor.token })).token, passA.token, 'the venue team can show it too');
+  assert.equal((await api('GET', `/bookings/${a.id}/pass`, { token: other.token })).status, 404);
+  assert.equal((await api('GET', `/bookings/${a.id}/pass`, { token: outsider.token })).status, 404);
+  const desk = must(await api('GET', `/venues/${v.id}/front-desk-access-point`, { token: floor.token }));
+  assert.equal((await api('GET', `/venues/${v.id}/front-desk-access-point`, { token: outsider.token })).status, 403);
+  const scan = (token, who = floor) => api('POST', '/access/captures', { token: who.token, body: { idempotency_key: `q${Math.random()}`, domain: 'venue_access', subject_ref: desk.id, method: 'qr', token } });
+  assert.equal((await scan(passA.token, booker)).status, 403, 'the booker cannot confirm their own arrival');
+  const forged = passA.token.slice(0, -4) + 'abcd';
+  assert.equal(must(await scan(forged), 201).capture.reason_code, 'qr_invalid');
+  const tooEarly = must(await scan(passB.token), 201).capture;
+  assert.equal(tooEarly.verdict, 'denied'); assert.equal(tooEarly.reason_code, 'booking_not_now', 'only that slot\'s time');
+  const ok = must(await scan(passA.token), 201).capture;
+  assert.equal(ok.verdict, 'granted'); assert.equal(ok.person.user_id, booker.id); assert.equal(ok.booking.id, a.id); assert.equal(ok.booking.resource_name, 'Court 1');
+  assert.ok((await pool.query('SELECT checked_in_at FROM bookings WHERE id=$1', [a.id])).rows[0].checked_in_at);
+  assert.equal(must(await scan(passA.token), 201).capture.reason_code, 'already_recorded', 'works once');
+  assert.equal(must(await api('GET', `/bookings/${a.id}/pass`, { token: booker.token })).checked_in_at != null, true);
+  // another venue's door does not accept it
+  const other2 = await venue(mgr); const desk2 = must(await api('GET', `/venues/${other2.v.id}/front-desk-access-point`, { token: mgr.token }));
+  const cross = must(await api('POST', '/access/captures', { token: mgr.token, body: { idempotency_key: `x${Math.random()}`, domain: 'venue_access', subject_ref: desk2.id, method: 'qr', token: (await api('GET', `/bookings/${c3.id}/pass`, { token: other.token })).body.token } }), 201).capture;
+  assert.equal(cross.reason_code, 'qr_wrong_subject');
+  // cancelled: no code, and an old one stops working
+  const old = (await api('GET', `/bookings/${c3.id}/pass`, { token: other.token })).body.token;
+  await pool.query("UPDATE bookings SET status='cancelled' WHERE id=$1", [c3.id]);
+  assert.equal(must(await api('GET', `/bookings/${c3.id}/pass`, { token: other.token })).token, null);
+  assert.equal(must(await scan(old), 201).capture.reason_code, 'booking_cancelled');
+});
+
+test('income reconciliation with real money: front-desk tenders, a short till, and an online payment the ledger has not recorded', async () => {
+  const mgr = await signup(['venue_manager']), cashier = await signup(), outsider = await signup();
+  const { v } = await venue(mgr);
+  must(await api('POST', `/venues/${v.id}/pos/cashiers`, { token: mgr.token, body: { handle: cashier.handle } }), 201);
+  const tube = must(await api('POST', '/inventory', { token: mgr.token, body: { name: 'Shuttle tube', category: 'merch', quantity: 20, sell_price_cents: 30000, unit_cost_cents: 20000, venue_id: v.id } }), 201);
+  const shift = must(await api('POST', `/venues/${v.id}/pos/shifts`, { token: cashier.token, body: { opening_float_cents: 100000 } }), 201);
+  const sale = must(await api('POST', `/venues/${v.id}/pos/sales`, { token: cashier.token, body: { lines: [{ kind: 'item', item_id: tube.id, qty: 2 }], payments: [{ method: 'cash', tendered_cents: 60000 }] } }), 201);
+  assert.equal(sale.status, 'paid'); assert.equal(sale.total_cents, 60000);
+  const range = { from: today, to: today };
+  const first = must(await api('GET', `/venues/${v.id}/income`, { token: mgr.token, query: range }));
+  const inr = first.currencies.find((x) => x.currency === 'INR');
+  assert.equal(inr.pos.taken_cents, 60000); assert.equal(inr.pos.net_cents, 60000); assert.equal(inr.pos.paid_sales, 1);
+  assert.deepEqual(inr.pos.by_tender.map((t) => [t.method, t.taken_cents]), [['cash', 60000]]);
+  assert.equal(inr.unposted_online.tenders, 0);
+  assert.equal(first.till.closed, 0);
+  // the till is closed 500 short: the variance is reported and the shift waits for a manager's review
+  must(await api('POST', `/pos/shifts/${shift.id}/close`, { token: cashier.token, body: { counted_cash_cents: 159500, note: 'Gave wrong change' } }));
+  const closed = must(await api('GET', `/venues/${v.id}/income`, { token: mgr.token, query: range }));
+  assert.equal(closed.till.closed, 1); assert.equal(Number(closed.till.variance_cents), -500);
+  assert.equal(Number(closed.till.expected_cents), 160000); assert.equal(Number(closed.till.counted_cents), 159500);
+  assert.ok(closed.till.pending_review >= 1 || closed.exceptions >= 1, 'a short till is an exception to look at');
+  // an online tender whose payment never reached the canonical ledger is called out
+  const pay = (await pool.query("INSERT INTO payments(payer_id, provider, purpose_type, purpose_id, amount_cents, currency, status, provider_ref, paid_at) VALUES ($1,'stripe','pos_sale',$2,20000,'INR','paid',$3, now()) RETURNING id", [cashier.id, sale.id, `ref-${Math.random()}`])).rows[0];
+  await pool.query("INSERT INTO pos_sale_payments(sale_id, shift_id, kind, method, status, amount_cents, payment_id, recorded_by, confirmed_at) VALUES ($1,$2,'payment','online','confirmed',20000,$3,$4, now())", [sale.id, shift.id, pay.id, cashier.id]);
+  const after = must(await api('GET', `/venues/${v.id}/income`, { token: mgr.token, query: range }));
+  const x = after.currencies.find((c) => c.currency === 'INR');
+  assert.equal(x.unposted_online.tenders, 1); assert.equal(Number(x.unposted_online.cents), 20000);
+  assert.equal(x.pos.taken_cents, 80000); assert.deepEqual(x.pos.by_tender.map((t) => t.method).sort(), ['cash', 'online']);
+  assert.ok(after.exceptions > closed.exceptions - 0 && after.exceptions >= 2);
+  // only the venue's managers read it; another venue's operator and the cashier do not
+  assert.equal((await api('GET', `/venues/${v.id}/income`, { token: outsider.token, query: range })).status, 403);
+  assert.equal((await api('GET', `/venues/${v.id}/income`, { token: cashier.token, query: range })).status, 403);
 });

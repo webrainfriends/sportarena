@@ -185,9 +185,9 @@ export async function buildReport(user, ctx, i) {
     const r = await readiness(pool, trip);
     rows = [...r.byId.values()].filter((x) => !personal || mine.has(x.participant.id)).map((x) => [x.participant.display_name, x.participant.role, x.ready ? 'yes' : 'no', x.issues.map((c) => ISSUE_LABEL[c]).join('; ')]);
   } else {
-    columns = ['currency', 'supplier orders (gross)', 'per diem entitlement', 'per diem paid', 'advances paid', 'claims pending', 'claims approved', 'claims reimbursed'];
+    columns = ['currency', 'supplier orders (gross)', 'partner bookings', 'per diem entitlement', 'per diem paid', 'advances paid', 'claims pending', 'claims approved', 'claims reimbursed'];
     const m = (n) => (n / 100).toFixed(2);
-    rows = (await costSummary(pool, trip)).map((x) => [x.currency, m(x.supplier_orders_gross_minor), m(x.per_diem_entitlement_minor), m(x.per_diem_paid_minor), m(x.advances_minor), m(x.claims_pending_minor), m(x.claims_approved_minor), m(x.claims_reimbursed_minor)]);
+    rows = (await costSummary(pool, trip)).map((x) => [x.currency, m(x.supplier_orders_gross_minor), m(x.partner_bookings_minor), m(x.per_diem_entitlement_minor), m(x.per_diem_paid_minor), m(x.advances_minor), m(x.claims_pending_minor), m(x.claims_approved_minor), m(x.claims_reimbursed_minor)]);
   }
   await audit(null, user.id, `export_trip_report_${i.kind}_${i.audience}`, 'trips', trip.id);
   const expires = new Date(Date.now() + 24 * 36e5).toISOString();

@@ -19,6 +19,7 @@ import { buildSchedule } from '../sponsor-schedule.js';
 import { sponsorAccess, assertSponsorCan, notifySponsor, sponsorBrandSql } from '../sponsor-access.js';
 import { budgetUse, startAward } from '../sponsorship-awards.js';
 import { gateDecision, recordDecision, redactBlind } from '../sponsorship-evaluation.js';
+import { appendRules, gateScreening, rulesOfProgram, screenApplication } from '../sponsorship-screening.js';
 
 const date = z.string().date();
 const currency = z.string().regex(/^[A-Z]{3}$/, 'ISO 4217 code, e.g. USD');
@@ -142,6 +143,7 @@ async function create(user, sp, i) {
       `INSERT INTO sponsorship_programs(sponsor_id, owner_id, created_by, name, objective, currency, budget_cents, sports, regions, eligibility, starts_on, ends_on, max_award_cents, max_awards, recurrence, visibility)
        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16) RETURNING *`,
       [sp.id, ownerId, user.id, i.name, i.objective ?? null, i.currency, i.budget_cents, i.sports, i.regions, { target_types: i.target_types, verified_only: i.verified_only }, i.starts_on ?? null, i.ends_on ?? null, i.max_award_cents ?? null, i.max_awards ?? null, i.recurrence ?? null, i.visibility])).rows[0];
+    await appendRules(c, row.id, rulesOfProgram(row), user.id, 'Initial rules');
     await audit(c, user.id, 'create', 'sponsorship_programs', row.id);
     return row;
   });
@@ -180,6 +182,8 @@ cap({
         `UPDATE sponsorship_programs SET name=$2, objective=$3, currency=$4, budget_cents=$5, sports=$6, regions=$7, eligibility=$8, starts_on=$9, ends_on=$10, max_award_cents=$11, max_awards=$12, recurrence=$13, owner_id=$14, visibility=$15, award_approval_cents=$16, finance_signoff_cents=$17, legal_signoff_required=$18, offer_validity_days=$19, waitlist_enabled=$20,
                 row_version=row_version+1, updated_at=now() WHERE id=$1 RETURNING *`,
         [p.id, next.name, next.objective, next.currency, next.budget_cents, next.sports, next.regions, elig, next.starts_on, next.ends_on, next.max_award_cents, next.max_awards, next.recurrence, next.owner_id, next.visibility, next.award_approval_cents, next.finance_signoff_cents, next.legal_signoff_required, next.offer_validity_days, next.waitlist_enabled])).rows[0];
+      const cur = (await c.query('SELECT rules FROM sponsorship_eligibility_versions WHERE program_id=$1 ORDER BY version DESC LIMIT 1', [p.id])).rows[0]?.rules ?? {};
+      await appendRules(c, p.id, rulesOfProgram(row, cur), user.id, 'Program edited'); // a new immutable version only when the rules changed; earlier screenings keep theirs
       await audit(c, user.id, 'update', 'sponsorship_programs', p.id);
       return row;
     });
@@ -490,6 +494,7 @@ cap({
         if (e.code === '23505') throw conflict('There is already an application for this in this round');
         throw e;
       }
+      await screenApplication(c, row, { trigger: 'submit', userId: user.id });
       if (inv) await c.query("UPDATE sponsorship_invitations SET status='applied', responded_at=now() WHERE id=$1", [inv.id]);
       await notifySponsor(c, sp, 'program', { kind: 'sponsorship_program', title: 'New funding application', body: `A new application arrived for ${p.name}. Open the program to review it.`, data: { program_id: p.id, application_id: row.id } });
       return row;
@@ -515,7 +520,7 @@ cap({
   },
 });
 
-export const APP_COLS = `a.id, a.program_id, a.round_id, a.round_terms_version, a.terms_snapshot, a.applicant_id, a.target_type, a.target_id, a.requested_cents, a.currency, a.pitch, a.status, a.awarded_cents, a.decided_at, a.decision_reason, a.sponsorship_id, a.created_at, a.form_id, a.form_version, a.receipt_no, a.submitted_at, a.row_version, a.evidence_shared,
+export const APP_COLS = `a.id, a.program_id, a.round_id, a.round_terms_version, a.terms_snapshot, a.applicant_id, a.target_type, a.target_id, a.requested_cents, a.currency, a.pitch, a.status, a.awarded_cents, a.decided_at, a.decision_reason, a.sponsorship_id, a.created_at, a.form_id, a.form_version, a.receipt_no, a.submitted_at, a.screening_outcome, a.row_version, a.evidence_shared,
   CASE a.target_type WHEN 'athlete' THEN (SELECT display_name FROM users WHERE id=a.target_id) WHEN 'team' THEN (SELECT name FROM teams WHERE id=a.target_id) ELSE (SELECT name FROM events WHERE id=a.target_id) END AS target_name,
   p.name AS program_name, r.seq AS round_seq, r.name AS round_name`;
 
@@ -555,6 +560,7 @@ cap({
       const a = (await c.query('SELECT * FROM sponsorship_applications WHERE id=$1 FOR UPDATE', [i.id])).rows[0];
       if (a.status !== 'submitted') throw conflict(`This application is already ${a.status}`);
       if (['draft', 'archived'].includes(p.status)) throw conflict(`A ${p.status} program cannot decide applications`);
+      await gateScreening(c, a, i.decision); // eligibility (#287): an award needs an eligible screening or an authorised exception
       await gateDecision(c, a, i.decision, i.eval_version); // rounds scored by a committee: shortlisted, scored and (when blind) identified first (#288)
       if (i.decision === 'decline') {
         const row = (await c.query("UPDATE sponsorship_applications SET status='declined', decided_at=now(), decided_by=$2, decision_reason=$3 WHERE id=$1 RETURNING *", [a.id, user.id, i.reason ?? null])).rows[0];

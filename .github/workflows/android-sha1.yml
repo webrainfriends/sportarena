@@ -1,0 +1,46 @@
+name: Android signing SHA-1
+
+# Manual only. Prints the SHA-1 and SHA-256 of the signing key of the latest finished EAS Android build, in this job's log, so it can be pasted into the Google Cloud
+# "Android" OAuth client (Google sign-in) without anyone running commands. Needs only the repo secret EXPO_TOKEN. Run "Android build" first so a build exists.
+# It reads the build's public certificate; it never reads the keystore or any secret.
+on:
+  workflow_dispatch:
+    inputs:
+      profile:
+        description: Which build to read (the one the Google client will be used with)
+        type: choice
+        options: [preview, production, development]
+        default: preview
+
+permissions:
+  contents: read
+
+jobs:
+  sha1:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: npm }
+      - run: npm ci
+      - uses: expo/expo-github-action@v8
+        with:
+          eas-version: latest
+          token: ${{ secrets.EXPO_TOKEN }}
+      - name: Find the latest finished Android build
+        id: build
+        working-directory: apps/app
+        env:
+          PROFILE: ${{ inputs.profile }}
+        run: |
+          eas build:list --platform android --build-profile "$PROFILE" --status finished --limit 1 --json --non-interactive > "$RUNNER_TEMP/build.json"
+          URL=$(node -e 'const b=JSON.parse(require("fs").readFileSync(process.argv[1],"utf8"))[0]; if(!b){process.exit(2)} console.log(b.artifacts?.buildUrl ?? b.artifacts?.applicationArchiveUrl ?? "")' "$RUNNER_TEMP/build.json") || { echo "::error::No finished Android build for profile $PROFILE. Run the Android build workflow first."; exit 1; }
+          [ -n "$URL" ] || { echo "::error::The build has no downloadable file."; exit 1; }
+          echo "url=$URL" >> "$GITHUB_OUTPUT"
+      - name: Print the signing certificate
+        run: |
+          curl -sSL -o "$RUNNER_TEMP/app.bin" "${{ steps.build.outputs.url }}"
+          echo "== package / signing certificate (paste the SHA-1 into the Google Cloud Android client)"
+          APKSIGNER=$(ls "$ANDROID_HOME"/build-tools/*/apksigner 2>/dev/null | sort -V | tail -1 || true)
+          if [ -n "$APKSIGNER" ] && "$APKSIGNER" verify --print-certs "$RUNNER_TEMP/app.bin" 2>/dev/null | grep -E "SHA-(1|256) digest"; then :; else keytool -printcert -jarfile "$RUNNER_TEMP/app.bin" | grep -E "SHA(1|256):|Owner:"; fi
+          echo "Package: dev.gotmygame.app"

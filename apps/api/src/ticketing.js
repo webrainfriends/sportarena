@@ -12,6 +12,7 @@ import { badRequest, conflict, forbidden, notFound } from './errors.js';
 import { blindIndex, encrypt } from './crypto.js';
 import { notify } from './notify.js';
 import { isYouth } from './youth.js';
+import { addonsRefundDueForEvent, applyPromos, confirmAddons, firstFreeSeats, processAddonRefunds, promoteWaitlist, releaseAddons, reserveAddons, reverseRedemptions, sweepWaitlists } from './ticketing-commerce.js';
 
 export const CLASSES = ['adult', 'youth', 'concession', 'vip', 'complimentary', 'other'];
 export const CHANNELS = ['online', 'box_office', 'partner', 'complimentary'];
@@ -34,7 +35,7 @@ export const newClaimCode = () => rnd(12);
 const mac = (serial, version) => blindIndex(`ticket:${serial}:${version}`).slice(0, 20);
 export const tokenFor = (serial, version) => `GT1.${serial}.${version}.${mac(serial, version)}`;
 export function parseToken(raw) {
-  const m = /^GT1\.(TKT-[A-Z0-9]{10})\.(\d{1,6})\.([0-9a-f]{20})$/.exec(String(raw ?? '').trim());
+  const m = /^GT1\.((?:TKT|ADD)-[A-Z0-9]{10})\.(\d{1,6})\.([0-9a-f]{20})$/.exec(String(raw ?? '').trim());
   if (!m) return null;
   const want = Buffer.from(mac(m[1], m[2])), got = Buffer.from(m[3]);
   return want.length === got.length && timingSafeEqual(want, got) ? { serial: m[1], version: Number(m[2]) } : null;
@@ -70,6 +71,7 @@ const lockEntitlement = (c, entId) => c.query('SELECT pg_advisory_xact_lock(hash
 export const settingsOf = async (c, eventId) => (await c.query('SELECT * FROM ticket_settings WHERE event_id=$1', [eventId])).rows[0] ?? {
   event_id: eventId, spectator_capacity: null, safety_capacity: null, count_participants: false, count_accreditations: false, sales_open: true, hold_minutes: 15,
   transfer_allowed: true, transfer_cutoff_hours: 2, refund_policy: 'until_cutoff', refund_cutoff_hours: 24,
+  resale_mode: 'transfer_only', resale_cap_bp: 10000, resale_fee_bp: 0, waitlist_enabled: true, waitlist_offer_minutes: 15,
 };
 
 /** Fixtures a product admits to (its own links, else every fixture of the event). `null` stands for "the event as a whole" when it has no fixtures. */
@@ -136,7 +138,7 @@ export async function remainingOf(c, ev, product) {
 }
 
 /** Seats of `section` that overlap in time with this product and are already held by a live ticket. */
-async function seatsTaken(c, eventId, product, labels) {
+export async function seatsTaken(c, eventId, product, labels) {
   const linked = (await c.query('SELECT fixture_id FROM ticket_product_fixtures WHERE product_id=$1', [product.id])).rows.map((r) => r.fixture_id);
   return (await c.query(
     `SELECT DISTINCT t.seat_label FROM tickets t WHERE t.event_id=$1 AND t.section_id=$2 AND t.seat_label = ANY($3::text[]) AND ${LIVE}
@@ -165,10 +167,10 @@ async function insertTicket(c, t) {
     try {
       return (await c.query(
         `INSERT INTO tickets(serial, short_code, entitlement_id, supersedes_id, event_id, product_id, order_id, line_id, allocation_id, holder_id, guest_name_enc, guest_email_enc, claim_hash, class, class_label,
-                             section_id, seat_label, price_minor, tax_minor, currency, status, hold_expires_at, issued_at)
-         VALUES ($1,$2,coalesce($3, gen_random_uuid()),$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23) RETURNING *`,
+                             section_id, seat_label, price_minor, tax_minor, currency, status, hold_expires_at, issued_at, discount_minor, discount_tax_minor)
+         VALUES ($1,$2,coalesce($3, gen_random_uuid()),$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25) RETURNING *`,
         [newSerial(), newShortCode(), t.entitlement_id ?? null, t.supersedes_id ?? null, t.event_id, t.product_id, t.order_id, t.line_id ?? null, t.allocation_id ?? null, t.holder_id ?? null, t.guest_name_enc ?? null, t.guest_email_enc ?? null,
-          t.claim_hash ?? null, t.class, t.class_label ?? null, t.section_id ?? null, t.seat_label ?? null, t.price_minor, t.tax_minor, t.currency, t.status, t.hold_expires_at ?? null, t.issued_at ?? null])).rows[0];
+          t.claim_hash ?? null, t.class, t.class_label ?? null, t.section_id ?? null, t.seat_label ?? null, t.price_minor, t.tax_minor, t.currency, t.status, t.hold_expires_at ?? null, t.issued_at ?? null, t.discount_minor ?? 0, t.discount_tax_minor ?? 0])).rows[0];
     } catch (e) { if (e.code !== '23505' || attempt > 5 || !/serial|short_code/.test(e.constraint ?? '')) throw e; }
   }
 }
@@ -176,7 +178,8 @@ async function insertTicket(c, t) {
 const eventOf = async (c, eventId) => { const ev = (await c.query('SELECT * FROM events WHERE id=$1', [eventId])).rows[0]; if (!ev) throw notFound('Event'); return ev; };
 
 /** Create an order and reserve its tickets. A zero total is confirmed and issued straight away. `who` is the buyer, `channel` how it was sold. */
-export async function createOrder(c, who, ev, i, { channel = 'online', allocation = null, recipients = null } = {}) {
+/** `hold` keeps even a free order reserved (a waitlist offer waits for the person to accept); `quote` is the same maths without confirming; `autoSeats` picks the first free seats. */
+export async function createOrder(c, who, ev, i, { channel = 'online', allocation = null, recipients = null, hold = false, quote = false, offerMinutes = null, autoSeats = false } = {}) {
   if (['cancelled', 'completed'].includes(ev.status)) throw conflict(`The event is ${ev.status}`);
   await lockEvent(c, ev.id);
   if (i.idempotency_key) {
@@ -190,8 +193,9 @@ export async function createOrder(c, who, ev, i, { channel = 'online', allocatio
   // the currency is only known once the first product is read, so the order starts with the neutral 'XXX' and is updated below
   const order = (await c.query(
     "INSERT INTO ticket_orders(event_id, buyer_id, channel, status, currency, idempotency_key, expires_at) VALUES ($1,$2,$3,'pending_payment','XXX',$4, now() + make_interval(mins => $5)) RETURNING *",
-    [ev.id, who.id, channel, i.idempotency_key ?? null, settings.hold_minutes])).rows[0];
-  let subtotal = 0, tax = 0, ticketCount = 0;
+    [ev.id, who.id, channel, i.idempotency_key ?? null, offerMinutes ?? settings.hold_minutes])).rows[0];
+  let ticketCount = 0;
+  const made = [];
   const wanted = new Map();
   for (const l of i.lines) wanted.set(l.product_id, (wanted.get(l.product_id) ?? 0) + l.quantity);
   for (const line of i.lines) {
@@ -210,7 +214,7 @@ export async function createOrder(c, who, ev, i, { channel = 'online', allocatio
     }
     if (channel === 'complimentary' && Number(p.price_minor) !== 0) throw badRequest('A complimentary ticket must be free');
     await assertRoom(c, ev, p, line.quantity);
-    const seats = p.seating === 'reserved' ? await chooseSeats(c, ev, p, line.seats, line.quantity) : null;
+    const seats = p.seating === 'reserved' ? (autoSeats && !line.seats ? await autoPick(c, ev, p, line.quantity) : await chooseSeats(c, ev, p, line.seats, line.quantity)) : null;
     const { gross, tax: unitTax } = priced(p);
     const ol = (await c.query('INSERT INTO ticket_order_lines(order_id, product_id, qty, name, class, unit_minor, unit_tax_minor, currency) VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING *', [order.id, p.id, line.quantity, p.name, p.class, gross, unitTax, p.currency])).rows[0];
     for (let n = 0; n < line.quantity; n++) {
@@ -220,14 +224,26 @@ export async function createOrder(c, who, ev, i, { channel = 'online', allocatio
         class: p.class, class_label: p.class_label, section_id: seats?.section.id, seat_label: seats?.labels[n], price_minor: gross, tax_minor: unitTax, currency: p.currency, status: 'reserved', hold_expires_at: order.expires_at,
       });
       await record(c, t.id, who.id, 'reserved', null, 'reserved', { order_id: order.id, channel });
+      made.push({ id: t.id, product_id: p.id, line_id: ol.id, price: gross, tax: unitTax });
       ticketCount++;
     }
-    subtotal += (gross - unitTax) * line.quantity; tax += unitTax * line.quantity;
   }
-  const total = subtotal + tax;
-  await c.query('UPDATE ticket_orders SET currency=$2, subtotal_minor=$3, tax_minor=$4, total_minor=$5 WHERE id=$1', [order.id, orderCurrency[0], subtotal, tax, total]);
-  if (total === 0) await confirmOrder(c, order.id, who.id, { locked: true });
-  return { order_id: order.id, replayed: false };
+  if (!orderCurrency.length) throw badRequest('Choose at least one ticket');
+  const promo = await applyPromos(c, ev, who, order, i.promo_codes, made, orderCurrency[0]);
+  const addons = await reserveAddons(c, ev, who, order, i.addons, orderCurrency[0]);
+  const gross = made.reduce((n, t) => n + t.price, 0);
+  const total = gross - promo.total + addons.total;
+  const tax = made.reduce((n, t) => n + t.tax, 0) - promo.taxOff + addons.tax;
+  await c.query('UPDATE ticket_orders SET currency=$2, subtotal_minor=$3, tax_minor=$4, total_minor=$5, discount_minor=$6 WHERE id=$1', [order.id, orderCurrency[0], total - tax, tax, total, promo.total]);
+  if (total === 0 && !hold && !quote) await confirmOrder(c, order.id, who.id, { locked: true });
+  return { order_id: order.id, replayed: false, promos: promo.applied };
+}
+
+async function autoPick(c, ev, product, qty) {
+  const section = (await c.query('SELECT * FROM ticket_sections WHERE id=$1 AND archived_at IS NULL', [product.section_id])).rows[0];
+  const labels = section ? await firstFreeSeats(c, ev, product, qty) : null;
+  if (!labels) throw conflict('Not enough seats left together', { code: 'sold_out' });
+  return { section, labels };
 }
 
 /** Payment landed (or the order is free): turn the reserved tickets into issued ones. Returns false when it can no longer be honoured, so the payment is refunded. */
@@ -253,6 +269,7 @@ export async function confirmOrder(c, orderId, actor, { locked = false } = {}) {
       const seated = ts.filter((t) => t.seat_label);
       if (seated.length && (await seatsTaken(c, ev.id, p, seated.map((t) => t.seat_label))).length) throw conflict('A seat was taken while the payment was in progress', { code: 'seat_taken' });
     }
+    if (!(await confirmAddons(c, orderId))) throw conflict('An add-on sold out while the payment was in progress');
   } catch (e) { if (e.status === 409) return false; throw e; }
   await c.query("UPDATE tickets SET status='issued', hold_expires_at=NULL, issued_at=now() WHERE order_id=$1 AND status='reserved'", [orderId]);
   await c.query("UPDATE ticket_orders SET status='confirmed', confirmed_at=now() WHERE id=$1", [orderId]);
@@ -262,12 +279,19 @@ export async function confirmOrder(c, orderId, actor, { locked = false } = {}) {
 }
 
 /** Give up an unpaid order (the buyer, or the hold ran out): the reserved tickets are voided and the place is free again. */
-export async function releaseOrder(c, orderId, actor, status, reason) {
+export async function releaseOrder(c, orderId, actor, status, reason, { promote = true } = {}) {
+  // the event lock comes first (as in confirmOrder), so a release can never deadlock with a payment confirming the same order
+  const ev0 = (await c.query('SELECT event_id FROM ticket_orders WHERE id=$1', [orderId])).rows[0];
+  if (!ev0) return false;
+  await lockEvent(c, ev0.event_id);
   const o = (await c.query('SELECT * FROM ticket_orders WHERE id=$1 FOR UPDATE', [orderId])).rows[0];
   if (!o || o.status !== 'pending_payment') return false;
   const ts = (await c.query("UPDATE tickets SET status='void', ended_at=now(), end_reason=$2 WHERE order_id=$1 AND status='reserved' RETURNING id", [orderId, reason])).rows;
   for (const t of ts) await record(c, t.id, actor, 'voided', 'reserved', 'void', { reason });
+  await releaseAddons(c, orderId, reason);
+  await reverseRedemptions(c, orderId);
   await c.query('UPDATE ticket_orders SET status=$2 WHERE id=$1', [orderId, status]);
+  if (promote) await promoteWaitlist(c, o.event_id);   // the places just freed go to the people waiting
   return true;
 }
 
@@ -323,7 +347,7 @@ export async function transferRule(c, t, now = new Date()) {
 const STATE = { reserved: 'reserved', issued: 'valid', void: 'void', refund_due: 'refund_due', refunded: 'refunded', transferred: 'transferred' };
 /** What the holder sees. The token is included only when the ticket is valid and the caller is the holder. */
 export async function ticketView(c, t, { holder = false, organiser = false } = {}) {
-  const [ev, product, section, fixtures, inside, refund, transfer] = await Promise.all([
+  const [ev, product, section, fixtures, inside, refund, transfer, rules] = await Promise.all([
     eventOf(c, t.event_id),
     c.query('SELECT name, kind, reentry FROM ticket_products WHERE id=$1', [t.product_id]).then((r) => r.rows[0]),
     t.section_id ? c.query('SELECT name FROM ticket_sections WHERE id=$1', [t.section_id]).then((r) => r.rows[0]) : null,
@@ -331,15 +355,17 @@ export async function ticketView(c, t, { holder = false, organiser = false } = {
     c.query('SELECT fixture_id, inside, first_in_at, entries FROM ticket_attendance WHERE entitlement_id=$1 ORDER BY first_in_at', [t.entitlement_id]).then((r) => r.rows),
     holder || organiser ? refundRule(c, t, { organiser }) : null,
     holder ? transferRule(c, t) : null,
+    holder ? settingsOf(c, t.event_id) : null,
   ]);
   return {
     id: t.id, serial: t.serial, short_code: t.short_code, status: t.status, state: STATE[t.status] ?? t.status,
     event: { id: ev.id, name: ev.name, starts_on: ev.starts_on, ends_on: ev.ends_on, status: ev.status },
     product: { id: t.product_id, name: product?.name, kind: product?.kind, reentry: product?.reentry }, class: t.class, class_label: t.class_label,
-    section: section?.name ?? null, seat: t.seat_label, fixtures, price_minor: Number(t.price_minor), tax_minor: Number(t.tax_minor), currency: t.currency, refunded_minor: Number(t.refunded_minor),
+    section: section?.name ?? null, seat: t.seat_label, fixtures, price_minor: Number(t.price_minor), discount_minor: Number(t.discount_minor ?? 0), paid_minor: Number(t.price_minor) - Number(t.discount_minor ?? 0), tax_minor: Number(t.tax_minor), currency: t.currency, refunded_minor: Number(t.refunded_minor),
     used: inside.length > 0, inside: inside.some((a) => a.inside), attendance: inside.map((a) => ({ fixture_id: a.fixture_id, first_in_at: a.first_in_at, entries: a.entries })),
     order_id: t.order_id, hold_expires_at: t.hold_expires_at, issued_at: t.issued_at,
-    ...(holder ? { token: t.status === 'issued' ? tokenFor(t.serial, t.token_version) : null, can_transfer: transfer.ok, transfer_blocked: transfer.ok ? null : transfer.reason, can_refund: refund.ok, refund_blocked: refund.ok ? null : refund.reason } : {}),
+    ...(holder ? { token: t.status === 'issued' ? tokenFor(t.serial, t.token_version) : null, can_transfer: transfer.ok, transfer_blocked: transfer.ok ? null : transfer.reason, can_refund: refund.ok, refund_blocked: refund.ok ? null : refund.reason,
+      resale: transfer.ok && rules.resale_mode === 'resale' ? { cap_minor: Math.floor(((Number(t.price_minor) - Number(t.discount_minor ?? 0)) * rules.resale_cap_bp) / 10000), fee_bp: rules.resale_fee_bp } : null } : {}),
     ...(organiser ? { holder_id: t.holder_id, guest: !!t.guest_name_enc, allocation_id: t.allocation_id } : {}),
   };
 }
@@ -352,7 +378,7 @@ export async function succeed(c, old, actor, { holder_id = null, guest = null, s
   const next = await insertTicket(c, {
     entitlement_id: old.entitlement_id, supersedes_id: old.id, event_id: old.event_id, product_id: old.product_id, order_id: old.order_id, line_id: old.line_id, allocation_id: old.allocation_id,
     holder_id, guest_name_enc: guest ? encrypt(guest.name, 'tickets.guest_name') : null, guest_email_enc: guest?.email ? encrypt(guest.email, 'tickets.guest_email') : null, claim_hash: claim ? claimHash(claim) : null,
-    class: old.class, class_label: old.class_label, section_id: old.section_id, seat_label: old.seat_label, price_minor: old.price_minor, tax_minor: old.tax_minor, currency: old.currency, status: 'issued', issued_at: new Date(),
+    class: old.class, class_label: old.class_label, section_id: old.section_id, seat_label: old.seat_label, price_minor: old.price_minor, tax_minor: old.tax_minor, discount_minor: old.discount_minor, discount_tax_minor: old.discount_tax_minor, currency: old.currency, status: 'issued', issued_at: new Date(),
   });
   await record(c, old.id, actor, kind ?? status, old.status, status, { to_ticket: next.id });
   await record(c, next.id, actor, 'issued', null, 'issued', { from_ticket: old.id, via: kind ?? status });
@@ -371,6 +397,7 @@ export async function refundDueFor(c, where, params, reason, actor, kind) {
     await record(c, t.id, actor, kind ?? 'refund_due', 'issued', 'refund_due', { reason });
     if (t.holder_id) await notify(c, t.holder_id, { kind: 'ticket_refund', title: 'Your ticket will be refunded', body: reason, data: { ticket: true, event_id: t.event_id, ticket_id: t.id } });
   }
+  if (kind !== 'event_cancelled') for (const eventId of new Set(ts.map((t) => t.event_id))) await promoteWaitlist(c, eventId);   // a refunded place can be offered on
   return ts;
 }
 
@@ -388,7 +415,7 @@ export async function settleRefund(ticketId) {
 async function settleRefundLocked(ticketId) {
   const t = (await pool.query('SELECT * FROM tickets WHERE id=$1', [ticketId])).rows[0];
   if (!t || t.status !== 'refund_due') return { status: t?.status ?? 'missing' };
-  const amount = Number(t.price_minor) - Number(t.refunded_minor);
+  const amount = Number(t.price_minor) - Number(t.discount_minor) - Number(t.refunded_minor);   // what the buyer actually paid: the promo share never comes back
   const pay = amount > 0 ? (await pool.query("SELECT * FROM payments WHERE purpose_type='ticket_order' AND purpose_id=$1 AND status IN ('paid','refunded') ORDER BY created_at LIMIT 1", [t.order_id])).rows[0] : null;
   if (amount > 0 && !pay) {
     await pool.query('INSERT INTO ticket_history(ticket_id, kind, detail) VALUES ($1,$2,$3)', [t.id, 'refund_blocked', { reason: 'no paid payment found for this order' }]);
@@ -404,7 +431,7 @@ async function settleRefundLocked(ticketId) {
     }
     if (give < amount) { await pool.query('UPDATE tickets SET refunded_minor = refunded_minor + $2 WHERE id=$1', [t.id, give]); return { status: 'refund_due', partial: give }; }
   }
-  await pool.query("UPDATE tickets SET status = CASE WHEN price_minor = 0 THEN 'void' ELSE 'refunded' END, refunded_minor = refunded_minor + $2 WHERE id=$1 AND status='refund_due'", [t.id, give]);
+  await pool.query("UPDATE tickets SET status = CASE WHEN price_minor - discount_minor = 0 THEN 'void' ELSE 'refunded' END, refunded_minor = refunded_minor + $2 WHERE id=$1 AND status='refund_due'", [t.id, give]);
   await pool.query('INSERT INTO ticket_history(ticket_id, kind, from_status, to_status, detail) VALUES ($1,$2,$3,$4,$5)', [t.id, 'refunded', 'refund_due', amount > 0 ? 'refunded' : 'void', { amount_minor: give, currency: t.currency, key: `ticket-refund:${t.id}` }]);
   return { status: amount > 0 ? 'refunded' : 'void', amount_minor: give };
 }
@@ -414,7 +441,8 @@ export async function processTicketRefunds({ eventId = null, limit = 200 } = {})
   const due = (await pool.query("SELECT id FROM tickets WHERE status='refund_due' AND ($1::uuid IS NULL OR event_id=$1) ORDER BY ended_at LIMIT $2", [eventId, limit])).rows;
   let refunded = 0, failed = 0;
   for (const r of due) { const out = await settleRefund(r.id); if (out.status === 'refunded' || out.status === 'void') refunded++; else failed++; }
-  return { processed: due.length, refunded, failed };
+  const addons = await processAddonRefunds({ eventId, limit });
+  return { processed: due.length + addons.processed, refunded: refunded + addons.refunded, failed: failed + addons.failed };
 }
 
 /** Pay back what a cancellation just made refundable, straight after its transaction committed. Never throws: anything that fails stays refund_due for the sweep. */
@@ -430,7 +458,9 @@ export async function sweepTickets() {
   let released = 0;
   for (const o of stale) { const c = await pool.connect(); try { await c.query('BEGIN'); if (await releaseOrder(c, o.id, null, 'expired', 'The reservation ran out')) released++; await c.query('COMMIT'); } catch (e) { await c.query('ROLLBACK'); } finally { c.release(); } }
   const refunds = await processTicketRefunds();
-  return released + refunds.refunded;
+  const addons = await processAddonRefunds();
+  const offered = await sweepWaitlists();
+  return released + refunds.refunded + addons.refunded + offered;
 }
 
 // ---- event hooks ------------------------------------------------------------------------------------------------------------------------------------
@@ -440,6 +470,7 @@ export async function onEventCancelled(c, ev, actor) {
   await c.query("UPDATE ticket_orders SET status='cancelled' WHERE event_id=$1 AND status='pending_payment'", [ev.id]);
   await c.query("UPDATE tickets SET status='void', ended_at=now(), end_reason='Event cancelled' WHERE event_id=$1 AND status='reserved'", [ev.id]);
   await c.query("UPDATE ticket_products SET status='paused' WHERE event_id=$1 AND status='active'", [ev.id]);
+  await addonsRefundDueForEvent(c, ev.id);
   return (await refundDueFor(c, 't.event_id=$1', [ev.id], `${ev.name} was cancelled. You will be refunded in full.`, actor?.id, 'event_cancelled')).length;
 }
 

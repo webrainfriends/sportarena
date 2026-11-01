@@ -5,6 +5,7 @@ import { useLoad } from '../hooks';
 import { useSession } from '../session';
 import { Btn, Card, Empty, ErrorBox, Field, H1, Loading, Row, Screen, Seg, Section, Sheet, StatPill, T, Tag } from '../ui';
 import { FormSheet } from '../FormSheet';
+import { GstProfileCard } from './gst-profile';
 import { c } from '../theme';
 import { KIND } from './book';
 import { MediaManager, VenueReviews } from './venue-media';
@@ -26,7 +27,7 @@ import { FacilityPanel, NetworkOps } from './venue-facility';
 import { t } from '../i18n';
 
 const AMENITIES = ['Parking', 'Changing rooms', 'Showers', 'Lockers', 'Café', 'Floodlights', 'Equipment hire', 'Coaching', 'First aid', 'Seating', 'WiFi', 'Wheelchair access'];
-const TABS = [['schedule', 'Today'], ['frontdesk', 'Front desk'], ['timetable', 'Timetable & prices'], ['blocks', 'Block slots'], ['ballots', 'Slot ballots'], ['coaches', t('vc.title')], ['payments', 'Invoices'], ['plans', 'Passes, packages & memberships'], ['discounts', 'Offers'], ['pricing', 'Courts & special rates'], ['facility', t('vf.title')], ['seating', t('seat.tab')], ['media', 'Photos & videos'], ['lockers', 'Lockers'], ['access', 'Doors & attendance'], ['maintenance', 'Maintenance'], ['vendors', 'Vendors & contracts'], ['reviews', 'Reviews'], ['reports', 'Reports'], ['docs', 'Documents & insurance'], ['setup', 'Settings']];
+const TABS = [['schedule', 'Today'], ['frontdesk', 'Front desk'], ['timetable', 'Timetable & prices'], ['blocks', 'Block slots'], ['ballots', 'Slot ballots'], ['coaches', t('vc.title')], ['payments', 'Invoices'], ['plans', 'Passes, packages & memberships'], ['discounts', 'Offers'], ['pricing', 'Courts & special rates'], ['seating', t('seat.tab')], ['media', 'Photos & videos'], ['lockers', 'Lockers'], ['access', 'Doors & attendance'], ['facility', t('vf.title')], ['maintenance', 'Maintenance'], ['vendors', 'Vendors & contracts'], ['reviews', 'Reviews'], ['reports', 'Reports'], ['docs', 'Documents & insurance'], ['setup', 'Settings']];
 const num = (x) => (x === undefined || x === '' ? undefined : Number(x));
 
 export function Manage({ id, wizard: startWizard, step: startStep, tab: startTab, desk }) {
@@ -53,7 +54,7 @@ export function Manage({ id, wizard: startWizard, step: startStep, tab: startTab
       {wizard ? <SetupWizard v={x} start={Number(startStep) || 0} onExit={() => { setWizard(false); v.reload(); }} goTab={setTab} /> : tab === 'frontdesk' ? null : <><SetupChecklist venueId={x.id} go={setTab} onWizard={() => setWizard(true)} /><OpsAttention venueId={x.id} go={setTab} /></>}
       {wizard ? null : <>
       <View style={{ marginTop: 10 }}><Seg options={TABS.map(([value, label]) => ({ value, label }))} value={tab} onChange={setTab} color={c.violet} /></View>
-      {tab === 'schedule' ? <DayBoard {...P} /> : tab === 'frontdesk' ? <FrontDesk {...P} /> : tab === 'timetable' ? <Timetable {...P} /> : tab === 'blocks' ? <Blocks {...P} /> : tab === 'coaches' ? <VenueCoachesPanel venue={x} /> : tab === 'ballots' ? <BallotsManager {...P} /> : tab === 'pricing' ? <Pricing {...P} /> : tab === 'discounts' ? <Discounts {...P} /> : tab === 'payments' ? <Payments {...P} /> : tab === 'plans' ? <PlansManager {...P} /> : tab === 'lockers' ? <Lockers {...P} /> : tab === 'access' ? <AccessTab {...P} /> : tab === 'maintenance' ? <Maintenance {...P} /> : tab === 'vendors' ? <VendorsContracts {...P} /> : tab === 'facility' ? <FacilityPanel v={x} go={setTab} /> : tab === 'seating' ? <Section title={t('seat.title')} color={c.violet}><SeatingEditor v={x} compact onChanged={v.reload} /></Section> : tab === 'media' ? <Section title="Photos & videos" color={c.cyan}><MediaManager venue={x} /></Section> : tab === 'reviews' ? <Section title="Reviews" color={c.pink}><VenueReviews venueId={x.id} /></Section> : tab === 'reports' ? <Reports {...P} /> : tab === 'docs' ? <SubjectPanel type="venue" id={x.id} name={x.name} /> : <Setup {...P} />}
+      {tab === 'schedule' ? <DayBoard {...P} /> : tab === 'frontdesk' ? <FrontDesk {...P} /> : tab === 'timetable' ? <Timetable {...P} /> : tab === 'blocks' ? <Blocks {...P} /> : tab === 'coaches' ? <VenueCoachesPanel venue={x} /> : tab === 'ballots' ? <BallotsManager {...P} /> : tab === 'pricing' ? <Pricing {...P} /> : tab === 'discounts' ? <Discounts {...P} /> : tab === 'payments' ? <Payments {...P} /> : tab === 'plans' ? <PlansManager {...P} /> : tab === 'lockers' ? <Lockers {...P} /> : tab === 'access' ? <AccessTab {...P} /> : tab === 'facility' ? <FacilityPanel v={x} go={setTab} /> : tab === 'maintenance' ? <Maintenance {...P} /> : tab === 'vendors' ? <VendorsContracts {...P} /> : tab === 'seating' ? <Section title={t('seat.title')} color={c.violet}><SeatingEditor v={x} compact onChanged={v.reload} /></Section> : tab === 'media' ? <Section title="Photos & videos" color={c.cyan}><MediaManager venue={x} /></Section> : tab === 'reviews' ? <Section title="Reviews" color={c.pink}><VenueReviews venueId={x.id} /></Section> : tab === 'reports' ? <Reports {...P} /> : tab === 'docs' ? <SubjectPanel type="venue" id={x.id} name={x.name} /> : <Setup {...P} />}
       </>}
     </Screen>
   );
@@ -138,7 +139,7 @@ function Pricing({ v, reload }) {
         fields={[{ key: 'name', label: 'What is it', type: 'chips', options: ['Holiday rate', 'Tournament', 'Festival', 'Happy hour', 'Special event'] },
           { key: 'resource_id', label: 'Applies to', type: 'chips', blank: true, options: [{ value: '', label: 'All courts' }, ...v.resources.map((r) => ({ value: r.id, label: `${r.sport_emoji ?? ''} ${r.name}`.trim() }))] },
           { key: 'hourly_rate_cents', label: 'Rate per hour', type: 'money', currency: v.currency },
-          { key: 'start', label: 'From', type: 'time', default: '00:00' }, { key: 'end', label: 'Until', type: 'time', default: '24:00' },
+          { key: 'start', label: 'From', type: 'time', default: '00:00' }, { key: 'end', label: 'Until', type: 'time', default: '24:00', endOfDay: true },
           { key: 'weekdays', label: 'Days', type: 'weekdays', optional: true, hint: 'Leave empty for every day' },
           { key: 'valid_from', label: 'Starts on', type: 'date', optional: true }, { key: 'valid_to', label: 'Ends on', type: 'date', optional: true }]}
         onSubmit={async (f) => { await api.post(`/venues/${v.id}/price-rules`, { ...f, start: f.start ?? '00:00', end: f.end ?? '24:00', resource_id: f.resource_id || undefined }); done(); return 'Special rate added'; }} />
@@ -289,6 +290,7 @@ function Setup({ v, reload }) {
           <T size={12} color={c.mute}>Invoice numbers start {v.invoice_prefix ?? 'with an automatic prefix'}-{new Date().getFullYear()}-000001. Online payment needs Stripe or PayPal switched on for the server.</T>
           <Btn small title="Edit money settings" color={c.violet} onPress={() => setMoney(true)} style={{ marginTop: 10, alignSelf: 'flex-start' }} />
         </Card>
+        <GstProfileCard venueId={v.id} currency={v.currency} />
       </Section>
       <Section title="Opening hours" color={c.lime}>
         <Card><T weight="700">🕒 {hoursSummary(v.hours)}</T><Btn small title="Edit hours" color={c.violet} onPress={() => setHrs(true)} style={{ marginTop: 10, alignSelf: 'flex-start' }} /></Card>

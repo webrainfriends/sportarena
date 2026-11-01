@@ -1,10 +1,12 @@
 // Public tournament & spectator experience (#501): the public projection of an event, game, table and bracket; following; share cards; fan engagement.
 // Reads are `auth: 'public'` and return an allow-listed view of the canonical data (see ../spectator.js); REST, OpenAPI and MCP all share these definitions.
+import { clockOf, lineupsOf, substitutionsOf, disciplineOf, statsOf, standingsImpact, highlightsOf, enabledModules } from '../live-centre.js';
 import { z } from 'zod';
 import { cap, capabilities, id, page } from '../registry.js';
 import { one, many, tx, pool } from '../db.js';
 import { badRequest, conflict, notFound, tooMany } from '../errors.js';
 import { YOUTH_SQL } from '../youth.js';
+import { followPerson } from '../social.js';
 import {
   ALERTS, REACTIONS, isYouthEvent, eventState, loadViewableEvent, loadViewableFixture, publicFixtures, publicStandings, bracketOf, placementsFor, supportersOf, publicMedia,
   publicLiveFrom, publicOfficials, publicStreams, spendAllowance, resultLabel,
@@ -144,9 +146,23 @@ cap({
       user && ev.public_reactions && !youth ? one('SELECT emoji FROM fixture_reactions WHERE fixture_id=$1 AND user_id=$2', [f.id, user.id]) : null,
     ]);
     const mvp = ev.public_mvp_vote && !youth ? await mvpView(f, user) : null;
+    // the premium centre: every module is a projection of the same canonical state, switched by the organiser's module list
+    const modules = enabledModules(ev);
+    const on = (m) => modules.includes(m);
+    const centre = {
+      modules,
+      clock: await clockOf(state),
+      lineups: on('lineups') ? await lineupsOf(ev, f.id, f) : null,
+      substitutions: on('substitutions') ? await substitutionsOf(ev, f.id, f) : null,
+      discipline: on('discipline') ? disciplineOf(live) : null,
+      stats: on('stats') ? statsOf(state) : null,
+      standings_impact: on('standings_impact') ? await standingsImpact(ev, f, { home: live.score.home, away: live.score.away }) : null,
+      highlights: on('highlights') ? highlightsOf(media) : null,
+    };
     return {
+      centre,
       fixture: row, live, event: { id: ev.id, name: ev.name, sport: ev.sport, sport_slug: ev.sport_slug, youth, state: eventState(ev, 0) },
-      officials, streams, media, sponsors,
+      officials, streams, media, sponsors: on('partners') ? sponsors : [],
       corrections: changes.map((c) => ({ id: c.id, kind: c.kind, official_before: c.was_final, before: c.before, after: c.after, at: c.created_at })),
       engagement: { reactions: ev.public_reactions && !youth ? { enabled: true, counts: Object.fromEntries(REACTIONS.map((r) => [r, reactions.find((x) => x.emoji === r)?.n ?? 0])), mine: myReaction?.emoji ?? null, choices: REACTIONS } : { enabled: false },
         mvp_vote: mvp ?? { enabled: false } },
@@ -216,6 +232,13 @@ cap({
   summary: 'Follow an event, a team, an athlete (adults only) or a single game, and choose which alerts you want: start, score, result, schedule, media (new public photos and clips; default: start, result and schedule changes). Calling it again changes the alerts. Following only subscribes you to public alerts; it never grants access to a roster, health, finance or youth information.',
   input: subject,
   async handler({ user }, i) {
+    if (i.subject_type === 'athlete') { // a person: the social-graph rules (block, privacy, approval, guardian) decide
+      return tx(async (c) => {
+        const r = await followPerson(c, user, i.subject_id);
+        if (r.status === 'active' && i.alerts) await c.query(`UPDATE spectator_follows SET alerts=$2, updated_at=now() WHERE id=$1`, [r.id, i.alerts]);
+        return r;
+      });
+    }
     await checkFollowable(user, i.subject_type, i.subject_id);
     return tx(async (c) => {
       const existing = (await c.query('SELECT id, alerts, removed_at FROM spectator_follows WHERE user_id=$1 AND subject_type=$2 AND subject_id=$3 FOR UPDATE', [user.id, i.subject_type, i.subject_id])).rows[0];
@@ -236,7 +259,8 @@ cap({
 cap({
   name: 'unfollow_subject', method: 'DELETE', path: '/me/follows/:id', tag: 'Following', summary: 'Stop following (the follow is kept as ended history; alerts stop at once).', input: z.object({ id }),
   async handler({ user }, i) {
-    if (!(await one('UPDATE spectator_follows SET removed_at=now(), updated_at=now() WHERE id=$1 AND user_id=$2 AND removed_at IS NULL RETURNING id', [i.id, user.id]))) throw notFound('Follow');
+    if (!(await one('UPDATE spectator_follows SET removed_at=now(), updated_at=now() WHERE id=$1 AND user_id=$2 AND removed_at IS NULL RETURNING id', [i.id, user.id]))
+      && !(await one(`UPDATE social_follow_requests SET status='withdrawn', decided_at=now() WHERE id=$1 AND follower_id=$2 AND status IN ('guardian_pending','pending') RETURNING id`, [i.id, user.id]))) throw notFound('Follow');
     return { ok: true };
   },
 });

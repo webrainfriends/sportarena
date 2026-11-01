@@ -18,6 +18,9 @@ import { WorkspaceBody, WorkspaceHeader, WorkspaceSettings, useWorkspace } from 
 import { locale } from '../locale';
 import { DoctorEntry } from './doctor';
 import { AdSlot } from '../ads';
+import { ActivityCard, Small } from '../social/people';
+import { Seg } from '../ui';
+import { t } from '../i18n';
 
 const PAGE = 10;
 
@@ -41,6 +44,33 @@ function Rail({ push }) {
   );
 }
 
+/** People you follow and your friends: verified results, awards, streaks, hosted games and rating moves, newest first. Nothing here is posted by hand. */
+function FollowingFeed({ push }) {
+  const [rows, setRows] = useState([]);
+  const [more, setMore] = useState(false);
+  const [busy, setBusy] = useState(true);
+  const [err, setErr] = useState(null);
+  const load = useCallback(async (cursor) => {
+    setBusy(true); setErr(null);
+    try {
+      const list = await api.get('/me/activity-feed', { limit: PAGE, ...(cursor ? { before: cursor } : {}) });
+      setRows((r) => (cursor ? [...r, ...list] : list)); setMore(list.length === PAGE);
+    } catch (e) { setErr(e); } finally { setBusy(false); }
+  }, []);
+  useEffect(() => { load(null); }, [load]);
+  const last = rows[rows.length - 1];
+  return (
+    <View style={{ gap: 12 }}>
+      {err ? <ErrorBox error={err} onRetry={() => load(null)} /> : null}
+      {busy && !rows.length ? <Loading /> : !rows.length && !err ? (
+        <Empty emoji="🧭" title={t('social.empty')} sub={t('social.empty_feed')} />
+      ) : rows.map((i) => <ActivityCard key={i.key} item={i} onChanged={() => load(null)} />)}
+      {!rows.length && !busy ? <Btn title={t('social.find')} onPress={() => push('Network', { section: 'suggestions' })} /> : null}
+      {more ? <Pressable onPress={() => load(`${last.at}|${last.source_id}`)} disabled={busy} accessibilityRole="button" accessibilityLabel={t('social.more')} style={{ alignSelf: 'center', minHeight: 44, justifyContent: 'center', borderRadius: 999, borderWidth: 1.5, borderColor: c.ink, paddingHorizontal: 26 }}><T weight="800">{busy ? '…' : t('social.more')}</T></Pressable> : null}
+    </View>
+  );
+}
+
 /** The member feed: a composer on top, then the same cards as the public page, LinkedIn-style, with reactions, comments and applications. */
 export function Feed({ header, narrow }) {
   const { user } = useSession();
@@ -52,6 +82,7 @@ export function Feed({ header, narrow }) {
   const [err, setErr] = useState(null);
   const [compose, setCompose] = useState(null); // { kind?, ad? }
   const [resumeApply, setResumeApply] = useState(null);
+  const [mode, setMode] = useState('market'); // market | following
 
   const load = useCallback(async (offset) => {
     setBusy(true); setErr(null);
@@ -63,8 +94,18 @@ export function Feed({ header, narrow }) {
   const { gate, sheets } = useMarketActions({ onPatch });
   useResumeIntent(gate, user, { onPost: () => setCompose({}), onAdvertise: () => setCompose({ ad: true }), onBook: (b) => push('BookFlow', { venueId: b.venueId, resourceId: b.resourceId, date: b.date, time: b.time }), onApplyPosition: setResumeApply });
 
-  const feed = (
+  const switcher = (
+    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+      <View style={{ flex: 1 }}><Seg options={[{ value: 'market', label: t('social.feed_market') }, { value: 'following', label: t('social.feed_following') }]} value={mode} onChange={setMode} /></View>
+      <Small label={t('social.title')} onPress={() => push('Network')} />
+      <Small label={t('community.title')} onPress={() => push('Communities')} />
+    </View>
+  );
+  const feed = mode === 'following' ? (
+    <View style={{ gap: 14 }}>{switcher}<FollowingFeed push={push} /></View>
+  ) : (
     <View style={{ gap: 14 }}>
+      {switcher}
       <Card pad={14}>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
           <Avatar user={user} size={44} />

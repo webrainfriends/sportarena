@@ -37,6 +37,11 @@ Copilot tasks are sport-agnostic: they re-present what the owning capabilities r
 ## Languages
 66 `copilot.*` keys in English and all 11 packs (ta, te, ml, mr, kn, bn, or, hi, si, ur, id). The 11 translations are machine-drafted and stay `reviewed: false` until a native speaker signs them off.
 
+## Verification
+* `test/role-copilots.test.js` — catalogue, guardrails, event approval flow, role gating, model guardrails, every task on a real record.
+* `test/role-copilots-populated.test.js` — populated data: federation (expiring affiliation and licence, open exception, running campaign), sponsor (overdue and upcoming obligations, expiring deal, renewal), supplier (RFQ invitation, draft tender proposal), venue, organisation, official.
+* Adversarial: young person with and without guardian link / consent (athlete copilot), participation consent (coach copilot), unrelated adult or coach, replayed `client_key`, another person's run or action, prompt-injected record text.
+
 ## Known gaps
-* Federation, sponsor and supplier derivations are verified against real (empty) records and the capabilities' documented shapes, not against populated data.
+* The 11 translations are machine-drafted and `reviewed: false`; a native speaker signs them off using [role-copilots-translation-review.md](role-copilots-translation-review.md).
 * No on-device run of iOS / iPadOS / Android; verified by `expo export` only.

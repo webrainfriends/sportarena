@@ -5,6 +5,7 @@ import rateLimit from 'express-rate-limit';
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
 import { config } from './config.js';
 import { capabilities } from './capabilities/index.js';
+import { uploadPathPatterns, uploadJson } from './upload-routes.js';
 import { authenticate } from './auth.js';
 import { invoke, toErrorBody } from './invoke.js';
 import { buildOpenApi } from './openapi.js';
@@ -12,6 +13,8 @@ import { createMcpServer } from './mcp.js';
 import { pool } from './db.js';
 import { webhookRouter } from './payments/webhooks.js';
 import { commsWebhookRouter } from './comms-webhooks.js';
+import { backgroundCheckWebhookRouter } from './background-check-webhooks.js';
+import { integrationWebhookRouter } from './integrations/webhooks.js';
 import { signatureCallbackRouter } from './capabilities/sponsorship-contracts.js';
 import { mediaRouter } from './media.js';
 import { marketMediaRouter } from './market-media.js';
@@ -26,6 +29,7 @@ import { orgAgreementsRouter } from './capabilities/org-agreements.js';
 import { trackingFilesRouter } from './capabilities/tracking-files.js';
 import { rulebookRouter } from './capabilities/rulebook.js';
 import { officialExtractRouter } from './capabilities/officials-extract.js';
+import { payoutStatementRouter } from './capabilities/payouts.js';
 import { coachingEvidenceRouter } from './capabilities/coaching-evidence.js';
 import { calendarFeedRouter } from './capabilities/calendar-sync.js';
 import { passportFilesRouter } from './capabilities/passport-recruitment.js';
@@ -80,6 +84,8 @@ export function createApp() {
   }));
   app.use(cookieAuth);
   app.use('/api/v1/webhooks/comms', commsWebhookRouter());
+  app.use('/api/v1/webhooks/background-checks', backgroundCheckWebhookRouter());
+  app.use('/api/v1/webhooks/integrations', integrationWebhookRouter());
   app.use('/api/v1/webhooks', webhookRouter());
   app.use('/api/v1/webhooks/signatures', signatureCallbackRouter());
   // Media: streaming upload + file serving (binary, so outside the JSON capability router); base64 uploads get a larger JSON limit on their own path.
@@ -90,8 +96,7 @@ export function createApp() {
   app.use('/api/v1', mediaRouter());
   app.use('/api/v1', marketMediaRouter());
   app.use('/api/v1', insuranceDocsRouter());
-  // Compliance evidence files arrive as base64 JSON (up to 10 MB of file): a bigger body limit on that one path only.
-  app.use(/^\/api\/v1\/compliance\/records\/[0-9a-f-]{36}\/files$/, express.json({ limit: '14mb' }));
+  app.use(/^\/api\/v1\/compliance\/records\/[0-9a-f-]{36}\/files$/, uploadJson); // evidence files as base64 JSON, sized by the document limit
   app.use('/api/v1', complianceFilesRouter());
   app.use('/api/v1', teamChatRouter());
   app.use('/api/v1', inboxMediaRouter());
@@ -100,6 +105,7 @@ export function createApp() {
   app.use('/api/v1', trackingFilesRouter());
   app.use('/api/v1', rulebookRouter());
   app.use('/api/v1', officialExtractRouter());
+  app.use('/api/v1', payoutStatementRouter());
   app.use('/api/v1', coachingEvidenceRouter());
   app.use('/api/v1', calendarFeedRouter());
   app.use('/api/v1', passportFilesRouter());
@@ -112,6 +118,8 @@ export function createApp() {
   app.use('/api/v1', mediaAssetFilesRouter());
   app.use('/api/v1', contractReceiptsRouter());
   app.use('/api/v1', staffDocsRouter());
+  // Every route that takes a document as base64 JSON gets the platform admin's document limit as its body limit (and no more than that).
+  for (const re of uploadPathPatterns()) app.use(re, uploadJson);
   app.use(express.json({ limit: '100kb' }));
   app.use(rateLimit({ windowMs: 60_000, limit: config.isProd ? 300 : 5000, standardHeaders: true, legacyHeaders: false }));
   // Responses can carry personal data: never let proxies/browsers cache them.

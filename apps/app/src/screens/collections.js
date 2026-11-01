@@ -11,6 +11,7 @@ import { Btn, Chip, Empty, ErrorBox, Field, Loading, Row, Seg, Sheet, T, Tag } f
 import { FormSheet } from '../FormSheet';
 import { DateField } from '../pickers';
 import { c } from '../theme';
+import { t } from '../i18n';
 import { moneyIn } from '../vtime';
 import { Bars, Block, Fact, Kpi, Split, Timeline, openInvoicePdf, when } from './academy-ui';
 
@@ -28,6 +29,7 @@ const STATE = {
 const STATE_TONE = { overdue: c.orangeSoft, escalated: c.orangeSoft, failed: c.orangeSoft, retrying: c.orangeSoft, attempted: c.sunSoft, due: c.sunSoft, paid: c.lime, resolved: c.lime };
 const StateTag = ({ state }) => <Tag label={`${STATE[state]?.[0] ?? ''} ${STATE[state]?.[1] ?? state}`.trim()} color={STATE_TONE[state]} />;
 const KIND = { instalment: 'Instalment', dues: 'Dues', tuition: 'Tuition', registration: 'Joining fee', deposit: 'Deposit', trial: 'Trial fee', pack: 'Session pack', late_fee: 'Late fee', membership: 'Membership renewal' };
+const kindLabel = (k) => (k === 'coach_subscription' ? t('collections.kind.coach_subscription') : KIND[k] ?? k);
 const offsetWords = (o) => (o < 0 ? `${-o} day${o === -1 ? '' : 's'} before it was due` : o === 0 ? 'on the due date' : `${o} day${o === 1 ? '' : 's'} after`);
 
 /** One line of the case history, in words a finance person would use. */
@@ -102,7 +104,7 @@ function Queue({ target, archived }) {
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 6 }}>{FILTERS.map((x) => <Chip key={x.key} label={x.label} active={filter === x.key} onPress={() => setFilter(x.key)} />)}</ScrollView>
         <Field value={q} onChangeText={setQ} placeholder="Search a payer or athlete…" accessibilityLabel="Search the collections queue" />
         {list.error ? <ErrorBox error={list.error} onRetry={reload} /> : !list.data ? <Loading /> : items.length ? items.map((x) => (
-          <Row key={x.id} title={`${x.athlete_name} · ${KIND[x.kind] ?? x.kind}`}
+          <Row key={x.id} title={`${x.athlete_name} · ${kindLabel(x.kind)}`}
             sub={[`${moneyIn(x.balance_minor, x.currency)} due ${when(x.due_on)}`, x.days_past_due > 0 && !['paid', 'resolved', 'waived', 'cancelled'].includes(x.state) ? `${x.days_past_due} days late` : null, Number(x.settled_minor) > 0 ? `${moneyIn(x.settled_minor, x.currency)} paid` : null, x.failed_attempts ? `${x.failed_attempts} failed` : null, x.promised_on ? `promised ${when(x.promised_on)}` : null, x.hold_until ? `on hold to ${when(x.hold_until)}` : null, x.has_plan ? 'payment plan' : null, x.suspended ? 'access paused' : null, x.payer_name !== x.athlete_name ? `payer ${x.payer_name}` : null].filter(Boolean).join(' · ')}
             right={<StateTag state={x.state} />} color={open === x.id ? c.violetSoft : c.paper} onPress={() => setOpen(x.id)} />
         )) : <Empty emoji={filter === 'closed' ? '🗄️' : '🎉'} title={filter === 'closed' ? 'Nothing closed yet' : filter === 'action' ? 'Nothing needs you right now' : 'Nothing here'} sub="Cases open by themselves when a charge is raised or a membership renewal is waiting for payment." />}
@@ -136,11 +138,19 @@ function CaseDetail({ id, target, archived, onChanged }) {
       <View style={{ flexDirection: 'row', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}><StateTag state={x.state} />{x.suspension?.status === 'active' ? <Tag label="⏸️ Access paused" color={c.orangeSoft} /> : null}{x.payment_plan?.status === 'active' ? <Tag label="📅 Payment plan" /> : null}</View>
       {org && s ? (
         <>
-          <Fact k="Athlete" v={s.athlete_name} /><Fact k="Payer" v={s.payer_name} /><Fact k="For" v={`${KIND[s.kind] ?? s.kind}${s.programme ? ` · ${s.programme}` : ''}`} />
+          <Fact k="Athlete" v={s.athlete_name} /><Fact k="Payer" v={s.payer_name} /><Fact k="For" v={`${kindLabel(s.kind)}${s.programme ? ` · ${s.programme}` : ''}`} />
           <Fact k="Charged" v={moneyIn(s.amount_minor, cur)} /><Fact k="Received" v={moneyIn(s.settled_minor, cur)} /><Fact k="Waived or reduced" v={Number(s.adjusted_minor) ? moneyIn(s.adjusted_minor, cur) : null} />
           <Fact k="Still owed" v={moneyIn(balance, cur)} /><Fact k="Due" v={`${when(x.due_on)}${x.days_past_due > 0 && openCase ? ` · ${x.days_past_due} days late` : ''}`} />
           <Fact k="Invoice" v={s.invoice_number} />
           {s.invoice_id ? <Btn small title={s.status === 'paid' ? 'Receipt (PDF)' : 'Invoice (PDF)'} color={c.paper} ink={c.ink} onPress={() => openInvoicePdf(s.invoice_id, toast)} style={{ alignSelf: 'flex-start' }} /> : null}
+        </>
+      ) : s && x.owner_type === 'coach' ? (
+        <>
+          <Fact k={t('collections.coach.subscription')} v={s.programme} /><Fact k="Athlete" v={s.athlete_name} /><Fact k="Payer" v={s.payer_name} />
+          <Fact k="For" v={t('collections.coach.month', { n: s.period_no })} /><Fact k="Still owed" v={moneyIn(balance, cur)} />
+          <Fact k="Due" v={`${when(x.due_on)}${x.days_past_due > 0 && openCase ? ` · ${x.days_past_due} days late` : ''}`} />
+          <Fact k={t('collections.coach.grace')} v={t('collections.coach.graceDays', { n: s.grace_days })} />
+          <T size={11} color={c.mute}>{t('collections.coach.note')}</T>
         </>
       ) : s ? (<><Fact k="Membership" v={s.name} /><Fact k="Renewal price" v={moneyIn(s.amount_minor, cur)} /><Fact k="Due" v={`${when(x.due_on)}${x.days_past_due > 0 && openCase ? ` · ${x.days_past_due} days late` : ''}`} /></>) : null}
       {x.schedule ? <Fact k="Recurring" v={`${x.schedule.label} · payment ${x.schedule.period_no} of ${x.schedule.periods}${x.schedule.has_mandate ? ` · mandate ${x.schedule.mandate_status}` : ''}`} /> : null}

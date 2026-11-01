@@ -1,4 +1,5 @@
 // Rules for support & dispute cases: categories, SLA targets, which linked records a person may attach, evidence handling.
+import { documentMaxBytes } from './platform-settings.js';
 import { createHash } from 'node:crypto';
 import { one, pool } from './db.js';
 import { dealContext } from './sponsor-agreements.js';
@@ -7,7 +8,7 @@ import { encrypt } from './crypto.js';
 import { isAdmin } from './helpers.js';
 
 export const CATEGORIES = {
-  support: ['account', 'bookings', 'payments', 'events', 'health', 'insurance', 'sponsorship', 'marketplace_report', 'technical', 'other'],
+  support: ['account', 'bookings', 'payments', 'events', 'health', 'insurance', 'sponsorship', 'marketplace_report', 'moderation_appeal', 'technical', 'other'],
   dispute: ['booking_charge', 'refund', 'payment_transfer', 'provider_payment', 'game_data', 'sponsorship', 'service_delivery', 'other'],
 };
 export const PRIORITIES = ['low', 'normal', 'high', 'urgent'];
@@ -184,7 +185,6 @@ export async function validateDispute(user, i) {
   return { details, routed_to };
 }
 
-const MAX_FILE = 5 * 2 ** 20;
 function sniffDoc(b) {
   const hex = b.subarray(0, 8).toString('hex'), txt = b.subarray(0, 12).toString('latin1');
   if (txt.startsWith('%PDF-')) return 'application/pdf';
@@ -194,7 +194,7 @@ function sniffDoc(b) {
   return null;
 }
 
-/** Validate one evidence item (https link and/or PDF/JPEG/PNG/WebP file up to 5 MB) and turn it into encrypted columns. */
+/** Validate one evidence item (https link and/or PDF/JPEG/PNG/WebP file up to the platform document limit) and turn it into encrypted columns. */
 export function prepEvidence(e) {
   if (e.reference && /^[a-z]+:\/\//i.test(e.reference) && !/^https:\/\//i.test(e.reference)) throw badRequest('Links must use https');
   const out = { label: e.label ?? null, reference_enc: e.reference ? encrypt(e.reference, 'case_evidence.reference') : null, file_name: null, content_type: null, size_bytes: null, sha256: null, file_enc: null };
@@ -202,7 +202,7 @@ export function prepEvidence(e) {
     const b64 = e.data.replace(/^data:[^,]*,/, '');
     const buf = Buffer.from(b64, 'base64');
     if (buf.length < 16) throw badRequest('That file is empty');
-    if (buf.length > MAX_FILE) throw badRequest(`Files can be up to ${MAX_FILE / 2 ** 20} MB`);
+    if (buf.length > documentMaxBytes()) throw badRequest(`Files can be up to ${documentMaxBytes() / 2 ** 20} MB`);
     const type = sniffDoc(buf);
     if (!type) throw badRequest('Unsupported file. Use PDF, JPEG, PNG or WebP.');
     Object.assign(out, { file_name: (e.file_name ?? 'document').replace(/[^\w. -]/g, '_').slice(0, 120), content_type: type, size_bytes: buf.length, sha256: createHash('sha256').update(buf).digest('hex'), file_enc: encrypt(b64, 'case_evidence.file') });

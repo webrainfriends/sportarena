@@ -1,4 +1,5 @@
 import React, { useMemo, useState } from 'react';
+import { docMaxBytes, docMaxMb } from '../upload-limits';
 import { JerseyNumbers } from './jersey-numbers';
 import { Platform, Pressable, TextInput, View, useWindowDimensions } from 'react-native';
 import { api } from '../api';
@@ -516,7 +517,6 @@ export function ImportMatches({ id }) {
   const TEMPLATE = csvTemplate(statCols);
 
   const FILE_TYPES = '.csv,.tsv,.txt,.xlsx,.docx,.pdf,.png,.jpg,.jpeg,.webp,.gif';
-  const MAX_FILE = 10 * 2 ** 20;
   /** Pick a file on this device: the browser's file dialog on web, the Files / photos picker in the app. */
   const choose = async () => {
     if (Platform.OS === 'web') {
@@ -539,7 +539,7 @@ export function ImportMatches({ id }) {
     try {
       const f = await choose();
       if (!f) return;
-      if (f.blob.size > MAX_FILE) { setErr('That file is over 10 MB. Split it or use a smaller file.'); return; }
+      if (f.blob.size > docMaxBytes()) { setErr(`That file is over ${docMaxMb()} MB. Split it or use a smaller file.`); return; }
       setReading(true);
       const r = await api.upload('/me/matches/extract', f.blob, { sport_profile_id: target });
       setCsv(r.csv); setPrev(null);
@@ -595,7 +595,7 @@ export function ImportMatches({ id }) {
           <Btn small title="Upload file" color={c.paper} onPress={pickFile} loading={reading} disabled={!target} />
           <Btn small title="Download template" color={c.paper} onPress={download} disabled={!target} />
         </View>
-        <T size={11.5} color={c.mute} style={{ marginTop: 8 }}>Files: CSV, Excel (.xlsx), Word (.docx), PDF, PNG, JPEG — up to 10 MB. PDFs and photos are read by AI, so look the rows over before importing.</T>
+        <T size={11.5} color={c.mute} style={{ marginTop: 8 }}>Files: CSV, Excel (.xlsx), Word (.docx), PDF, PNG, JPEG — up to {docMaxMb()} MB. PDFs and photos are read by AI, so look the rows over before importing.</T>
         {read ? <T size={12.5} weight="700" color={c.ink} style={{ marginTop: 8 }}>{read.name ?? 'File'}: {read.rows} row{read.rows === 1 ? '' : 's'} found{read.via === 'ai' ? ' by AI — check them carefully' : ''}. Edit below if needed, then Check file.</T> : null}
         <TextInput multiline value={csv} onChangeText={(x) => { setCsv(x); setPrev(null); setErr(null); setRead(null); }} placeholder={`…or paste CSV here\n${TEMPLATE}`} placeholderTextColor="#94A3B8" autoCapitalize="none" autoCorrect={false}
           style={[fam, { marginTop: 12, minHeight: 150, borderWidth: 1.5, borderColor: c.line, borderRadius: 12, padding: 12, fontSize: 13, color: c.ink, backgroundColor: c.bg, textAlignVertical: 'top' }, Platform.OS === 'web' && { outlineStyle: 'none', fontFamily: 'ui-monospace, Menlo, monospace' }]} />

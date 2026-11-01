@@ -56,3 +56,15 @@ jobs:
       - run: npm ci
       - run: npx expo export --platform web
         working-directory: apps/app
+
+  app-native:
+    name: App iOS + Android bundles (compile check)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: npm }
+      - run: npm ci
+      - name: Bundle for iOS and Android (Hermes), so a native-only break fails the PR
+        run: npx expo export --platform ios --platform android
+        working-directory: apps/app

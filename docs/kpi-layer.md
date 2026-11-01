@@ -23,8 +23,11 @@ Other modules obtain a figure with `computeKpi` / `kpiValue` (same live access c
 | `sponsor_fulfilment` | accepted / due deliverables (cancelled and excepted removed) | + event, brand |
 | `venue_utilisation` | confirmed booked minutes / opening-hour minutes (venue time zone) | platform, organisation, venue |
 | `athlete_availability` | share of active squad players whose status is `available` now; groups under 5 hidden outside a team you manage; no clinical data read | platform, organisation, team |
+| `first_completed_activity`, `repeat_participants`, `activation_rate`, `vacancy_fill_rate`, `booking_failure_rate`, `payment_failure_rate`, `provider_earnings` | growth & participation metrics added in #73 | see [`growth-analytics.md`](growth-analytics.md) |
 
 A record belongs to a scope when its event, venue, team, organisation or brand is in that scope. Money is never summed across currencies.
+
+Experiments, consent-aware telemetry, attribution and data-quality indicators live in [`growth-analytics.md`](growth-analytics.md); they extend this layer rather than duplicate it. The new `provider` scope is always the caller (a provider's own earnings).
 
 ## API (tag *Analytics*; REST + OpenAPI + MCP from one definition)
 `list_kpi_catalogue`, `get_kpi_definition`, `list_kpi_scopes`, `get_kpi_value`, `list_kpi_records`, `create/list/get/update/archive_kpi_dashboard`,
@@ -49,3 +52,11 @@ A record belongs to a scope when its event, venue, team, organisation or brand i
 ## Known gaps
 Legacy dashboards are not yet rewired to call the layer (only the guard test prevents new conflicting definitions); venue utilisation ignores maintenance
 closures; department-scoped sponsor members cannot use brand-wide analytics; native iOS/Android devices were not run (web build verified at phone, tablet and desktop widths).
+
+## Federation census (#703)
+Scope type `federation` (a governing body and the bodies recognised under it), read live with `authority()`: the caller needs a reports role on the body or one
+above it that covers every sport and jurisdiction (404 otherwise, 403 with the reason when the role is too narrow). Metrics `members`, `new_members`,
+`licence_renewals`, `renewal_rate` (all version 1) carry `minCell: 5` (ratio: `minGroup: 5`): person counts below 5 are hidden together with the next
+smallest figure, source record counts are hidden with them, and `drillScopes: []` makes them aggregate-only. New dimensions: `body`, `region`, `club`,
+`age_band`, `gender` (a keyed blind index, labelled in the engine), `status`. Every metric's facts gain a `body_id` column outside its own SQL, so no existing
+definition hash changed.

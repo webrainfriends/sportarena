@@ -1,6 +1,7 @@
 // RFP builder: a guided flow from context to approval. Every structured answer uses the control that fits it (date and time pickers in the
 // tender's own time zone, money fields in the right currency, steppers for numbers, chips for fixed choices, search-and-pick for people,
 // organisations, events and venues). Each step saves to the draft; the server validates before approval and the rubric freezes on approval.
+import { docMaxMb } from '../upload-limits';
 import React, { useEffect, useMemo, useState } from 'react';
 import { View } from 'react-native';
 import { api } from '../api';
@@ -74,7 +75,7 @@ function PackDocuments({ id, toast }) {
   const act = async (fn, msg) => { try { await fn(); toast(msg); docs.reload(); } catch (e) { toast(explain(e)); } };
   return (
     <Panel title={t('tb.docs_title')} right={docs.data ? <Status tone="neutral" label={current.length === 1 ? t('tb.docs_one', { n: current.length }) : t('tb.docs_many', { n: current.length })} /> : null}>
-      <T size={13} color={c.mute}>{t('tb.docs_intro')}</T>
+      <T size={13} color={c.mute}>{t('tb.docs_intro', { mb: docMaxMb() })}</T>
       {docs.error ? <ErrorBox error={docs.error} onRetry={docs.reload} /> : null}
       {current.map((d) => (
         <View key={d.id} style={{ gap: 8, borderWidth: 1, borderColor: c.line, borderRadius: 12, padding: 12 }}>

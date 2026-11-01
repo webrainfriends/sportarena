@@ -2,6 +2,7 @@
 // A guardian link only becomes active after (1) the other person accepts the invitation, (2) evidence is submitted, (3) an existing
 // guardian approves any additional guardian, and (4) the platform team reviews it. Consent is per purpose, expires, and stops counting
 // the moment the guardian who gave it is no longer verified. Every state change lands in an append-only history.
+import { B64_MAX_CHARS, documentMaxBytes } from '../platform-settings.js';
 import { z } from 'zod';
 import { cap, id, page } from '../registry.js';
 import { one, many, tx } from '../db.js';
@@ -170,7 +171,7 @@ cap({
 const evidenceIn = z.object({
   label: z.string().max(120).optional(),
   reference: z.string().min(2).max(500).optional().describe('https link or reference number'),
-  file_name: z.string().max(120).optional(), data: z.string().max(7_200_000).optional().describe('base64 file: PDF, JPEG, PNG or WebP, up to 5 MB'),
+  file_name: z.string().max(120).optional(), data: z.string().max(B64_MAX_CHARS).optional().describe('base64 file: PDF, JPEG, PNG or WebP, up to the platform document limit'),
 }).refine((e) => e.reference || e.data, 'Give a reference or attach a file');
 
 cap({

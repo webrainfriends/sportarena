@@ -11,11 +11,14 @@ import { useBasket } from '../basket';
 import { Bubble, Btn, Card, Chip, Empty, ErrorBox, Field, H1, H2, Loading, Row, Screen, Seg, Section, Sheet, T, Tag } from '../ui';
 import { FormSheet } from '../FormSheet';
 import { Calendar } from '../pickers';
+import { t } from '../i18n';
+import { QrCode } from './passport';
 import { c } from '../theme';
 import { PaySheet } from '../PaySheet';
 import { WalletApplySheet } from './wallet';
 import { PointsSheet } from './rewards';
 import { PassApplySheet } from './plans';
+import { track } from '../track';
 import { NewCaseSheet } from './cases';
 import { AttachSessionsSheet } from './training-venue';
 import { currentDevice, disablePush, enablePush, pushSupport } from '../push';
@@ -53,6 +56,7 @@ export function Basket() {
     setBusy(true);
     try {
       const r = await api.post('/reservations', body());
+      track('booking_completed', { entityType: 'reservation', entityId: r.id });
       clear(); toast(`Booked ${r.code} 🎉`); replace('Reservation', { id: r.id });
     } catch (e) { toast(e.message); setQuote(null); api.post('/reservations/quote', body()).then(setQuote).catch(() => {}); } finally { setBusy(false); }
   };
@@ -183,6 +187,7 @@ export function Reservation({ id }) {
   const [report, setReport] = useState(false);
   const [moving, setMoving] = useState(null);
   const [cancelAll, setCancelAll] = useState(false);
+  const [qr, setQr] = useState(null);
   const [paying, setPaying] = useState(null);
   const [attaching, setAttaching] = useState(false);
   const [useWallet, setUseWallet] = useState(null);
@@ -230,6 +235,7 @@ export function Reservation({ id }) {
             </View>
             {b.status === 'confirmed' ? (
               <View style={{ flexDirection: 'row', gap: 8, marginTop: 10 }}>
+                <Btn small title={`▦ ${t('vf.qr.show')}`} color={c.mint} ink={c.ink} onPress={() => setQr(b)} accessibilityLabel={t('vf.qr.show')} />
                 <Btn small title="Change time" color={c.violet} onPress={() => setMoving(b)} />
                 <Btn small title="Cancel this slot" color={c.paper} ink={c.red} onPress={() => cancelLine(b)} />
               </View>
@@ -288,6 +294,9 @@ export function Reservation({ id }) {
       {useWallet ? <WalletApplySheet invoice={useWallet} onClose={() => setUseWallet(null)} onDone={r.reload} /> : null}
       {paying ? <PaySheet target={{ id: paying.id, label: `${paying.venue_name} · ${paying.number}`, amount: paying.total_cents - (paying.credits_cents ?? 0), currency: paying.currency }} onClose={() => setPaying(null)} onDone={r.reload} /> : null}
       <MoveSheet booking={moving} onClose={() => setMoving(null)} onDone={() => { setMoving(null); r.reload(); }} />
+      <Sheet visible={!!qr} onClose={() => setQr(null)} title={t('vf.qr.title')}>
+        {qr ? <BookingQr booking={qr} /> : null}
+      </Sheet>
       <FormSheet visible={cancelAll} onClose={() => setCancelAll(false)} title="Cancel the whole booking?" submitLabel="Yes, cancel everything" color={c.red}
         fields={[{ key: 'reason', label: 'Reason', optional: true }]}
         onSubmit={async (v) => { const out = await api.del(`/reservations/${id}`, v); r.reload(); return out.refund_cents ? `Cancelled — refund due ${moneyIn(out.refund_cents, x.currency)}` : 'Cancelled'; }} />
@@ -565,6 +574,18 @@ export function Notifications() {
           </Card>
         ) : <Loading />}
       </Section>
+      <Section title={t('community.notify_title')} color={c.pink}>
+        {p?.social_categories ? (
+          <Card>
+            {['people', 'communities', 'comments'].map((k) => (
+              <View key={k}>
+                <Line k={t(`community.notify_${k}`)} v="" />
+                <Seg options={[{ value: true, label: t('common.on') }, { value: false, label: t('common.off') }]} value={p.social_categories[k]} onChange={(v) => setPref({ social_categories: { [k]: v } })} color={c.pink} />
+              </View>
+            ))}
+          </Card>
+        ) : <Loading />}
+      </Section>
       <Section title="Quiet hours and urgent notices" color={c.violet}>{p ? <QuietHoursCard prefs={p} onChange={setPref} /> : <Loading />}</Section>
       <Section title="Push" color={c.violet}><PushCard /></Section>
       <Section title="WhatsApp" color={c.lime}><WhatsAppCard onChanged={prefs.reload} /></Section>
@@ -574,5 +595,21 @@ export function Notifications() {
       <Section title="Slot ballots" color={c.violet}><MyBallots /></Section>
       <Section title="Slot alerts" color={c.sun}><AlertsList /></Section>
     </Screen>
+  );
+}
+
+/** The unique QR of one confirmed booking. Venue staff scan it under "Confirm check-ins"; it works once, for that slot only. */
+function BookingQr({ booking }) {
+  const p = useLoad(() => api.get(`/bookings/${booking.id}/pass`), [booking.id]);
+  if (p.loading && !p.data) return <Loading />;
+  if (p.error) return <ErrorBox error={p.error} onRetry={p.reload} />;
+  return (
+    <View style={{ alignItems: 'center', gap: 10, paddingBottom: 8 }}>
+      <T weight="800" size={16}>{booking.resource_name} · {booking.venue_name}</T>
+      <T size={13} color={c.mute}>{dateTimeIn(booking.starts_at, booking.timezone)} → {timeIn(booking.ends_at, booking.timezone)}</T>
+      {p.data.token ? <QrCode value={p.data.token} size={240} label={t('vf.qr.title')} /> : <T color={c.red}>{p.data.status}</T>}
+      {p.data.checked_in_at ? <Tag label={`✓ ${t('vf.ci.badge')}`} color={c.mint} /> : null}
+      <T size={13} color={c.mute} style={{ textAlign: 'center' }}>{t('vf.qr.note')}</T>
+    </View>
   );
 }

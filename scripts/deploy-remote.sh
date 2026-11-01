@@ -158,7 +158,7 @@ MEDIA_DIR="$KEY_DIR/media"
 sudo mkdir -p "$MEDIA_DIR"; sudo chown "$(id -un):$(id -gn)" "$MEDIA_DIR"
 set_env MEDIA_DIR "$MEDIA_DIR"
 # Payments: only written when provided, so a deploy without keys never wipes keys set earlier.
-for v in STRIPE_SECRET_KEY STRIPE_WEBHOOK_SECRET PAYPAL_CLIENT_ID PAYPAL_CLIENT_SECRET PAYPAL_WEBHOOK_ID PAYPAL_ENV PAYMENT_CURRENCY PROVIDER_COMMISSION_BP SETTLEMENT_HOLD_DAYS SETTLEMENT_PAYOUTS SETTLEMENT_CURRENCIES SETTLEMENT_MIN_PAYOUT_CENTS EXPO_ACCESS_TOKEN ANTHROPIC_API_KEY AI_MODEL NOTIFY_WEBHOOK_URL NOTIFY_WEBHOOK_SECRET WORKER_MODE PLATFORM_ADMIN_EMAIL PLATFORM_ADMIN_HANDLE PLATFORM_ADMIN_NAME PLATFORM_ADMIN_PASSWORD MFA_ENFORCE GOOGLE_CLIENT_ID APPLE_CLIENT_ID SUPER_ADMIN_EMAIL; do
+for v in STRIPE_SECRET_KEY STRIPE_WEBHOOK_SECRET PAYPAL_CLIENT_ID PAYPAL_CLIENT_SECRET PAYPAL_WEBHOOK_ID PAYPAL_ENV PAYMENT_CURRENCY PROVIDER_COMMISSION_BP SETTLEMENT_HOLD_DAYS SETTLEMENT_PAYOUTS SETTLEMENT_CURRENCIES SETTLEMENT_MIN_PAYOUT_CENTS EXPO_ACCESS_TOKEN ANTHROPIC_API_KEY AI_MODEL NOTIFY_WEBHOOK_URL NOTIFY_WEBHOOK_SECRET WORKER_MODE PLATFORM_ADMIN_EMAIL PLATFORM_ADMIN_HANDLE PLATFORM_ADMIN_NAME PLATFORM_ADMIN_PASSWORD MFA_ENFORCE GOOGLE_CLIENT_ID GOOGLE_ANDROID_CLIENT_ID APPLE_CLIENT_ID SUPER_ADMIN_EMAIL; do
   val="$(printf '%s' "${!v:-}" | tr -d '\r\n' | xargs)"
   [ -n "$val" ] && set_env "$v" "$val"
 done
@@ -284,7 +284,9 @@ server {
     server_name _;
     ${SSL_CONF}
 
-    client_max_body_size 2m;
+    # The ceiling for any upload (documents go up to 50 MB; as base64 JSON that is ~67 MB). The API enforces the real, admin-set limit per route
+    # and keeps its own small JSON limit everywhere else, so this only lets a legitimate upload reach it.
+    client_max_body_size 72m;
 
     # profile photos and post media: the API enforces the real limits (10 MB photos, 60 MB videos); nginx's 2m default would 413 phone photos
     location ~ ^/api/v1/(me/avatar|market/media)$ {

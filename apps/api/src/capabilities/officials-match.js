@@ -72,7 +72,7 @@ cap({
       };
     }
     return {
-      fixture: { id: f.id, scheduled_at: f.scheduled_at, duration_min: f.duration_min, status: f.status, round: f.round, timezone: row.timezone ?? 'UTC' },
+      fixture: { id: f.id, event_id: f.event_id, scheduled_at: f.scheduled_at, duration_min: f.duration_min, status: f.status, round: f.round, timezone: row.timezone ?? 'UTC' },
       event: { id: ev.id, name: ev.name, official_policy: ev.official_policy, youth },
       sport: { id: row.sport_id, slug: row.slug, name: row.name, emoji: row.emoji },
       teams: { home: row.home_name, away: row.away_name }, venue: { resource: row.resource_name, name: row.venue_name, city: row.venue_city },

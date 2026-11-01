@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Platform, View } from 'react-native';
 import { api } from '../api';
+import { openProtected } from '../open-file';
 import { useLoad } from '../hooks';
 import { useSession } from '../session';
 import { useNav } from '../nav';
@@ -18,6 +19,8 @@ import { ProgramBudget } from './sponsor-budgets';
 import { fieldsOf, filled, fmtMoney } from '../application-forms';
 import { SponsorTasks, ApplicationThread } from './sponsor-collaboration';
 import { ApplicationEvidence } from './sponsor-impact';
+import { EligibilityCheckSheet, EligibilityRules, OutcomeTag, ScreeningPanel } from './sponsor-screening';
+import { t } from '../i18n';
 
 // Amounts are minor units of THEIR OWN currency; currencies are never added together.
 const fmt = (cents, cur) => { try { const f = new Intl.NumberFormat(undefined, { style: 'currency', currency: cur }); return f.format(cents / 10 ** f.resolvedOptions().maximumFractionDigits); } catch { return `${cents} ${cur ?? ''}`; } };
@@ -152,6 +155,7 @@ export function SponsorProgram({ id }) {
         ) : <T size={12} color={c.mute} style={{ marginTop: 8 }}>Your role can read this program; managers and approvers run it.</T>}
       </Card>
       <SponsorTasks target={{ program_id: p.id }} shareable={false} />
+      <EligibilityRules program={p} may={may} onChanged={reloadAll} />
       <Section title="Rounds" color={c.sun} action={may && ['draft', 'published'].includes(p.status) ? '+ Round' : undefined} onAction={() => setForm('round')}>
         {p.rounds.length ? p.rounds.map((r) => (
           <Card key={r.id} color={c.sunSoft}>
@@ -191,6 +195,7 @@ export function SponsorProgram({ id }) {
         {apps.error ? <LoadError error={apps.error} onRetry={apps.reload} /> : apps.loading && !apps.data ? <Loading /> : apps.data?.length ? apps.data.map((a) => (
           <Card key={a.id}>
             <View style={{ flexDirection: 'row', gap: 8, alignItems: 'center' }}><View style={{ flex: 1 }}><T weight="900">{a.target_type === 'athlete' && a.target_id === a.applicant_id ? a.display_name : `${a.display_name} → ${a.target_name ?? a.target_type}`}</T><T size={12} color={c.mute}>{a.round_name} · asks {fmt(a.requested_cents, a.currency)}{a.awarded_cents ? ` · awarded ${fmt(a.awarded_cents, a.currency)}` : ''} · terms v{a.round_terms_version}</T></View><Tag label={a.status} color={STATUS_TONE[a.status]} /></View>
+            {a.status !== 'draft' ? <View style={{ flexDirection: 'row', marginTop: 6 }}><OutcomeTag outcome={a.screening_outcome} /></View> : null}
             {a.pitch ? <T size={13} style={{ marginTop: 6 }}>{a.pitch}</T> : null}
             {a.receipt_no ? <T size={12} color={c.mute}>Receipt {a.receipt_no} · form v{a.form_version}</T> : null}
             {a.decision_reason ? <T size={12} color={c.mute}>Note: {a.decision_reason}</T> : null}
@@ -245,7 +250,7 @@ function ReviewSheet({ app, may, onClose, onChanged }) {
   const [reason, setReason] = useState('');
   const [asking, setAsking] = useState(false);
   const d = detail.data;
-  const open = async (x) => { try { const blob = await api.download(`/application-files/${x.id}`); if (Platform.OS === 'web') { const u = URL.createObjectURL(blob); window.open(u, '_blank', 'noopener'); setTimeout(() => URL.revokeObjectURL(u), 120000); } else toast('Open documents in the web app'); } catch (e) { toast(explain(e)); } };
+  const open = async (x) => { try { await openProtected(`/application-files/${x.id}`, x.file_name ?? `file-${x.id}`); } catch (e) { toast(explain(e)); } };
   const send = async () => { try { await api.post(`/program-applications/${app.id}/request-correction`, { reason, fields: pick }); toast('Sent back to the applicant'); setAsking(false); setPick([]); setReason(''); onChanged(); onClose(); } catch (e) { toast(explain(e)); } };
   const fields = d?.form ? fieldsOf(d.form.definition) : [];
   const show = (f) => { const v = d.answers[f.key]; return Array.isArray(v) ? v.map((x) => f.options?.find((o) => o.value === x)?.label ?? x).join(', ') : f.type === 'yesno' ? (v ? 'Yes' : 'No') : f.type === 'money' ? fmtMoney(v, d.currency) : f.options?.find((o) => o.value === v)?.label ?? String(v); };
@@ -264,6 +269,7 @@ function ReviewSheet({ app, may, onClose, onChanged }) {
             </View>
           ))}
           {d.events.map((e, i) => <T key={i} size={12} color={c.mute}>{e.kind.replace(/_/g, ' ')} · {new Date(e.created_at).toLocaleString()}{e.note ? ` — ${e.note}` : ''}</T>)}
+          {d.status !== 'draft' ? <ScreeningPanel applicationId={app.id} may={may} onChanged={onChanged} /> : null}
           {may && d.status === 'submitted' && !asking ? <Btn small title="Return for correction" color={c.paper} ink={c.ink} style={{ alignSelf: 'flex-start' }} onPress={() => setAsking(true)} /> : null}
           {asking ? (
             <View style={{ gap: 8 }}>
@@ -328,9 +334,9 @@ function OwnerSheet({ visible, onClose, onPick }) {
 }
 
 /** The application form, shared by the opportunities list and the call page. `apply` is { program, round } or null. */
-function ApplySheet({ apply, onClose, onDone }) {
+/** What the signed-in person could apply for to this call (themselves, their teams, their events), filtered by the program's rules and any invitation. */
+function useApplyTargets(apply) {
   const { user } = useSession();
-  const { push } = useNav();
   const teams = useLoad(() => (apply ? api.get('/teams', { mine: true, limit: 50 }) : Promise.resolve([])), [!!apply]);
   const evs = useLoad(() => (apply ? api.get('/events', { organizer_id: user.id, limit: 50 }) : Promise.resolve([])), [!!apply]);
   const el = apply?.program.eligibility?.target_types ?? ['athlete', 'team', 'event'];
@@ -341,6 +347,18 @@ function ApplySheet({ apply, onClose, onDone }) {
     ...(el.includes('team') ? (teams.data ?? []).filter((t) => allowed('team', t.id)).map((t) => ({ value: `team:${t.id}`, label: `Team · ${t.name}` })) : []),
     ...(el.includes('event') ? (evs.data ?? []).filter((e) => allowed('event', e.id)).map((e) => ({ value: `event:${e.id}`, label: `Event · ${e.name}` })) : []),
   ];
+  return targets;
+}
+
+function CheckSheet({ check, onClose }) {
+  const targets = useApplyTargets(check);
+  return <EligibilityCheckSheet round={check?.round ?? null} targets={targets} currency={check?.program.currency} onClose={onClose} />;
+}
+
+function ApplySheet({ apply, onClose, onDone }) {
+  const { user } = useSession();
+  const { push } = useNav();
+  const targets = useApplyTargets(apply);
   return (
     <FormSheet visible={!!apply} onClose={onClose} title={apply ? `Apply · ${apply.program.name}` : ''} submitLabel={apply?.round.has_form ? 'Continue to the form' : 'Submit application'}
       fields={[{ key: 'sec', type: 'section', label: apply ? `${apply.round.name} · closes ${deadline(apply.round.closes_at ?? apply.round.closes_on, apply.round.timezone)}${apply.program.max_award_cents ? ` · up to ${fmt(apply.program.max_award_cents, apply.program.currency)}` : ''}` : '' },
@@ -363,6 +381,7 @@ const Summary = ({ p }) => <T size={12} color={c.mute}>{[p.sports.length ? p.spo
 export function FundingOpportunities() {
   const { user, toast } = useSession();
   const { push } = useNav();
+  const [check, setCheck] = useState(null);
   const [q, setQ] = useState('');
   const [sport, setSport] = useState(null);
   const [thread, setThread] = useState(null);
@@ -394,6 +413,7 @@ export function FundingOpportunities() {
           {(p.rounds ?? []).map((r) => (
             <View key={r.id} style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 8 }}>
               <T size={12} style={{ flex: 1 }}>{r.name} · closes {deadline(r.closes_at, r.timezone)}</T>
+              <Btn small title={t('scr.check_btn')} color={c.paper} ink={c.ink} onPress={() => setCheck({ program: p, round: r })} accessibilityLabel={`${t('scr.check_btn')}: ${p.name}, ${r.name}`} />
               <Btn small title="Apply" color={c.pink} onPress={() => setApply({ program: p, round: r })} accessibilityLabel={`Apply to ${p.name}, ${r.name}`} />
             </View>
           ))}
@@ -408,6 +428,7 @@ export function FundingOpportunities() {
             <View style={{ flexDirection: 'row', gap: 8, alignItems: 'center' }}><View style={{ flex: 1 }}><T weight="900">{a.program_name} · {a.round_name}</T><T size={12} color={c.mute}>{a.sponsor_name} · for {a.target_name ?? a.target_type} · {a.requested_cents != null ? `asked ${fmt(a.requested_cents, a.currency)}` : 'no amount yet'}{a.awarded_cents ? ` · awarded ${fmt(a.awarded_cents, a.currency)}` : ''}</T></View><Tag label={a.status} color={STATUS_TONE[a.status]} /></View>
             <T size={12} color={c.mute}>{a.receipt_no ? `Receipt ${a.receipt_no} · ` : ''}{a.form_version ? `form v${a.form_version} · ` : ''}Made under round terms v{a.round_terms_version}, closing {deadline(a.terms_snapshot?.round?.closes_at ?? a.terms_snapshot?.round?.closes_on, a.terms_snapshot?.round?.timezone)}.</T>
             {a.decision_reason ? <T size={12}>Note: {a.decision_reason}</T> : null}
+            {a.status !== 'draft' ? <ScreeningPanel applicationId={a.id} may={false} /> : null}
             <ApplicantEvaluation application={a} onChanged={reload} />
             <ApplicationEvidence application={a} side="applicant" onChanged={reload} />
             <View style={{ flexDirection: 'row', gap: 8, marginTop: 8 }}>
@@ -422,6 +443,7 @@ export function FundingOpportunities() {
       </Section>
       {thread ? <ApplicationThread applicationId={thread.id} applicant onClose={() => setThread(null)} /> : null}
       <ApplySheet apply={apply} onClose={() => setApply(null)} onDone={reload} />
+      <CheckSheet check={check} onClose={() => setCheck(null)} />
     </Screen>
   );
 }
@@ -430,6 +452,7 @@ export function FundingOpportunities() {
 export function SponsorCall({ id }) {
   const { user, toast } = useSession();
   const { push } = useNav();
+  const [check, setCheck] = useState(null);
   const [apply, setApply] = useState(null);
   const [open, setOpen] = useState(null); // FAQ id
   const call = useLoad(() => api.get(`/funding-opportunities/${id}`), [id]);
@@ -455,6 +478,7 @@ export function SponsorCall({ id }) {
           <Card key={r.id} color={c.sunSoft}>
             <View style={{ flexDirection: 'row', gap: 8, alignItems: 'center' }}><T weight="900" style={{ flex: 1 }}>{r.name}</T><Tag label={r.state} color={STATUS_TONE[r.state]} /></View>
             <T size={12} color={c.mute}>{r.state === 'scheduled' ? `Opens ${deadline(r.opens_at, r.timezone)} · ` : ''}{r.state === 'closed' ? 'Closed' : 'Closes'} {deadline(r.closes_at, r.timezone)}</T>
+            {r.state === 'open' && p.can_apply ? <Btn small title={t('scr.check_btn')} color={c.paper} ink={c.ink} style={{ alignSelf: 'flex-start', marginTop: 8 }} onPress={() => setCheck({ program: p, round: r })} accessibilityLabel={`${t('scr.check_btn')}: ${r.name}`} /> : null}
             {r.state === 'open' && p.can_apply ? <Btn small title="Apply" color={c.pink} style={{ alignSelf: 'flex-start', marginTop: 8 }} onPress={() => setApply({ program: p, round: r })} accessibilityLabel={`Apply to ${p.name}, ${r.name}`} /> : null}
           </Card>
         )) : <Empty emoji="🗓️" title="No rounds yet" />}
@@ -469,6 +493,7 @@ export function SponsorCall({ id }) {
         )) : <Empty emoji="❓" title="No FAQs yet" />}
       </Section>
       <ApplySheet apply={apply} onClose={() => setApply(null)} onDone={call.reload} />
+      <CheckSheet check={check} onClose={() => setCheck(null)} />
     </Screen>
   );
 }
