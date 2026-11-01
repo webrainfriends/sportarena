@@ -5,6 +5,7 @@ import { many, tx } from './db.js';
 import { notify } from './notify.js';
 import { guardiansOf } from './youth.js';
 import { managerIds } from './compliance.js';
+import { pollBackgroundChecks } from './background-checks.js';
 
 const stageFor = (daysLeft, reminderDays, escalateAfter) => {
   if (daysLeft < 0) return -daysLeft > escalateAfter ? 'escalated' : 'expired';
@@ -44,4 +45,4 @@ export async function remindCompliance() {
   return n;
 }
 
-export const runComplianceSweeps = async () => ({ reminders: await remindCompliance() });
+export const runComplianceSweeps = async () => ({ reminders: await remindCompliance(), background_checks: await pollBackgroundChecks() });

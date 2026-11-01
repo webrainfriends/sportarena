@@ -12,6 +12,7 @@ import { createMcpServer } from './mcp.js';
 import { pool } from './db.js';
 import { webhookRouter } from './payments/webhooks.js';
 import { commsWebhookRouter } from './comms-webhooks.js';
+import { backgroundCheckWebhookRouter } from './background-check-webhooks.js';
 import { signatureCallbackRouter } from './capabilities/sponsorship-contracts.js';
 import { mediaRouter } from './media.js';
 import { marketMediaRouter } from './market-media.js';
@@ -80,6 +81,7 @@ export function createApp() {
   }));
   app.use(cookieAuth);
   app.use('/api/v1/webhooks/comms', commsWebhookRouter());
+  app.use('/api/v1/webhooks/background-checks', backgroundCheckWebhookRouter());
   app.use('/api/v1/webhooks', webhookRouter());
   app.use('/api/v1/webhooks/signatures', signatureCallbackRouter());
   // Media: streaming upload + file serving (binary, so outside the JSON capability router); base64 uploads get a larger JSON limit on their own path.
