@@ -17,7 +17,7 @@ const COACH = ['coach'];
 const PAY = { purpose_type: 'coach_subscription_period' };
 
 /** Who the coaching is for: the caller, or a young person the caller is a verified guardian of. Anyone else gets a 404. */
-async function athleteFor(c, user, athleteId) {
+export async function athleteFor(c, user, athleteId) {
   if (!athleteId || athleteId === user.id) {
     if (await isYouth(user.id, c)) {
       if ((await guardiansOf(user.id, c)).length) throw forbidden('A guardian subscribes for you. Ask them to do it under Family & guardians.');

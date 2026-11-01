@@ -21,7 +21,7 @@ import { NewCaseSheet } from './cases';
 import { SeriesBookingSheet, VenueLine } from './training-venue';
 import { SeriesSheet } from './coach-series';
 import { CoachClassList } from './coach-classes';
-import { SubscribeSheet } from './coach-subscriptions';
+import { BuyPackageSheet, SubscribeSheet, isRedeemablePack } from './coach-subscriptions';
 import { Grid, PaySheet, Pill, StatusPill, nice, useCols } from './marketplace';
 import { c, grad, toneFor } from '../theme';
 import { dateTimeIn, localDate, localToIso, moneyIn, timeIn, todayIn, WEEKDAYS } from '../vtime';
@@ -143,7 +143,7 @@ export function CoachToolGrid({ push, counts = {} }) {
 export function BookCoachSheet({ coach, onClose, onDone }) {
   const { toast, user } = useSession();
   const detail = useLoad(() => api.get(`/coaches/${coach.id}`), [coach.id]);
-  const cards = (detail.data?.rate_cards ?? []).filter((k) => k.unit !== 'month' && (!k.sport_slug || k.sport_slug === coach.sport_slug));   // a monthly card is subscribed to on the profile, not booked per session
+  const cards = (detail.data?.rate_cards ?? []).filter((k) => k.unit !== 'month' && !isRedeemablePack(k) && (!k.sport_slug || k.sport_slug === coach.sport_slug));   // a monthly card is subscribed to on the profile, not booked per session
   const [cardId, setCardId] = useState(null), [athleteId, setAthleteId] = useState(user.id);
   const kids = useLoad(() => api.get('/youth/guardian-links', { as: 'guardian', status: 'active', limit: 50 }).catch(() => []), []);
   const intro = useLoad(() => api.get(`/coaches/${coach.id}/intro-status`, athleteId !== user.id ? { athlete_id: athleteId } : {}).catch(() => ({ offers: [] })), [coach.id, athleteId]);
@@ -152,7 +152,13 @@ export function BookCoachSheet({ coach, onClose, onDone }) {
   // an included session of a monthly subscription with this coach covers the booking (individual sessions only)
   const subs = useLoad(() => api.get('/me/coach-subscriptions', { limit: 50 }).catch(() => []), []);
   const mySub = (subs.data ?? []).find((s) => s.coach_id === coach.id && s.athlete_id === athleteId && s.i_pay && s.sessions_left > 0 && ['active', 'past_due', 'paused'].includes(s.status));
-  const [useIncluded, setUseIncluded] = useState(true);
+  // a prepaid package of this coach (for this athlete) can cover the session too: one "Pay with" choice for single / subscription / package
+  const pkgs = useLoad(() => api.get('/me/coach-packages', { status: 'open', limit: 50 }).catch(() => []), []);
+  const myPkgs = (pkgs.data ?? []).filter((p) => p.coach_id === coach.id && p.athlete_id === athleteId && p.i_pay && p.status === 'active' && p.sessions_left > 0 && (!p.sport_slug || p.sport_slug === coach.sport_slug));
+  const [fund, setFund] = useState(null);
+  const indiv = !card || card.audience === 'individual';
+  const payPick = !indiv ? 'pay' : fund && (fund === 'pay' || (fund === 'sub' && mySub) || myPkgs.some((p) => `pkg:${p.id}` === fund)) ? fund : myPkgs[0] ? `pkg:${myPkgs[0].id}` : mySub ? 'sub' : 'pay';
+  const useIncluded = payPick === 'sub', pkgId = payPick.startsWith('pkg:') ? payPick.slice(4) : null;
   const [hours, setHours] = useState(60), [people, setPeople] = useState(1), [teamId, setTeamId] = useState(null), [eventId, setEventId] = useState(null);
   const [day, setDay] = useState(null), [pick, setPick] = useState(null), [date, setDate] = useState(), [time, setTime] = useState(), [note, setNote] = useState('');
   const [busy, setBusy] = useState(false), [err, setErr] = useState(null), [repeat, setRepeat] = useState(false);
@@ -176,7 +182,7 @@ export function BookCoachSheet({ coach, onClose, onDone }) {
     try {
       const hire = await api.post('/hires', { coach_id: coach.id, sport: coach.sport_slug, starts_at: startsAt, duration_min: mins, ...(note.trim() ? { note: note.trim() } : {}),
         ...(athleteId !== user.id ? { athlete_id: athleteId } : {}),
-        ...(mySub && useIncluded && (!card || card.audience === 'individual') ? { subscription_id: mySub.id } : {}),
+        ...(mySub && useIncluded ? { subscription_id: mySub.id } : {}), ...(pkgId ? { package_id: pkgId } : {}),
         ...(card ? { rate_card_id: card.id, participants: people, ...(teamId ? { team_id: teamId } : {}), ...(eventId ? { event_id: eventId } : {}) } : {}) });
       toast(hire.payment_status === 'unpaid' ? 'Requested — pay to let the coach confirm' : 'Requested — the coach will confirm');
       await onDone(hire); onClose();
@@ -186,10 +192,22 @@ export function BookCoachSheet({ coach, onClose, onDone }) {
     <Sheet visible onClose={onClose} title={`Book ${coach.display_name}`}>
       <T size={13} color={c.mute}>{coach.sport_emoji} {coach.sport}</T>
       {kids.data?.length ? <MenuField label={t('coaching.bookingFor')} value={athleteId} onChange={(v) => { setAthleteId(v); setCardId(null); }} options={[{ value: user.id, label: user.display_name }, ...kids.data.map((l) => ({ value: l.child_id, label: l.child?.display_name ?? 'Child' }))]} /> : null}
-      {mySub && (!card || card.audience === 'individual') ? (
-        <Card pad={12} color={useIncluded ? c.mintSoft : c.paper} onPress={() => setUseIncluded(!useIncluded)} accessibilityLabel={`${t('coachSub.bookIncluded')}. ${t('coachSub.sessionsLeft', { n: mySub.sessions_left })}`}>
-          <T weight="800">{useIncluded ? '✓ ' : ''}{t('coachSub.bookIncluded')}</T><T size={12} color={c.mute}>{t('coachSub.sessionsLeft', { n: mySub.sessions_left })} · {mySub.title}</T>
-        </Card>
+      {indiv && (myPkgs.length || mySub) ? (
+        <View style={{ gap: 8 }}>
+          <T weight="800" size={13}>{t('pkg.payWith')}</T>
+          <Card pad={12} color={payPick === 'pay' ? c.pinkSoft : c.paper} onPress={() => setFund('pay')} accessibilityLabel={t('pkg.paySingle')}><T weight="700">{payPick === 'pay' ? '✓ ' : ''}{t('pkg.paySingle')}</T></Card>
+          {mySub ? (
+            <Card pad={12} color={payPick === 'sub' ? c.mintSoft : c.paper} onPress={() => setFund('sub')} accessibilityLabel={`${t('coachSub.bookIncluded')}. ${t('coachSub.sessionsLeft', { n: mySub.sessions_left })}`}>
+              <T weight="800">{payPick === 'sub' ? '✓ ' : ''}{t('coachSub.bookIncluded')}</T><T size={12} color={c.mute}>{t('coachSub.sessionsLeft', { n: mySub.sessions_left })} · {mySub.title}</T>
+            </Card>
+          ) : null}
+          {myPkgs.map((p) => (
+            <Card key={p.id} pad={12} color={payPick === `pkg:${p.id}` ? c.mintSoft : c.paper} onPress={() => setFund(`pkg:${p.id}`)} accessibilityLabel={t('pkg.use', { title: p.title, n: p.sessions_left })}>
+              <T weight="800">{payPick === `pkg:${p.id}` ? '✓ ' : ''}{t('pkg.use', { title: p.title, n: p.sessions_left })}</T>
+              {p.expires_at ? <T size={12} color={c.mute}>{t('pkg.expires', { date: new Date(p.expires_at).toLocaleDateString(locale, { day: 'numeric', month: 'short' }) })}</T> : null}
+            </Card>
+          ))}
+        </View>
       ) : null}
       {cards.length ? (
         <View style={{ gap: 8 }}>
@@ -240,7 +258,7 @@ export function BookCoachSheet({ coach, onClose, onDone }) {
       )}
       <Field label="What do you want to work on? (optional)" value={note} onChangeText={setNote} multiline />
       <Card color={c.pinkSoft} pad={12}>
-        <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}><T weight="700">Total</T><T weight="800">{mySub && useIncluded && (!card || card.audience === 'individual') ? t('coachSub.included') : rate ? price(cost, coach.currency) : 'Agreed with the coach'}</T></View>
+        <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}><T weight="700">Total</T><T weight="800">{pkgId ? t('pkg.covered') : useIncluded ? t('coachSub.included') : rate ? price(cost, coach.currency) : 'Agreed with the coach'}</T></View>
         {card?.unit === 'package' && card.sessions_included ? <T size={12} color={c.mute}>Covers {card.sessions_included} sessions; the coach schedules the rest with you.</T> : null}
         <T size={12} color={c.mute}>You pay after the request; the coach confirms once it is paid. Cancel any time and a paid session is refunded.</T>
       </Card>
@@ -534,7 +552,7 @@ export function CoachProfile({ id }) {
   const { user } = useSession();
   const { push } = useNav();
   const d = useLoad(() => api.get(`/coaches/${id}`), [id]);
-  const [sport, setSport] = useState(null), [book, setBook] = useState(false), [paying2, setPaying] = useState(null), [subCard, setSubCard] = useState(null);
+  const [sport, setSport] = useState(null), [book, setBook] = useState(false), [paying2, setPaying] = useState(null), [subCard, setSubCard] = useState(null), [pkgCard, setPkgCard] = useState(null);
   const p = d.data;
   if (d.loading && !p) return <Screen><Loading /></Screen>;
   if (d.error) return <Screen><ErrorBox error={d.error} onRetry={d.reload} /></Screen>;
@@ -587,11 +605,14 @@ export function CoachProfile({ id }) {
               </View>
               <T size={12} color={c.mute} style={{ marginTop: 4 }}>{[k.duration_min && k.unit !== 'hour' ? `${k.duration_min} min` : null, k.audience !== 'individual' ? `${k.min_participants}${k.max_participants ? `–${k.max_participants}` : '+'} people` : null, k.sessions_included ? `${k.sessions_included} sessions` : null, DELIVERY[k.delivery]].filter(Boolean).join(' · ')}</T>
               {k.description ? <T size={13} style={{ marginTop: 4 }}>{k.description}</T> : null}
+              {isRedeemablePack(k) ? <T size={12} color={c.mute} style={{ marginTop: 4 }}>{k.valid_days ? t('pkg.summary', { n: k.sessions_included, days: k.valid_days }) : t('pkg.summaryNoExpiry', { n: k.sessions_included })}</T> : null}
+              {isRedeemablePack(k) && !mine ? <Btn small title={t('pkg.buy')} accessibilityLabel={`${t('pkg.buy')} · ${k.title}`} style={{ alignSelf: 'flex-start', marginTop: 8 }} onPress={() => setPkgCard(k)} /> : null}
               {k.unit === 'month' && !mine ? <Btn small title={t('coachSub.subscribe')} accessibilityLabel={`${t('coachSub.subscribe')} · ${k.title}`} style={{ alignSelf: 'flex-start', marginTop: 8 }} onPress={() => setSubCard(k)} /> : null}
             </Card>
           ))}
         </Section>
       ) : null}
+      {pkgCard ? <BuyPackageSheet card={pkgCard} coach={p} currency={cur} onClose={() => setPkgCard(null)} onDone={() => { setPkgCard(null); d.reload(); }} /> : null}
       {subCard ? <SubscribeSheet card={subCard} coach={p} currency={cur} onClose={() => setSubCard(null)} onDone={() => { setSubCard(null); d.reload(); }} /> : null}
       {p.specialisations.length ? (
         <Section title="Specialisations">

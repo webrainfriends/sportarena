@@ -15,7 +15,7 @@ import { c } from '../theme';
 import { t } from '../i18n';
 import { addDays, moneyIn, todayIn, WEEKDAYS } from '../vtime';
 import { LoyaltyConsole } from './rewards';
-import { CoachLatePayments, CoachSubscribers } from './coach-subscriptions';
+import { CoachLatePayments, CoachPackageBuyers, CoachSubscribers, isRedeemablePack } from './coach-subscriptions';
 
 const deviceTz = (() => { try { return Intl.DateTimeFormat().resolvedOptions().timeZone; } catch { return 'UTC'; } })();
 const LEVELS = ['beginner', 'amateur', 'semi_pro', 'pro'].map((value) => ({ value, label: nice(value).replace(/^./, (x) => x.toUpperCase()) }));
@@ -29,7 +29,7 @@ function CardSheet({ card, specs, currency, onClose, onDone }) {
   const edit = !!card;
   return (
     <FormSheet visible onClose={onClose} title={edit ? 'Edit rate card' : 'New rate card'} submitLabel={edit ? 'Save changes' : 'Add rate card'}
-      initial={edit ? { ...card, block_discount_pct: Number(card.block_discount_pct ?? 0), sport: card.sport_slug ?? undefined, specialisation_id: card.specialisation_id ?? undefined, description: card.description ?? undefined } : { audience: 'individual', delivery: 'in_person', unit: 'hour', duration_min: 60, min_participants: 1, max_participants: 20, sessions_included: 5, active: true }}
+      initial={edit ? { ...card, pkg_expires: card.valid_days != null, block_discount_pct: Number(card.block_discount_pct ?? 0), sport: card.sport_slug ?? undefined, specialisation_id: card.specialisation_id ?? undefined, description: card.description ?? undefined } : { audience: 'individual', delivery: 'in_person', unit: 'hour', duration_min: 60, min_participants: 1, max_participants: 20, sessions_included: 5, active: true }}
       fields={[
         { key: 'title', label: 'Name of this service' },
         { key: 'audience', label: 'Who it is for', type: 'chips', hint: undefined, options: AUDIENCES.map(([value, label]) => ({ value, label })) },
@@ -43,6 +43,8 @@ function CardSheet({ card, specs, currency, onClose, onDone }) {
         { key: 'min_participants', label: 'Fewest people', type: 'stepper', min: 1, max: 500, default: 1, show: (v) => v.audience !== 'individual' },
         { key: 'max_participants', label: 'Most people', type: 'stepper', min: 1, max: 500, default: 20, show: (v) => v.audience !== 'individual' },
         { key: 'sessions_included', label: 'Sessions in the package', type: 'stepper', min: 1, max: 500, default: 5, show: (v) => v.unit === 'package' },
+        { key: 'pkg_expires', label: t('pkg.fieldExpires'), type: 'switch', default: true, show: (v) => v.unit === 'package' },
+        { key: 'valid_days', label: t('pkg.fieldDays'), type: 'stepper', min: 1, max: 1825, step: 7, default: 90, hint: t('pkg.fieldDaysHint'), show: (v) => v.unit === 'package' && v.pkg_expires !== false },
         { key: 'sessions_included', label: t('coachSub.fieldSessions'), type: 'stepper', min: 1, max: 100, default: 4, show: (v) => v.unit === 'month' },
         { key: 'rollover_max', label: t('coachSub.fieldRollover'), type: 'stepper', min: 0, max: 100, default: 0, hint: t('coachSub.fieldRolloverHint'), show: (v) => v.unit === 'month' },
         { key: 'grace_days', label: t('coachSub.fieldGrace'), type: 'stepper', min: 0, max: 30, default: 3, suffix: ' d', hint: t('coachSub.fieldGraceHint'), show: (v) => v.unit === 'month' },
@@ -58,7 +60,7 @@ function CardSheet({ card, specs, currency, onClose, onDone }) {
         const body = { title: v.title, audience: v.audience, delivery: v.delivery, unit: v.unit, price_cents: v.price_cents, per_person: v.unit !== 'month' && !!v.per_person && (v.audience === 'group' || v.audience === 'event'), is_intro: !!v.is_intro, ...(v.is_intro ? { intro_scope: v.intro_scope ?? 'coach' } : {}), active: v.active !== false,
           block_discount_pct: v.is_intro ? 0 : Number(v.block_discount_pct ?? 0), block_min_sessions: Number(v.block_min_sessions ?? 4), allow_pay_per_date: v.allow_pay_per_date !== false,
           ...(v.sport ? { sport: v.sport } : {}), ...(v.specialisation_id ? { specialisation_id: v.specialisation_id } : {}), ...(v.description ? { description: v.description } : {}),
-          ...(v.unit === 'session' || v.unit === 'day' ? { duration_min: v.duration_min } : {}), ...(v.unit === 'package' ? { sessions_included: v.sessions_included } : {}),
+          ...(v.unit === 'session' || v.unit === 'day' ? { duration_min: v.duration_min } : {}), ...(v.unit === 'package' ? { sessions_included: v.sessions_included, valid_days: v.pkg_expires === false ? null : Number(v.valid_days ?? 90) } : {}),
           ...(v.unit === 'month' ? { sessions_included: v.sessions_included ?? 4, rollover_max: v.rollover_max ?? 0, grace_days: v.grace_days ?? 3 } : {}),
           ...(v.audience !== 'individual' ? { min_participants: v.min_participants, max_participants: v.max_participants } : { min_participants: 1 }) };
         if (edit) await api.patch(`/coach/rate-cards/${card.id}`, body); else await api.post('/coach/rate-cards', body);
@@ -83,6 +85,7 @@ function SpecSheet({ spec, onClose, onDone }) {
 export function CoachRates() {
   const { toast } = useSession();
   const cards = useLoad(() => api.get('/coach/rate-cards'), []);
+  const sellsPacks = (cards.data ?? []).some(isRedeemablePack);
   const specs = useLoad(() => api.get('/coach/specialisations'), []);
   const [sheet, setSheet] = useState(null), [spec, setSpec] = useState(null), [retire, setRetire] = useState(null);
   const reload = () => Promise.all([cards.reload(), specs.reload()]);
@@ -117,6 +120,7 @@ export function CoachRates() {
         ))}
       </View>
 
+      {sellsPacks ? <CoachPackageBuyers /> : null}
       {cards.data?.some((k) => k.unit === 'month') ? <><CoachSubscribers /><CoachLatePayments /></> : null}
 
       <Section title="Specialisations" action="+ Add" onAction={() => setSpec({})}>

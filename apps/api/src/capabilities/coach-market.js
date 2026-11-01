@@ -103,7 +103,7 @@ cap({
       one("SELECT count(*) FILTER (WHERE status='completed')::int AS sessions_done, count(DISTINCT hirer_id) FILTER (WHERE status IN ('confirmed','completed'))::int AS athletes FROM coach_hires WHERE coach_id=$1", [i.id]),
       loadCoachSchedule(i.id),
       badgesFor('user', [i.id]),
-      many(`SELECT k.id, k.title, k.audience, k.delivery, k.unit, k.price_cents, k.per_person, k.duration_min, k.min_participants, k.max_participants, k.sessions_included, k.rollover_max, k.grace_days, k.is_intro, k.intro_scope, k.description, s.slug AS sport_slug, s.name AS sport FROM coach_rate_cards k LEFT JOIN sports s ON s.id=k.sport_id WHERE k.coach_id=$1 AND k.archived_at IS NULL AND k.active ORDER BY k.is_intro DESC, k.audience, k.price_cents`, [i.id]),
+      many(`SELECT k.id, k.title, k.audience, k.delivery, k.unit, k.price_cents, k.per_person, k.duration_min, k.min_participants, k.max_participants, k.sessions_included, k.valid_days, k.rollover_max, k.grace_days, k.is_intro, k.intro_scope, k.description, s.slug AS sport_slug, s.name AS sport FROM coach_rate_cards k LEFT JOIN sports s ON s.id=k.sport_id WHERE k.coach_id=$1 AND k.archived_at IS NULL AND k.active ORDER BY k.is_intro DESC, k.audience, k.price_cents`, [i.id]),
       many('SELECT z.id, z.name, z.levels, z.years, z.certification, s.slug AS sport_slug, s.name AS sport, s.emoji FROM coach_specialisations z JOIN sports s ON s.id=z.sport_id WHERE z.coach_id=$1 AND z.archived_at IS NULL ORDER BY s.name, z.name', [i.id]),
     ]);
     const next = sched.windows.length ? (await openCoachSlots(i.id, new Date(), new Date(Date.now() + 14 * 864e5), { schedule: sched }))[0] ?? null : null;
