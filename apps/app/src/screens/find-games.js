@@ -87,8 +87,16 @@ function GuardianRequests() {
   const [openClass, setOpenClass] = useState(null);
   const { push } = useNav();
   const decide = async (r, decision) => { try { await api.post(`/open-games/${r.open_game_id}/members/${r.member_id}/guardian-decision`, { decision }); toast(decision === 'approve' ? 'Approved' : 'Declined'); q.reload(); } catch (e) { toast(e.message); } };
-  const decideClass = async (r, decision) => { try { await api.post(`/coach/classes/${r.class_id}/seats/${r.seat_id}/guardian-decision`, { decision }); toast(decision === 'approve' ? t('cls.approved') : t('cls.declined')); classes.reload(); } catch (e) { toast(e.message); } };
-  if (!q.data?.length && !classes.data?.length) return null;
+  const decideClass = async (r, decision) => {
+    try {
+      const seat = await api.post(`/coach/classes/${r.class_id}/seats/${r.seat_id}/guardian-decision`, { decision });
+      // a paid class holds the seat until it is paid: open the class so the guardian can pay, instead of letting an approved seat quietly lapse
+      if (decision === 'approve' && seat?.status === 'held') { toast(t('cls.pay_seat')); setOpenClass(r.class_id); } else toast(decision === 'approve' ? t('cls.approved') : t('cls.declined'));
+      classes.reload();
+    } catch (e) { toast(e.message); }
+  };
+  // the class sheet stays mounted even when the queue empties (the last request was just decided)
+  if (!q.data?.length && !classes.data?.length) return openClass ? <ClassSheet id={openClass} onClose={() => setOpenClass(null)} onChanged={classes.reload} /> : null;
   return (
     <View style={{ gap: 10, marginTop: 14 }}>
       <T weight="800" size={13} color={c.mute} style={{ letterSpacing: 0.8 }}>{t('cls.guardian_title')}</T>

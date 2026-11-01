@@ -357,3 +357,11 @@ test('a guardian sees the child\'s class seat on the class and can leave for the
   must(await leave(parent, k, { on_behalf_of: child.id }));
   assert.equal((await pool.query('SELECT status FROM coach_class_seats WHERE id=$1', [asked.seat_id])).rows[0].status, 'cancelled');
 });
+
+test('many concurrent hires for one coach never starve the connection pool (the calendar lock is a transaction lock)', async () => {
+  const coach = await signup(['coach']); await card(coach); const hirers = await Promise.all(Array.from({ length: 14 }, () => signup()));
+  const t0 = Date.now();
+  const res = await Promise.all(hirers.map((h, i) => api('POST', '/hires', { token: h.token, body: { coach_id: coach.id, sport: 'football', starts_at: inHours(300 + i * 2), duration_min: 60 } })));
+  assert.ok(Date.now() - t0 < 30_000, 'finished, no deadlock');
+  assert.equal(res.filter((r) => r.status === 201).length, 14, JSON.stringify(res.map((r) => r.status)));
+});
