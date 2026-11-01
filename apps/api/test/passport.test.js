@@ -44,6 +44,7 @@ test('a passport link is secret, expiring, revocable, counted, and shows no pers
   assert.equal(made.status, 201, JSON.stringify(made.body));
   const { token, id, path } = made.body;
   assert.match(token, /^sa_/); assert.ok(path.includes(token));
+  assert.match(made.body.url, /^https?:\/\/[^/]+\/\?passport=sa_/, 'the link is always absolute, never a bare path');
 
   // only a hash is stored; the list never shows the secret
   const stored = (await pool.query('SELECT token_hash FROM passport_links WHERE id=$1', [id])).rows[0].token_hash;
