@@ -333,7 +333,7 @@ cap({
 
 cap({
   name: 'decide_settlement', method: 'POST', path: '/admin/settlements/:id/decision', tag: TAG,
-  summary: 'Platform team: `approve` a draft (the partner can now see it), `mark_paid` an approved one with the payout reference, or `void` a draft/approved one (its invoices become settleable again and any reserve it released is freed). Paid settlements are final.',
+  summary: 'Platform team: `approve` a draft (the partner can now see it), `mark_paid` is retired: an approved one is paid in a payout batch, which records the reference, or `void` a draft/approved one (its invoices become settleable again and any reserve it released is freed). Paid settlements are final.',
   input: z.object({ id, action: z.enum(['approve', 'mark_paid', 'void']), payout_ref: z.string().min(2).max(120).optional(), reason: z.string().max(300).optional() }),
   async handler({ user }, i) {
     platformOnly(user);
@@ -342,7 +342,7 @@ cap({
       if (!s) throw notFound('Settlement');
       const from = { approve: ['draft'], mark_paid: ['approved'], void: ['draft', 'approved'] }[i.action];
       if (!from.includes(s.status)) throw conflict(`A ${s.status} settlement cannot be ${i.action === 'mark_paid' ? 'marked paid' : i.action + 'd'}`);
-      if (i.action === 'mark_paid' && !i.payout_ref) throw badRequest('Give the payout reference (bank transfer id)');
+      if (i.action === 'mark_paid') throw conflict('A settlement is marked paid only by the payout that settled it: pay it in a payout batch (list_payable_obligations, create_payout_batch)');
       if (i.action === 'void' && !i.reason) throw badRequest('Give a reason');
       if (i.action === 'approve') await c.query("UPDATE settlements SET status='approved', approved_by=$2, approved_at=now() WHERE id=$1", [s.id, user.id]);
       if (i.action === 'mark_paid') await c.query("UPDATE settlements SET status='paid', payout_ref=$2, paid_at=now() WHERE id=$1", [s.id, i.payout_ref]);

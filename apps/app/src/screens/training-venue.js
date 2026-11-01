@@ -365,7 +365,7 @@ export function RecurringVenue() {
           <RepeatPicker value={pat} onChange={setPat} min={today} />
           <View style={{ flexDirection: 'row', gap: 10 }}>
             <View style={{ flex: 1 }}><TimeField label="From" value={start} onChange={setStart} step={30} /></View>
-            <View style={{ flex: 1 }}><TimeField label="Until" value={end} onChange={setEnd} step={30} /></View>
+            <View style={{ flex: 1 }}><TimeField label="Until" value={end} onChange={setEnd} step={30} endOfDay /></View>
           </View>
           <T size={12} color={c.mute}>Times are at the venue{venue.data?.timezone ? ` (${venue.data.timezone})` : ''}.</T>
           {!timeOk ? <Problem text="The end time must be after the start time." /> : null}

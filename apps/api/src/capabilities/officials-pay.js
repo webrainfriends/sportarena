@@ -1,6 +1,8 @@
 // Official fee and payment status (#88). The organiser records an agreed fee on an official assignment and where it stands; the official confirms
 // receipt or disputes it. This is a record, not a ledger: money that moves through SportArena settles through #71, and a status here never means
 // a payout happened unless the organiser recorded it. Every change is kept in an append-only log.
+// #701: `paid` is no longer typed in. The organiser marks a fee `due`; the platform team pays it in a payout batch (src/payouts.js), which sets `paid`
+// and links the log entry to the payout that settled it.
 import { z } from 'zod';
 import { cap, id, money, page } from '../registry.js';
 import { many, tx } from '../db.js';
@@ -20,13 +22,14 @@ async function loadFo(c, foId) {
 
 cap({
   name: 'set_official_fee', method: 'POST', path: '/official-assignments/:id/fee', tag: TAG,
-  summary: 'Organiser records the fee for an official on a fixture and where payment stands (agreed, due, paid). Money moves only through the payment system; this is the record both sides see. A paid fee cannot be changed.',
+  summary: 'Organiser records the fee for an official on a fixture and where payment stands (agreed or due). `paid` is set only by a payout batch that actually settled the fee (see list_payable_obligations); a paid fee cannot be changed.',
   input: z.object({ id, fee_minor: money, currency: z.string().regex(/^[A-Z]{3}$/), status: z.enum(['agreed', 'due', 'paid']), note: z.string().trim().max(300).optional() }),
   async handler({ user }, i) {
     return tx(async (c) => {
       const fo = await loadFo(c, i.id);
       const ev = await eventForOrganizer(user, fo.event_id, c);
       if (!['invited', 'accepted'].includes(fo.status)) throw conflict(`Assignment is ${fo.status}`);
+      if (i.status === 'paid') throw conflict('A fee is marked paid only when a payout settles it: the platform team pays it in a payout batch (due fees are listed under Payouts)');
       if (fo.pay_status === 'paid') throw conflict('This fee is already marked paid and cannot be changed');
       if (fo.pay_status !== 'disputed' && ORDER[i.status] < ORDER[fo.pay_status]) throw badRequest(`Payment cannot move back from ${fo.pay_status} to ${i.status}`);
       if (i.status === 'paid' && fo.status !== 'accepted') throw badRequest('Only a confirmed official can be marked paid');

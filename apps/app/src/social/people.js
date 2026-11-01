@@ -3,6 +3,7 @@
 import React, { useState } from 'react';
 import { Pressable, View } from 'react-native';
 import { api } from '../api';
+import { useLoad } from '../hooks';
 import { useSession } from '../session';
 import { useNav } from '../nav';
 import { FormSheet } from '../FormSheet';
@@ -138,7 +139,7 @@ export function PersonActions({ p }) {
   const message = async () => { try { const v = await api.post('/conversations', { kind: 'direct', user_id: p.id }); push('Conversation', { id: v.conversation_id }); } catch (e) { toast(e.message); } };
   return (
     <View style={{ flexDirection: 'row', gap: 8, flexWrap: 'wrap', marginTop: 12 }}>
-      <ConnectButtons p={p} />
+      <RelationButtons personId={p.id} />
       <Small label={t('social.message')} onPress={message} />
       <Small label={t('social.mute')} onPress={run(() => api.patch(`/me/mutes/${p.id}`, { muted: true }), t('social.muted'))} />
       <Small label={t('social.report')} onPress={() => setReport(true)} />
@@ -149,3 +150,29 @@ export function PersonActions({ p }) {
 }
 
 export { Btn };
+
+/** Follow / friend actions for someone who is not yet connected. */
+export function ConnectButtons({ p, onDone, initial = {} }) {
+  const { toast } = useSession();
+  const [state, setState] = useState(initial);
+  const go = (key, fn) => async () => { try { const r = await fn(); setState((s) => ({ ...s, [key]: r.status ?? 'active' })); onDone?.(); } catch (e) { toast(e.message); } };
+  const label = (s, base) => (s === 'pending' ? t('social.waiting') : s === 'guardian_pending' ? t('social.waiting_guardian') : base);
+  return (
+    <>
+      <Small label={state.follow ? label(state.follow, t('social.following')) : t('social.follow')} disabled={!!state.follow} onPress={go('follow', () => api.post('/me/follows', { subject_type: 'athlete', subject_id: p.id }))} />
+      <Small label={state.friend ? label(state.friend, t('social.friends')) : t('social.add_friend')} disabled={!!state.friend} onPress={go('friend', () => api.post('/me/friends', { user_id: p.id }))} />
+    </>
+  );
+}
+
+/** Follow and friend actions on a person's profile: reads where the relationship already stands, so it never offers what already happened. */
+export function RelationButtons({ personId }) {
+  const following = useLoad(() => api.get('/me/following'), [personId]);
+  const friends = useLoad(() => api.get('/me/friends'), [personId]);
+  if (!following.data || !friends.data) return null;
+  const initial = {};
+  if (following.data.some((x) => x.id === personId)) initial.follow = 'active';
+  if (friends.data.friends.some((x) => x.person_id === personId)) initial.friend = 'accepted';
+  else if (friends.data.outgoing.some((x) => x.person_id === personId)) initial.friend = 'pending';
+  return <View style={{ flexDirection: 'row', gap: 8, flexWrap: 'wrap' }}><ConnectButtons p={{ id: personId }} initial={initial} /></View>;
+}

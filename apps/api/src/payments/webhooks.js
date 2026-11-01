@@ -5,6 +5,7 @@ import { settle } from './service.js';
 import { onProviderDispute, onProviderRefund } from '../settlement.js';
 import { stripe, paypal, razorpay } from './providers.js';
 import { onMandateEvent } from './mandates.js';
+import { onStripeTransfer } from '../payouts.js';
 
 const byRef = (provider, ref) => (ref ? one('SELECT id FROM payments WHERE provider=$1 AND provider_ref=$2', [provider, ref]) : null);
 const byPaymentRef = (provider, ref) => (ref ? one('SELECT * FROM payments WHERE provider=$1 AND provider_payment_ref=$2', [provider, ref]) : null);
@@ -35,6 +36,7 @@ export function webhookRouter() {
       const p = await byPaymentRef('stripe', event.data.object.payment_intent);
       if (p) await tx((c) => onProviderDispute(c, p, { disputeId: event.data.object.id, amountCents: event.data.object.amount }));
     }
+    else if (event.type === 'transfer.created' || event.type === 'transfer.reversed') await onStripeTransfer(event);
     await markSeen('stripe', event.id, event.type);
     res.json({ received: true });
   }));

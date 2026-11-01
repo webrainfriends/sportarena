@@ -13,6 +13,9 @@ import { CountryPicker, countryName } from '../country-picker';
 import { SportSelect, useSports } from '../sportpicker';
 import { DateField } from '../pickers';
 import { openPdf } from '../open-file';
+import { CameraScan, hasCamera } from '../camera-scan';
+import { locale } from '../locale';
+import { t } from '../i18n';
 import { explain, LoadError } from '../access';
 import { c } from '../theme';
 import { Banner, Checks, Evidence, History, StatusTag, ActionBar, DecisionSheet, LEVEL_LABEL, ROLE_LABEL, fmtDate, fmtRange, jurisdiction, money, issueDocument, todayIso, checksOf } from '../federation-ui';
@@ -163,33 +166,47 @@ export function Federations() {
 }
 
 // ------------------------------------------------------------------ public licence check
-export function VerifyLicence() {
-  const [code, setCode] = useState('');
+/** A printed code (12 letters and digits), a card QR token, or a link that carries either: the value the check takes. */
+const checkValue = (raw) => {
+  const s = String(raw ?? '').trim();
+  try { const v = new URL(s).searchParams.get('verify'); if (v) return checkValue(v); } catch { /* not a link */ }
+  return /^LC1\./.test(s) ? s : s.toUpperCase().replace(/[^A-F0-9]/g, '').slice(0, 12);
+};
+export function VerifyLicence({ code: initial }) {
+  const [code, setCode] = useState(initial ? checkValue(initial) : '');
   const [res, setRes] = useState(null);
   const [err, setErr] = useState(null);
   const [busy, setBusy] = useState(false);
-  const clean = code.toUpperCase().replace(/[^A-F0-9]/g, '').slice(0, 12);
-  const check = async () => {
+  const [scan, setScan] = useState(false);
+  const clean = checkValue(code);
+  const ready = clean.length === 12 || /^LC1\./.test(clean);
+  const check = async (value = clean) => {
     setBusy(true); setErr(null); setRes(null);
-    try { setRes(await api.get(`/federation/verify/${clean}`)); } catch (e) { setErr(e.status === 404 ? 'No licence has that code. Check the code printed on the licence and try again.' : explain(e)); } finally { setBusy(false); }
+    try { setRes(await api.get(`/federation/verify/${encodeURIComponent(value)}`)); } catch (e) { setErr(e.status === 404 ? t('fedx.verify.notFound') : e.status === 410 ? t('fedx.verify.expired') : explain(e)); } finally { setBusy(false); }
   };
+  useEffect(() => { if (initial && (checkValue(initial).length === 12 || /^LC1\./.test(checkValue(initial)))) check(checkValue(initial)); }, []); // eslint-disable-line react-hooks/exhaustive-deps
   return (
     <Screen>
-      <H1>Check a licence</H1>
-      <T size={13} color={c.mute} style={{ marginTop: 4 }}>Enter the 12-character code printed on a licence to see whether it is in good standing today.</T>
+      <H1>{t('fedx.verify.title')}</H1>
+      <T size={13} color={c.mute} style={{ marginTop: 4 }}>{t('fedx.verify.hint')}</T>
       <View style={{ gap: 12, marginTop: 14 }}>
-        <Field label="Licence code" value={clean} onChangeText={(x) => { setCode(x); setRes(null); setErr(null); }} placeholder="A1B2C3D4E5F6" maxLength={12} accessibilityLabel="Licence code, 12 letters and digits" />
-        <Btn title="Check licence" loading={busy} disabled={clean.length !== 12} onPress={check} />
+        {scan && hasCamera ? <CameraScan onClose={() => setScan(false)} onCode={(v) => { setScan(false); setCode(checkValue(v)); check(checkValue(v)); }} /> : null}
+        <Field label={t('fedx.verify.label')} value={/^LC1\./.test(clean) ? t('fedx.verify.cardCode') : clean} onChangeText={(x) => { setCode(x); setRes(null); setErr(null); }} placeholder="A1B2C3D4E5F6" maxLength={12} accessibilityLabel={t('fedx.verify.label')} />
+        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+          <Btn title={t('fedx.verify.button')} loading={busy} disabled={!ready} onPress={() => check()} />
+          {hasCamera && !scan ? <Btn color={c.paper} ink={c.ink} title={t('fedx.verify.scan')} onPress={() => setScan(true)} accessibilityLabel={t('fedx.verify.scan')} /> : null}
+        </View>
         {err ? <Banner tone={c.pinkSoft}>{err}</Banner> : null}
         {res ? (
           <Card color={res.valid ? c.mintSoft : c.pinkSoft} pad={18}>
-            <View accessible accessibilityLiveRegion="polite" accessibilityLabel={`${res.valid ? 'Valid' : 'Not valid'}: ${res.type_name}, ${res.status}`}>
-              <T size={22} weight="800">{res.valid ? '✓ In good standing' : '✕ Not in good standing'}</T>
+            <View accessible accessibilityLiveRegion="polite" accessibilityLabel={`${res.valid ? t('fedx.verify.good') : t('fedx.verify.notGood')}: ${res.type_name}, ${res.status}`}>
+              <T size={22} weight="800">{res.valid ? `✓ ${t('fedx.verify.good')}` : `✕ ${t('fedx.verify.notGood')}`}</T>
               <View style={{ marginTop: 6 }}><StatusTag status={res.status} /></View>
               <View style={{ marginTop: 12 }}>
-                <Row2 k="Holder" v={res.holder_name} /><Row2 k="Licence" v={`${res.type_name}${res.grade ? ` · ${res.grade}` : ''}`} /><Row2 k="Sport" v={`${res.sport_name}${res.discipline ? ` · ${res.discipline}` : ''}`} />
-                <Row2 k="Number" v={res.licence_no} /><Row2 k="Valid" v={fmtRange(res.issued_on, res.expires_on)} /><Row2 k="Issued by" v={`${res.body_name} (${res.body_abbreviation})`} />
+                <Row2 k={t('fedx.verify.holder')} v={res.holder_name} /><Row2 k={t('fedx.verify.licence')} v={`${res.type_name}${res.grade ? ` · ${res.grade}` : ''}`} /><Row2 k={t('fedx.card.sport')} v={`${res.sport_name}${res.discipline ? ` · ${res.discipline}` : ''}`} />
+                <Row2 k={t('fedx.card.number')} v={res.licence_no} /><Row2 k={t('fedx.card.validity')} v={fmtRange(res.issued_on, res.expires_on)} /><Row2 k={t('fedx.verify.issuer')} v={`${res.body_name} (${res.body_abbreviation})`} />
               </View>
+              {res.checked_at ? <T size={11} color={c.mute} style={{ marginTop: 8 }}>{t('fedx.verify.checkedAt', { time: new Date(res.checked_at).toLocaleTimeString(locale, { hour: 'numeric', minute: '2-digit' }) })}</T> : null}
             </View>
           </Card>) : null}
       </View>

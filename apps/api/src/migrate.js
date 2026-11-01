@@ -18,6 +18,9 @@ export async function migrate() {
   // derive youth status for accounts that already have a date of birth (idempotent; nothing is removed or rewritten)
   const n = await (await import('./youth.js')).backfillYouth();
   if (n) console.log('youth status evaluated for', n, 'existing accounts');
+  // venue bank details become pending payout accounts for the one payout path (#701); idempotent, the partner record is kept
+  const accts = await (await import('./payouts.js')).backfillPartnerAccounts();
+  if (accts) console.log('payout accounts created from partner bank details:', accts);
 }
 
 if (process.argv[1] === fileURLToPath(import.meta.url)) {

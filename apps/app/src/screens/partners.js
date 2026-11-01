@@ -431,7 +431,7 @@ export function AccessRequests() {
   );
 }
 
-const TABS = [['overview', 'Overview'], ['partners', 'Partners'], ['approvals', 'Venue approvals'], ['pricing', 'Pricing'], ['contracts', 'Contracts'], ['settlements', 'Settlements'], ['payouts', 'Provider payouts'], ['reports', 'Reports'], ['team', 'Platform team'], ['rewards', 'Rewards'], ['whatsapp', 'Communications']];
+const TABS = [['overview', 'Overview'], ['partners', 'Partners'], ['approvals', 'Venue approvals'], ['pricing', 'Pricing'], ['contracts', 'Contracts'], ['settlements', 'Settlements'], ['payouts', 'Payouts'], ['reports', 'Reports'], ['team', 'Platform team'], ['rewards', 'Rewards'], ['whatsapp', 'Communications']];
 
 /** The platform team's partner-management console. */
 export function PartnerConsole() {
