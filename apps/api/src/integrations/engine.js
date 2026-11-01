@@ -6,6 +6,7 @@ import { enqueue, runJobs } from '../jobs.js';
 import { logger } from '../logger.js';
 import { providerOf } from './registry.js';
 import { send, checkTarget } from './http.js';
+import { wearableSweep } from '../wearables/sync.js';
 
 export const CFG_CTX = 'integration_installs.config';
 export const CRED_CTX = 'integration_credentials.secret';
@@ -80,8 +81,9 @@ export async function integrationSweep() {
   const due = await many("SELECT id FROM integration_installs WHERE status IN ('connected','error') AND next_sync_at IS NOT NULL AND next_sync_at <= now() ORDER BY next_sync_at LIMIT 10");
   let synced = 0;
   for (const d of due) { await runSync(d.id); synced++; }
+  const wear = await wearableSweep();
   const jobs = await runJobs('integrations', { deliver_webhook });
-  return { synced, ...jobs };
+  return { synced, ...wear, ...jobs };
 }
 
 async function deliver_webhook({ hook_id, install_id, event_id, type, data }, job) {

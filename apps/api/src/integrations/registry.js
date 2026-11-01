@@ -85,6 +85,18 @@ export const PROVIDERS = {
   },
 };
 
+// ---- Athlete Performance Integration Hub (#583): wearable / performance providers. The organisation is authorised through the usual
+// access gate; each athlete then connects their own account and owns the consent (see capabilities/wearables.js). Adapters: wearables/normalise.js.
+const WEAR_SCOPES = [{ key: 'wearables.metrics.read', label: 'Read daily summaries', description: 'Heart rate, HRV, sleep, steps, distance, energy and training load as daily totals. Never location, messages or medical diagnoses.' }];
+const wearable = (name, extra = {}) => ({
+  category: 'wearables', name, version: '1.0', auth: 'oauth', sandbox: false, athlete_scoped: true, capabilities: ['athlete_consent', 'daily_metrics', 'unit_normalisation'],
+  scopes: WEAR_SCOPES, fields: z.object({ base_url: urlField.optional() }).strict(), secrets: [], async test() { return { ok: true, message: 'Each athlete connects their own account' }; }, ...extra,
+});
+Object.assign(PROVIDERS, {
+  oura: wearable('Oura'), whoop: wearable('WHOOP'), garmin: wearable('Garmin'), fitbit: wearable('Fitbit'), strava: wearable('Strava'),
+  device_push: wearable('Apple Health / Health Connect (from the device app)', { auth: 'api_key', capabilities: ['athlete_consent', 'daily_metrics', 'unit_normalisation', 'device_push'] }),
+});
+
 // Integrations that already have their own console. Listed so one catalogue shows everything; install is refused with a pointer, not duplicated.
 export const MANAGED = [
   { key: 'payments_stripe_paypal', category: 'payments', name: 'Payments (Stripe, PayPal)', managed_in: 'PaymentsSetup' },

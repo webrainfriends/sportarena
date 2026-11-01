@@ -5,7 +5,7 @@ import { RELATIONSHIP_SQL } from './coaching.js';
 import { clinicalCredential } from './clinical-access.js';
 import { hasConsent } from './youth.js';
 
-export const FIELDS = ['sleep', 'soreness', 'mood', 'hydration', 'readiness', 'workload', 'body_map'];
+export const FIELDS = ['sleep', 'soreness', 'mood', 'hydration', 'readiness', 'workload', 'body_map', 'wearables'];
 export const PURPOSES = ['training_load', 'injury_prevention', 'return_to_play', 'performance_review'];
 export const KINDS = { coach: 'coaching', provider: 'medical' }; // recipient kind -> guardian consent purpose
 

@@ -7,19 +7,22 @@ import { Btn, Card, Chip, Empty, ErrorBox, H1, Loading, Screen, Sheet, T, Tag } 
 import { FormSheet } from '../FormSheet';
 import { useLayout } from '../layout';
 import { c } from '../theme';
+import { t } from '../i18n';
 import { addDays, dateTimeIn, todayIn } from '../vtime';
 import { ReadinessRing } from './wellness';
 import { ReadinessExplainer } from './readiness-explainer';
+import { TeamWearables } from './wearables';
 import { LoadHistory } from './load-history';
 
 const tz = (() => { try { return Intl.DateTimeFormat().resolvedOptions().timeZone; } catch { return 'UTC'; } })();
 const nice = (s) => String(s).replace(/_/g, ' ');
 const LOAD_SOURCE = { manual: 'Logged by hand', training_session: 'Training session', match: 'Match' };
 const PURPOSES = [['training_load', 'Training load'], ['injury_prevention', 'Injury prevention'], ['return_to_play', 'Return to play'], ['performance_review', 'Performance review']];
-const FIELDS = [['sleep', 'Sleep'], ['soreness', 'Soreness'], ['mood', 'Mood'], ['hydration', 'Hydration'], ['readiness', 'Readiness score'], ['workload', 'Workload'], ['body_map', 'Body map']];
+const FIELDS = [['sleep', 'Sleep'], ['soreness', 'Soreness'], ['mood', 'Mood'], ['hydration', 'Hydration'], ['readiness', 'Readiness score'], ['workload', 'Workload'], ['body_map', 'Body map'], ['wearables', 'Wearables']];
+const fieldName = (f, l) => (f === 'wearables' ? t('wr.field') : l);
 const HISTORY = [[7, '7 days'], [30, '30 days'], [90, '90 days']];
 const purposeLabel = (p) => PURPOSES.find((x) => x[0] === p)?.[1] ?? nice(p);
-const fieldLabel = (f) => FIELDS.find((x) => x[0] === f)?.[1] ?? nice(f);
+const fieldLabel = (f) => fieldName(f, FIELDS.find((x) => x[0] === f)?.[1] ?? nice(f));
 const day = (iso) => new Date(iso).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC' });
 /** the stored end is the start of the next UTC day; show and edit the last day of access */
 const lastDay = (iso) => addDays(new Date(iso).toISOString().slice(0, 10), -1);
@@ -71,7 +74,7 @@ export function WellnessSharing({ athleteId }) {
   };
   const edit = form?.share;
   const common = [
-    { key: 'fields', label: 'What they can see', type: 'multi', options: FIELDS.map(([value, label]) => ({ value, label })), hint: 'Private notes are never shared.' },
+    { key: 'fields', label: 'What they can see', type: 'multi', options: FIELDS.map(([value, label]) => ({ value, label: fieldName(value, label) })), hint: 'Private notes are never shared.' },
     { key: 'history_days', label: 'How far back', type: 'chips', options: HISTORY.map(([value, label]) => ({ value, label })) },
     { key: 'expires_on', label: 'Share until', type: 'date', min, max },
   ];
@@ -89,7 +92,7 @@ export function WellnessSharing({ athleteId }) {
       </View>
       <T size={12} color={c.mute} style={{ marginTop: 4 }}>You choose who sees what, and for how long. Private notes are never shared. Stop any time; every view is logged for you.</T>
       <View style={{ gap: 10, marginTop: 12 }}>
-        {list.loading && !list.data ? <Loading /> : list.error ? <ErrorBox error={list.error} onRetry={list.reload} /> : !live.length ?
+      {list.loading && !list.data ? <Loading /> : list.error ? <ErrorBox error={list.error} onRetry={list.reload} /> : !live.length ?
           <Empty emoji="🤝" title="You are not sharing anything" sub={athleteId ? 'Nothing is shared from this young person’s wellness.' : 'Add a coach or clinician to let them see only what you choose.'} /> :
           live.map((s) => (
             <View key={s.id} accessible accessibilityLabel={`${s.recipient_name}, ${purposeLabel(s.purpose)}, ${s.live ? 'active' : 'paused'}`} style={{ borderWidth: 1.5, borderColor: c.line, borderRadius: 14, padding: 12, gap: 6 }}>
@@ -245,6 +248,7 @@ export function SharedWellness({ share_id }) {
     <Screen onRefresh={list.reload} wide>
       <H1>Shared wellness</H1>
       <T size={13} color={c.mute}>Athletes who chose to share wellness with you. Access is checked every time and stops the moment they stop sharing.</T>
+      <TeamWearables />
       {list.loading && !list.data ? <Loading /> : list.error ? <ErrorBox error={list.error} onRetry={list.reload} /> : !rows.length ?
         <Empty emoji="🤝" title="Nobody has shared wellness with you yet" sub="Athletes you coach, or who gave you medical access, can choose to share selected wellness with you." /> : (
           <View style={{ flexDirection: tablet ? 'row' : 'column', gap: 12, alignItems: 'flex-start' }}>
