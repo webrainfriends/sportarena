@@ -44,7 +44,7 @@ function CardSheet({ card, specs, currency, onClose, onDone }) {
         { key: 'max_participants', label: 'Most people', type: 'stepper', min: 1, max: 500, default: 20, show: (v) => v.audience !== 'individual' },
         { key: 'sessions_included', label: 'Sessions in the package', type: 'stepper', min: 1, max: 500, default: 5, show: (v) => v.unit === 'package' },
         { key: 'pkg_expires', label: t('pkg.fieldExpires'), type: 'switch', default: true, show: (v) => v.unit === 'package' },
-        { key: 'valid_days', label: t('pkg.fieldDays'), type: 'stepper', min: 1, max: 1825, step: 7, default: 90, suffix: ' d', hint: t('pkg.fieldDaysHint'), show: (v) => v.unit === 'package' && v.pkg_expires !== false },
+        { key: 'valid_days', label: t('pkg.fieldDays'), type: 'stepper', min: 1, max: 1825, step: 7, default: 90, hint: t('pkg.fieldDaysHint'), show: (v) => v.unit === 'package' && v.pkg_expires !== false },
         { key: 'sessions_included', label: t('coachSub.fieldSessions'), type: 'stepper', min: 1, max: 100, default: 4, show: (v) => v.unit === 'month' },
         { key: 'rollover_max', label: t('coachSub.fieldRollover'), type: 'stepper', min: 0, max: 100, default: 0, hint: t('coachSub.fieldRolloverHint'), show: (v) => v.unit === 'month' },
         { key: 'grace_days', label: t('coachSub.fieldGrace'), type: 'stepper', min: 0, max: 30, default: 3, suffix: ' d', hint: t('coachSub.fieldGraceHint'), show: (v) => v.unit === 'month' },
@@ -85,6 +85,7 @@ function SpecSheet({ spec, onClose, onDone }) {
 export function CoachRates() {
   const { toast } = useSession();
   const cards = useLoad(() => api.get('/coach/rate-cards'), []);
+  const sellsPacks = (cards.data ?? []).some(isRedeemablePack);
   const specs = useLoad(() => api.get('/coach/specialisations'), []);
   const [sheet, setSheet] = useState(null), [spec, setSpec] = useState(null), [retire, setRetire] = useState(null);
   const reload = () => Promise.all([cards.reload(), specs.reload()]);
@@ -119,7 +120,7 @@ export function CoachRates() {
         ))}
       </View>
 
-      {cards.data?.some((k) => isRedeemablePack(k)) ? <CoachPackageBuyers /> : null}
+      {sellsPacks ? <CoachPackageBuyers /> : null}
       {cards.data?.some((k) => k.unit === 'month') ? <><CoachSubscribers /><CoachLatePayments /></> : null}
 
       <Section title="Specialisations" action="+ Add" onAction={() => setSpec({})}>
