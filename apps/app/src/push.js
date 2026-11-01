@@ -127,6 +127,9 @@ export function parseTarget(t) {
   if (kind === 'rewards-console' && id) return ['RewardsConsole', { ownerKind: id, ownerId: extra || undefined }];
   if (kind === 'venue' && id) return ['Venue', { id }];
   if (kind === 'sponsorship' && id) return ['SponsorDeal', { id }];
+  if (kind === 'sponsor-program' && id) return ['SponsorProgram', { id }];   // a brand's program page (rules, applications, screening)
+  if (kind === 'sponsor-call' && id) return ['SponsorCall', { id }];
+  if (kind === 'funding-calls') return ['FundingOpportunities', {}];
   if (kind === 'organisation' && id) return ['Org', { id }];
   if (kind === 'organisations') return ['Orgs', {}];
   if (kind === 'graph') return ['SportsGraph', {}];

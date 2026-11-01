@@ -3,7 +3,8 @@
 // threads linked to a team / event / fixture / registration. Who may see or post is decided here from live membership, guardian links and
 // safeguarding obligations on every call; a person who is not allowed learns nothing (404, never 403). Message text is encrypted at rest.
 import { many, one, pool, tx } from './db.js';
-import { conflict, forbidden, notFound } from './errors.js';
+import { conflict, forbidden, notFound, tooMany } from './errors.js';
+import { spendKindAllowance } from './spectator.js';
 import { decrypt, encrypt } from './crypto.js';
 import { PUBLIC_USER } from './helpers.js';
 import { notify } from './notify.js';
@@ -138,6 +139,9 @@ export async function recipientsOf(c, convId, senderId) {
   return { members, guardians: guardians.filter((g) => g !== senderId && !members.includes(g)) };
 }
 
+/** Per-person hourly cap on messages (a flood guard well above normal chatting); the idempotent client_id replay above is not counted. */
+export const MESSAGES_PER_HOUR = Number(process.env.MESSAGES_PER_HOUR ?? 300);
+
 export async function postMessage(user, access, i) {
   const { conv } = access;
   await assertMayPostHere(user.id, conv.id);
@@ -161,6 +165,7 @@ export async function postMessage(user, access, i) {
   const kind = i.announcement || i.requires_ack ? 'announcement' : 'text';
   const delay = i.requires_ack ? (i.escalate_after_minutes ?? DEFAULT_ESCALATION_MINUTES) : null;
   return tx(async (c) => {
+    if (!(await spendKindAllowance(c, user.id, 'message', MESSAGES_PER_HOUR))) throw tooMany('You are sending messages very fast — try again in a little while');
     const seq = (await c.query('UPDATE conversations SET last_seq=last_seq+1, last_message_at=now() WHERE id=$1 RETURNING last_seq', [conv.id])).rows[0].last_seq;
     const m = (await c.query(
       `INSERT INTO conversation_messages(conversation_id, seq, sender_id, body_enc, kind, requires_ack, escalate_after_minutes, reply_to_id, attachment_id, client_id) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING id, seq`,

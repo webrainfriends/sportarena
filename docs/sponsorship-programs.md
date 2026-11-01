@@ -44,3 +44,5 @@ reads, writes, invitations, FAQ edits and the awards export. The export is audit
 * A deadline edited into the past closes the round immediately; an erroneous invitation can be revoked until the invitee applies.
 * Email/push delivery depends on the configured providers (as for every notification).
 * Invitations are per target, not per organisation; there is no bulk import.
+
+Eligibility is versioned and screened per application: see [sponsorship-eligibility.md](sponsorship-eligibility.md) (#287).

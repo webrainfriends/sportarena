@@ -18,6 +18,7 @@ import { PaySheet } from '../PaySheet';
 import { WalletApplySheet } from './wallet';
 import { PointsSheet } from './rewards';
 import { PassApplySheet } from './plans';
+import { track } from '../track';
 import { NewCaseSheet } from './cases';
 import { AttachSessionsSheet } from './training-venue';
 import { currentDevice, disablePush, enablePush, pushSupport } from '../push';
@@ -55,6 +56,7 @@ export function Basket() {
     setBusy(true);
     try {
       const r = await api.post('/reservations', body());
+      track('booking_completed', { entityType: 'reservation', entityId: r.id });
       clear(); toast(`Booked ${r.code} 🎉`); replace('Reservation', { id: r.id });
     } catch (e) { toast(e.message); setQuote(null); api.post('/reservations/quote', body()).then(setQuote).catch(() => {}); } finally { setBusy(false); }
   };
@@ -569,6 +571,18 @@ export function Notifications() {
             <Seg options={[{ value: true, label: 'On' }, { value: false, label: 'Off' }]} value={p.push !== false} onChange={(v) => setPref({ push: v })} color={c.pink} />
             <Line k="Remind me before a booking" v="" />
             <Seg options={[2, 6, 12, 24, 48].map((h) => ({ value: h, label: `${h}h` }))} value={p.reminder_hours} onChange={(v) => setPref({ reminder_hours: v })} color={c.violet} />
+          </Card>
+        ) : <Loading />}
+      </Section>
+      <Section title={t('community.notify_title')} color={c.pink}>
+        {p?.social_categories ? (
+          <Card>
+            {['people', 'communities', 'comments'].map((k) => (
+              <View key={k}>
+                <Line k={t(`community.notify_${k}`)} v="" />
+                <Seg options={[{ value: true, label: t('common.on') }, { value: false, label: t('common.off') }]} value={p.social_categories[k]} onChange={(v) => setPref({ social_categories: { [k]: v } })} color={c.pink} />
+              </View>
+            ))}
           </Card>
         ) : <Loading />}
       </Section>

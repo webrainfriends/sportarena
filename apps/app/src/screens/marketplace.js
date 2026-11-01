@@ -34,7 +34,8 @@ const STATUS = { expired: [c.mute, c.violetSoft], awaiting_payment: [c.sun, c.su
 export const StatusPill = ({ s }) => <Pill label={nice(s).toUpperCase()} fg={(STATUS[s] ?? [c.mute])[0]} bg={(STATUS[s] ?? [0, c.violetSoft])[1]} />;
 
 // One checkout sheet for the whole app (country-aware, data-driven): see ../PaySheet.js. Re-exported so existing imports keep working.
-export { PaySheet } from '../PaySheet';
+import { PaySheet } from '../PaySheet';
+export { PaySheet };
 
 const Head = ({ eyebrow, title, sub, right }) => (
   <View style={{ flexDirection: 'row', flexWrap: 'wrap', alignItems: 'flex-end', justifyContent: 'space-between', gap: 12, marginTop: 6 }}>

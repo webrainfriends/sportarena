@@ -65,13 +65,13 @@ export function EventsWorkspace() {
 }
 
 /** Schedule tab: create, book, track and manage in one place. `section` (via goTab) opens a specific part. */
-export function Schedule({ section }) {
+export function Schedule({ section, _at }) {   // _at changes on every goTab, so choosing the same section again still resets it (the tab stays mounted)
   const { push } = useNav();
   const { gutter, contentMax } = useLayout();
   const [sec, setSec] = useState(section ?? lastSection);
   const [form, setForm] = useState(null);
   const [tick, setTick] = useState(0);
-  useEffect(() => { if (section) { lastSection = section; setSec(section); } }, [section]);
+  useEffect(() => { if (section) { lastSection = section; setSec(section); } }, [section, _at]);
   const pick = (v) => { lastSection = v; setSec(v); };
   const created = () => setTick((n) => n + 1);
 
