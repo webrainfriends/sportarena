@@ -6,6 +6,7 @@ import { c, dark, grad, r, accentFor, fam } from './theme';
 import { useLayout } from './layout';
 import { mediaUrl } from './api';
 import { t } from './i18n';
+import { Icon } from './icons';
 // The native animation driver does not exist on the web; asking for it logs a warning and falls back to JS anyway.
 const NATIVE = Platform.OS !== 'web';
 
@@ -122,12 +123,21 @@ export const Bubble = ({ emoji, color = c.sun, size = 46 }) => (
 
 export function Field({ label, value, onChangeText, secure, multiline, keyboardType, placeholder, hint, maxLength, accessibilityLabel, minHeight }) {
   const [focus, setFocus] = useState(false);
+  const [reveal, setReveal] = useState(false);
   return (
     <View style={{ gap: 6 }}>
       {label ? <T weight="600" size={12} color={c.mute} style={{ letterSpacing: 0.4 }}>{label.toUpperCase()}</T> : null}
-      <TextInput value={value ?? ''} onChangeText={onChangeText} accessibilityLabel={accessibilityLabel ?? label ?? placeholder} maxLength={maxLength} secureTextEntry={secure} multiline={multiline} keyboardType={keyboardType} placeholder={placeholder}
-        onFocus={() => setFocus(true)} onBlur={() => setFocus(false)}
-        autoCapitalize="none" placeholderTextColor={c.mute} style={[fam, s.input, focus && { borderColor: c.ink }, multiline && { minHeight: minHeight ?? 80, textAlignVertical: 'top' }, Platform.OS === 'web' && { outlineStyle: 'none' }]} />
+      <View>
+        <TextInput value={value ?? ''} onChangeText={onChangeText} accessibilityLabel={accessibilityLabel ?? label ?? placeholder} maxLength={maxLength} secureTextEntry={secure && !reveal} multiline={multiline} keyboardType={keyboardType} placeholder={placeholder}
+          onFocus={() => setFocus(true)} onBlur={() => setFocus(false)}
+          autoCapitalize="none" placeholderTextColor={c.mute} style={[fam, s.input, focus && { borderColor: c.ink }, multiline && { minHeight: minHeight ?? 80, textAlignVertical: 'top' }, secure && { paddingEnd: 52 }, Platform.OS === 'web' && { outlineStyle: 'none' }]} />
+        {secure ? (
+          <Pressable onPress={() => setReveal((x) => !x)} accessibilityRole="button" accessibilityLabel={reveal ? t('auth.hide_password') : t('auth.show_password')} accessibilityState={{ selected: reveal }}
+            hitSlop={4} style={{ position: 'absolute', end: 0, top: 0, bottom: 0, width: 48, alignItems: 'center', justifyContent: 'center' }}>
+            <Icon name={reveal ? 'EyeOff' : 'Eye'} size={22} color={c.mute} />
+          </Pressable>
+        ) : null}
+      </View>
       {hint ? <T size={12} color={c.mute}>{hint}</T> : null}
     </View>
   );

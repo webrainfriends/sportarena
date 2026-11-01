@@ -753,6 +753,8 @@ export default {
   'auth.reset_code': 'ری سیٹ کوڈ',
   'auth.new_password': 'نیا پاس ورڈ',
   'auth.password': 'پاس ورڈ',
+  'auth.show_password': 'پاس ورڈ دکھائیں',
+  'auth.hide_password': 'پاس ورڈ چھپائیں',
   'auth.password_ph': '10+ حروف',
   'auth.i_am': 'میں ہوں…',
   'auth.private_title': 'ڈیزائن ہی سے نجی',

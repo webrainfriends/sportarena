@@ -753,6 +753,8 @@ export default {
   'auth.reset_code': 'Kode atur ulang',
   'auth.new_password': 'Kata sandi baru',
   'auth.password': 'Kata sandi',
+  'auth.show_password': 'Tampilkan kata sandi',
+  'auth.hide_password': 'Sembunyikan kata sandi',
   'auth.password_ph': '10+ karakter',
   'auth.i_am': 'SAYA ADALAH…',
   'auth.private_title': 'Privat sejak dirancang',

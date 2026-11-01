@@ -753,6 +753,8 @@ export default {
   'auth.reset_code': 'रीसेट कोड',
   'auth.new_password': 'नवीन पासवर्ड',
   'auth.password': 'पासवर्ड',
+  'auth.show_password': 'पासवर्ड दाखवा',
+  'auth.hide_password': 'पासवर्ड लपवा',
   'auth.password_ph': '10+ अक्षरे',
   'auth.i_am': 'मी आहे…',
   'auth.private_title': 'रचनेपासूनच खाजगी',

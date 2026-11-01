@@ -773,6 +773,8 @@ export default {
   'auth.reset_code': 'Reset code',
   'auth.new_password': 'New password',
   'auth.password': 'Password',
+  'auth.show_password': 'Show password',
+  'auth.hide_password': 'Hide password',
   'auth.password_ph': '10+ characters',
   'auth.i_am': 'I AM A…',
   'auth.private_title': 'Private by design',

@@ -753,6 +753,8 @@ export default {
   'auth.reset_code': 'மீட்டமைப்புக் குறியீடு',
   'auth.new_password': 'புதிய கடவுச்சொல்',
   'auth.password': 'கடவுச்சொல்',
+  'auth.show_password': 'கடவுச்சொல்லைக் காட்டு',
+  'auth.hide_password': 'கடவுச்சொல்லை மறை',
   'auth.password_ph': '10+ எழுத்துகள்',
   'auth.i_am': 'நான் ஒரு…',
   'auth.private_title': 'வடிவமைப்பிலேயே தனியுரிமை',

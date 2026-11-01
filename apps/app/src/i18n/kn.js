@@ -753,6 +753,8 @@ export default {
   'auth.reset_code': 'ರೀಸೆಟ್ ಕೋಡ್',
   'auth.new_password': 'ಹೊಸ ಪಾಸ್‌ವರ್ಡ್',
   'auth.password': 'ಪಾಸ್‌ವರ್ಡ್',
+  'auth.show_password': 'ಪಾಸ್‌ವರ್ಡ್ ತೋರಿಸಿ',
+  'auth.hide_password': 'ಪಾಸ್‌ವರ್ಡ್ ಮರೆಮಾಡಿ',
   'auth.password_ph': '10+ ಅಕ್ಷರಗಳು',
   'auth.i_am': 'ನಾನು…',
   'auth.private_title': 'ವಿನ್ಯಾಸದಲ್ಲೇ ಗೌಪ್ಯ',

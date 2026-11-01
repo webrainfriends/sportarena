@@ -753,6 +753,8 @@ export default {
   'auth.reset_code': 'রিসেট কোড',
   'auth.new_password': 'নতুন পাসওয়ার্ড',
   'auth.password': 'পাসওয়ার্ড',
+  'auth.show_password': 'পাসওয়ার্ড দেখান',
+  'auth.hide_password': 'পাসওয়ার্ড লুকান',
   'auth.password_ph': '১০+ অক্ষর',
   'auth.i_am': 'আমি একজন…',
   'auth.private_title': 'নকশাতেই গোপনীয়',

@@ -753,6 +753,8 @@ export default {
   'auth.reset_code': 'යළි සැකසීමේ කේතය',
   'auth.new_password': 'නව මුරපදය',
   'auth.password': 'මුරපදය',
+  'auth.show_password': 'මුරපදය පෙන්වන්න',
+  'auth.hide_password': 'මුරපදය සඟවන්න',
   'auth.password_ph': 'අකුරු 10+',
   'auth.i_am': 'මම…',
   'auth.private_title': 'සැලසුමෙන්ම පෞද්ගලික',
