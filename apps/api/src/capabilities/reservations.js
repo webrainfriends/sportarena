@@ -31,6 +31,7 @@ const item = z.object({
 });
 const basket = {
   items: z.array(item).min(1).max(20).describe('Any number of slots, on any number of areas or venues (each venue prices in its own currency). All succeed or none does.'),
+  accept_mixed_currencies: z.boolean().default(false).describe('required (true) when the slots are at venues that price in different currencies: you get one invoice per currency and amounts are never added together. Without it the basket is refused with 409 mixed_currency.'),
   promo_codes: z.array(z.string().min(1).max(30)).max(5).default([]), note: z.string().max(300).optional(), team_id: id.optional(),
   billing: z.object({ name: z.string().max(120).optional(), address: z.string().max(300).optional(), tax_id: z.string().max(40).optional() }).optional().describe('printed on the invoices (e.g. company name and tax number); encrypted at rest'),
 };
@@ -181,7 +182,7 @@ export async function placeBasket(c, user, i, { collect }) {
     const t = await mustFind('teams', i.team_id, '*', c);
     if (!(await canManageTeam(user, t))) throw forbidden('You do not manage that team');
   }
-  const made = await createReservation(c, { user, items: i.items, promo_codes: i.promo_codes, note: i.note, team_id: i.team_id, billing: i.billing, collect });
+  const made = await createReservation(c, { user, items: i.items, promo_codes: i.promo_codes, note: i.note, team_id: i.team_id, billing: i.billing, collect, acceptMixedCurrencies: i.accept_mixed_currencies });
   return made;
 }
 
@@ -201,7 +202,7 @@ cap({
       if (!(e instanceof Rollback)) throw e;
       const { bookings, ...head } = e.view;
       return {
-        ok: e.made.problems.length === 0, problems: e.made.problems, currency: head.currency, subtotal_cents: head.subtotal_cents, discount_cents: head.discount_cents, total_cents: head.total_cents,
+        ok: e.made.problems.length === 0, problems: e.made.problems, currencies: e.made.currencies, mixed_currency: e.made.currencies.length > 1, currency: head.currency, subtotal_cents: head.subtotal_cents, discount_cents: head.discount_cents, total_cents: head.total_cents,
         tax_cents: head.tax_cents, payable_cents: head.payable_cents, totals: head.totals, invoices: head.invoices.map(({ number: _n, ...x }) => x), pay_within_minutes: e.made.payment_deadline ? config.holdMinutes : null,
         unapplied_codes: e.made.unused_codes, lines: bookings.map(({ id: _id, status: _s, payment_status: _p, refund_cents: _r, cancel_reason: _c, cancelled_at: _a, source: _o, ...l }) => l),
       };

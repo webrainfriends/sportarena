@@ -19,7 +19,7 @@ export function fundsClass(purposeType) {
   if (purposeType === 'venue_invoice' || purposeType === 'venue_plan') return 'partner_settlement';   // settled through the venue's partner contract
   if (purposeType === 'wallet_topup' || purposeType === 'gift_card') return 'platform_wallet';          // stored value owed to the customer, not provider money
   if (purposeType === 'service_invoice') return 'supplier_receivable';                                  // collected for a supplier; paying the supplier out is a manual, audited record (svc_payments.payout_state)
-  if (purposeType === 'media_rights_fee') return 'organisation_receivable';                           // owed to the event organiser; not a provider payout
+  if (purposeType === 'media_rights_fee' || purposeType === 'ticket_order') return 'organisation_receivable';   // ticket money is owed to the event organiser                           // owed to the event organiser; not a provider payout
   if (purposeType === 'ad_funding' || purposeType === 'commercial_subscription') return 'platform_revenue';                                           // advertising funds belong to the platform; spend and refunds are tracked in the ad ledger
   if (purposeType === 'team_charge' || purposeType === 'team_contribution') return 'team_receivable';                  // collected for the team's contribution ledger; the team settles it among its members, nothing is a provider payout
   if (purposeType === 'academy_charge') return 'organisation_receivable';                               // owed to the academy; not a provider payout until a settlement confirms it

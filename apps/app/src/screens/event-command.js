@@ -29,6 +29,8 @@ import { EventVenues } from './event-venues';
 import { Requests, Budget } from './event-plan';
 import { GameRow } from './event-schedule';
 import { AccreditationTab } from './event-accreditation';
+import { TicketsTab } from './event-tickets';
+import { t } from '../i18n';
 import { ComplianceWorkspace } from './compliance';
 import { TravelTab } from './trips';
 import { RaceDay } from './race-desk';
@@ -110,6 +112,7 @@ export function EventCommand({ id, tab: first = 'overview' }) {
     { key: 'people', label: 'People', icon: '🧩' },
     ...(ops.data ? [{ key: 'operations', label: 'Operations', icon: '🛰️', badge: ops.data.incidents.open || undefined }] : []),
     { key: 'accreditation', label: 'Accreditation', icon: '🎫' },
+    { key: 'tickets', label: t('tix.tab'), icon: '🎟️' },
     ...(isOrg ? [{ key: 'compliance', label: 'Compliance', icon: '🛡️' }] : []),
     { key: 'travel', label: 'Travel', icon: '🧳' },
     { key: 'boards', label: 'Boards', icon: '🗂️' },
@@ -154,6 +157,7 @@ export function EventCommand({ id, tab: first = 'overview' }) {
       )}
       {tab === 'operations' && ops.data && <OperationsTab id={id} e={e} isOrg={isOrg} sub={sub.operations} setSub={(s) => go('operations', s)} goTab={go} />}
       {tab === 'accreditation' && <AccreditationTab id={id} e={e} isOrg={isOrg} />}
+      {tab === 'tickets' && <TicketsTab id={id} e={e} isOrg={isOrg} />}
       {tab === 'compliance' && isOrg && <ComplianceWorkspace onDark scope={{ kind: 'event', id }} own={{ subject: { kind: 'event', id }, title: 'This event: permits, insurance, licences' }} />}
       {tab === 'travel' && <TravelTab id={id} e={e} />}
       {tab === 'boards' && <BoardTab id={id} isOrg={isOrg} />}

@@ -15,7 +15,7 @@ import { c } from '../theme';
 import { moneyIn } from '../vtime';
 import { locale } from '../locale';
 
-const cash = (cents, cur = 'INR') => moneyIn(Number(cents ?? 0), cur);
+const cash = (cents, cur) => moneyIn(cents, cur);
 const d10 = (d) => (d ? String(d).slice(0, 10) : '');
 const label = (s) => String(s ?? '').replace(/_/g, ' ');
 const pct = (bp) => `${(Number(bp) / 100).toFixed(2).replace(/\.00$/, '')}%`;

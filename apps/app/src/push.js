@@ -74,6 +74,7 @@ export function targetFor(data = {}) {
   if (data.report_id && data.fixture_id) return ['OfficialMatch', { id: data.fixture_id }]; // an official filed a report on your match
   if (data.proposal_id) return ['ScoringTool', { proposalId: data.proposal_id }]; // a proposed result to review, or the outcome of yours
   if ((data.ops_incident_id || data.ops_requirement) && data.event_id) return ['EventCommand', { id: data.event_id, tab: 'operations' }]; // an incident alert / handover, or a readiness requirement you own
+  if (data.ticket) return ['MyTickets', {}]; // a spectator ticket was issued, received, refunded or its match moved
   if (data.accreditation_id && data.event_id) return ['MyAccreditations', {}]; // a nomination, approval, reissue or revocation of your badge
   if (data.request_id && data.event_id) return ['EventInbox', {}];
   if (data.kpi_report_run_id) return ['Analytics', { tab: 'reports', run: data.kpi_report_run_id }]; // a scheduled analytics report is ready (it carries no figures)
@@ -143,6 +144,9 @@ export function parseTarget(t) {
   if (kind === 'event-ops' && id) return ['EventCommand', { id, tab: 'operations' }];
   if (kind === 'event-accreditation' && id) return ['EventCommand', { id, tab: 'accreditation' }];
   if (kind === 'gate' && id) return ['GateScan', { id }];
+  if (kind === 'tickets' && id) return ['Tickets', { id }];   // buy tickets for an event
+  if (kind === 'event-tickets' && id) return ['EventCommand', { id, tab: 'tickets' }];   // the organiser's ticketing tab
+  if (kind === 'my-tickets') return ['MyTickets', {}];
   if (kind === 'tender-orders') return ['TenderOrders', {}];
   if (kind === 'tender-reports') return ['TenderReports', {}];
   if (kind === 'tender-order' && id) return ['TenderOrder', { id }];

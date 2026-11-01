@@ -30,7 +30,7 @@ const say = (e) => {
   if (code === 'positions_filled') return 'All positions have been filled.';
   return e?.message ?? 'Something went wrong';
 };
-const offerLine = (o) => [o.role, o.rate_cents != null ? `${money(o.rate_cents)} ${UNIT[o.rate_unit] ?? ''}`.trim() : 'rate to agree', o.starts_on && `starts ${o.starts_on}`].filter(Boolean).join(' · ');
+const offerLine = (o, currency = o.currency) => [o.role, o.rate_cents != null ? `${money(o.rate_cents, currency)} ${UNIT[o.rate_unit] ?? ''}`.trim() : 'rate to agree', o.starts_on && `starts ${o.starts_on}`].filter(Boolean).join(' · ');
 const iso = (date, time) => new Date(`${date}T${time || '12:00'}:00`).toISOString();
 const left = (deadline) => { const ms = new Date(deadline) - Date.now(); if (ms <= 0) return 'expired'; const d = Math.floor(ms / 86400000); return d >= 1 ? `${d} day${d > 1 ? 's' : ''} left` : `${Math.max(1, Math.round(ms / 3600000))} h left`; };
 const saveCsv = (filename, csv, setText) => {
@@ -284,7 +284,7 @@ export function RecruitmentApplication({ id }) {
         <FormSheet visible onClose={() => setForm(null)} title={cur ? `Revised offer (v${(offers.at(-1)?.version ?? 0) + 1})` : 'Offer'} submitLabel="Send offer"
           initial={cur ? { rate_cents: cur.rate_cents ?? undefined, rate_unit: cur.rate_unit ?? 'match', starts_on: cur.starts_on ?? undefined } : { rate_unit: 'match' }}
           fields={[
-            { key: 'rate_cents', label: 'Rate', type: 'money', currency: () => 'INR', optional: true, hint: 'Leave empty if the rate is agreed later.' },
+            { key: 'rate_cents', label: 'Rate', type: 'money', currency: () => a.post.currency, optional: true, hint: 'Leave empty if the rate is agreed later.' },
             { key: 'rate_unit', label: 'Per', type: 'chips', options: UNITS },
             { key: 'starts_on', label: 'Starts', type: 'date', optional: true },
             { key: 'deadline_date', label: 'Respond by', type: 'date', min: new Date().toISOString().slice(0, 10) },

@@ -248,12 +248,23 @@ export async function loadResources(c, ids) {
  * Create a reservation: one or many lines across one or many areas / venues, all-or-nothing.
  * `collect` (used by quotes) records per-line problems instead of throwing so the caller can show every issue at once.
  */
-export async function createReservation(c, { user, userId = user.id, items, promo_codes = [], note, billing, walkInGuest = false, ...rest }) {
+export async function createReservation(c, { user, userId = user.id, items, promo_codes = [], note, billing, walkInGuest = false, acceptMixedCurrencies = false, ...rest }) {
   const resources = await loadResources(c, items.map((i) => i.resource_id));
-  const currencies = await currenciesOf(c, [...resources.values()]);
+  const currencies = (await currenciesOf(c, [...resources.values()])).sort();
+  // a basket across currencies is never one total: it becomes one invoice per currency, so the booker must say they understand
+  let mixedProblem = null;
+  if (currencies.length > 1) {
+    const message = `These venues price in ${currencies.join(' and ')}. You will get a separate invoice and pay a separate amount in each currency; the amounts are never added together.`;
+    if (!acceptMixedCurrencies && !rest.staff && !rest.walkIn) {
+      if (!rest.collect) throw conflict(message, { code: 'mixed_currency', currencies });
+      mixedProblem = { code: 'mixed_currency', message, currencies };
+    }
+  }
   const rs = (await c.query('INSERT INTO reservations(code, user_id, currency, promo_codes, note, billing_enc, walk_in) VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING *',
     [newCode(), userId, currencies.length > 1 ? 'MULTI' : currencies[0], promo_codes, note ?? null, billing ? encryptBilling(billing) : null, walkInGuest])).rows[0];
   const out = await addLines(c, rs, { userId, items, note, ...rest });
+  if (mixedProblem) out.problems.push(mixedProblem);
+  out.currencies = currencies;
   const deadline = rest.staff || rest.walkIn ? null : await applyPaymentDeadline(c, rs.id, out.venueIds);
   return { reservationId: rs.id, ...out, payment_deadline: deadline };
 }
