@@ -19,14 +19,17 @@ cap({
   async handler({ user }, i) {
     const country = await resolveCountry({ country: i.country, userId: user?.id, currency: i.currency ?? config.payments.currency });
     const m = await enabledMethods(country);
-    return { country: m.country, providers: m.providers, methods: m.methods, currency: config.payments.currency };
+    // UPI needs a mobile number: tell the app whether the account already has one so it only asks when it must
+    const contactKnown = user ? !!(await one('SELECT 1 AS x FROM users WHERE id=$1 AND phone_enc IS NOT NULL', [user.id])) : false;
+    return { country: m.country, providers: m.providers, methods: m.methods, currency: config.payments.currency, contact_known: contactKnown };
   },
 });
 
 cap({
   name: 'create_payment', method: 'POST', path: '/payments', tag: 'Payments', status: 201,
-  summary: 'Start a hosted checkout (Stripe, PayPal or Razorpay) for a shop order (or a whole shop cart: purpose_type shop_checkout with the checkout_id), coach hire, insurance policy or venue invoice you own. Venue invoices are charged in the invoice currency. The amount is read from the record, never from the client. Send the person to checkout_url; then call confirm_payment (or wait for the provider webhook).',
-  input: z.object({ purpose_type: z.enum(purposes), purpose_id: id, provider: z.enum(['stripe', 'paypal', 'razorpay']), method: z.enum(METHOD_KEYS).optional().describe('card, paypal, upi, netbanking or wallet; must be switched on for the country'), country: z.string().length(2).transform((x) => x.toUpperCase()).optional().describe('ISO-2; normally worked out from the venue or your address'), return_url: z.string().url().optional().describe('where the provider sends the person back (must be an allowed origin)') }),
+  summary: 'Start a checkout (Stripe, PayPal or Razorpay hosted pages, or Razorpay UPI collect / intent without leaving the app) for a shop order (or a whole shop cart: purpose_type shop_checkout with the checkout_id), coach hire, insurance policy or venue invoice you own. Venue invoices are charged in the invoice currency. The amount is read from the record, never from the client. Send the person to checkout_url; then call confirm_payment (or wait for the provider webhook).',
+  input: z.object({ purpose_type: z.enum(purposes), purpose_id: id, provider: z.enum(['stripe', 'paypal', 'razorpay']), method: z.enum(METHOD_KEYS).optional().describe('card, paypal, upi, netbanking or wallet; must be switched on for the country'), country: z.string().length(2).transform((x) => x.toUpperCase()).optional().describe('ISO-2; normally worked out from the venue or your address'), return_url: z.string().url().optional().describe('where the provider sends the person back (must be an allowed origin)'),
+    upi: z.object({ flow: z.enum(['collect', 'intent']), vpa: z.string().trim().regex(/^[A-Za-z0-9._-]{2,256}@[A-Za-z]{2,64}$/, 'Enter a UPI ID like name@bank').optional(), contact: z.string().trim().regex(/^\+?[0-9]{10,13}$/, 'Enter a mobile number').optional() }).refine((u) => u.flow !== 'collect' || !!u.vpa, 'A UPI ID is needed to collect').optional().describe('UPI only (razorpay): collect sends a request to the UPI ID, intent returns a upi:// link or QR to open in any UPI app') }),
   handler: ({ user }, i) => startCheckout(user, i),
 });
 

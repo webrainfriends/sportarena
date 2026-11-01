@@ -1,4 +1,5 @@
 import { one, many, tx, pool } from '../db.js';
+import { decrypt } from '../crypto.js';
 import { config } from '../config.js';
 import { AppError, badRequest, conflict, forbidden, notFound } from '../errors.js';
 import { provider, configuredProviders } from './providers.js';
@@ -269,6 +270,15 @@ async function checkPayScope(c, userId, type, id) {
   if (r) await checkGuardianScope(userId, r.child_id, 'pay', r.org_id, c);
 }
 
+/** Razorpay needs an email and a mobile number for a UPI payment: the person's own, or the number they typed for this payment. */
+async function upiPayer(userId, upi) {
+  const u = await one('SELECT email_enc, phone_enc FROM users WHERE id=$1', [userId]);
+  const email = u?.email_enc ? decrypt(u.email_enc, 'users.email') : null;
+  const contact = upi.contact ?? (u?.phone_enc ? decrypt(u.phone_enc, 'users.phone') : null);
+  if (!contact) throw badRequest('A mobile number is needed to pay by UPI. Enter it with the payment.');
+  return { email, contact };
+}
+
 export async function startCheckout(user, i) {
   if (!configuredProviders().includes(i.provider)) throw badRequest(`${i.provider} is not enabled on this server`);
   const client = await pool.connect();
@@ -288,7 +298,8 @@ export async function startCheckout(user, i) {
     country = await resolveCountry({ country: i.country, userId: d.payerId, currency, venueId: await venueOfPurpose(client, i.purpose_type, i.purpose_id) });
     const offered = await enabledMethods(country);
     if (!offered.providers.includes(i.provider)) throw conflict(`${i.provider} payments are not switched on for ${country ?? 'this country'}`);
-    method = i.method ?? defaultMethodFor(i.provider);
+    method = i.upi ? 'upi' : (i.method ?? defaultMethodFor(i.provider));
+    if (i.upi && i.provider !== 'razorpay') throw badRequest('UPI collect and intent are paid through Razorpay');
     if (!METHODS[method]?.providers.includes(i.provider) || !offered.methods.includes(method)) throw conflict(`${method} is not switched on for ${country}`);
     const row = (await client.query('INSERT INTO payments(payer_id, provider, purpose_type, purpose_id, amount_cents, currency, cover_mandate_id, method, country) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING id', [user.id, i.provider, i.purpose_type, i.purpose_id, d.amount, currency, cover?.id ?? null, method, country])).rows[0];
     paymentId = row.id;
@@ -300,9 +311,11 @@ export async function startCheckout(user, i) {
   const base = safeReturnBase(i.return_url);
   const mk = (r) => `${base}/?payment=${paymentId}&result=${r}`;
   try {
-    const out = await provider(i.provider).createCheckout({ paymentId, amount: d.amount, currency, name: d.name, successUrl: mk('success'), cancelUrl: mk('cancel') });
+    const out = i.upi
+      ? await provider(i.provider).createUpi({ paymentId, amount: d.amount, currency, name: d.name, upi: i.upi, payer: await upiPayer(user.id, i.upi) })
+      : await provider(i.provider).createCheckout({ paymentId, amount: d.amount, currency, name: d.name, successUrl: mk('success'), cancelUrl: mk('cancel') });
     await one('UPDATE payments SET provider_ref=$2 WHERE id=$1', [paymentId, out.ref]);
-    return { id: paymentId, provider: i.provider, method, country, amount_cents: d.amount, currency, checkout_url: out.url };
+    return { id: paymentId, provider: i.provider, method, country, amount_cents: d.amount, currency, checkout_url: out.url ?? null, ...(i.upi ? { upi_flow: i.upi.flow, upi_intent_url: out.intent_url ?? null } : {}) };
   } catch (e) {
     await one("UPDATE payments SET status='failed' WHERE id=$1", [paymentId]);
     await closeCharge(null, paymentId, 'failed');
