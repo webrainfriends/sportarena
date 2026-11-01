@@ -32,6 +32,7 @@ import { expireAcademyOffers, remindTrials, runAcademyJobs } from './academy-swe
 import { runTenderJobs, sendTenderReminders } from './capabilities/tender-reports.js';
 import { deliverDueReports } from './sponsor-report-schedules.js';
 import { deliverDueKpiReports } from './kpi/service.js';
+import { growthMaintenance } from './growth/service.js';
 import { accrueActiveContracts } from './player-contracts.js';
 import { runRepresentationSweeps } from './representation.js';
 import { raiseScheduledCharges, runCollections } from './collections.js';
@@ -42,6 +43,7 @@ import { runOfficialsSweeps } from './officials-sweeps.js';
 import { runComplianceSweeps } from './compliance-sweeps.js';
 import { runTripSweeps } from './trips-sweeps.js';
 import { runMediaRightsSweeps } from './media-rights-sweeps.js';
+import { runClipJobs } from './smart-clips.js';
 import { sendFollowerAlerts } from './spectator.js';
 import { snapshotAll } from './rankings/data.js';
 import { hourlyRatingSweep } from './ratings/data.js';
@@ -98,6 +100,7 @@ export const STEPS = [
   ['sponsor_tasks', 'sponsor_task_reminders', processSponsorTasks, 0],
   ['sponsor_reports', 'sponsor_reports_delivered', deliverDueReports, 0],
   ['kpi_reports', 'kpi_reports_delivered', deliverDueKpiReports, 0],
+  ['growth_analytics', 'growth_analytics', growthMaintenance, null],
   ['player_contracts', 'contract_earnings_posted', accrueActiveContracts, 0],
   ['representation', 'representation_swept', runRepresentationSweeps, 0],
   ['supplier_services', 'supplier_services', runServiceSweeps, null],
@@ -107,6 +110,7 @@ export const STEPS = [
   ['compliance', 'compliance', runComplianceSweeps, null],
   ['team_travel', 'team_travel', runTripSweeps, null],
   ['media_rights', 'media_rights', runMediaRightsSweeps, null],
+  ['smart_clips', 'smart_clips', runClipJobs, null],
   ['follower_alerts', 'follower_alerts_sent', sendFollowerAlerts, 0],
   ['ranking_snapshots', 'ranking_snapshots', weeklyRankingSnapshots, 0],
   ['skill_ratings', 'skill_rating_runs', hourlyRatingSweep, 0],

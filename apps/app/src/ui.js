@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Animated, Easing, Image, Keyboard, Modal, Platform, Pressable, RefreshControl, ScrollView, StyleSheet, Text, TextInput, View, ActivityIndicator } from 'react-native';
+import { Animated, Easing, FlatList, Image, Keyboard, Modal, Platform, Pressable, RefreshControl, ScrollView, StyleSheet, Text, TextInput, View, ActivityIndicator } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { c, dark, grad, r, accentFor, fam } from './theme';
@@ -191,10 +191,10 @@ export const Seg = ({ options, value, onChange, color = c.violet }) => (
 const HeaderCtx = React.createContext(null);
 export const ScreenHeaderProvider = HeaderCtx.Provider;
 
-export function Screen({ children, scroll = true, refreshing, onRefresh, padBottom, style, wide }) {
+/** What every scrolling screen shares: the gutter and max width, the keyboard behaviour, the pull-to-refresh control and the header a host screen hands down. */
+function useScreenFrame({ onRefresh, refreshing, padBottom, wide, scroll = true }) {
   const L = useLayout();
   const header = React.useContext(HeaderCtx);
-  const Inner = scroll ? ScrollView : View;
   const bottom = padBottom ?? L.bottomPad;
   // Pull down to reload. The spinner stays up while the screen's own reload runs (at least a moment, so a quick reload is still seen).
   const [pulling, setPulling] = useState(false);
@@ -203,12 +203,35 @@ export function Screen({ children, scroll = true, refreshing, onRefresh, padBott
     try { await Promise.all([Promise.resolve(onRefresh()), new Promise((done) => setTimeout(done, 600))]); } catch { /* the screen shows its own error */ } finally { setPulling(false); }
   };
   const refreshControl = scroll && onRefresh ? <RefreshControl refreshing={pulling || !!refreshing} onRefresh={pull} tintColor={c.mute} colors={[c.pink]} progressBackgroundColor={c.paper} /> : undefined;
+  const content = { paddingHorizontal: L.gutter, paddingTop: 8, paddingBottom: bottom, maxWidth: wide ? L.contentMax : Math.min(L.contentMax, L.tablet ? 860 : 760), width: '100%', alignSelf: 'center' };
+  const scroller = { style: { flex: 1 }, showsVerticalScrollIndicator: false, keyboardShouldPersistTaps: 'handled', automaticallyAdjustKeyboardInsets: true, refreshControl };
+  return { L, header, content, scroller };
+}
+
+export function Screen({ children, scroll = true, refreshing, onRefresh, padBottom, style, wide }) {
+  const { L, header, content, scroller } = useScreenFrame({ onRefresh, refreshing, padBottom, wide, scroll });
+  const Inner = scroll ? ScrollView : View;
   return (
     <View style={{ flex: 1, backgroundColor: c.bg }}>
-      <Inner style={{ flex: 1 }} contentContainerStyle={scroll ? { paddingHorizontal: L.gutter, paddingTop: 8, paddingBottom: bottom, maxWidth: wide ? L.contentMax : Math.min(L.contentMax, L.tablet ? 860 : 760), width: '100%', alignSelf: 'center' } : undefined}
-        showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled" automaticallyAdjustKeyboardInsets refreshControl={refreshControl}>
+      <Inner {...(scroll ? scroller : { style: { flex: 1 } })} contentContainerStyle={scroll ? content : undefined}>
         {scroll ? <>{header}{children}</> : <View style={[{ flex: 1, padding: L.gutter }, style]}>{children}</View>}
       </Inner>
+    </View>
+  );
+}
+
+/** A screen whose main content is a long list: the same frame as Screen, but the list is the scroller, so only the rows on screen are built.
+ *  Put everything above the rows in `header` and anything below them in `footer` (pass elements, not components, so a search box keeps focus).
+ *  `onEndReached` loads the next page; keep a visible "Show more" in `footer` as well, because a short list may never reach the end. */
+export function ListScreen({ data, renderItem, keyExtractor, header, footer, empty, onEndReached, gap = 8, numColumns = 1, refreshing, onRefresh, padBottom, wide, extraData }) {
+  const { header: host, content, scroller } = useScreenFrame({ onRefresh, refreshing, padBottom, wide });
+  return (
+    <View style={{ flex: 1, backgroundColor: c.bg }}>
+      <FlatList key={numColumns} data={data} renderItem={renderItem} keyExtractor={keyExtractor} extraData={extraData} numColumns={numColumns}
+        {...scroller} contentContainerStyle={content} columnWrapperStyle={numColumns > 1 ? { gap } : undefined}
+        ListHeaderComponent={<>{host}{header}</>} ListFooterComponent={footer} ListEmptyComponent={empty}
+        ItemSeparatorComponent={() => <View style={{ height: gap }} />} onEndReached={onEndReached} onEndReachedThreshold={0.6}
+        initialNumToRender={10} windowSize={7} removeClippedSubviews={Platform.OS === 'android'} />
     </View>
   );
 }

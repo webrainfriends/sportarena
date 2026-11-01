@@ -13,8 +13,10 @@ import { PARTNER_KINDS, rightLabel, fmtDT, fmtRange, money, nice, badgeOf, State
 import { OfferForm, LicenceSheet } from './media-licence';
 import { ProductionPanel, StreamsPanel } from './media-production';
 import { AssetsPanel } from './media-assets';
+import { ClipsPanel } from './clips';
+import { t } from '../i18n';
 
-const TABS = [['rights', '🧾 Rights'], ['schedule', '🗓️ Games'], ['production', '🎬 Production'], ['streams', '📺 Streams'], ['media', '🎞️ Media'], ['find', '🔎 Find rights']];
+const TABS = [['rights', '🧾 Rights'], ['schedule', '🗓️ Games'], ['production', '🎬 Production'], ['streams', '📺 Streams'], ['media', '🎞️ Media'], ['highlights', `✨ ${t('clips.tab')}`], ['find', '🔎 Find rights']];
 
 export function MediaWorkspace() {
   const { toast } = useSession();
@@ -99,10 +101,11 @@ export function MediaWorkspace() {
             </>
           ) : null}
 
-          {['production', 'streams', 'media'].includes(tab) ? (
+          {['production', 'streams', 'media', 'highlights'].includes(tab) ? (
             <EventScoped w={w} evId={evId} setEvId={setEvId}>
               {(ev, licences, games) => (tab === 'production' ? <ProductionPanel id={ev.id} isOrg={false} canAct={partner.can_act} games={games} licences={licences} />
                 : tab === 'streams' ? <StreamsPanel id={ev.id} isOrg={false} canAct={partner.can_act} games={games} licences={licences} />
+                : tab === 'highlights' ? <ClipsPanel id={ev.id} games={games} />
                 : <AssetsPanel id={ev.id} isOrg={false} games={games} partners={w.partners} />)}
             </EventScoped>
           ) : null}

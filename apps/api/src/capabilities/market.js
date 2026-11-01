@@ -7,11 +7,13 @@ import { notify } from '../notify.js';
 import { config } from '../config.js';
 import { isSupportedCurrency } from '../currency.js';
 import { marketMediaUrl } from '../market-media.js';
+import { encrypt, decrypt } from '../crypto.js';
+import { COMMENT_CTX, LIMITS, POST_CTX, blockedBetween, communityFor, spend } from '../communities.js';
 
 const kinds = ['wanted', 'match', 'schedule', 'sale', 'campaign', 'announcement'];
 const ACTIVE_AD = "(p.sponsor_status='approved' AND now() BETWEEN p.promo_starts_at AND p.promo_ends_at)";
 
-const COLS = `p.id, p.kind, p.title, p.body, p.city, p.starts_at, p.price_cents, p.currency, p.positions, p.cta_label, p.link_url, p.visibility, p.status, p.created_at,
+const COLS = `p.id, p.kind, p.title, p.body, p.city, p.starts_at, p.price_cents, p.currency, p.positions, p.cta_label, p.link_url, p.visibility, p.status, p.created_at, p.body_enc, p.community_id,
   p.coach_request_id, p.sponsor_status, p.promo_starts_at, p.promo_ends_at, ${ACTIVE_AD} AS sponsored,
   s.slug AS sport_slug, s.name AS sport, s.emoji AS sport_emoji,
   u.id AS author_id, u.handle AS author_handle, u.display_name AS author_name, u.avatar_emoji AS author_emoji, u.avatar_color AS author_color, u.avatar_url AS author_avatar_url, array_remove(array_remove(u.roles,'admin'),'platform_admin') AS author_roles,
@@ -24,13 +26,14 @@ const COLS = `p.id, p.kind, p.title, p.body, p.city, p.starts_at, p.price_cents,
   (SELECT l.status FROM market_leads l WHERE l.post_id=p.id AND l.user_id=$1) AS my_application`;
 const FROM = 'FROM market_posts p JOIN users u ON u.id=p.author_id LEFT JOIN sports s ON s.id=p.sport_id';
 // What a viewer may see: archived never; unreviewed/rejected ads only to their author (and admins); members-only posts need a login.
-const VISIBLE = `p.archived_at IS NULL AND (
+const VISIBLE = `p.archived_at IS NULL AND p.hidden_at IS NULL AND p.community_id IS NULL AND (
   p.author_id = $1 OR $2::boolean
   OR (p.sponsor_status IN ('none','approved') AND (p.visibility='public' OR $1::uuid IS NOT NULL)))`;
 
 /** Shape a row for the viewer. Visitors who are not signed in see who posted, but not a profile link or handle. */
 function shape(row, user) {
-  const { author_id, author_handle, author_roles, author_name, author_emoji, author_color, author_avatar_url, media, ...rest } = row;
+  const { author_id, author_handle, author_roles, author_name, author_emoji, author_color, author_avatar_url, media, body_enc, ...rest } = row;
+  if (body_enc) rest.body = decrypt(body_enc, POST_CTX);
   const author = user
     ? { id: author_id, handle: author_handle, display_name: author_name, avatar_emoji: author_emoji, avatar_color: author_color, avatar_url: author_avatar_url, roles: author_roles }
     : { display_name: author_name, avatar_emoji: author_emoji, avatar_color: author_color, avatar_url: author_avatar_url };
@@ -39,6 +42,15 @@ function shape(row, user) {
 const args = (user) => [user?.id ?? null, !!isAdmin(user)];
 
 async function loadVisible(user, postId) {
+  const community = await one('SELECT community_id FROM market_posts WHERE id=$1', [postId]);
+  if (community?.community_id) {
+    // a community post: the same access rules as the community's own feed (private content is a 404 to outsiders; blocked authors are a 404)
+    if (!user) throw unauthorized('Sign in to view this post');
+    const { community: cm } = await communityFor(user, community.community_id, { need: 'read' });
+    const post = await one(`SELECT ${COLS} ${FROM} WHERE p.id=$2 AND p.community_id=$3 AND p.archived_at IS NULL AND p.hidden_at IS NULL AND NOT ${blockedBetween('p.author_id', '$1')}`, [user.id, postId, cm.id]);
+    if (!post) throw notFound('Post');
+    return post;
+  }
   const row = await one(`SELECT ${COLS} ${FROM} WHERE p.id=$3 AND ${VISIBLE}`, [...args(user), postId]);
   if (row) return row;
   const exists = await one('SELECT visibility FROM market_posts WHERE id=$1 AND archived_at IS NULL', [postId]);
@@ -126,22 +138,34 @@ cap({
 });
 
 cap({
-  name: 'list_market_comments', method: 'GET', path: '/market/posts/:id/comments', tag: 'Marketplace', summary: 'Comments on a post (members only).', input: z.object({ id, ...page }),
+  name: 'list_market_comments', method: 'GET', path: '/market/posts/:id/comments', tag: 'Marketplace',
+  summary: 'Comments on a post, oldest first (members only). Pass `after` (the `cursor` of the last comment) to page without skipping or repeating comments; offset still works. Comments by people you blocked or who blocked you, and removed comments, are left out.',
+  input: z.object({ id, after: z.string().max(100).optional().describe('cursor of the last comment you have'), ...page }),
   async handler({ user }, i) {
     await loadVisible(user, i.id);
-    return many(`SELECT c.id, c.body, c.created_at, u.id AS author_id, u.handle, u.display_name, u.avatar_emoji, u.avatar_color, u.avatar_url FROM market_comments c JOIN users u ON u.id=c.author_id
-                  WHERE c.post_id=$1 AND c.archived_at IS NULL ORDER BY c.created_at LIMIT $2 OFFSET $3`, [i.id, i.limit, i.offset]);
+    const [ts, cid] = i.after ? i.after.split('|') : [null, null];
+    if (i.after && (Number.isNaN(Date.parse(ts)) || !/^[0-9a-f-]{36}$/i.test(cid ?? ''))) throw badRequest('after must be a comment cursor');
+    const rows = await many(`SELECT c.id, c.body, c.body_enc, c.created_at, to_char(c.created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"') AS cursor_ts,
+                    u.id AS author_id, u.handle, u.display_name, u.avatar_emoji, u.avatar_color, u.avatar_url FROM market_comments c JOIN users u ON u.id=c.author_id
+                  WHERE c.post_id=$1 AND c.archived_at IS NULL AND c.hidden_at IS NULL AND ($4::uuid IS NULL OR NOT ${blockedBetween('c.author_id', '$4')})
+                    AND ($5::timestamptz IS NULL OR (c.created_at, c.id) > ($5::timestamptz, $6::uuid))
+                  ORDER BY c.created_at, c.id LIMIT $2 OFFSET $3`, [i.id, i.limit, i.after ? 0 : i.offset, user?.id ?? null, ts, cid]);
+    return rows.map(({ body_enc, cursor_ts, ...r }) => ({ ...r, body: body_enc ? decrypt(body_enc, COMMENT_CTX) : r.body, cursor: `${cursor_ts}|${r.id}` }));
   },
 });
 
 cap({
-  name: 'add_market_comment', method: 'POST', path: '/market/posts/:id/comments', tag: 'Marketplace', status: 201, summary: 'Comment on a post.', input: z.object({ id, body: z.string().min(1).max(600) }),
+  name: 'add_market_comment', method: 'POST', path: '/market/posts/:id/comments', tag: 'Marketplace', status: 201, summary: 'Comment on a post. In a community you must be an active member who has not been silenced; the text is stored encrypted. Commenting on a post of someone who blocked you is a 404.', input: z.object({ id, body: z.string().min(1).max(600) }),
   async handler({ user }, i) {
     const p = await loadVisible(user, i.id);
+    if (p.community_id) await communityFor(user, p.community_id, { need: 'post' });
     return tx(async (c) => {
-      const row = (await c.query('INSERT INTO market_comments(post_id, author_id, body) VALUES ($1,$2,$3) RETURNING id, body, created_at', [i.id, user.id, i.body])).rows[0];
-      if (p.author_id !== user.id) await notify(c, p.author_id, { kind: 'market_comment', title: `${user.display_name} commented on your post`, body: p.title, data: { post_id: i.id } });
-      return row;
+      if (p.community_id) await spend(c, user.id, 'community_comment', LIMITS.commentsPerHour);
+      const row = p.community_id
+        ? (await c.query("INSERT INTO market_comments(post_id, author_id, body, body_enc) VALUES ($1,$2,'',$3) RETURNING id, created_at", [i.id, user.id, encrypt(i.body, COMMENT_CTX)])).rows[0]
+        : (await c.query('INSERT INTO market_comments(post_id, author_id, body) VALUES ($1,$2,$3) RETURNING id, body, created_at', [i.id, user.id, i.body])).rows[0];
+      if (p.author_id !== user.id) await notify(c, p.author_id, { kind: 'market_comment', title: `${user.display_name} commented on your post`, body: p.community_id ? 'Open the community to read it' : p.title, data: { post_id: i.id } });
+      return { ...row, body: i.body };
     });
   },
 });

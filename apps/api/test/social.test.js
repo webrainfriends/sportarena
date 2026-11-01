@@ -234,11 +234,58 @@ test('rate limits, reports are audit-logged and the capabilities are in REST, Op
   const a = await signup(), b = await signup();
   await pool.query("INSERT INTO spectator_actions(user_id, kind) SELECT $1, 'follow' FROM generate_series(1,60)", [a.id]);
   assert.equal((await follow(a, b)).status, 429);
-  must(await api('POST', '/social/reports', { token: b.token, body: { target_type: 'user', target_id: (await signup()).id, reason: 'spam' } }).catch(() => ({ status: 201, body: {} })), 201).valueOf;
+  const victim = await signup();
+  const rep = must(await api('POST', '/social/reports', { token: b.token, body: { target_type: 'user', target_id: victim.id, reason: 'spam', note: 'private note' } }), 201);
+  assert.ok(rep.id ?? rep.status ?? rep, 'report accepted');
+  assert.equal((await pool.query("SELECT 1 FROM social_reports WHERE reporter_id=$1 AND actor_id=$2 AND note_enc IS NOT NULL AND note_enc NOT LIKE '%private note%'", [b.id, victim.id])).rowCount, 1, 'note is stored encrypted');
+  assert.equal((await pool.query("SELECT 1 FROM audit_log WHERE actor_id=$1 AND action='social_report'", [b.id])).rowCount, 1, 'report is audit-logged');
   const spec = await (await fetch(`${base}/api/v1/openapi.json`)).json();
   const names = ['get_social_settings', 'update_social_settings', 'list_followers', 'list_following', 'list_follow_requests', 'decide_follow_request', 'request_friend', 'respond_friend', 'end_friend', 'list_friends', 'set_user_mute', 'list_blocked_and_muted', 'get_social_suggestions', 'get_activity_feed', 'set_activity_visibility', 'report_social', 'list_social_reports', 'decide_social_report'];
   for (const nme of names) {
     assert.ok(capabilities.some((c) => c.name === nme), nme);
     assert.ok(Object.values(spec.paths).some((p) => Object.values(p).some((o) => o.operationId === nme)), `openapi ${nme}`);
   }
+});
+
+test('the MCP server lists every social capability, with the same auth rules', async () => {
+  const rpc = async (method, params, token) => {
+    const r = await fetch(`${base}/mcp`, { method: 'POST', headers: { 'content-type': 'application/json', accept: 'application/json, text/event-stream', ...(token ? { authorization: `Bearer ${token}` } : {}) }, body: JSON.stringify({ jsonrpc: '2.0', id: 1, method, params }) });
+    return (await r.json()).result;
+  };
+  const tools = (await rpc('tools/list', {})).tools.map((t) => t.name);
+  for (const nme of ['list_followers', 'list_following', 'request_friend', 'respond_friend', 'get_activity_feed', 'set_user_mute', 'report_social', 'get_social_settings']) assert.ok(tools.includes(nme), `mcp ${nme}`);
+  assert.equal((await rpc('tools/call', { name: 'get_activity_feed', arguments: {} })).isError, true, 'anonymous is refused');
+  const u = await signup();
+  const r = await rpc('tools/call', { name: 'get_activity_feed', arguments: {} }, u.token);
+  assert.ok(!r.isError && Array.isArray(r.structuredContent.result));
+});
+
+test('notifications respect muted kinds, blocks, quiet hours and never leave the app channel', async () => {
+  const { useCaseForKind } = await import('../src/comms-catalogue.js');
+  for (const k of ['follow_new', 'follow_request', 'friend_request', 'friend_accepted']) assert.equal(useCaseForKind(k), null, `${k} is not mapped to WhatsApp / SMS`);
+  const pushFor = async (u, kind) => (await pool.query("SELECT d.channel FROM notification_deliveries d JOIN notifications n ON n.id=d.notification_id WHERE n.user_id=$1 AND n.kind=$2", [u.id, kind])).rows.map((r) => r.channel);
+  const device = (u) => pool.query("INSERT INTO push_devices(user_id, provider, platform, token) VALUES ($1,'expo','ios',$2)", [u.id, `ExponentPushToken[${u.id}]`]);
+  const a = await signup(), b = await signup(), c = await signup(), d = await signup(), e = await signup();
+  // normal: in the inbox, and pushed
+  await device(b); must(await follow(a, b), 201);
+  assert.equal((await notes(b, 'follow_new')).length, 1);
+  assert.deepEqual(await pushFor(b, 'follow_new'), ['email', 'push']);
+  // muted kind: nothing is created at all
+  await pool.query("INSERT INTO notification_prefs(user_id, muted_kinds) VALUES ($1, ARRAY['follow_new'])", [c.id]);
+  must(await follow(a, c), 201);
+  assert.equal((await notes(c, 'follow_new')).length, 0);
+  // quiet hours: still in the inbox, but no push (and no WhatsApp / SMS)
+  await device(d);
+  await pool.query("INSERT INTO notification_prefs(user_id, quiet_start, quiet_end, quiet_tz) VALUES ($1,'00:00','23:59','UTC')", [d.id]);
+  const nowUtc = new Date().toISOString().slice(11, 16);
+  if (nowUtc < '23:59') {
+    must(await follow(a, d), 201);
+    assert.equal((await notes(d, 'follow_new')).length, 1);
+    const ch = await pushFor(d, 'follow_new');
+    assert.ok(!ch.includes('push') && !ch.includes('whatsapp') && !ch.includes('sms'), JSON.stringify(ch));
+  }
+  // a blocked person never notifies the person who blocked them
+  must(await api('POST', '/me/contact-blocks', { token: e.token, body: { user_id: a.id, blocked: true } }));
+  assert.equal((await follow(a, e)).status, 404);
+  assert.equal((await notes(e, 'follow_new')).length, 0);
 });

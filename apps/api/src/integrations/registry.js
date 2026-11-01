@@ -12,7 +12,7 @@ import { createHmac, timingSafeEqual } from 'node:crypto';
 import { fetchIcs, parseBusy } from '../ics.js';
 import { send } from './http.js';
 
-export const CATEGORIES = ['payments', 'sso', 'calendar', 'email_sms', 'wearables', 'video', 'federation_feed', 'accounting', 'ticket_scanner', 'sports_data'];
+export const CATEGORIES = ['payments', 'sso', 'calendar', 'email_sms', 'wearables', 'video', 'federation_feed', 'accounting', 'ticket_scanner', 'sports_data', 'travel'];
 
 const hmacOk = (secret, raw, sig) => {
   const want = Buffer.from(createHmac('sha256', secret).update(raw).digest('hex'));
@@ -20,6 +20,10 @@ const hmacOk = (secret, raw, sig) => {
   return want.length === got.length && timingSafeEqual(want, got);
 };
 const urlField = z.string().url().max(500);
+
+// Partner callbacks about a booking we hold: { id, type: 'booking.changed'|'booking.cancelled', partner_ref, starts_at?, ends_at?, price_minor?, note? }.
+const parseTravel = (json) => (Array.isArray(json?.events) ? json.events : [json]).filter((e) => e && e.id && e.partner_ref && /^booking\.(changed|cancelled)$/.test(String(e.type)))
+  .map((e) => ({ id: String(e.id).slice(0, 120), kind: String(e.type), data: { partner_ref: String(e.partner_ref).slice(0, 120), starts_at: e.starts_at, ends_at: e.ends_at, price_minor: e.price_minor, note: e.note ? String(e.note).slice(0, 300) : undefined } }));
 
 export const PROVIDERS = {
   calendar_ics: {
@@ -56,6 +60,28 @@ export const PROVIDERS = {
       verify: (secret, raw, headers) => hmacOk(secret, raw, headers['x-sportarena-signature']),
       parse: (json) => (Array.isArray(json?.events) ? json.events : [json]).filter((e) => e && e.id).map((e) => ({ id: String(e.id).slice(0, 120), kind: String(e.type ?? 'scan').slice(0, 60) })),
     },
+  },
+  travel_sandbox: {
+    category: 'travel', name: 'Travel partner sandbox (no real bookings)', version: '1.0', auth: 'api_key', sandbox: true,
+    capabilities: ['hotel_search', 'flight_search', 'hold', 'book', 'cancel', 'inbound_webhook'],
+    scopes: [{ key: 'travel.book', label: 'Search, hold and book travel', description: 'Sends the minimum booking details (names, and dates of birth for flights) of travellers who agreed. Passport numbers are never sent.' }],
+    fields: z.object({}).strict(), secrets: [], generatesWebhookSecret: true,
+    async test() { return { ok: true, message: 'Sandbox partner ready. Nothing real is booked.' }; },
+    inbound: { verify: (secret, raw, headers) => hmacOk(secret, raw, headers['x-sportarena-signature']), parse: parseTravel },
+  },
+  travel_partner_https: {
+    category: 'travel', name: 'Hotel and flight partner (JSON over HTTPS)', version: '1.0', auth: 'api_key', sandbox: true,
+    capabilities: ['hotel_search', 'flight_search', 'hold', 'book', 'cancel', 'inbound_webhook', 'sandbox'],
+    scopes: [{ key: 'travel.book', label: 'Search, hold and book travel', description: 'Sends the minimum booking details (names, and dates of birth for flights) of travellers who agreed. Passport numbers are never sent.' }],
+    fields: z.object({ url: urlField, api_key: z.string().min(8).max(500), sandbox_url: urlField.optional() }).strict(), secrets: ['api_key'], generatesWebhookSecret: true,
+    async test(cfg, ctx) {
+      const base = (ctx.mode === 'sandbox' && cfg.sandbox_url ? cfg.sandbox_url : cfg.url).replace(/\/$/, '');
+      const r = await send('GET', `${base}/health`, { headers: { accept: 'application/json', authorization: `Bearer ${cfg.api_key}` } });
+      if (r.status === 401 || r.status === 403) throw Object.assign(new Error('The partner rejected the API key'), { permanent: true });
+      if (r.status !== 200) throw new Error(`The partner answered ${r.status}`);
+      return { ok: true, message: 'Partner reachable' };
+    },
+    inbound: { verify: (secret, raw, headers) => hmacOk(secret, raw, headers['x-sportarena-signature']), parse: parseTravel },
   },
 };
 

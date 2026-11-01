@@ -36,6 +36,17 @@ test('auth config exposes the iOS client id for the native app, and its tokens a
   assert.ok(config.googleIosClientId);
 });
 
+test('auth config exposes the Android client id only when it is set', async () => {
+  const { config } = await import('../src/config.js');
+  const was = config.googleAndroidClientId;
+  try {
+    config.googleAndroidClientId = undefined;
+    assert.equal((await api('GET', '/auth/config')).body.google_android_client_id, null);
+    config.googleAndroidClientId = '111-android.apps.googleusercontent.com';
+    assert.equal((await api('GET', '/auth/config')).body.google_android_client_id, '111-android.apps.googleusercontent.com');
+  } finally { config.googleAndroidClientId = was; }
+});
+
 test('a new Google user gets an account, and signing in again reuses it', async () => {
   const a = await google({ sub: 'g1', email: 'Pat.Lee@gmail.com', name: 'Pat Lee' });
   assert.equal(a.status, 200, JSON.stringify(a.body));

@@ -1,3 +1,4 @@
+import { PlayerClips } from './clip-gallery';
 import React, { useMemo, useState } from 'react';
 import { docMaxBytes, docMaxMb } from '../upload-limits';
 import { JerseyNumbers } from './jersey-numbers';
@@ -346,7 +347,7 @@ export function PlayerHome() {
 export function SportProfile({ id, embedded, onChanged, onRemoved }) {
   const { push, back } = useNav();
   const { phone } = useLayout();
-  const { toast } = useSession();
+  const { toast, user } = useSession();
   const prof = useLoad(() => api.get('/me/sport-profiles'), []);
   const [src, setSrc] = useState('all');
   const [season, setSeason] = useState('all');
@@ -401,6 +402,7 @@ export function SportProfile({ id, embedded, onChanged, onRemoved }) {
       </View>
 
       <AthleteProfilePanel p={p} onChanged={onChanged} />
+      {user ? <PlayerClips userId={user.id} own /> : null}
 
       <View style={{ marginTop: 24 }}><JerseyNumbers /></View>
 

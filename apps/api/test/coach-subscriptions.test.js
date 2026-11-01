@@ -279,6 +279,22 @@ test('a late subscription month is a case in the collections desk: same states, 
   assert.equal(closed.items.length, 1); assert.ok(['paid', 'resolved'].includes(closed.items[0].state));
 });
 
+test('a young athlete\'s late month reminder goes to the guardian who pays, never to the child (issue #681)', async () => {
+  const coach = await signup(['coach']); const parent = await signup();
+  const kid = await signup(['athlete'], { dob: yearsAgo(12) });
+  const card = await monthly(coach);
+  await verifiedGuardian(parent, kid);
+  must(await api('POST', `/youth/children/${kid.id}/consents`, { token: parent.token, body: { purpose: 'coaching' } }), 201);
+  const r = must(await api('POST', '/coach-subscriptions', { token: parent.token, body: { rate_card_id: card.id, athlete_id: kid.id } }), 201);
+  await pay(r.period.id, parent);
+  await ageBy(r.subscription.id, 25); await syncCoachSubscriptions();
+  await ageBy(r.subscription.id, 6); await syncCoachSubscriptions();
+  for (let i = 0; i < 2; i++) await runCollections({ ownerId: coach.id });
+  const count = async (uid) => (await pool.query("SELECT count(*)::int AS n FROM notifications WHERE kind='collections_reminder' AND user_id=$1", [uid])).rows[0].n;
+  assert.equal(await count(parent.id), 1, 'the guardian is reminded once');
+  assert.equal(await count(kid.id), 0, 'the child is never chased for money');
+});
+
 test('a month past the card grace lapses once: the case closes as cancelled, rows are kept, no extra reminders', async () => {
   const coach = await signup(['coach']); const athlete = await signup();
   const a = await subscribe(coach, athlete, { card: await monthly(coach, { grace_days: 1 }) });

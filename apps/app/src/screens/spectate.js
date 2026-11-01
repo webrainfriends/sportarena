@@ -1,6 +1,7 @@
 // The public tournament & spectator experience (#501): the event page for everyone (signed in or not), the live centre of a game, following and sharing.
 // Everything reads the public projection (/public/...); the UI only calls the API. Works on phone, tablet, desktop web, iOS and Android:
 // no web-only APIs without a Platform branch, 44pt touch targets, accessible labels, and lists as well as drawings for tables and brackets.
+import { PublicClipView } from './clip-gallery';
 import { locale } from '../locale';
 import { t } from '../i18n';
 import { moneyIn } from '../vtime';
@@ -336,18 +337,18 @@ export function EventFacts({ p }) {
 
 // ---------------------------------------------------------------- the signed-out page
 /** Signed-out visitors opening a shared link (?event=…&fixture=…): a small navigator that can only open public screens. */
-export function PublicShell({ eventId, fixtureId, renderEvent, onExit }) {
+export function PublicShell({ eventId, fixtureId, clipId, renderEvent, onExit }) {
   const { stack, back } = useNav();
   const signIn = useSignIn();
   const top = stack[stack.length - 1];
-  const view = top ? top : fixtureId ? { name: 'LiveCentre', params: { id: fixtureId } } : { name: 'Event', params: { id: eventId } };
+  const view = top ? top : clipId ? { name: 'Clip', params: { id: clipId } } : fixtureId ? { name: 'LiveCentre', params: { id: fixtureId } } : { name: 'Event', params: { id: eventId } };
   return (
     <View style={{ flex: 1, backgroundColor: c.bg }}>
       <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16, height: 52, borderBottomWidth: 1, borderColor: c.line }}>
         {top || onExit ? <Pressable onPress={top ? back : onExit} accessibilityRole="button" accessibilityLabel="Back" style={{ minHeight: 44, minWidth: 44, justifyContent: 'center' }}><T weight="700" color={c.pink}>‹ Back</T></Pressable> : <T weight="800" size={17}>Gotmygame</T>}
         <Btn small title="Sign in" onPress={signIn} />
       </View>
-      {view.name === 'LiveCentre' ? <LiveCentre {...view.params} /> : renderEvent(view.params)}
+      {view.name === 'Clip' ? <PublicClipView {...view.params} /> : view.name === 'LiveCentre' ? <LiveCentre {...view.params} /> : renderEvent(view.params)}
     </View>
   );
 }
