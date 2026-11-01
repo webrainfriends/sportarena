@@ -3,7 +3,8 @@ import { cap, id, page } from '../registry.js';
 import { one, many, pool, tx } from '../db.js';
 import { badRequest, conflict, forbidden, notFound } from '../errors.js';
 import { config } from '../config.js';
-import { enabledProviders, refundPartial, startCheckout, settle } from '../payments/service.js';
+import { refundPartial, startCheckout, settle, enabledMethods } from '../payments/service.js';
+import { resolveCountry, METHOD_KEYS } from '../payments/countries.js';
 import { audit } from '../helpers.js';
 import { notify } from '../notify.js';
 import { provider } from '../payments/providers.js';
@@ -13,14 +14,22 @@ const purposes = ['shop_order', 'coach_hire', 'insurance_policy', 'venue_invoice
 
 cap({
   name: 'list_payment_methods', method: 'GET', path: '/payments/methods', tag: 'Payments', auth: 'public',
-  summary: 'Which payment providers are switched on (Stripe, PayPal) and the default currency. Venue reservations are always charged in their own venue currency.',
-  handler: () => ({ providers: enabledProviders(), currency: config.payments.currency }),
+  summary: 'Which payment providers and methods (cards, PayPal, UPI, netbanking, wallets) the platform admin has switched on for a country, and the default currency. Pass country (ISO-2) or currency; otherwise the signed-in person\'s own country is used. Venue reservations are always charged in their own venue currency.',
+  input: z.object({ country: z.string().length(2).transform((x) => x.toUpperCase()).optional(), currency: z.string().length(3).transform((x) => x.toUpperCase()).optional() }),
+  async handler({ user }, i) {
+    const country = await resolveCountry({ country: i.country, userId: user?.id, currency: i.currency ?? config.payments.currency });
+    const m = await enabledMethods(country);
+    // UPI needs a mobile number: tell the app whether the account already has one so it only asks when it must
+    const contactKnown = user ? !!(await one('SELECT 1 AS x FROM users WHERE id=$1 AND phone_enc IS NOT NULL', [user.id])) : false;
+    return { country: m.country, providers: m.providers, methods: m.methods, currency: config.payments.currency, contact_known: contactKnown };
+  },
 });
 
 cap({
   name: 'create_payment', method: 'POST', path: '/payments', tag: 'Payments', status: 201,
-  summary: 'Start a hosted checkout (Stripe or PayPal) for a shop order (or a whole shop cart: purpose_type shop_checkout with the checkout_id), coach hire, insurance policy or venue invoice you own. Venue invoices are charged in the invoice currency. The amount is read from the record, never from the client. Send the person to checkout_url; then call confirm_payment (or wait for the provider webhook).',
-  input: z.object({ purpose_type: z.enum(purposes), purpose_id: id, provider: z.enum(['stripe', 'paypal']), return_url: z.string().url().optional().describe('where the provider sends the person back (must be an allowed origin)') }),
+  summary: 'Start a checkout (Stripe, PayPal or Razorpay hosted pages, or Razorpay UPI collect / intent without leaving the app) for a shop order (or a whole shop cart: purpose_type shop_checkout with the checkout_id), coach hire, insurance policy or venue invoice you own. Venue invoices are charged in the invoice currency. The amount is read from the record, never from the client. Send the person to checkout_url; then call confirm_payment (or wait for the provider webhook).',
+  input: z.object({ purpose_type: z.enum(purposes), purpose_id: id, provider: z.enum(['stripe', 'paypal', 'razorpay']), method: z.enum(METHOD_KEYS).optional().describe('card, paypal, upi, netbanking or wallet; must be switched on for the country'), country: z.string().length(2).transform((x) => x.toUpperCase()).optional().describe('ISO-2; normally worked out from the venue or your address'), return_url: z.string().url().optional().describe('where the provider sends the person back (must be an allowed origin)'),
+    upi: z.object({ flow: z.enum(['collect', 'intent']), vpa: z.string().trim().regex(/^[A-Za-z0-9._-]{2,256}@[A-Za-z]{2,64}$/, 'Enter a UPI ID like name@bank').optional(), contact: z.string().trim().regex(/^\+?[0-9]{10,13}$/, 'Enter a mobile number').optional() }).refine((u) => u.flow !== 'collect' || !!u.vpa, 'A UPI ID is needed to collect').optional().describe('UPI only (razorpay): collect sends a request to the UPI ID, intent returns a upi:// link or QR to open in any UPI app') }),
   handler: ({ user }, i) => startCheckout(user, i),
 });
 
@@ -37,6 +46,7 @@ cap({
     if (!p.provider_ref) return { id: p.id, status: 'pending', ...about };
     const prov = provider(p.provider);
     const result = p.provider === 'paypal' ? await prov.capture(p.provider_ref) : await prov.retrieve(p.provider_ref);
+    if (result.method) await one('UPDATE payments SET method=$2 WHERE id=$1 AND status=\'pending\'', [p.id, result.method]);
     return { id: p.id, ...about, ...(await settle(p.id, result)) };
   },
 });

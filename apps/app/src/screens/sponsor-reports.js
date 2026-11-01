@@ -4,6 +4,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { View } from 'react-native';
 import { api } from '../api';
+import { saveExport } from '../open-file';
 import { useLoad } from '../hooks';
 import { useSession } from '../session';
 import { Btn, Card, Chip, Empty, Field, H1, Loading, Screen, Section, Seg, Sheet, T, Tag } from '../ui';
@@ -130,12 +131,6 @@ function Rows({ report, offset, onPage, loading, filtered, onClear }) {
   );
 }
 
-const save = (out) => {
-  if (typeof document === 'undefined') return false;
-  const bytes = out.encoding === 'base64' ? Uint8Array.from(atob(out.content), (ch) => ch.charCodeAt(0)) : out.content;
-  const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([bytes], { type: out.content_type })); a.download = out.filename; a.click();
-  return true;
-};
 
 export function SponsorReports() {
   const { toast } = useSession();
@@ -188,7 +183,8 @@ export function SponsorReports() {
     setBusy(true);
     try {
       const out = await api.get(`/sponsorship-reports/${kind}/export`, { ...params, format, ...(kit ? { kit_id: kit } : {}) });
-      toast(save(out) ? `Exported ${out.rows} rows as ${format.toUpperCase()}` : `${out.rows} rows ready — open this on the web to download`);
+      await saveExport(out);
+      toast(`Exported ${out.rows} rows as ${format.toUpperCase()}`);
     } catch (e) { toast(explain(e)); } finally { setBusy(false); }
   };
   const [kit, setKit] = useState([]);
@@ -278,7 +274,7 @@ export function SponsorReports() {
           <Card key={r.id} color={c.paper}>
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
               <View style={{ flex: 1 }}><T weight="800">{r.filter_name}</T><T size={12} color={c.mute}>As of {r.as_of} · {r.status === 'delivered' ? `${r.row_count} rows` : r.status.replace(/_/g, ' ')}</T></View>
-              {r.status === 'delivered' ? <Btn small title="Download" color={c.violet} onPress={async () => { try { const out = await api.get(`/sponsorship-report-runs/${r.id}`, { download: true }); toast(save(out) ? 'Downloaded' : 'Open this on the web to download'); } catch (e) { toast(explain(e)); } }} /> : null}
+              {r.status === 'delivered' ? <Btn small title="Download" color={c.violet} onPress={async () => { try { const out = await api.get(`/sponsorship-report-runs/${r.id}`, { download: true }); await saveExport(out); toast('Downloaded'); } catch (e) { toast(explain(e)); } }} /> : null}
             </View>
           </Card>))}
       </Section>

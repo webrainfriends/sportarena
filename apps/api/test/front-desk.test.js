@@ -119,7 +119,7 @@ test('walk-in court, racket rental, shuttlecocks, a drink and cash — one workf
   assert.equal(rc.payments[0].change_cents, 25000);
   assert.equal(rc.payments[0].confirmed_by, 'staff (recorded by hand)');
   assert.match(rc.text, /Total INR 1750\.00/);
-  assert.match(rc.notice, /#503/);
+  assert.match(rc.notice, /GST billing profile/);
   assert.equal(must(await api('POST', `/pos/sales/${sale.id}/receipt`, { token: d.cashier.token, body: { channel: 'whatsapp' } })).whatsapp_url.startsWith('https://wa.me/919800000000?text='), true);
   // a guest's bill is billed to the cashier but is neither theirs to see nor to pay
   assert.equal(must(await api('GET', '/invoices', { token: d.cashier.token })).length, 0, 'walk-in invoices are not the cashier\'s own');

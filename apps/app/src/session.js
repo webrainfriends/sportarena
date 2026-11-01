@@ -6,6 +6,7 @@ import { c } from './theme';
 import { clearOutbox } from './outbox';
 import { beforeSignOut, initOffline } from './offline';
 import { clearPack } from './scorer/pack';
+import { loadUploadLimits } from './upload-limits';
 
 const Ctx = createContext(null);
 export const useSession = () => useContext(Ctx);
@@ -33,6 +34,7 @@ export function SessionProvider({ children }) {
     // load the full (decrypted) /me so private fields are available straight away
     let me = user; try { me = await api.get('/me'); } catch {}
     setState({ ready: true, user: me });
+    loadUploadLimits();
   }, []);
   const refresh = useCallback(async () => { const me = await api.get('/me'); setState((s) => ({ ...s, user: me })); return me; }, []);
 
@@ -45,13 +47,13 @@ export function SessionProvider({ children }) {
         // Migration: earlier builds kept the bearer token in localStorage where any script could read it. Remove it; the
         // HttpOnly cookie session (if any) takes over, otherwise the person signs in once more.
         await storage.del('token'); await storage.del('refresh');
-        try { setState({ ready: true, user: await api.get('/me') }); } catch { setState({ ready: true, user: null }); }
+        try { setState({ ready: true, user: await api.get('/me') }); loadUploadLimits(); } catch { setState({ ready: true, user: null }); }
         return;
       }
       const [t, r] = await Promise.all([storage.get('token'), storage.get('refresh')]);
       if (!t) return setState({ ready: true, user: null });
       setSessionTokens({ token: t, refresh_token: r });
-      try { setState({ ready: true, user: await api.get('/me') }); } catch { setState({ ready: true, user: null }); }
+      try { setState({ ready: true, user: await api.get('/me') }); loadUploadLimits(); } catch { setState({ ready: true, user: null }); }
     })();
   }, []);
 

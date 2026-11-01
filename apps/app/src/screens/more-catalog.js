@@ -2,7 +2,7 @@
 export const MODULES = [
   ['Leaderboard', 'Leaderboard', 'Points & glory', 'play'], ['Awards', 'Trophy room', 'Cups, medals, MVPs', 'play'],
   ['CareerTimeline', 'Career & clubs', 'Your clubs, verified by them', 'play'], ['SportsGraph', 'Sports graph', 'Search people, clubs, teams & events', 'play'], ['MyLicences', 'My licences', 'Federation licences & standing', 'play'], ['MyIntegrity', 'My integrity', 'Notices, exemptions & education', 'play'],
-  ['FindGames', 'Find a game', 'Open games near you, today & this weekend', 'play'], ['MyApplications', 'My applications', 'Trials, offers & answers', 'play'],
+  ['FindGames', 'Find a game', 'Open games near you, today & this weekend', 'play'], ['Network', 'Network', 'Follow people, friends & requests', 'play'], ['MyApplications', 'My applications', 'Trials, offers & answers', 'play'],
   ['MyAccreditations', 'My badges', 'Event accreditation & QR', 'play'],
   ['MyTickets', 'My tickets', 'Match tickets & QR entry', 'play'],
   ['MyPasses', 'My passes', 'Rotating QR pass, cards & wristbands', 'play'],

@@ -4,7 +4,16 @@ import { Platform } from 'react-native';
 import { api } from './api';
 
 export async function openPdf(path, name = 'document') {
-  const blob = await api.download(path);
+  return openBlob(await api.download(path), name, 'pdf');
+}
+
+/** Fetch a protected file (it needs the sign-in header) and open it: a tab on the web, the share / open sheet on a phone or tablet. */
+export async function openProtected(path, name = 'document') {
+  return openBlob(await api.download(path), name);
+}
+
+/** Open a blob already in hand. The file extension follows its type unless one is given. */
+export async function openBlob(blob, name = 'document', ext) {
   if (Platform.OS === 'web' && typeof window !== 'undefined') {
     const url = URL.createObjectURL(blob);
     window.open(url, '_blank', 'noopener');
@@ -13,11 +22,13 @@ export async function openPdf(path, name = 'document') {
   }
   const { File, Paths } = await import('expo-file-system');
   const Sharing = await import('expo-sharing');
-  const file = new File(Paths.cache, `${String(name).replace(/[^A-Za-z0-9._-]/g, '_')}.pdf`);
+  const kind = ext ?? (/pdf/.test(blob.type) ? 'pdf' : /png/.test(blob.type) ? 'png' : /webp/.test(blob.type) ? 'webp' : /gif/.test(blob.type) ? 'gif' : /^image\//.test(blob.type) ? 'jpg' : 'pdf');
+  const file = new File(Paths.cache, `${String(name).replace(/[^A-Za-z0-9._-]/g, '_')}.${kind}`);
   file.create({ overwrite: true });
   file.write(new Uint8Array(await new Response(blob).arrayBuffer()));
-  if (!(await Sharing.isAvailableAsync())) throw new Error('This device cannot open PDF files from here. Open the PDF in the web app.');
-  await Sharing.shareAsync(file.uri, { mimeType: 'application/pdf', UTI: 'com.adobe.pdf', dialogTitle: name });
+  if (!(await Sharing.isAvailableAsync())) throw new Error('This device cannot open files from here.');
+  const mimeType = kind === 'pdf' ? 'application/pdf' : (blob.type || `image/${kind}`);
+  await Sharing.shareAsync(file.uri, { mimeType, ...(kind === 'pdf' ? { UTI: 'com.adobe.pdf' } : {}), dialogTitle: name });
 }
 
 /** Save or share an export returned by the API ({ filename, content_type, encoding, content }). The web downloads it; a phone writes it to its cache and opens the share sheet. */
@@ -35,6 +46,6 @@ export async function saveExport(out) {
   const file = new File(Paths.cache, out.filename.replace(/[^A-Za-z0-9._-]/g, '_'));
   file.create({ overwrite: true });
   file.write(bytes);
-  if (!(await Sharing.isAvailableAsync())) throw new Error('This device cannot share files from here. Open the web app to download it.');
+  if (!(await Sharing.isAvailableAsync())) throw new Error('This device cannot share files from here.');
   await Sharing.shareAsync(file.uri, { mimeType: out.content_type.split(';')[0], dialogTitle: out.filename });
 }

@@ -10,6 +10,7 @@ import { encrypt, decrypt } from '../crypto.js';
 import { YOUTH_SQL, guardiansOf, isYouth, requireConsent } from '../youth.js';
 import { myTeamChats } from './team-chat.js';
 import { linkFor } from '../workspace.js';
+import { severSocial } from '../social.js';
 import { chatAccess } from '../team-chat.js';
 import {
   NOTE_CTX, assertMayContact, conversationAccess, contextOrganisation, eventPeople, isBlocked, markConversationRead, mayJoinContext, postMessage, preview, readMessages, runsContext,
@@ -426,12 +427,15 @@ cap({
 
 cap({
   name: 'set_user_block', method: 'POST', path: '/me/contact-blocks', tag: TAG,
-  summary: 'Stop one person from starting or continuing a direct conversation with you (and lift it again). Group conversations you are both in are unaffected; use moderation there.', input: z.object({ user_id: id, blocked: z.boolean() }),
+  summary: 'Block one person (and lift it again): they can no longer start or continue a direct conversation with you, follow you, befriend you or see your activity, and any existing friendship or follow ends both ways (kept as history). Group conversations you are both in are unaffected; use moderation there.', input: z.object({ user_id: id, blocked: z.boolean() }),
   async handler({ user }, i) {
     if (i.user_id === user.id) throw badRequest('You cannot block yourself');
     if (!(await one('SELECT 1 FROM users WHERE id=$1', [i.user_id]))) throw notFound('Person');
-    await one(`INSERT INTO user_blocks(blocker_id, blocked_id, lifted_at) VALUES ($1,$2, CASE WHEN $3 THEN NULL ELSE now() END)
-               ON CONFLICT (blocker_id, blocked_id) DO UPDATE SET lifted_at = CASE WHEN $3 THEN NULL ELSE now() END, created_at = CASE WHEN $3 THEN now() ELSE user_blocks.created_at END RETURNING 1`, [user.id, i.user_id, i.blocked]);
+    await tx(async (c) => {
+      await c.query(`INSERT INTO user_blocks(blocker_id, blocked_id, lifted_at) VALUES ($1,$2, CASE WHEN $3 THEN NULL ELSE now() END)
+               ON CONFLICT (blocker_id, blocked_id) DO UPDATE SET lifted_at = CASE WHEN $3 THEN NULL ELSE now() END, created_at = CASE WHEN $3 THEN now() ELSE user_blocks.created_at END`, [user.id, i.user_id, i.blocked]);
+      if (i.blocked) { await severSocial(c, user.id, i.user_id); await audit(c, user.id, 'social_block', 'users', i.user_id); } // a block also ends any friendship and follows, both ways (kept as history)
+    });
     return { ok: true, blocked: i.blocked };
   },
 });
