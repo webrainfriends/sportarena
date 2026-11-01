@@ -1,5 +1,6 @@
 import React from 'react';
-import { Linking, Platform, View } from 'react-native';
+import { Platform, View } from 'react-native';
+import { openPage } from '../video-player';
 import { T, Tag } from '../ui';
 import { c } from '../theme';
 
@@ -41,7 +42,7 @@ export function WorkoutPlan({ blocks, rules, onRemove }) {
           </View>
           <T size={12} color={c.mute}>{describeBlock(b, rules)}</T>
           {b.notes ? <T size={12}>{b.notes}</T> : null}
-          {b.demo ? <T size={12} color={c.violet} weight="700" accessibilityRole="link" onPress={() => Linking.openURL(b.demo.url).catch(() => {})}>▶ {b.demo.title || 'Watch the demonstration'}</T> : null}
+          {b.demo ? <T size={12} color={c.violet} weight="700" accessibilityRole="link" onPress={() => openPage(b.demo.url)}>▶ {b.demo.title || 'Watch the demonstration'}</T> : null}
         </View>
       ))}
     </View>

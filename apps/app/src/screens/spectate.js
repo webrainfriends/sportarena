@@ -6,8 +6,9 @@ import { locale } from '../locale';
 import { t } from '../i18n';
 import { moneyIn } from '../vtime';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { Linking, Platform, Pressable, Share, View } from 'react-native';
+import { Platform, Pressable, Share, View } from 'react-native';
 import { API, api, mediaUrl } from '../api';
+import { openPage, sourceKind, useWatch } from '../video-player';
 import { useLoad } from '../hooks';
 import { usePoll } from '../live';
 import { useSession } from '../session';
@@ -233,7 +234,7 @@ export function Sponsors({ list, title = 'Partners' }) {
   if (!list?.length) return null;
   const SLOT = { title_partner: 'Title partner', leaderboard: 'Leaderboard partner', scorecard: 'Scorecard partner', fixture: 'Game partner' };
   const go = async (p) => {
-    try { const r = await api.post(p.cta.click_path.replace(/^\/?/, '/')); await Linking.openURL(r.url); } catch (e) { toast('' + e.message); }
+    try { const r = await api.post(p.cta.click_path.replace(/^\/?/, '/')); await openPage(r.url); } catch (e) { toast('' + e.message); }
   };
   return (
     <View style={{ gap: 8 }}>
@@ -251,7 +252,7 @@ function MediaList({ list }) {
   return (
     <View style={{ gap: 10 }}>
       {list.map((m) => (
-        <Row key={m.id} onPress={() => Linking.openURL(mediaUrl(m.link))} left={<Bubble emoji={m.kind === 'photo' ? '📷' : m.kind === 'document' ? '📰' : '🎬'} color={c.cyanSoft} />} title={m.title} sub={[m.caption, m.credit ? `Credit: ${m.credit}` : null].filter(Boolean).join(' · ') || m.right_kind.replace(/_/g, ' ')} />
+        <Row key={m.id} onPress={() => openPage(mediaUrl(m.link))} left={<Bubble emoji={m.kind === 'photo' ? '📷' : m.kind === 'document' ? '📰' : '🎬'} color={c.cyanSoft} />} title={m.title} sub={[m.caption, m.credit ? `Credit: ${m.credit}` : null].filter(Boolean).join(' · ') || m.right_kind.replace(/_/g, ' ')} />
       ))}
     </View>
   );
@@ -388,6 +389,7 @@ export function LiveCentre({ id }) {
   const { user, toast } = useSession();
   const { push } = useNav();
   const signIn = useSignIn();
+  const [player, watch] = useWatch();   // a stream that can play here opens a full-screen player; others open their page in the app
   const first = useLoad(() => api.get(`/public/fixtures/${id}`), [id]);
   const [fresh, setFresh] = useState(null); // later reads say refresh=true so polling is not counted as sponsor exposure
   const reload = useCallback(() => api.get(`/public/fixtures/${id}`, { refresh: true }).then(setFresh).catch(() => {}), [id]);
@@ -428,8 +430,8 @@ export function LiveCentre({ id }) {
       {status === 'finished' ? <AT size={12.5} color={A.mute}>Full time. This result is provisional until the organiser approves the score sheet.</AT> : null}
 
       {view.streams.filter((s) => s.playback_ref || s.archive_ref).map((s) => (
-        <ACard key={s.id} tone={s.state === 'live' ? A.red : undefined} onPress={() => Linking.openURL(s.state === 'ended' && s.archive_ref ? s.archive_ref : s.playback_ref)}>
-          <AT weight="800">📺 {s.state === 'live' ? 'Watch live' : s.state === 'ended' ? 'Watch the replay' : 'Stream (starts soon)'}</AT><AT size={12} color={A.mute}>Opens the broadcaster's page</AT>
+        <ACard key={s.id} tone={s.state === 'live' ? A.red : undefined} onPress={() => watch(s.state === 'ended' && s.archive_ref ? s.archive_ref : s.playback_ref, s.state === 'live' ? 'Live' : 'Replay')}>
+          <AT weight="800">📺 {s.state === 'live' ? 'Watch live' : s.state === 'ended' ? 'Watch the replay' : 'Stream (starts soon)'}</AT><AT size={12} color={A.mute}>{['file', 'hls'].includes(sourceKind(s.state === 'ended' && s.archive_ref ? s.archive_ref : s.playback_ref)) ? 'Plays here' : "Opens the broadcaster's page in the app"}</AT>
         </ACard>
       ))}
 
@@ -468,8 +470,8 @@ export function LiveCentre({ id }) {
       ) : null}
 
       {view.officials.length ? (<><ASection title="Match officials" /><ACard>{view.officials.map((o, i) => <AT key={i} size={14}>{o.role}: {o.display_name}</AT>)}</ACard></>) : null}
-      {view.sponsors.length ? (<><ASection title="Partners" />{view.sponsors.map((s) => <ACard key={s.id}><AT weight="800">{s.sponsor.emoji} {s.sponsor.name}</AT><AT size={12} color={A.mute}>{{ title_partner: 'Title partner', scorecard: 'Scorecard partner', fixture: 'Game partner', leaderboard: 'Leaderboard partner' }[s.slot]}</AT>{s.cta ? <ABtn small tone="ghost" title={s.cta.label} style={{ marginTop: 8 }} onPress={async () => { try { Linking.openURL((await api.post(s.cta.click_path)).url); } catch (e) { toast('' + e.message); } }} /> : null}</ACard>)}</>) : null}
-      {view.media.length ? (<><ASection title="Photos & highlights" />{view.media.map((m) => <ACard key={m.id} onPress={() => Linking.openURL(mediaUrl(m.link))}><AT weight="700">{m.kind === 'photo' ? '📷' : '🎬'} {m.title}</AT>{m.credit ? <AT size={12} color={A.mute}>Credit: {m.credit}</AT> : null}</ACard>)}</>) : null}
+      {view.sponsors.length ? (<><ASection title="Partners" />{view.sponsors.map((s) => <ACard key={s.id}><AT weight="800">{s.sponsor.emoji} {s.sponsor.name}</AT><AT size={12} color={A.mute}>{{ title_partner: 'Title partner', scorecard: 'Scorecard partner', fixture: 'Game partner', leaderboard: 'Leaderboard partner' }[s.slot]}</AT>{s.cta ? <ABtn small tone="ghost" title={s.cta.label} style={{ marginTop: 8 }} onPress={async () => { try { openPage((await api.post(s.cta.click_path)).url); } catch (e) { toast('' + e.message); } }} /> : null}</ACard>)}</>) : null}
+      {view.media.length ? (<><ASection title="Photos & highlights" />{view.media.map((m) => <ACard key={m.id} onPress={() => openPage(mediaUrl(m.link))}><AT weight="700">{m.kind === 'photo' ? '📷' : '🎬'} {m.title}</AT>{m.credit ? <AT size={12} color={A.mute}>Credit: {m.credit}</AT> : null}</ACard>)}</>) : null}
       {view.corrections.length ? (
         <>
           <ASection title="Changes" sub="Corrections are listed; the earlier official state is kept on record." />
@@ -480,6 +482,7 @@ export function LiveCentre({ id }) {
           ))}</ACard>
         </>
       ) : null}
+      {player}
     </AScreen>
   );
 }
@@ -491,7 +494,7 @@ export function Following() {
   const list = useLoad(() => api.get('/me/follows'), []);
   const [edit, setEdit] = useState(null);
   const feed = useLoad(() => api.get('/me/media-feed', { limit: 12 }), []);
-  const openMedia = async (m) => { try { if (m.link?.startsWith('http')) await Linking.openURL(m.link); else await openStored(m.link, m.title); } catch (e) { toast('' + e.message); } };
+  const openMedia = async (m) => { try { if (m.link?.startsWith('http')) await openPage(m.link); else await openStored(m.link, m.title); } catch (e) { toast('' + e.message); } };
   const open = (x) => (x.subject_type === 'event' ? push('Event', { id: x.subject_id }) : x.subject_type === 'fixture' ? push('LiveCentre', { id: x.subject_id }) : x.subject_type === 'team' ? push('Team', { id: x.subject_id }) : push('Person', { id: x.subject_id }));
   const NAME = { event: 'Events', team: 'Teams', athlete: 'Athletes', fixture: 'Games' };
   return (

@@ -12,7 +12,7 @@ const provider = http.createServer(async (req, res) => {
   const url = req.url;
   if (url === '/v1/checkout/sessions' && req.method === 'POST') {
     const f = new URLSearchParams(raw); const id = `cs_${++fake.n}`;
-    fake.stripeSessions[id] = { id, amount_total: Number(f.get('line_items[0][price_data][unit_amount]')), currency: f.get('line_items[0][price_data][currency]'), payment_status: 'unpaid', payment_intent: `pi_${fake.n}`, success_url: f.get('success_url') };
+    fake.stripeSessions[id] = { id, amount_total: Number(f.get('line_items[0][price_data][unit_amount]')), currency: f.get('line_items[0][price_data][currency]'), payment_status: 'unpaid', payment_intent: `pi_${fake.n}`, success_url: f.get('success_url'), cancel_url: f.get('cancel_url') };
     return send(200, { id, url: `https://checkout.stripe.test/${id}` });
   }
   if (url.startsWith('/v1/checkout/sessions/')) {
@@ -64,9 +64,39 @@ before(async () => {
 });
 after(async () => { server.close(); provider.close(); await pool.end(); });
 
+test('the app return page hands the person to the app, validates its input and reflects nothing', async () => {
+  const get = (q) => fetch(`${base}/api/v1/pay/return?${q}`, { redirect: 'manual' });
+  const id = '3f2b8c1e-9d4a-4e6b-8a57-1c2d3e4f5a6b';
+  const ok = await get(`payment=${id}&result=success`);
+  assert.equal(ok.status, 302);
+  assert.equal(ok.headers.get('location'), `sportarena://payment?payment=${id}&result=success`, 'fixed scheme and path');
+  assert.equal(ok.headers.get('cache-control'), 'no-store');
+  assert.match(await ok.text(), /Open the app/);
+  assert.equal((await get(`payment=${id}&result=cancel`)).status, 302);
+  for (const bad of ['payment=nope&result=success', `payment=${id}&result=hacked`, `payment=${id}`, '']) assert.equal((await get(bad)).status, 400, bad);
+  // nothing else in the query is used or reflected, and there is no way to choose where it goes
+  const extra = await get(`payment=${id}&result=success&next=https://evil.example&scheme=evil`);
+  assert.equal(extra.headers.get('location'), `sportarena://payment?payment=${id}&result=success`);
+  assert.doesNotMatch(await extra.text(), /evil/);
+});
+
 test('payment methods reflect configuration', async () => {
   const m = await api('GET', '/payments/methods');
   assert.deepEqual(m.body.providers, ['stripe', 'paypal']);
+});
+
+test("the phone app's checkout returns to our own page, the web's still returns to the web app", async () => {
+  const seller = await signup(['supplier']), buyer = await signup(['athlete']);
+  const prod = (await api('POST', '/shop/products', { token: seller.token, body: { name: 'Racket', price_cents: 50000, stock: 5 } })).body;
+  const order = (await api('POST', '/shop/orders', { token: buyer.token, body: { product_id: prod.id, quantity: 1, ship_to: '12 MG Road, Pune' } })).body;
+  const sessionOf = (r) => fake.stripeSessions[r.body.checkout_url.split('/').pop()];
+  const appPay = await api('POST', '/payments', { token: buyer.token, body: { purpose_type: 'shop_order', purpose_id: order.id, provider: 'stripe', client: 'app' } });
+  assert.equal(appPay.status, 201, JSON.stringify(appPay.body));
+  assert.match(sessionOf(appPay).success_url, /^http:\/\/app\.test\/api\/v1\/pay\/return\?payment=[0-9a-f-]{36}&result=success$/);
+  assert.match(sessionOf(appPay).cancel_url, /^http:\/\/app\.test\/api\/v1\/pay\/return\?payment=[0-9a-f-]{36}&result=cancel$/);
+  const webPay = await api('POST', '/payments', { token: buyer.token, body: { purpose_type: 'shop_order', purpose_id: order.id, provider: 'stripe' } });
+  assert.match(sessionOf(webPay).success_url, /^http:\/\/app\.test\/\?payment=[0-9a-f-]{36}&result=success$/, 'without client the web URL is unchanged');
+  assert.equal((await api('POST', '/payments', { token: buyer.token, body: { purpose_type: 'shop_order', purpose_id: order.id, provider: 'stripe', client: 'evil' } })).status, 400, 'only client:app is accepted');
 });
 
 test('shop order: pay with Stripe (confirm + webhook), refund on cancel, no cross-user payment', async () => {

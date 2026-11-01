@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
 import { t } from '../i18n';
-import { Linking, Platform, View } from 'react-native';
+import { Platform, View } from 'react-native';
 import { api } from '../api';
+import { CLIENT, openCheckout } from '../checkout';
 import { useLoad } from '../hooks';
 import { useSession } from '../session';
 import { useNav } from '../nav';
@@ -200,9 +201,17 @@ function CheckoutSheet({ o, onClose, onChanged }) {
     const provider = PROVIDER_OF[method].find((p) => (methods.data?.providers ?? []).includes(p));
     setBusy(true); setErr(null);
     try {
-      const r = await api.post(`/sponsorship-obligations/${o.id}/checkout`, { provider, method, amount_cents: cents, return_url: Platform.OS === 'web' ? `${window.location.origin}${window.location.pathname}` : undefined });
+      const r = await api.post(`/sponsorship-obligations/${o.id}/checkout`, { provider, method, amount_cents: cents, return_url: Platform.OS === 'web' ? `${window.location.origin}${window.location.pathname}` : undefined, client: CLIENT });
       onChanged();
-      if (Platform.OS === 'web') window.location.assign(r.checkout_url); else { await Linking.openURL(r.checkout_url); onClose(); toast('Finish the checkout, then come back — the payment shows here once verified'); }
+      if (Platform.OS === 'web') window.location.assign(r.checkout_url);
+      else {
+        // the checkout opens in a sheet that closes by itself when the provider returns; then the server is asked how it went (it confirms and fulfils the payment)
+        await openCheckout(r.checkout_url);
+        let paid = false;
+        try { paid = (await api.post(`/payments/${r.id}/confirm`)).status === 'paid'; } catch { /* the sponsorship list below shows the real state */ }
+        onChanged(); onClose();
+        toast(paid ? 'Payment received ✓' : 'Not paid yet — if you finished paying, it shows here once the provider confirms it');
+      }
     } catch (e) { setErr(e.status === 409 ? e.message : explain(e)); if (e.status === 409) onChanged(); } finally { setBusy(false); }
   };
   const m = methods.data;
