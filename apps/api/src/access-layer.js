@@ -12,7 +12,7 @@ import { pool, one } from './db.js';
 import { blindIndex, encrypt, decrypt } from './crypto.js';
 import { AppError, badRequest, conflict, forbidden, notFound } from './errors.js';
 import { isYouth, requireGuardian } from './youth.js';
-import { canManage } from './booking/engine.js';
+import { canManage, canWork } from './booking/engine.js';
 import { canManageTeam } from './capabilities/teams.js';
 import { isSuspended } from './collections.js';
 import { eligible as onAcademyRoster, markAttendance, LATE_AFTER_MIN, PRESENT } from './capabilities/academy-attendance.js';
@@ -38,8 +38,8 @@ export const MESSAGES = {
   self_checkin_off: 'Self check-in is not switched on here.', geo_not_enabled: 'Location check-in is not switched on here.',
   geo_unavailable: 'Location was not available, so staff need to confirm this.', geofence_mismatch: 'The device was not near the venue, so staff need to confirm this.',
   staff_mark_exists: 'Staff already set a mark that differs, so staff need to confirm this.', not_checked_in: 'Not checked in, so there is nothing to check out.',
-  already_recorded: 'Already recorded.', no_current_booking: 'No booking or membership that is valid right now.', booking_cancelled: 'The booking for this time was cancelled.',
-  membership_inactive: 'The membership is not active.', no_accreditation: 'No accreditation for this event.', accreditation_cancelled: 'This accreditation was revoked or suspended.',
+  already_recorded: 'Already recorded.', no_current_booking: 'No booking or membership that is valid right now.', booking_not_now: 'This booking is not open for check-in at this time.', booking_cancelled: 'The booking for this time was cancelled.',
+  membership_inactive: 'The membership is not active.', membership_not_covered: 'The membership does not cover this day or time.', membership_guest_quota: 'The membership does not allow that many guests on one visit.', no_accreditation: 'No accreditation for this event.', accreditation_cancelled: 'This accreditation was revoked or suspended.',
   provider_unavailable: 'The door controller could not be reached. Nothing was opened.', provider_rejected: 'The door controller declined to open.',
   offline_too_old: 'This offline scan is too old to accept.', revoked: 'This accreditation was revoked.', suspended: 'This accreditation is suspended.', expired: 'This accreditation has expired.',
   not_yet_valid: 'This accreditation is not valid yet.', replaced: 'This badge was replaced by a newer one.', wrong_zone: 'Not allowed in this zone.', wrong_event: 'This badge is for a different event.',
@@ -61,15 +61,20 @@ export function mintToken(domain, ref, { type, userId = null, at = new Date() })
   const w = windowOf(type, at);
   return { token: `GQ1.${type}.${CODE[domain]}.${ref}.${userId ?? '-'}.${w}.${macOf(subjectKey(domain, ref), type, userId, w)}`, step_s: STEP[type], expires_at: new Date((w + SKEW[type][1] + 1) * STEP[type] * 1000), refresh_in_s: STEP[type] };
 }
-const TOKEN_RE = /^GQ1\.([PS])\.([atve])\.([0-9a-f_-]{36,80})\.(-|[0-9a-f-]{36})\.(\d{1,10})\.([0-9a-f]{24})$/;
+const TOKEN_RE = /^GQ1\.([PSB])\.([atve])\.([0-9a-f_-]{36,80})\.(-|[0-9a-f-]{36})\.(\d{1,10})\.([0-9a-f]{24})$/;
 export function readToken(raw) {
   const m = TOKEN_RE.exec(String(raw ?? '').trim());
   return m ? { type: m[1], domain: DOMAIN_OF[m[2]], ref: m[3], userId: m[4] === '-' ? null : m[4], w: Number(m[5]), mac: m[6] } : null;
+}
+/** The QR of one booking: it names the booking and its booker and never rotates (it can be printed or sent). It works once, only for that slot's time, and only while the booking is confirmed — the server judges that live. */
+export function mintBookingToken(bookingId, userId) {
+  return `GQ1.B.v.${bookingId}.${userId}.0.${macOf(subjectKey('venue_access', bookingId), 'B', userId, 0)}`;
 }
 /** 'ok' | 'invalid' (not issued by us) | 'expired' (issued by us, outside its window). Pure: also what an offline scanner runs with the pack key. */
 export function checkToken(t, at, key = subjectKey(t.domain, t.ref)) {
   const want = Buffer.from(macOf(key, t.type, t.userId, t.w)), got = Buffer.from(t.mac);
   if (want.length !== got.length || !timingSafeEqual(want, got)) return 'invalid';
+  if (t.type === 'B') return 'ok';
   const d = windowOf(t.type, at) - t.w;
   return d >= -SKEW[t.type][0] && d <= SKEW[t.type][1] ? 'ok' : 'expired';
 }
@@ -204,16 +209,37 @@ const venueAccess = {
     if (!p) throw notFound('Access point');
     return { domain: 'venue_access', ref: p.id, label: p.name, point: p, venue_id: p.venue_id, organisation_id: p.organisation_id, raw: p, self_allowed: true, window: null, geo: { enabled: p.geo_checkin, radius_m: p.geo_radius_m, lat: p.latitude, lng: p.longitude } };
   },
-  operator: (user, sub, c) => canManage(user, sub.venue_id, c),
+  operator: (user, sub, c) => canWork(user, sub.venue_id, c),
   /** Entitled when there is a confirmed booking at this venue around now, an active membership, or the person is on the venue team. */
   async eligibility(c, sub, personId, ctx) {
     const at = ctx.at, early = sub.point.early_min;
+    if (ctx.bookingId) {   // a booking QR (or a staff tap on a booking): judge exactly that booking, not whatever the person has around now
+      const x = (await c.query(
+        `SELECT b.id, b.status, b.starts_at, b.ends_at, b.checked_in_at, rs.status AS rs_status FROM bookings b JOIN resources r ON r.id=b.resource_id JOIN reservations rs ON rs.id=b.reservation_id
+          WHERE b.id=$1 AND r.venue_id=$2 AND rs.user_id=$3`, [ctx.bookingId, sub.venue_id, personId])).rows[0];
+      if (!x) return 'no_current_booking';
+      if (x.status !== 'confirmed' || x.rs_status !== 'confirmed') return 'booking_cancelled';
+      if (+new Date(x.starts_at) - early * 60000 > +at || +new Date(x.ends_at) + 30 * 60000 < +at) return 'booking_not_now';
+      if (ctx.direction !== 'out' && x.checked_in_at) return { reason: 'already_recorded', anomaly: null };
+      ctx.basis = { type: 'booking', id: x.id }; return null;
+    }
     const b = (await c.query(
       `SELECT b.id FROM bookings b JOIN resources r ON r.id=b.resource_id JOIN reservations rs ON rs.id=b.reservation_id
         WHERE r.venue_id=$1 AND rs.user_id=$2 AND b.status='confirmed' AND rs.status='confirmed' AND b.starts_at - ($4 * interval '1 minute') <= $3 AND b.ends_at + interval '30 minutes' >= $3 ORDER BY b.starts_at LIMIT 1`,
       [sub.venue_id, personId, at, early])).rows[0];
     if (b) { ctx.basis = { type: 'booking', id: b.id }; return null; }
-    if ((await c.query("SELECT 1 FROM user_plans WHERE venue_id=$1 AND user_id=$2 AND kind='membership' AND status='active' AND expires_at > $3 LIMIT 1", [sub.venue_id, personId, at])).rowCount) { ctx.basis = { type: 'membership' }; return null; }
+    const plans = (await c.query("SELECT p.entitlements FROM user_plans up JOIN venue_plans p ON p.id=up.plan_id WHERE up.venue_id=$1 AND up.user_id=$2 AND up.kind='membership' AND up.status='active' AND up.expires_at > $3", [sub.venue_id, personId, at])).rows;
+    if (plans.length) {
+      // the plan's entitlements (days of the week, a daily window in venue time) are read live; a plan without any covers every time (as before)
+      const when = (await c.query("SELECT extract(dow FROM $2::timestamptz AT TIME ZONE v.timezone)::int AS dow, (extract(hour FROM $2::timestamptz AT TIME ZONE v.timezone)*60 + extract(minute FROM $2::timestamptz AT TIME ZONE v.timezone))::int AS minutes FROM venues v WHERE v.id=$1", [sub.venue_id, at])).rows[0];
+      const mins = (x) => { const [h, m] = String(x).split(':').map(Number); return h * 60 + m; };
+      const covers = (e = {}) => !(e.days?.length && !e.days.includes(when.dow)) && !(e.from && when.minutes < mins(e.from)) && !(e.to && when.minutes >= mins(e.to));
+      const ok = plans.filter((x) => covers(x.entitlements));
+      if (!ok.length) return { reason: 'membership_not_covered', anomaly: null };
+      // guests a member may bring on one visit: the most any covering plan allows (none unless the plan says so)
+      if ((ctx.guests ?? 0) > Math.max(...ok.map((x) => x.entitlements?.guest_quota ?? 0))) return { reason: 'membership_guest_quota', anomaly: null };
+      ctx.basis = { type: 'membership' }; return null;
+    }
     if (await hasStaff(c, sub.venue_id, personId)) { ctx.basis = { type: 'staff' }; return null; }
     if ((await c.query(
       `SELECT 1 FROM bookings b JOIN resources r ON r.id=b.resource_id JOIN reservations rs ON rs.id=b.reservation_id WHERE r.venue_id=$1 AND rs.user_id=$2 AND (b.status='cancelled' OR rs.status='cancelled') AND b.starts_at - ($4 * interval '1 minute') <= $3 AND b.ends_at + interval '30 minutes' >= $3 LIMIT 1`,
@@ -270,9 +296,9 @@ const scopeCols = (sub) => [sub.organisation_id ?? null, sub.venue_id ?? null, s
 
 async function insertCapture(c, sub, r) {
   const row = (await c.query(
-    `INSERT INTO access_captures(domain, subject_ref, organisation_id, venue_id, event_id, team_id, access_point_id, user_id, actor_id, actor_kind, method, direction, verdict, reason_code, verified, offline, geo_result, canonical_ref, reason_enc, flags, device_id, token_idx, idempotency_key, captured_at)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24) RETURNING *`,
-    [sub.domain, sub.ref, ...scopeCols(sub), r.personId ?? null, r.actorId ?? null, r.actorKind, r.method, r.direction, r.verdict, r.reason ?? null, r.verified, !!r.offline, r.geo_result ?? 'not_required', r.canonical_ref ?? null, r.reasonText ? encrypt(r.reasonText, REASON_CTX) : null, r.flags ?? [], r.device_id ?? null, r.token_idx ?? null, r.key ?? null, r.at])).rows[0];
+    `INSERT INTO access_captures(domain, subject_ref, organisation_id, venue_id, event_id, team_id, access_point_id, user_id, actor_id, actor_kind, method, direction, verdict, reason_code, verified, offline, geo_result, canonical_ref, reason_enc, flags, device_id, token_idx, idempotency_key, captured_at, guests)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25) RETURNING *`,
+    [sub.domain, sub.ref, ...scopeCols(sub), r.personId ?? null, r.actorId ?? null, r.actorKind, r.method, r.direction, r.verdict, r.reason ?? null, r.verified, !!r.offline, r.geo_result ?? 'not_required', r.canonical_ref ?? null, r.reasonText ? encrypt(r.reasonText, REASON_CTX) : null, r.flags ?? [], r.device_id ?? null, r.token_idx ?? null, r.key ?? null, r.at, r.guests ?? 0])).rows[0];
   return row;
 }
 async function anomaly(c, sub, row, kind) {
@@ -310,13 +336,14 @@ export async function capture(c, req) {
   if (offline && +at > Date.now() + 120_000) throw badRequest('captured_at is in the future');
   const sub = await ad.load(c, ref);
   const isOp = device || (user ? await ad.operator(user, sub, c) : false);
-  const ctx = { method, at, key: req.idempotency_key ?? null, releasedTo: req.released_to_user_id ?? null, actorId: user?.id ?? null };
-  const rec = { method, direction, key: req.idempotency_key ?? null, offline, device_id: req.device_id ?? null, at, actorId: user?.id ?? null, actorKind: device ? 'device' : 'operator', verified: true, flags: offline ? ['offline'] : [] };
+  const ctx = { method, at, key: req.idempotency_key ?? null, releasedTo: req.released_to_user_id ?? null, actorId: user?.id ?? null, direction, bookingId: domain === 'venue_access' ? (req.booking_id ?? null) : null, guests: Math.max(0, Math.min(20, Number(req.guests) || 0)) };
+  const rec = { method, direction, key: req.idempotency_key ?? null, offline, device_id: req.device_id ?? null, at, actorId: user?.id ?? null, actorKind: device ? 'device' : 'operator', verified: true, flags: offline ? ['offline'] : [], guests: ctx.guests };
   const anomalies = [];
   const finish = async (verdict, reason, extra = {}) => {
     const row = await insertCapture(c, sub, { ...rec, verdict, reason, ...extra });
     for (const k of new Set([...anomalies, ...(offline && verdict === 'denied' && !['already_recorded', 'qr_replay'].includes(reason) ? ['offline_conflict'] : [])])) await anomaly(c, sub, row, k);
-    return { capture: await viewOf(c, row, { release_candidates: extra.release_candidates, status: extra.status, basis: extra.basis }), replayed: false };
+    const booking = ctx.bookingId ? (await c.query('SELECT b.id, r.name AS resource_name, b.starts_at, b.ends_at, v.timezone FROM bookings b JOIN resources r ON r.id=b.resource_id JOIN venues v ON v.id=r.venue_id WHERE b.id=$1', [ctx.bookingId])).rows[0] ?? null : null;
+    return { capture: await viewOf(c, row, { release_candidates: extra.release_candidates, status: extra.status, basis: extra.basis, ...(booking ? { booking } : {}) }), replayed: false };
   };
   if (offline && Date.now() - +at > OFFLINE_MAX_AGE_MS) return finish('denied', 'offline_too_old');
 
@@ -331,10 +358,16 @@ export async function capture(c, req) {
   } else if (method === 'qr') {
     const t = readToken(req.token);
     if (!t) return finish('denied', 'qr_invalid');
-    if (t.domain !== domain || t.ref !== ref) return finish('denied', 'qr_wrong_subject');
-    const state = checkToken(t, at);
-    if (state !== 'ok') return finish('denied', state === 'invalid' ? 'qr_invalid' : 'qr_expired');
-    if (t.type === 'P') {
+    if (t.type === 'B') {   // the booking's own QR, scanned at any door of its venue
+      if (domain !== 'venue_access' || t.domain !== 'venue_access') return finish('denied', 'qr_wrong_subject');
+      if (checkToken(t, at) !== 'ok') return finish('denied', 'qr_invalid');
+      if (!isOp || device) throw forbidden('Only the venue team can confirm a booking QR');
+      const bk = (await c.query('SELECT rs.user_id FROM bookings b JOIN reservations rs ON rs.id=b.reservation_id JOIN resources r ON r.id=b.resource_id WHERE b.id=$1 AND r.venue_id=$2', [t.ref, sub.venue_id])).rows[0];
+      if (!bk || bk.user_id !== t.userId) return finish('denied', 'qr_wrong_subject');
+      personId = bk.user_id; ctx.bookingId = t.ref;
+    } else if (t.domain !== domain || t.ref !== ref) return finish('denied', 'qr_wrong_subject');
+    else if (checkToken(t, at) !== 'ok') return finish('denied', checkToken(t, at) === 'invalid' ? 'qr_invalid' : 'qr_expired');
+    if (t.type === 'B') { /* judged below by eligibility() for exactly this booking */ } else if (t.type === 'P') {
       if (!isOp) throw forbidden('Only staff can scan a personal pass');
       personId = t.userId; tokenIdx = tokenHash(t);
       await c.query('SELECT pg_advisory_xact_lock(hashtext($1))', [`qr:${tokenIdx}`]);
@@ -474,6 +507,9 @@ export async function issueGrant(c, user, point, { source_type, source_id }) {
   if (source_type === 'booking') {
     const b = (await c.query("SELECT b.id, b.starts_at, b.ends_at, rs.user_id FROM bookings b JOIN resources r ON r.id=b.resource_id JOIN reservations rs ON rs.id=b.reservation_id WHERE b.id=$1 AND r.venue_id=$2 AND b.status='confirmed' AND rs.status='confirmed' AND b.ends_at > now()", [source_id, point.venue_id])).rows[0];
     if (!b) throw notFound('Booking'); who = b.user_id; from = new Date(+new Date(b.starts_at) - point.early_min * 60000); to = new Date(+new Date(b.ends_at) + 30 * 60000);
+  } else if (source_type === 'membership') {
+    const m = (await c.query("SELECT user_id, starts_at, expires_at FROM user_plans WHERE id=$1 AND venue_id=$2 AND kind='membership' AND status='active' AND expires_at > now()", [source_id, point.venue_id])).rows[0];
+    if (!m) throw notFound('Membership'); who = m.user_id; from = new Date(m.starts_at); to = new Date(m.expires_at);
   } else if (source_type === 'locker_assignment') {
     const a = (await c.query("SELECT user_id, starts_at, ends_at FROM locker_assignments WHERE id=$1 AND venue_id=$2 AND status='active' AND ends_at > now()", [source_id, point.venue_id])).rows[0];
     if (!a) throw notFound('Locker assignment'); who = a.user_id; from = a.starts_at; to = a.ends_at;
@@ -491,4 +527,40 @@ export const pointOf = (id) => one('SELECT * FROM access_points WHERE id=$1', [i
 export async function recordCorrection(c, user, sub, personId, { direction = 'out', reasonText }) {
   const row = await insertCapture(c, sub, { personId, actorId: user.id, actorKind: 'operator', method: 'manual', direction, verdict: 'recorded', reason: 'correction', verified: true, flags: ['undo'], reasonText, at: new Date() });
   return viewOf(c, row);
+}
+
+/**
+ * Memberships open the venue's hardware by themselves: every active membership gets a grant at each active hardware access point of its venue
+ * (booking-style, nothing manual). Idempotent, so the worker (and a payment confirmation) can call it any time; a point that is unreachable is simply retried.
+ * Revocation is the existing sweep: when the membership stops being active or expires the grant becomes revoke_pending (access-grants.js).
+ */
+export async function syncMembershipGrants({ limit = 200 } = {}) {
+  const { rows } = await pool.query(
+    `SELECT up.id AS plan_id, p.* FROM user_plans up JOIN access_points p ON p.venue_id=up.venue_id AND p.status='active'
+      WHERE up.kind='membership' AND up.status='active' AND up.expires_at > now() AND p.provider <> 'manual'
+        AND NOT EXISTS (SELECT 1 FROM access_grants g WHERE g.access_point_id=p.id AND g.source_type='membership' AND g.source_id=up.id AND g.status IN ('active','revoke_pending'))
+      ORDER BY up.starts_at LIMIT $1`, [limit]);
+  let issued = 0;
+  for (const { plan_id, ...point } of rows) {
+    try { const c = await pool.connect(); try { await issueGrant(c, { id: null }, point, { source_type: 'membership', source_id: plan_id }); issued++; } finally { c.release(); } } catch { /* the controller did not confirm: retried next run */ }
+  }
+  return issued;
+}
+
+/** The QR for one confirmed booking: its booker, or the venue team, may show it. null when the caller has no right to it (a 404, never a hint). */
+export async function bookingPassFor(c, user, bookingId) {
+  const b = (await c.query(
+    `SELECT b.id, b.status, b.starts_at, b.ends_at, b.checked_in_at, rs.user_id, rs.status AS rs_status, r.venue_id, r.name AS resource_name, v.name AS venue_name, v.timezone
+       FROM bookings b JOIN reservations rs ON rs.id=b.reservation_id JOIN resources r ON r.id=b.resource_id JOIN venues v ON v.id=r.venue_id WHERE b.id=$1`, [bookingId])).rows[0];
+  if (!b || !(b.user_id === user.id || await canWork(user, b.venue_id, c))) return null;
+  const early = (await c.query("SELECT coalesce(min(early_min), 15) AS m FROM access_points WHERE venue_id=$1 AND status='active'", [b.venue_id])).rows[0].m;
+  return { booking_id: b.id, venue_name: b.venue_name, resource_name: b.resource_name, timezone: b.timezone, starts_at: b.starts_at, ends_at: b.ends_at, status: b.status, checked_in_at: b.checked_in_at,
+    token: b.status === 'confirmed' && b.rs_status === 'confirmed' ? mintBookingToken(b.id, b.user_id) : null,
+    valid_from: new Date(+new Date(b.starts_at) - early * 60000), valid_to: new Date(+new Date(b.ends_at) + 30 * 60000), single_use: true };
+}
+/** The venue's own front-desk door, made the first time the desk needs one (a manual point: no hardware, nothing to configure). */
+export async function frontDeskPoint(c, venueId, userId) {
+  const have = (await c.query("SELECT * FROM access_points WHERE venue_id=$1 AND status='active' AND provider='manual' ORDER BY (name='Front desk') DESC, created_at LIMIT 1", [venueId])).rows[0];
+  if (have) return have;
+  return (await c.query("INSERT INTO access_points(venue_id, name, kind, provider, created_by) VALUES ($1,'Front desk','door','manual',$2) RETURNING *", [venueId, userId])).rows[0];
 }

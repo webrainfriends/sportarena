@@ -6,9 +6,10 @@ import { api } from '../api';
 import { useLoad } from '../hooks';
 import { useSession } from '../session';
 import { Btn, Card, Chip, Empty, ErrorBox, Loading, Row, Section, StatPill, T, Tag } from '../ui';
-import { AccessInsights, AccessPoints, HeldList } from '../access-ui';
+import { AccessInsights, AccessPoints, HeldList, ScanPanel } from '../access-ui';
 import { FormSheet } from '../FormSheet';
 import { c } from '../theme';
+import { t as tr } from '../i18n';
 import { addDays, dateTimeIn, moneyIn, timeIn, todayIn } from '../vtime';
 import { pickDocument } from './insurance';
 
@@ -45,6 +46,8 @@ export function Maintenance({ v }) {
   const [finish, setFinish] = useState(null);
   const list = useLoad(() => api.get(`/venues/${v.id}/maintenance`, { status: filter, limit: 100 }), [v.id, filter]);
   const vendors = useLoad(() => api.get(`/venues/${v.id}/vendors`), [v.id]);
+  const assets = useLoad(() => api.get(`/venues/${v.id}/assets`, { limit: 100 }).catch(() => []), [v.id]);
+  const team = useLoad(() => api.get(`/venues/${v.id}/staff`).catch(() => []), [v.id]);
   const t = list.data?.totals;
   const set = async (m, status) => { try { await api.patch(`/maintenance/${m.id}`, { status }); list.reload(); } catch (e) { toast(e.message); } };
   const maintVendors = (vendors.data ?? []).filter((x) => x.status === 'active' && x.kind === 'maintenance');
@@ -63,9 +66,14 @@ export function Maintenance({ v }) {
             <T style={{ flex: 1 }} weight="800">{PRIORITY[m.priority][0]} {m.title}</T>
             <Tag label={m.status.replace('_', ' ')} />
           </View>
-          <T size={12} color={c.mute}>{[m.court ?? 'Whole venue', CATEGORY.find(([k]) => k === m.category)?.[1], m.due_on && `due ${day(m.due_on)}${m.overdue ? ' · overdue' : ''}`, m.vendor_name, m.repeat_every_days && `repeats every ${m.repeat_every_days} days`, m.block_batch_id && 'court closed'].filter(Boolean).join(' · ')}</T>
+          <T size={12} color={c.mute}>{[m.court ?? 'Whole venue', CATEGORY.find(([k]) => k === m.category)?.[1], m.due_on && `due ${day(m.due_on)}${m.overdue ? ' · overdue' : ''}`, m.vendor_name, m.asset_name, m.assignee_name, m.checklist?.length ? tr('vf.mt.steps_done', { done: m.checklist.filter((x) => x.done).length, n: m.checklist.length }) : null, m.repeat_every_days && `repeats every ${m.repeat_every_days} days`, m.block_batch_id && 'court closed'].filter(Boolean).join(' · ')}</T>
           {m.estimated_cost_cents != null || m.actual_cost_cents != null ? <T size={12} color={c.mute}>{m.actual_cost_cents != null ? `Cost ${moneyIn(Number(m.actual_cost_cents), v.currency)}` : `Estimate ${moneyIn(Number(m.estimated_cost_cents), v.currency)}`}</T> : null}
           {m.notes ? <T size={12}>{m.notes}</T> : null}
+          {m.checklist?.length && ['scheduled', 'in_progress'].includes(m.status) ? (
+            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 6 }}>
+              {m.checklist.map((x, i) => <Chip key={i} label={`${x.done ? '✓ ' : ''}${x.label}`} active={!!x.done} onPress={async () => { try { await api.patch(`/maintenance/${m.id}`, { checklist: m.checklist.map((y, j) => (j === i ? { ...y, done: !y.done } : y)) }); list.reload(); } catch (e) { toast(e.message); } }} />)}
+            </View>
+          ) : null}
           {['scheduled', 'in_progress'].includes(m.status) ? (
             <View style={{ flexDirection: 'row', gap: 8, marginTop: 8, flexWrap: 'wrap' }}>
               {m.status === 'scheduled' ? <Btn small title="Start" color={c.violet} onPress={() => set(m, 'in_progress')} /> : null}
@@ -82,6 +90,9 @@ export function Maintenance({ v }) {
           { key: 'resource_id', label: 'Where', type: 'chips', blank: true, options: [{ value: '', label: 'Whole venue' }, ...v.resources.map((r) => ({ value: r.id, label: `${r.sport_emoji ?? ''} ${r.name}`.trim() }))] },
           { key: 'due_on', label: 'Due on', type: 'date', optional: true },
           { key: 'vendor_id', label: 'Vendor', type: 'chips', blank: true, optional: true, options: [{ value: '', label: 'Not assigned' }, ...maintVendors.map((x) => ({ value: x.id, label: x.name }))], hint: maintVendors.length ? undefined : 'Add maintenance contractors under Vendors & contracts' },
+          { key: 'asset_id', label: tr('vf.as.one'), type: 'multimenu', max: 1, optional: true, options: (assets.data ?? []).map((a) => ({ value: a.id, label: a.name, sub: a.asset_tag })) },
+          { key: 'assignee_id', label: tr('vf.mt.assignee'), type: 'multimenu', max: 1, optional: true, options: (team.data ?? []).map((p) => ({ value: p.id, label: p.display_name, sub: p.role })) },
+          { key: 'steps', label: tr('vf.pm.steps_label'), type: 'multiline', optional: true, hint: tr('vf.pm.steps_hint') },
           { key: 'estimated_cost_cents', label: 'Estimated cost', type: 'money', currency: v.currency, optional: true },
           { key: 'repeat_every_days', label: 'Repeat', type: 'chips', default: 0, options: REPEAT },
           { key: 's1', type: 'section', label: 'Close the court meanwhile' },
@@ -90,8 +101,8 @@ export function Maintenance({ v }) {
           { key: 'cancel_conflicting', label: 'Cancel & refund bookings in the way', type: 'switch', default: false, show: (x) => x.close },
           { key: 'notes', label: 'Notes', type: 'multiline', optional: true }]}
         initial={{ due_on: addDays(today, 7) }}
-        onSubmit={async ({ s1, close, close_from, close_to, cancel_conflicting, resource_id, vendor_id, repeat_every_days, ...f }) => {
-          await api.post(`/venues/${v.id}/maintenance`, { ...f, resource_id: resource_id || undefined, vendor_id: vendor_id || undefined, repeat_every_days: repeat_every_days || undefined,
+        onSubmit={async ({ s1, close, close_from, close_to, cancel_conflicting, resource_id, vendor_id, repeat_every_days, asset_id, assignee_id, steps, ...f }) => {
+          await api.post(`/venues/${v.id}/maintenance`, { ...f, asset_id: asset_id?.[0] || undefined, assignee_id: assignee_id?.[0] || undefined, checklist: String(steps ?? '').split('\n').map((x) => x.trim()).filter(Boolean).map((label) => ({ label })), resource_id: resource_id || undefined, vendor_id: vendor_id || undefined, repeat_every_days: repeat_every_days || undefined,
             ...(close ? { close: { from_date: close_from, to_date: close_to ?? close_from, cancel_conflicting: !!cancel_conflicting } } : {}) });
           list.reload(); return 'Logged';
         }} />
@@ -281,9 +292,21 @@ export function VendorsContracts({ v }) {
 }
 
 /** Doors, gates and readers of the venue, who was admitted, what needs a decision, and the evidence kept apart from the final record. */
+/** "Confirm check-ins": scan a booking's QR (or a pass, card or tag) at the venue's front-desk door. Floor staff and managers. */
+function ConfirmCheckins({ venueId }) {
+  const desk = useLoad(() => api.get(`/venues/${venueId}/front-desk-access-point`), [venueId]);
+  return (
+    <Section title={tr('vf.confirm.title')} color={c.mint}>
+      <T color={c.mute} size={13}>{tr('vf.confirm.sub')}</T>
+      {desk.loading && !desk.data ? <Loading /> : desk.error ? <ErrorBox error={desk.error} onRetry={desk.reload} /> : <ScanPanel domain="venue_access" subjectRef={desk.data.id} />}
+    </Section>
+  );
+}
+
 export function AccessTab({ v }) {
   return (
     <View style={{ gap: 14 }}>
+      <ConfirmCheckins venueId={v.id} />
       <Section title="Doors, gates and readers" color={c.cyan}><AccessPoints venueId={v.id} /></Section>
       <Section title="Held for your decision" color={c.orange}><HeldList scope={{ venue_id: v.id }} /></Section>
       <Section title="Attendance and access" color={c.violet}><AccessInsights scope={{ venue_id: v.id }} /></Section>

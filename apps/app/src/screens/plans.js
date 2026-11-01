@@ -1,4 +1,5 @@
 // Memberships and multi-session passes: what a venue sells, what you hold, using a pass on an invoice, and the venue team's plan manager.
+import { t } from '../i18n';
 import React, { useState } from 'react';
 import { View } from 'react-native';
 import { api } from '../api';
@@ -131,8 +132,12 @@ export function PlansManager({ v }) {
           { key: 'description', label: 'Description', optional: true },
           { key: 'price_cents', label: 'Price', type: 'money', currency: v.currency },
           { key: 'duration_days', label: 'Lasts', type: 'chips', default: 30, options: [{ value: 30, label: '1 month' }, { value: 90, label: '3 months' }, { value: 180, label: '6 months' }, { value: 365, label: '1 year' }] },
-          { key: 'discount_pct', label: 'Discount on every booking', type: 'stepper', min: 5, max: 90, step: 5, default: 10, suffix: '%' }]}
-        onSubmit={async ({ discount_pct, ...f }) => { await api.post(`/venues/${v.id}/plans`, { ...f, kind: 'membership', discount_bp: Math.round(discount_pct * 100) }); reload(); return 'Membership created'; }} />
+          { key: 'discount_pct', label: 'Discount on every booking', type: 'stepper', min: 5, max: 90, step: 5, default: 10, suffix: '%' },
+          { key: 's_ent', type: 'section', label: t('vf.ent.title') },
+          { key: 'ent_days', label: t('vf.ent.days'), type: 'weekdays', hint: t('vf.ent.days_hint') },
+          { key: 'ent_from', label: t('vf.ent.from'), type: 'time', optional: true }, { key: 'ent_to', label: t('vf.ent.to'), type: 'time', optional: true },
+          { key: 'ent_guests', label: t('vf.ent.guests'), type: 'stepper', min: 0, max: 20, default: 0 }]}
+        onSubmit={async ({ discount_pct, s_ent, ent_days, ent_from, ent_to, ent_guests, ...f }) => { await api.post(`/venues/${v.id}/plans`, { ...f, kind: 'membership', discount_bp: Math.round(discount_pct * 100), entitlements: { days: ent_days ?? [], from: ent_from || undefined, to: ent_to || undefined, guest_quota: ent_guests ?? 0 } }); reload(); return 'Membership created'; }} />
       <FormSheet visible={form === 'pass'} onClose={() => setForm(null)} title="New pass" submitLabel="Create"
         fields={[{ key: 'name', label: 'Name', type: 'chips', options: ['5-session pass', '10-session pass', '20-session pass', 'Coaching pack'] },
           { key: 'description', label: 'Description', optional: true },

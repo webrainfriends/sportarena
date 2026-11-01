@@ -10,7 +10,7 @@ import { lockPayableInvoice } from '../booking/credits.js';
 import { startUserPlan } from '../booking/plans.js';
 
 const TAG = 'Memberships & passes';
-const PUBLIC = 'id, venue_id, kind, name, description, price_cents, duration_days, discount_bp, sessions, session_value_cents, valid_days, active, resource_ids, includes, auto_renew';
+const PUBLIC = 'id, venue_id, kind, name, description, price_cents, duration_days, discount_bp, sessions, session_value_cents, valid_days, active, resource_ids, includes, auto_renew, entitlements';
 
 const planFields = {
   name: z.string().min(2).max(80), description: z.string().max(400).optional(),
@@ -43,7 +43,7 @@ cap({
 cap({
   name: 'create_venue_plan', method: 'POST', path: '/venues/:id/plans', tag: TAG, status: 201,
   summary: 'Venue team: sell a membership (kind "membership": duration_days + discount_bp off every booking) or a pass (kind "pass": sessions, valid_days, optional session_value_cents). Priced in the venue currency.',
-  input: z.object({ id, kind: z.enum(['membership', 'pass']), ...planFields }),
+  input: z.object({ id, kind: z.enum(['membership', 'pass']), ...planFields, entitlements: z.object({ days: z.array(z.number().int().min(0).max(6)).max(7).default([]), from: z.string().regex(/^\d{2}:\d{2}$/).optional(), to: z.string().regex(/^\d{2}:\d{2}$/).optional(), guest_quota: z.number().int().min(0).max(20).default(0) }).describe('access entitlements read by the venue access layer at check-in: allowed weekdays (0=Sun, empty = every day), a daily window in venue time, and how many guests the member may bring on one visit').optional() }),
   async handler({ user }, i) {
     await mustManage(user, i.id);
     const s = shape(i);
@@ -51,22 +51,22 @@ cap({
     if (i.kind === 'pass' && i.auto_renew) throw badRequest('Only a membership can renew; sell a pass again instead');
     if (i.resource_ids.length && (await one('SELECT count(*)::int AS n FROM resources WHERE venue_id=$1 AND id = ANY($2::uuid[])', [i.id, i.resource_ids])).n !== new Set(i.resource_ids).size)
       throw badRequest('One of those areas belongs to another venue');
-    return one(`INSERT INTO venue_plans(venue_id, kind, name, description, price_cents, duration_days, discount_bp, sessions, session_value_cents, valid_days, resource_ids, includes, auto_renew) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13) RETURNING ${PUBLIC}`,
-      [i.id, i.kind, i.name, i.description ?? null, i.price_cents, s.duration_days, s.discount_bp, s.sessions, s.session_value_cents, s.valid_days, i.resource_ids, i.includes, i.auto_renew]);
+    return one(`INSERT INTO venue_plans(venue_id, kind, name, description, price_cents, duration_days, discount_bp, sessions, session_value_cents, valid_days, resource_ids, includes, auto_renew, entitlements) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14) RETURNING ${PUBLIC}`,
+      [i.id, i.kind, i.name, i.description ?? null, i.price_cents, s.duration_days, s.discount_bp, s.sessions, s.session_value_cents, s.valid_days, i.resource_ids, i.includes, i.auto_renew, JSON.stringify(i.entitlements ?? {})]);
   },
 });
 
 cap({
   name: 'update_venue_plan', method: 'PATCH', path: '/venue-plans/:id', tag: TAG,
   summary: 'Venue team: edit a plan or stop selling it (active=false). Changes apply to future purchases only; people who already bought keep the terms they paid for.',
-  input: z.object({ id, name: planFields.name.optional(), description: planFields.description, price_cents: planFields.price_cents.optional(), active: z.boolean().optional(), includes: planFields.includes.optional(), auto_renew: z.boolean().optional() }),
+  input: z.object({ id, name: planFields.name.optional(), description: planFields.description, price_cents: planFields.price_cents.optional(), active: z.boolean().optional(), includes: planFields.includes.optional(), auto_renew: z.boolean().optional(), entitlements: z.object({ days: z.array(z.number().int().min(0).max(6)).max(7).default([]), from: z.string().regex(/^\d{2}:\d{2}$/).optional(), to: z.string().regex(/^\d{2}:\d{2}$/).optional(), guest_quota: z.number().int().min(0).max(20).default(0) }).describe('access entitlements read by the venue access layer at check-in: allowed weekdays (0=Sun, empty = every day), a daily window in venue time, and how many guests the member may bring on one visit').optional() }),
   async handler({ user }, i) {
     const p = await mustFind('venue_plans', i.id, 'id, venue_id, sessions');
     await mustManage(user, p.venue_id);
     return one(`UPDATE venue_plans SET name=coalesce($2,name), description=coalesce($3,description), price_cents=coalesce($4,price_cents), active=coalesce($5,active), includes=coalesce($6,includes),
-                  auto_renew = CASE WHEN kind='membership' THEN coalesce($7,auto_renew) ELSE false END,
+                  auto_renew = CASE WHEN kind='membership' THEN coalesce($7,auto_renew) ELSE false END, entitlements=coalesce($8::jsonb,entitlements),
                   session_value_cents = CASE WHEN $4::int IS NOT NULL AND kind='pass' THEN greatest(1, floor($4::int / sessions)) ELSE session_value_cents END WHERE id=$1 RETURNING ${PUBLIC}`,
-      [i.id, i.name ?? null, i.description ?? null, i.price_cents ?? null, i.active ?? null, i.includes ?? null, i.auto_renew ?? null]);
+      [i.id, i.name ?? null, i.description ?? null, i.price_cents ?? null, i.active ?? null, i.includes ?? null, i.auto_renew ?? null, i.entitlements ? JSON.stringify(i.entitlements) : null]);
   },
 });
 
