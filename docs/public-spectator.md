@@ -69,3 +69,22 @@ Unique reach and return on investment are **not** measured and never shown.
 * Share cards are SVG; no server-side PNG rasteriser is bundled.
 * Score alerts arrive within one maintenance cycle (default 60 s), not instantly.
 * Native iOS / iPadOS / Android could not be run in this environment; the shared React Native code was compiled for web and verified at phone, tablet and desktop widths.
+
+## Premium live game centre (#578)
+
+`GET /public/fixtures/:id` (`get_public_fixture`, REST + OpenAPI + MCP) now carries a `centre` block. It is a projection of the canonical game (`match_events` via `liveState`, `match_appearances`, `match_substitutions`, `standings`, rights-cleared `mr_assets`); no second match state exists.
+
+| Module | Source | Notes |
+|---|---|---|
+| `clock` | start/pause/resume events, `started_at` | `official` only when events were entered by the organiser, an official or an admin (or the sheet is approved). Sports without a running timer set `timed:false`. |
+| `lineups`, `substitutions` | `match_appearances`, `match_substitutions` | Adults only; a youth event returns `available:false`, young players on an adult event are counted, never named. |
+| `discipline` | the event log | Cards, penalties, suspensions, warnings, in the ruleset's own words. |
+| `stats` | the event log | Counts per side per kind, named by the sport's ruleset. |
+| `standings_impact` | `standings()` | "If it ended now", always `provisional`, group games only. |
+| `highlights` | `publicMedia` | Only clips the rights engine already made public. |
+
+Organisers choose the modules with `set_event_public_settings { modules: [...] }` (`events.public_modules`, NULL = all). Staff (organiser, accepted officials) additionally get an `ops` block from `GET /fixtures/:id/live`: scorer lease holder, voided events, corrections, score-sheet stage, clock authority and what fans currently see. Fans and outsiders never receive it.
+
+The app shows the modules in `LiveCentre` (two columns from tablet width) with a reconnecting banner and back-off retry; staff reach the same screen from Match Centre ("Open spectator view").
+
+Sport coverage: `test/live-centre-catalogue.test.js` walks the whole catalogue. Every sport has a live model; sports without a dedicated ruleset use the labelled generic points or manual-totals fallback. Not run on a native device: iOS, iPadOS and Android are verified through `expo export` and shared components only.
