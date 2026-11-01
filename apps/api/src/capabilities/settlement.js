@@ -211,6 +211,7 @@ cap({
     return tx(async (c) => {
       const p = (await c.query('SELECT * FROM provider_payouts WHERE id=$1 FOR UPDATE', [i.id])).rows[0];
       if (!p) throw notFound('Payout');
+      if ((await c.query('SELECT 1 FROM payout_items WHERE provider_payout_id=$1', [p.id])).rowCount) throw conflict('This payout belongs to a payout batch: record its result on the batch item (record_payout_item_result)');
       noSelf(user, p.seller_id, 'record the result');
       if (p.status === i.outcome) return { ...payoutView(p), replayed: true };
       if (p.status !== 'processing') throw conflict(`This payout already ${p.status === 'paid' ? 'completed' : 'failed'}`);

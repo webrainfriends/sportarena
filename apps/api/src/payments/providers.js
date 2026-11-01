@@ -51,6 +51,12 @@ export const stripe = {
     const { res, body: b } = await call('Stripe', `${cfg().stripe.base}/v1/refunds`, { method: 'POST', headers: { ...stripeAuth(), 'content-type': 'application/x-www-form-urlencoded', 'idempotency-key': `refund-${key ?? paymentId}` }, body: form({ payment_intent: paymentRef, amount }) });
     if (!res.ok) throw fail('Stripe', res.status, b?.error?.message);
   },
+  /** Pay out to a connected account (Stripe Connect). `key` makes a retry return the same transfer instead of moving money twice. */
+  async transfer({ amount, currency, destination, key, itemId }) {
+    const { res, body: b } = await call('Stripe', `${cfg().stripe.base}/v1/transfers`, { method: 'POST', headers: { ...stripeAuth(), 'content-type': 'application/x-www-form-urlencoded', 'idempotency-key': `transfer-${key}` }, body: form({ amount, currency: currency.toLowerCase(), destination, metadata: { payout_item_id: itemId } }) });
+    if (!res.ok || !b?.id) throw fail('Stripe', res.status, b?.error?.message);
+    return { ref: b.id };
+  },
   /** Verify a Stripe-Signature header against the raw request body (HMAC-SHA256, 5 minute tolerance). */
   verifyWebhook(raw, header, secret = cfg().stripe.webhookSecret, now = Date.now()) {
     if (!secret || !header) return false;

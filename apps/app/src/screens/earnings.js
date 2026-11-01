@@ -10,6 +10,8 @@ import { FormSheet } from '../FormSheet';
 import { DateRangeField } from '../pickers';
 import { c } from '../theme';
 import { moneyIn } from '../vtime';
+import { openPdf } from '../open-file';
+import { t } from '../i18n';
 import { locale } from '../locale';
 
 const cash = (cents, cur) => moneyIn(Number(cents ?? 0), cur);
@@ -68,6 +70,7 @@ export function Earnings() {
   const e = useLoad(() => api.get('/me/earnings'), []);
   const accounts = useLoad(() => api.get('/me/payout-accounts'), []);
   const payouts = useLoad(() => api.get('/me/payouts', { limit: 10 }), []);
+  const items = useLoad(() => api.get('/me/payout-items', { limit: 20 }), []);
   const [cur, setCur] = useState(null);
   const [offset, setOffset] = useState(0);
   const [more, setMore] = useState([]);
@@ -125,6 +128,15 @@ export function Earnings() {
             right={<Tag label={p.status} color={TONE[p.status]} />} />
         )) : <T size={13} color={c.mute}>No payouts yet.</T>}
       </Section>
+
+      {(items.data ?? []).filter((i) => i.source_type !== 'provider_balance').length ? (
+        <Section title={t('payout.to_you')} color={c.mint}>
+          {(items.data ?? []).filter((i) => i.source_type !== 'provider_balance').map((i) => (
+            <Row key={i.id} title={cash(i.net_minor, i.currency)} sub={`${t(`payout.source_${i.source_type}`)} · ${t('payout.gross')} ${cash(i.gross_minor, i.currency)}${Number(i.tax_minor) ? ` · ${t('payout.withheld')} ${cash(i.tax_minor, i.currency)}` : ''}${i.reference ? ` · ${i.reference}` : ''}`}
+              right={i.status === 'paid' ? <Btn small title={t('payout.statement')} color={c.violet} accessibilityLabel={t('payout.statement')} onPress={() => openPdf(`/payout-items/${i.id}/statement.pdf`, 'payout-statement').catch((x) => toast(x.message))} /> : <Tag label={t(`payout.status_${i.status}`)} color={TONE[i.status]} />} />
+          ))}
+        </Section>
+      ) : null}
 
       <Section title="Statement" color={c.sun} action="Export CSV" onAction={() => setRange(true)}>
         {d.currencies.length > 1 ? <Seg options={[{ value: null, label: 'All' }, ...d.currencies.map((x) => ({ value: x.currency, label: x.currency }))]} value={cur} onChange={(v) => { setCur(v); setMore([]); setOffset(0); }} /> : null}

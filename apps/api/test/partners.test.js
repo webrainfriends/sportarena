@@ -245,8 +245,8 @@ test('revenue is settled per contract: platform-collected vs venue-collected, co
   const stmt = must(await api('GET', `/settlements/${s.id}`, { token: mgr.token, query: { format: 'csv' } }));
   assert.match(stmt.csv, /net payable/);
   assert.equal((await api('POST', `/admin/settlements/${s.id}/adjustments`, { token: owner.token, body: { amount_cents: 1, reason: 'too late' } })).status, 409);
-  assert.equal((await api('POST', `/admin/settlements/${s.id}/decision`, { token: owner.token, body: { action: 'mark_paid' } })).status, 400, 'payout reference required');
-  must(await api('POST', `/admin/settlements/${s.id}/decision`, { token: owner.token, body: { action: 'mark_paid', payout_ref: 'UTR123456' } }));
+  assert.equal((await api('POST', `/admin/settlements/${s.id}/decision`, { token: owner.token, body: { action: 'mark_paid', payout_ref: 'UTR123456' } })).status, 409, 'paid only by a payout batch (#701; covered in payouts.test.js)');
+  await pool.query("UPDATE settlements SET status='paid', payout_ref='UTR123456', paid_at=now() WHERE id=$1", [s.id]);
   assert.equal((await api('POST', `/admin/settlements/${s.id}/decision`, { token: owner.token, body: { action: 'void', reason: 'x' } })).status, 409, 'paid is final');
 });
 
