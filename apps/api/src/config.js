@@ -43,6 +43,8 @@ export const config = {
   googleClientId: env.GOOGLE_CLIENT_ID,
   // The iOS OAuth client id (public) used by the native app's Google button; its tokens carry this audience instead of the web client id.
   googleIosClientId: env.GOOGLE_IOS_CLIENT_ID ?? '909476957194-bmrrif4q7qdffemon7mrrm3puoovbg5r.apps.googleusercontent.com',
+  // The Android OAuth client id (public; package dev.gotmygame.app + the app signing SHA-1) used by the native Android app's Google button. Unset = no Google button on Android.
+  googleAndroidClientId: env.GOOGLE_ANDROID_CLIENT_ID,
   // Sign in with Apple. appleClientId = the Services ID (web button; public). appleAppId = the app's bundle id (primary App ID, used by the native button).
   // Both are accepted as the id token's audience. Unset appleClientId = the Apple button is hidden and the endpoint refuses web sign-in.
   appleClientId: env.APPLE_CLIENT_ID,
