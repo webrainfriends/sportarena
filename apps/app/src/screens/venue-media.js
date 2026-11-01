@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
-import { Image, Linking, Modal, Platform, Pressable, ScrollView, View } from 'react-native';
+import { Image, Modal, Platform, Pressable, ScrollView, View } from 'react-native';
+import { openPage, VideoPlayer } from '../video-player';
 import { api, mediaUrl } from '../api';
 import { useLoad } from '../hooks';
 import { useSession } from '../session';
@@ -22,8 +23,10 @@ function MediaView({ m, w, hgt, full, onPress }) {
       ? h('video', { src: url, controls: true, autoPlay: true, playsInline: true, style: { width: '100%', maxHeight: '80vh', borderRadius: 8, background: '#000' } })
       : h('iframe', { src: m.url, allow: 'accelerometer; autoplay; encrypted-media; picture-in-picture', allowFullScreen: true, style: { width: '100%', aspectRatio: '16/9', border: 0, borderRadius: 8 } });
   }
+  // on a phone the uploaded video plays here in the full-screen viewer; a YouTube / Vimeo link opens its page in the app
+  if (!isWeb && full && m.kind === 'video') return <VideoPlayer url={url} title={m.caption} />;
   return (
-    <Pressable onPress={onPress ?? (() => Linking.openURL(m.kind === 'video' ? url : m.url))} style={{ width: w, height: hgt, borderRadius: full ? 0 : 14, backgroundColor: c.violet, alignItems: 'center', justifyContent: 'center' }}>
+    <Pressable onPress={onPress ?? (() => (m.kind === 'video' ? null : openPage(m.url)))} style={{ width: w, height: hgt, borderRadius: full ? 0 : 14, backgroundColor: c.violet, alignItems: 'center', justifyContent: 'center' }}>
       <T size={34} color="#fff">▶</T><T size={12} color="#fff" weight="700">{m.caption ?? 'Watch video'}</T>
     </Pressable>
   );

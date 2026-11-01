@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Image, Modal, Platform, Pressable, View } from 'react-native';
 import { mediaUrl } from '../api';
+import { VideoPlayer } from '../video-player';
 import { T } from '../ui';
 import { c } from '../theme';
 
@@ -45,6 +46,7 @@ export function Media({ m, height, onPress, full }) {
   const url = mediaUrl(m.url);
   if (m.kind === 'video') {
     if (isWeb) return h('video', { src: url, muted: !full, loop: !full, autoPlay: true, playsInline: true, controls: !!full, preload: 'metadata', onClick: onPress, style: { width: '100%', height: full ? undefined : height, maxHeight: full ? '80vh' : undefined, objectFit: full ? 'contain' : 'cover', background: '#0F172A', display: 'block', cursor: onPress ? 'pointer' : undefined } });
+    if (full) return <VideoPlayer url={url} />;   // the full-screen viewer plays it here (tap to start, never autoplays with sound)
     return <Pressable onPress={onPress} style={{ width: '100%', height, backgroundColor: c.violet, alignItems: 'center', justifyContent: 'center' }}><T size={34} color="#fff">▶</T></Pressable>;
   }
   return <Pressable onPress={onPress} disabled={!onPress}><Image source={{ uri: url }} resizeMode={full ? 'contain' : 'cover'} style={{ width: '100%', height: full ? 520 : height, backgroundColor: c.violetSoft }} accessibilityLabel="Post media" /></Pressable>;

@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
-import { Linking, Platform, View } from 'react-native';
-import { api } from '../api';
+import { Platform, View } from 'react-native';
+import { api, mediaUrl } from '../api';
+import { VideoPlayer as InAppVideo, openPage } from '../video-player';
 import { openProtected } from '../open-file';
 import { useLoad } from '../hooks';
 import { useSession } from '../session';
@@ -38,7 +39,10 @@ export function VideoPlayer({ video }) {
     };
     return <Btn small title={busy ? 'Loading…' : '▶ Play clip'} onPress={load} disabled={busy} style={{ alignSelf: 'flex-start' }} />;
   }
-  return video.link_url ? <Btn small title="Open video" color={c.paper} ink={c.ink} onPress={() => Linking.openURL(video.link_url)} style={{ alignSelf: 'flex-start' }} /> : <T size={12} color={c.mute}>Open this clip on the web version to play it.</T>;
+  // phone: an uploaded clip streams from our own server with the viewer's sign-in; a YouTube / Vimeo link opens its page in the app
+  if (video.file_url) return <InAppVideo url={mediaUrl(video.file_url)} title={video.title} />;
+  const link = video.embed_url || video.link_url;
+  return link ? <Btn small title="▶ Watch video" color={c.paper} ink={c.ink} onPress={() => openPage(link)} style={{ alignSelf: 'flex-start' }} /> : null;
 }
 
 /** Recruitment sections of a shared passport: only what the athlete's link shows, with who vouched for it. */
