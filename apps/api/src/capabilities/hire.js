@@ -98,7 +98,7 @@ export async function placeHire(user, i, opts = {}) {
     // one coach calendar at a time: the same lock a class publish takes, so a hire and a class can never both claim the slot
     const made = await withCoachCalendar(i.coach_id, async (c) => {
       const one = async (sql, p) => (await c.query(sql, p)).rows[0] ?? null;   // every read and the insert run on the lock-holding connection
-      const clash = await one("SELECT 1 FROM coach_hires WHERE coach_id=$1 AND status IN ('requested','confirmed') AND starts_at < $2::timestamptz + make_interval(mins => $3) AND starts_at + make_interval(mins => duration_min) > $2", [i.coach_id, i.starts_at, mins]);
+      const clash = await one("SELECT 1 FROM coach_hires WHERE coach_id=$1 AND status IN ('requested','confirmed') AND series_state IS DISTINCT FROM 'paused' AND starts_at < $2::timestamptz + make_interval(mins => $3) AND starts_at + make_interval(mins => duration_min) > $2", [i.coach_id, i.starts_at, mins]);
       if (clash || (await one("SELECT 1 FROM venue_coach_slots WHERE coach_id=$1 AND status='agreed' AND starts_at < $2::timestamptz + make_interval(mins => $3) AND ends_at > $2", [i.coach_id, i.starts_at, mins]))) throw conflict('Coach is not free then');
       const start = new Date(i.starts_at);
       if ((await commitmentBusy(i.coach_id, start, new Date(+start + mins * 60_000), c)).length) throw conflict('The coach has another commitment then');
