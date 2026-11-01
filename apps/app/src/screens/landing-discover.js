@@ -11,6 +11,7 @@ import { setIntent } from '../market/intent';
 import { HScroll } from '../pickers';
 import { moneyIn } from '../vtime';
 import { absolute } from './spectate';
+import { showPublicEvent } from '../public-event';
 
 export const DISCOVER_TABS = [
   { key: 'events', emoji: '🏆', label: 'Events' },
@@ -48,7 +49,7 @@ const Verified = ({ on }) => (on ? <T size={11} weight="800" color={c.lime}>✔ 
 function Events({ q, sport }) {
   const [phase, setPhase] = useState(null);
   const res = useLoad(async () => (await api.get('/events/search', { limit: 12, sort: 'soonest', ...(phase ? { phase } : {}), ...(q ? { q } : {}), ...(sport ? { sport } : {}) })).items, [phase, q, sport]);
-  const open = (id) => { if (Platform.OS === 'web' && typeof window !== 'undefined') window.location.assign(`/?event=${id}`); else Linking.openURL(absolute(`/api/v1/share/events/${id}`)); };
+  const open = (id) => { if (Platform.OS === 'web' && typeof window !== 'undefined') window.location.assign(`/?event=${id}`); else showPublicEvent(id); };
   return (
     <View style={{ gap: 14 }}>
       <Chips value={phase} onChange={setPhase} options={[[null, 'All'], ['live', '🔴 Live now'], ['upcoming', 'Upcoming'], ['completed', 'Completed']]} />

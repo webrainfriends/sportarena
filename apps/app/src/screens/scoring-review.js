@@ -4,6 +4,7 @@
 import React, { useEffect, useState } from 'react';
 import { Image, Platform, View } from 'react-native';
 import { api } from '../api';
+import { openProtected } from '../open-file';
 import { useLoad } from '../hooks';
 import { useSession } from '../session';
 import { Btn, Card, Chip, Empty, ErrorBox, Field, H2, Loading, Section, Seg, Sheet, T, Tag } from '../ui';
@@ -22,10 +23,7 @@ const Notes = ({ list }) => (list?.length ? <View style={{ gap: 6 }}>{list.map((
 
 async function openBlob(path, toast) {
   try {
-    if (Platform.OS !== 'web' || typeof window === 'undefined') return toast?.('Evidence files open in the web app');
-    const url = URL.createObjectURL(await api.download(path));
-    window.open(url, '_blank', 'noopener');
-    setTimeout(() => URL.revokeObjectURL(url), 120000);
+    await openProtected(path, 'evidence');
   } catch (e) { toast?.(e.message); }
 }
 

@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Platform, Switch, View } from 'react-native';
 import { api } from '../api';
+import { openBase64 } from '../evidence';
 import { useLoad } from '../hooks';
 import { useSession } from '../session';
 import { docMaxBytes, docMaxMb } from '../upload-limits';
@@ -203,8 +204,7 @@ function CaseSheet({ id, rules, onClose, onChange, onNew }) {
   const view = (docId) => run(async () => {
     const f = await api.get(`/verification/cases/${id}/documents/${docId}`);
     if (!f.data) return toast(f.reference ?? 'No file');
-    const url = `data:${f.content_type};base64,${f.data}`;
-    if (isWeb) { const w = window.open(); w.document.write(`<iframe src="${url}" style="border:0;width:100%;height:100%"></iframe>`); } else toast('Open this on the web app');
+    await openBase64({ file_name: f.file_name ?? `document-${docId}`, content_type: f.content_type, data: f.data });
   }, 'Opened (logged)');
   return (
     <Sheet visible={!!id} onClose={onClose} title={x ? `${x.label} · #${x.case_no}` : 'Verification'}>
