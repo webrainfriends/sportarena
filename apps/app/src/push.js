@@ -74,6 +74,7 @@ export function targetFor(data = {}) {
   if (data.report_id && data.fixture_id) return ['OfficialMatch', { id: data.fixture_id }]; // an official filed a report on your match
   if (data.proposal_id) return ['ScoringTool', { proposalId: data.proposal_id }]; // a proposed result to review, or the outcome of yours
   if ((data.ops_incident_id || data.ops_requirement) && data.event_id) return ['EventCommand', { id: data.event_id, tab: 'operations' }]; // an incident alert / handover, or a readiness requirement you own
+  if (data.subscription_id) return data.for_coach ? ['CoachRates', {}] : ['Wallet', {}]; // a monthly coaching subscription: payer messages open the Wallet, the coach's open Rate cards
   if (data.ticket) return ['MyTickets', {}]; // a spectator ticket was issued, received, refunded or its match moved
   if (data.accreditation_id && data.event_id) return ['MyAccreditations', {}]; // a nomination, approval, reissue or revocation of your badge
   if (data.request_id && data.event_id) return ['EventInbox', {}];
@@ -147,6 +148,11 @@ export function parseTarget(t) {
   if (kind === 'tickets' && id) return ['Tickets', { id }];   // buy tickets for an event
   if (kind === 'event-tickets' && id) return ['EventCommand', { id, tab: 'tickets' }];   // the organiser's ticketing tab
   if (kind === 'my-tickets') return ['MyTickets', {}];
+  if (kind === 'venue-seating' && id) return ['Manage', { id, tab: 'seating' }];   // a venue's capacity and seating map
+  if (kind === 'venue-setup' && id) return ['Manage', { id, wizard: true, step: extra === 'seating' ? 3 : undefined }];   // the venue onboarding wizard
+  if (kind === 'wallet') return ['Wallet', {}];
+  if (kind === 'coach-rates') return ['CoachRates', {}];
+  if (kind === 'coach' && id) return ['CoachProfile', { id }];
   if (kind === 'tender-orders') return ['TenderOrders', {}];
   if (kind === 'tender-reports') return ['TenderReports', {}];
   if (kind === 'tender-order' && id) return ['TenderOrder', { id }];
