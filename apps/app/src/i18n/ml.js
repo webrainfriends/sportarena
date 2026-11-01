@@ -753,6 +753,8 @@ export default {
   'auth.reset_code': 'റീസെറ്റ് കോഡ്',
   'auth.new_password': 'പുതിയ പാസ്‌വേഡ്',
   'auth.password': 'പാസ്‌വേഡ്',
+  'auth.show_password': 'പാസ്‌വേഡ് കാണിക്കുക',
+  'auth.hide_password': 'പാസ്‌വേഡ് മറയ്ക്കുക',
   'auth.password_ph': '10+ അക്ഷരങ്ങൾ',
   'auth.i_am': 'ഞാൻ ഒരു…',
   'auth.private_title': 'രൂപകൽപ്പനയിലേ സ്വകാര്യം',

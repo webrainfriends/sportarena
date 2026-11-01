@@ -753,6 +753,8 @@ export default {
   'auth.reset_code': 'ରିସେଟ୍ କୋଡ୍',
   'auth.new_password': 'ନୂତନ ପାସୱାର୍ଡ',
   'auth.password': 'ପାସୱାର୍ଡ',
+  'auth.show_password': 'ପାସୱାର୍ଡ ଦେଖାନ୍ତୁ',
+  'auth.hide_password': 'ପାସୱାର୍ଡ ଲୁଚାନ୍ତୁ',
   'auth.password_ph': '10+ ଅକ୍ଷର',
   'auth.i_am': 'ମୁଁ ଜଣେ…',
   'auth.private_title': 'ଡିଜାଇନରୁ ହିଁ ବ୍ୟକ୍ତିଗତ',

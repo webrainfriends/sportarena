@@ -753,6 +753,8 @@ export default {
   'auth.reset_code': 'రీసెట్ కోడ్',
   'auth.new_password': 'కొత్త పాస్‌వర్డ్',
   'auth.password': 'పాస్‌వర్డ్',
+  'auth.show_password': 'పాస్‌వర్డ్ చూపించు',
+  'auth.hide_password': 'పాస్‌వర్డ్ దాచు',
   'auth.password_ph': '10+ అక్షరాలు',
   'auth.i_am': 'నేను…',
   'auth.private_title': 'రూపకల్పనలోనే గోప్యత',
