@@ -201,6 +201,7 @@ import './load-history.js';
 import './player-funding.js';
 import './passport.js';
 import './passport-recruitment.js';
+import './video-library.js';
 import './calendar-sync.js';
 import './athlete-blocks.js';
 import './career-timeline.js';

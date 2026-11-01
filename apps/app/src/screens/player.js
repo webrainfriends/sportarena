@@ -10,6 +10,8 @@ import { useLayout } from '../layout';
 import { Btn, Card, Chip, Empty, ErrorBox, H1, H2, Loading, Screen, Seg, T } from '../ui';
 import { HScroll } from '../pickers';
 import { FormSheet } from '../FormSheet';
+import { VideoLibrary, SportHighlights } from './video-library';
+import { t } from '../i18n';
 import { LinearGradient } from 'expo-linear-gradient';
 import { c, fam, day } from '../theme';
 import { sportTheme, recordOf, recordLabel } from '../sport-theme';
@@ -321,7 +323,7 @@ function MySports() {
 // ---------- player hub: sections ----------
 
 // Player: everything about how you play. Matches and scores per sport as before, your development workspace (goals, plans, coach feedback, assessments and reports), plus AI insights that compare you with other players.
-const sections = () => [['sports', 'My sports', MySports], ['development', 'Development', MyDevelopment], ['insights', 'Insights', Insights]];
+const sections = () => [['sports', 'My sports', MySports], ['development', 'Development', MyDevelopment], ['videos', t('vl.tab'), VideoLibrary], ['insights', 'Insights', Insights]];
 let lastSection = 'sports'; // survive pushing into a sport page and coming back
 
 export function PlayerHome() {
@@ -421,6 +423,8 @@ export function SportProfile({ id, embedded, onChanged, onRemoved }) {
 
       <H2 style={{ marginTop: 24 }}>Personal records</H2>
       <View style={{ marginTop: 10 }}><RecordsSection sport={p.sport_slug} /></View>
+
+      <SportHighlights sport={p.sport_slug} />
 
       <H2 style={{ marginTop: 24 }}>Match log</H2>
       <View style={{ marginTop: 10 }}>

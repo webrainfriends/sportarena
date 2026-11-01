@@ -1,5 +1,5 @@
-import React, { useEffect, useState } from 'react';
-import { Linking, Platform, View } from 'react-native';
+import React, { useState } from 'react';
+import { View } from 'react-native';
 import { api } from '../api';
 import { openProtected } from '../open-file';
 import { useLoad } from '../hooks';
@@ -7,8 +7,10 @@ import { useSession } from '../session';
 import { Btn, Card, Empty, ErrorBox, H2, Loading, T, Tag } from '../ui';
 import { FormSheet } from '../FormSheet';
 import { c, day } from '../theme';
+import { t } from '../i18n';
 import { pickMedia } from '../market/media';
 import { pickDocument } from './insurance';
+import { VideoPlayer } from '../video-player';
 
 const nice = (s) => String(s).replace(/_/g, ' ');
 const WEEK = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
@@ -21,25 +23,7 @@ export async function openFile(url) {
   await openProtected(String(url).replace(/^\/api\/v1/, ''), 'passport-document');
 }
 
-/** Plays a video inside the app: a YouTube/Vimeo link in an embedded player, an uploaded clip from a blob fetched with the viewer's own sign-in. */
-export function VideoPlayer({ video }) {
-  const { toast } = useSession();
-  const [src, setSrc] = useState(null);
-  const [busy, setBusy] = useState(false);
-  useEffect(() => () => { if (src) URL.revokeObjectURL(src); }, [src]);
-  const web = Platform.OS === 'web';
-  const frame = { width: '100%', aspectRatio: '16 / 9', border: 0, borderRadius: 14, background: '#0F172A', display: 'block' };
-  if (video.embed_url && web) return React.createElement('iframe', { src: video.embed_url, title: video.title, style: frame, allow: 'accelerometer; encrypted-media; picture-in-picture; fullscreen', allowFullScreen: true, loading: 'lazy', referrerPolicy: 'strict-origin-when-cross-origin' });
-  if (video.file_url && web) {
-    if (src) return React.createElement('video', { src, controls: true, autoPlay: true, playsInline: true, 'aria-label': video.title, style: { ...frame, objectFit: 'contain' } });
-    const load = async () => {
-      setBusy(true);
-      try { setSrc(URL.createObjectURL(await api.download(String(video.file_url).replace(/^\/api\/v1/, '')))); } catch (e) { toast(e.message); } finally { setBusy(false); }
-    };
-    return <Btn small title={busy ? 'Loading…' : '▶ Play clip'} onPress={load} disabled={busy} style={{ alignSelf: 'flex-start' }} />;
-  }
-  return video.link_url ? <Btn small title="Open video" color={c.paper} ink={c.ink} onPress={() => Linking.openURL(video.link_url)} style={{ alignSelf: 'flex-start' }} /> : <T size={12} color={c.mute}>Open this clip on the web version to play it.</T>;
-}
+export { VideoPlayer };
 
 /** Recruitment sections of a shared passport: only what the athlete's link shows, with who vouched for it. */
 export function RecruitmentSections({ data }) {
@@ -164,7 +148,7 @@ export function RecruitmentProfile() {
       <H2 style={{ marginTop: 26 }}>Recruitment profile</H2>
       <T size={12} color={c.mute} style={{ marginTop: 2 }}>Add what recruiters ask for. Nothing is shared until you switch it on for a link, and videos and references only count once approved.</T>
 
-      <Block title="Video" sub="A coach who coaches you must approve each clip." state={videos} empty={['🎬', 'No videos yet', 'Upload a clip (MP4, MOV or WebM, up to 50 MB) or add a YouTube or Vimeo link.']}
+      <Block title="Video" sub={`A coach who coaches you must approve each clip. ${t('vl.passport_hint')}`} state={videos} empty={['🎬', 'No videos yet', 'Upload a clip (MP4, MOV or WebM, up to 50 MB) or add a YouTube or Vimeo link.']}
         action={<View style={{ flexDirection: 'row', gap: 6 }}><Btn small title={busy ? 'Uploading…' : 'Upload'} onPress={uploadClip} disabled={busy} /><Btn small title="Link" color={c.paper} ink={c.ink} onPress={() => setForm('video')} /></View>}>
         {videos.data?.map((v) => (
           <Row key={v.id} title={v.title} sub={[v.has_file ? 'uploaded clip' : 'link', v.review_note].filter(Boolean).join(' · ')} tag={STATUS[v.status]} above={<VideoPlayer video={v.has_file ? { ...v, file_url: `/passport-videos/${v.id}/file` } : v} />}>

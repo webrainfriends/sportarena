@@ -4,10 +4,10 @@ import { one, many } from './db.js';
 import { decrypt } from './crypto.js';
 import { audit } from './helpers.js';
 import { notFound } from './errors.js';
-import { YOUTH_SQL } from './youth.js';
+import { YOUTH_SQL, hasConsent } from './youth.js';
 
 export const SECTION_FLAGS = ['show_matches', 'show_results', 'show_awards', 'show_credentials', 'show_career', 'show_video', 'show_references', 'show_preferences', 'show_availability', 'show_academic', 'show_journey', 'show_development'];
-export const scopeOf = (l) => Object.fromEntries(SECTION_FLAGS.map((k) => [k, !!l[k]]));
+export const scopeOf = (l) => ({ ...Object.fromEntries(SECTION_FLAGS.map((k) => [k, !!l[k]])), playlist_id: l.playlist_id ?? null });
 export const FULL_SCOPE = Object.fromEntries(SECTION_FLAGS.map((k) => [k, true]));
 
 /** Does `coachId` currently coach `athleteId`: on a team together as coach/manager, or through an active hire, cohort or plan? */
@@ -23,7 +23,7 @@ const CONSENT_OK = `(NOT EXISTS (SELECT 1 FROM users u WHERE u.id=l.user_id AND 
   OR EXISTS (SELECT 1 FROM youth_consents c WHERE c.child_id=l.user_id AND c.purpose='recruitment_sharing' AND c.revoked_at IS NULL AND c.expires_at > now()
         AND EXISTS (SELECT 1 FROM guardian_links g WHERE g.guardian_id=c.granted_by AND g.child_id=c.child_id AND g.status='active' AND g.revoked_at IS NULL AND (g.expires_at IS NULL OR g.expires_at > now()))))`;
 const LIVE = `l.token_hash=$1 AND l.revoked_at IS NULL AND l.expires_at > now() AND (l.recipient_id IS NULL OR l.recipient_id=$2) AND ${CONSENT_OK}`;
-const RET = `l.id, l.user_id, l.recipient_id, l.expires_at, ${SECTION_FLAGS.map((k) => `l.${k}`).join(', ')}`;
+const RET = `l.id, l.user_id, l.recipient_id, l.expires_at, l.playlist_id, ${SECTION_FLAGS.map((k) => `l.${k}`).join(', ')}`;
 
 /** The single enforcement point. A wrong, expired, revoked, other-recipient or consent-withdrawn link all look the same (404). */
 export async function openLink(tokenHash, viewer, kind = 'passport') {
@@ -39,12 +39,27 @@ export async function openLink(tokenHash, viewer, kind = 'passport') {
 /** A link by id rather than by secret, live under the same rules as openLink (not revoked, not expired, a young athlete's guardian consent in force). Used when an applicant attaches their passport to one funding application. */
 export const liveLinkById = (linkId) => one(`SELECT ${RET} FROM passport_links l WHERE l.id=$1 AND l.revoked_at IS NULL AND l.expires_at > now() AND ${CONSENT_OK}`, [linkId]);
 
+const VCOLS = 'v.id, v.title, s.slug AS sport_slug, v.link_url, (v.file_name IS NOT NULL) AS has_file, v.reviewed_at, r.display_name AS approved_by, v.match_activity_id';
+/**
+ * The ONE rule for which of a player's clips a recipient may see, evaluated live on every read, file stream and export.
+ * Passport-wide: coach-approved clips the player has not kept private. Playlist-scoped link: only that playlist's clips the player
+ * has shared or published (no coach approval needed for a highlight reel), and for a young person only while a guardian's `media`
+ * consent is in force. Removed, archived and unpublished clips never show.
+ */
+export async function visibleVideos(userId, playlistId = null, videoId = null) {
+  if (playlistId && !(await hasConsent(userId, 'media'))) return [];
+  const base = `v.user_id=$1 AND v.removed_at IS NULL AND v.archived_at IS NULL AND v.unpublished_at IS NULL AND v.visibility IN ('shared','public') AND ($2::uuid IS NULL OR v.id=$2)`;
+  return playlistId
+    ? many(`SELECT ${VCOLS} FROM video_playlist_items i JOIN video_playlists p ON p.id=i.playlist_id AND p.user_id=$1 AND p.archived_at IS NULL JOIN passport_videos v ON v.id=i.video_id
+             LEFT JOIN sports s ON s.id=v.sport_id LEFT JOIN users r ON r.id=v.reviewed_by
+            WHERE i.playlist_id=$3 AND i.removed_at IS NULL AND ${base} ORDER BY i.position, i.id LIMIT 50`, [userId, videoId, playlistId])
+    : many(`SELECT ${VCOLS} FROM passport_videos v LEFT JOIN sports s ON s.id=v.sport_id LEFT JOIN users r ON r.id=v.reviewed_by
+            WHERE v.status='approved' AND ${base} ORDER BY v.reviewed_at, v.id LIMIT 20`, [userId, videoId]);
+}
+
 export async function recruitmentSections(userId, scope, { viewerId = null, token = null } = {}) {
   const [videos, references, preferences, availability, academic] = await Promise.all([
-    scope.show_video ? many(
-      `SELECT v.id, v.title, s.slug AS sport_slug, v.link_url, (v.file_name IS NOT NULL) AS has_file, v.reviewed_at, r.display_name AS approved_by
-         FROM passport_videos v LEFT JOIN sports s ON s.id=v.sport_id LEFT JOIN users r ON r.id=v.reviewed_by
-        WHERE v.user_id=$1 AND v.status='approved' AND v.removed_at IS NULL ORDER BY v.reviewed_at, v.id LIMIT 20`, [userId]) : null,
+    scope.show_video ? visibleVideos(userId, scope.playlist_id ?? null) : null,
     scope.show_references ? many(
       `SELECT r.id, r.body, s.slug AS sport_slug, u.display_name AS coach_name, u.handle AS coach_handle, r.created_at
          FROM passport_references r JOIN users u ON u.id=r.coach_id LEFT JOIN sports s ON s.id=r.sport_id

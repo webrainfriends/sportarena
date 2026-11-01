@@ -64,7 +64,7 @@ export async function buildPassport(userId, scope = FULL_SCOPE, ctx = {}) {
 }
 
 const SHOW = Object.fromEntries(SECTION_FLAGS.map((k) => [k, z.boolean().default(['show_matches', 'show_results', 'show_awards', 'show_credentials'].includes(k))]));
-const COLS = `id, label, ${SECTION_FLAGS.join(', ')}, recipient_id, expires_at, revoked_at, version, view_count, last_viewed_at, created_at`;
+const COLS = `id, label, playlist_id, ${SECTION_FLAGS.join(', ')}, recipient_id, expires_at, revoked_at, version, view_count, last_viewed_at, created_at`;
 
 /** Whose passport is this call about? Yourself, or a young person you are a verified guardian of. Young people cannot arrange sharing alone. */
 async function subjectOf(user, athleteId) {
@@ -90,16 +90,21 @@ async function manageable(user, linkId) {
 cap({
   name: 'create_passport_link', method: 'POST', path: '/me/passport-links', tag: TAG, status: 201,
   summary: 'Create a share link to your player passport for a coach or scout. You choose what it shows (match history, approved results, awards, certificates, your club career timeline, and for recruitment: approved video, approved coach references, preferences, availability, academic evidence), who may open it (anyone with the link, or one signed-in person) and when it expires (up to 90 days). The secret is shown once; put it in a QR code. A young person\'s link is arranged by their verified guardian (pass athlete_id) and works only while the guardian\'s recruitment_sharing consent is in force.',
-  input: z.object({ athlete_id: id.optional(), label: z.string().trim().max(60).optional(), expires_in_days: z.number().int().min(1).max(90).default(30), recipient_id: id.optional(), ...SHOW }),
+  input: z.object({ athlete_id: id.optional(), label: z.string().trim().max(60).optional(), expires_in_days: z.number().int().min(1).max(90).default(30), recipient_id: id.optional(), playlist_id: id.optional().describe('limit the link to ONE of your playlists/highlight reels: it then shows only that playlist\'s shared clips and nothing else from the passport'), ...SHOW }),
   async handler({ user }, i) {
     const owner = await subjectOf(user, i.athlete_id);
     if (owner !== user.id) await requireConsent(owner, 'recruitment_sharing', 'sharing this passport');
+    if (i.playlist_id) {
+      if (!(await one('SELECT 1 FROM video_playlists WHERE id=$1 AND user_id=$2 AND archived_at IS NULL', [i.playlist_id, owner]))) throw notFound('Playlist');
+      await requireConsent(owner, 'media', 'sharing these videos');
+      for (const k of SECTION_FLAGS) i[k] = k === 'show_video'; // a playlist link shows the playlist only
+    }
     await checkRecipient(i.recipient_id, owner);
     const token = newOpaqueToken();
     const row = await one(
-      `INSERT INTO passport_links(user_id, created_by, token_hash, label, recipient_id, ${SECTION_FLAGS.join(', ')}, expires_at)
-       VALUES ($1,$2,$3,$4,$5, ${SECTION_FLAGS.map((_, n) => `$${n + 6}`).join(', ')}, now() + $${SECTION_FLAGS.length + 6} * interval '1 day') RETURNING ${COLS}`,
-      [owner, user.id, sha256(token), i.label || null, i.recipient_id ?? null, ...SECTION_FLAGS.map((k) => i[k]), i.expires_in_days]);
+      `INSERT INTO passport_links(user_id, created_by, token_hash, label, recipient_id, ${SECTION_FLAGS.join(', ')}, expires_at, playlist_id)
+       VALUES ($1,$2,$3,$4,$5, ${SECTION_FLAGS.map((_, n) => `$${n + 6}`).join(', ')}, now() + $${SECTION_FLAGS.length + 6} * interval '1 day', $${SECTION_FLAGS.length + 7}) RETURNING ${COLS}`,
+      [owner, user.id, sha256(token), i.label || null, i.recipient_id ?? null, ...SECTION_FLAGS.map((k) => i[k]), i.expires_in_days, i.playlist_id ?? null]);
     const path = `/?passport=${encodeURIComponent(token)}`;
     return { ...row, token, path, url: config.appUrl ? `${String(config.appUrl).replace(/\/$/, '')}${path}` : null };
   },
