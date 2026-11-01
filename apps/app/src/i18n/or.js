@@ -798,6 +798,8 @@ export default {
   'form.too_high': 'ବହୁତ ଅଧିକ — {detail}',
   'nav.title.EventsWorkspace': 'ଇଭେଣ୍ଟ ଓ ଦଳ',
   'nav.title.Finance': 'ଅର୍ଥ',
+  'nav.title.IntegrationHub': 'Integrations',
+  'nav.title.IntegrationRequests': 'Integration requests',
   'nav.title.Analytics': 'ବିଶ୍ଳେଷଣ',
   'nav.title.Community': 'ସମ୍ପ୍ରଦାୟ',
   'nav.title.Inbox': 'ଇନବକ୍ସ',

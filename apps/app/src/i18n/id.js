@@ -798,6 +798,8 @@ export default {
   'form.too_high': 'Terlalu tinggi — {detail}',
   'nav.title.EventsWorkspace': 'Acara & tim',
   'nav.title.Finance': 'Keuangan',
+  'nav.title.IntegrationHub': 'Integrations',
+  'nav.title.IntegrationRequests': 'Integration requests',
   'nav.title.Analytics': 'Analitik',
   'nav.title.Community': 'Komunitas',
   'nav.title.Inbox': 'Kotak masuk',

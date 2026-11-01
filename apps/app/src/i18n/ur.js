@@ -798,6 +798,8 @@ export default {
   'form.too_high': 'بہت زیادہ — {detail}',
   'nav.title.EventsWorkspace': 'ایونٹس اور ٹیمیں',
   'nav.title.Finance': 'مالیات',
+  'nav.title.IntegrationHub': 'Integrations',
+  'nav.title.IntegrationRequests': 'Integration requests',
   'nav.title.Analytics': 'تجزیات',
   'nav.title.Community': 'کمیونٹی',
   'nav.title.Inbox': 'ان باکس',

@@ -798,6 +798,8 @@ export default {
   'form.too_high': 'ತುಂಬಾ ಹೆಚ್ಚು — {detail}',
   'nav.title.EventsWorkspace': 'ಈವೆಂಟ್‌ಗಳು ಮತ್ತು ತಂಡಗಳು',
   'nav.title.Finance': 'ಹಣಕಾಸು',
+  'nav.title.IntegrationHub': 'Integrations',
+  'nav.title.IntegrationRequests': 'Integration requests',
   'nav.title.Analytics': 'ವಿಶ್ಲೇಷಣೆ',
   'nav.title.Community': 'ಸಮುದಾಯ',
   'nav.title.Inbox': 'ಇನ್‌ಬಾಕ್ಸ್',

@@ -798,6 +798,8 @@ export default {
   'form.too_high': 'மிக அதிகம் — {detail}',
   'nav.title.EventsWorkspace': 'நிகழ்வுகள் & அணிகள்',
   'nav.title.Finance': 'நிதி',
+  'nav.title.IntegrationHub': 'Integrations',
+  'nav.title.IntegrationRequests': 'Integration requests',
   'nav.title.Analytics': 'பகுப்பாய்வு',
   'nav.title.Community': 'சமூகம்',
   'nav.title.Inbox': 'இன்பாக்ஸ்',

@@ -798,6 +798,8 @@ export default {
   'form.too_high': 'ඉතා වැඩියි — {detail}',
   'nav.title.EventsWorkspace': 'සිදුවීම් සහ කණ්ඩායම්',
   'nav.title.Finance': 'මූල්‍ය',
+  'nav.title.IntegrationHub': 'Integrations',
+  'nav.title.IntegrationRequests': 'Integration requests',
   'nav.title.Analytics': 'විශ්ලේෂණ',
   'nav.title.Community': 'ප්‍රජාව',
   'nav.title.Inbox': 'එන්බොක්ස්',

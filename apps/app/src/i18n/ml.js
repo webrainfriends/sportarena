@@ -798,6 +798,8 @@ export default {
   'form.too_high': 'വളരെ കൂടുതൽ — {detail}',
   'nav.title.EventsWorkspace': 'ഇവന്റുകളും ടീമുകളും',
   'nav.title.Finance': 'ധനകാര്യം',
+  'nav.title.IntegrationHub': 'Integrations',
+  'nav.title.IntegrationRequests': 'Integration requests',
   'nav.title.Analytics': 'വിശകലനം',
   'nav.title.Community': 'സമൂഹം',
   'nav.title.Inbox': 'ഇൻബോക്സ്',

@@ -798,6 +798,8 @@ export default {
   'form.too_high': 'खूप जास्त — {detail}',
   'nav.title.EventsWorkspace': 'कार्यक्रम आणि संघ',
   'nav.title.Finance': 'वित्त',
+  'nav.title.IntegrationHub': 'Integrations',
+  'nav.title.IntegrationRequests': 'Integration requests',
   'nav.title.Analytics': 'विश्लेषण',
   'nav.title.Community': 'समुदाय',
   'nav.title.Inbox': 'इनबॉक्स',

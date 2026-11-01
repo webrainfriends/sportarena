@@ -798,6 +798,8 @@ export default {
   'form.too_high': 'చాలా ఎక్కువ — {detail}',
   'nav.title.EventsWorkspace': 'ఈవెంట్‌లు & జట్లు',
   'nav.title.Finance': 'ఆర్థికం',
+  'nav.title.IntegrationHub': 'Integrations',
+  'nav.title.IntegrationRequests': 'Integration requests',
   'nav.title.Analytics': 'విశ్లేషణ',
   'nav.title.Community': 'సంఘం',
   'nav.title.Inbox': 'ఇన్‌బాక్స్',

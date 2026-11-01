@@ -798,6 +798,8 @@ export default {
   'form.too_high': 'খুব বেশি — {detail}',
   'nav.title.EventsWorkspace': 'ইভেন্ট ও দল',
   'nav.title.Finance': 'অর্থ',
+  'nav.title.IntegrationHub': 'Integrations',
+  'nav.title.IntegrationRequests': 'Integration requests',
   'nav.title.Analytics': 'বিশ্লেষণ',
   'nav.title.Community': 'সম্প্রদায়',
   'nav.title.Inbox': 'ইনবক্স',
