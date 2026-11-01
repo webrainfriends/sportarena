@@ -163,3 +163,29 @@ export async function matchFileToCsv(buf, { sport, columns = [] } = {}) {
   if (rows < 1) throw badRequest('No data rows found in that file');
   return { ...r, rows, kind };
 }
+
+/**
+ * Any tabular file (CSV, TSV, semicolon CSV, Excel, a Word table) -> CSV text, with no AI and no knowledge of what the columns mean.
+ * Shared by the migration framework (#514); the match importer above keeps its own match-specific path.
+ * @returns {{ csv: string, rows: number, kind: 'csv'|'xlsx'|'docx' }}
+ */
+export function tableFileToCsv(buf) {
+  let rows, kind;
+  if (buf[0] === 0x50 && buf[1] === 0x4b) {
+    const files = unzip(buf);
+    if (files.has('xl/workbook.xml')) { kind = 'xlsx'; rows = xlsxRows(files); }
+    else if (files.has('word/document.xml')) { kind = 'docx'; rows = docxContent(files).tables.find((t) => t.length > 1) ?? []; }
+    else throw badRequest('Unsupported file. Use CSV or Excel (.xlsx).');
+    if (!rows.length) throw badRequest('That file has no table with rows in it');
+  } else {
+    kind = 'csv';
+    if (buf.includes(0)) throw badRequest('Unsupported file. Use CSV or Excel (.xlsx).');
+    let text = buf.toString('utf8').replace(/^﻿/, '');
+    const first = text.split(/\r?\n/, 1)[0];
+    if (first.includes('\t') && !first.includes(',')) rows = text.split(/\r?\n/).filter((l) => l.trim()).map((l) => l.split('\t'));
+    else if (first.includes(';') && !first.includes(',')) rows = parseCsv(text.replace(/;/g, ','));
+    else rows = parseCsv(text);
+  }
+  if (rows.length < 2) throw badRequest('No data rows found in that file (the first row must be the header)');
+  return { csv: toCsv(rows), rows: rows.length - 1, kind };
+}

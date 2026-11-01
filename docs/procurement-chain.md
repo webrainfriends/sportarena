@@ -98,3 +98,19 @@ Migration `126_procurement_scorecard.sql` is additive (two columns, one index, o
 
 Sports: procurement is sport-agnostic, so there is no per-sport model to cover (see **Sports** above).
 Platforms: `MultiMenuField` (in `menu-field.js`) is the shared searchable multi-select dropdown; web, iOS and Android exports pass, and the web build was checked at phone, tablet and desktop widths. Not run on a physical iOS, iPadOS or Android device from this environment.
+
+## What a service needs: built from the event (follow-up to #591)
+
+The credential list on a requirement is no longer fixed. `suggest_service_needs` (`POST /service-buyers/:id/needs/suggest`, REST + OpenAPI + MCP) builds the pick list from the event:
+
+| Group | Source | Enforced? |
+|---|---|---|
+| Required by rules | Live `comp_requirements` of the compliance module that apply: platform, the buyer's or event's organisation, the event itself, filtered by the event's sports | Yes, when the rule is linked to a supplier credential kind |
+| Suggested for this service | What suppliers of this family usually hold (`svc/needs.js`, reference data about service families) | Yes, they carry a credential kind |
+| AI suggestions | Only when asked and AI is configured: drafts from the event's facts (service, purpose, sports, city, dates; no names). Phrased as things to check, never as law, never citing a statute | Never: an AI draft cannot carry a credential kind, cannot block a quote or an award, and is tagged "verify" |
+| Your own | The buyer's items, optionally checked against a supplier credential kind | Only with a credential kind |
+
+* The chosen list is stored on the requirement (`svc_requirements.needs`, migration 127; `compliance_kinds` stays as the enforceable subset so older rows keep working) and frozen into the RFQ scope, so every bidder sees the same list.
+* **Live conditions** (weather, traffic, health advisories, local law feeds): no data source is connected to this installation, so the API answers `live.connected = false` and the app says so. Nothing is invented; connecting a provider is a separate, keyed integration.
+* AI off, slow or wrong never blocks the flow: the other groups still load.
+* Tests: `test/service-needs.test.js`.

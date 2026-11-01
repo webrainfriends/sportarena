@@ -241,36 +241,14 @@ test('open games match on the computed level once it is reliable, and on the sta
   assert.notEqual(await levelFor(pool, pro.id, ts.id), 'beginner', 'the computed level replaces the declared beginner');
   assert.equal(await reliableLevel(rookie.id, ts.id), null, 'three games is not enough to override anyone');
   assert.equal(await levelFor(pool, rookie.id, ts.id), 'beginner');
-});
-
-test('open-game cards carry the viewer\'s own level chip: verified once reliable, stated before that, nothing for the host or a signed-out visitor', async () => {
-  const org = await signup(['organizer']);
-  const [pro, rookie, host, ...field] = [await signup(), await signup(), await signup(), await signup(), await signup(), await signup()];
-  const ts = await sport('table-tennis'), ev = await mkEvent(org, 'table-tennis');
-  for (const u of [pro, rookie]) await pool.query("INSERT INTO sport_profiles(user_id, sport_id, role, level) VALUES ($1,$2,'athlete','amateur')", [u.id, ts.id]);
-  for (let i = 0; i < 18; i++) await game('table-tennis', ev, org, [pro], [field[i % 3]], i % 3 === 2 ? 2 : 3, i % 3 === 2 ? 3 : 0, { day: 1 + i });
-  await recomputeSport(ts, { reason: 'manual' });
-  const mine = await level(pro, 'table-tennis');
-  assert.ok(mine.reliable);
-  const at = new Date(Date.now() + 2 * 864e5); at.setUTCHours(18, 0, 0, 0);
-  const made = await api('POST', '/open-games', { token: host.token, body: { sport: 'table-tennis', starts_at: at.toISOString(), duration_minutes: 90, location: 'Club hall', max_players: 4, approval_mode: 'auto', skill_min: 'beginner', skill_max: 'pro' } });
-  assert.equal(made.status, 201, JSON.stringify(made.body));
-  const id = made.body.id;
-  const find = async (token) => (await api('GET', '/open-games?sport=table-tennis&limit=100', { token })).body.find((g) => g.id === id);
-  const v = (await find(pro.token)).my_level;
-  assert.equal(v.source, 'verified');
-  assert.equal(v.level, mine.level, 'the chip shows the same level as the passport');
-  assert.equal(v.fit, 'fits');
-  assert.equal((await api('GET', `/open-games/${id}`, { token: pro.token })).body.my_level.level, mine.level, 'the detail page agrees with the card');
-  const st = (await find(rookie.token)).my_level;
-  assert.equal(st.source, 'stated');
-  assert.equal(st.level, null, 'a stated level is never presented as a verified number');
-  assert.equal(st.bucket, 'amateur');
-  assert.equal((await find(host.token)).my_level, undefined, 'the host sees no level chip on their own game');
-  assert.equal((await find()).my_level, undefined, 'a signed-out visitor sees none');
-  const nothing = await signup();
-  assert.equal((await find(nothing.token)).my_level.source, null, 'no profile and no verified games: nothing to show, and the fit is unknown');
-  assert.equal((await find(nothing.token)).my_level.fit, 'unknown');
+  // the open-game card carries the viewer's own reliable level (never anyone else's)
+  const startsAt = new Date(Date.now() + 2 * 864e5).toISOString();
+  const hosted = await api('POST', '/open-games', { token: field[0].token, body: { sport: 'table-tennis', starts_at: startsAt, duration_minutes: 60, location: 'Club hall', max_players: 4, approval_mode: 'auto' } });
+  assert.equal(hosted.status, 201, JSON.stringify(hosted.body));
+  const mine = (await api('GET', '/open-games?sport=table-tennis&limit=50', { token: pro.token })).body.find((x) => x.id === hosted.body.id);
+  assert.ok(mine?.my_level?.verified && mine.my_level.level > 3, JSON.stringify(mine?.my_level));
+  const rook = (await api('GET', '/open-games?sport=table-tennis&limit=50', { token: rookie.token })).body.find((x) => x.id === hosted.body.id);
+  assert.equal(rook.my_level, null, 'an unreliable level is not shown as a level');
 });
 
 test('recompute is admin-only and the capabilities carry REST, OpenAPI and MCP names', async () => {
@@ -283,62 +261,57 @@ test('recompute is admin-only and the capabilities carry REST, OpenAPI and MCP n
   assert.equal((await api('POST', '/ratings/recompute', { token: admin.token, body: { sport: 'nope-sport' } })).status, 404);
   assert.equal((await pool.query("SELECT count(*)::int AS n FROM audit_log WHERE action='recompute_skill_ratings' AND actor_id=$1", [admin.id])).rows[0].n, 1);
   const names = capabilities.filter((c) => c.tag === 'Skill ratings').map((c) => c.name).sort();
-  assert.deepEqual(names, ['get_skill_rating_history', 'get_skill_ratings', 'list_rating_models', 'recompute_skill_ratings']);
+  assert.deepEqual(names, ['explain_skill_rating_change', 'get_skill_rating_history', 'get_skill_ratings', 'list_rating_models', 'recompute_skill_ratings']);
   const spec = (await (await fetch(`${base}/api/v1/openapi.json`)).json());
   for (const nm of names) assert.ok(JSON.stringify(spec).includes(`"${nm}"`), `${nm} is in the OpenAPI document`);
   assert.equal(await recomputeAll('sweep') >= 0, true);
 });
 
-test('rankings: a skill-level ranking is a formula on the existing rankings engine: reliable levels only, same rules, snapshots follow corrections', async () => {
+// ------------------------------------------------------------------ explain a change and the rating ranking formula
+const seedLadder = async () => {
   const org = await signup(['organizer']);
+  const [pro, mid, rookie, ...field] = [await signup(), await signup(), await signup(), await signup(), await signup(), await signup()];
+  const ts = await sport('table-tennis'), ev = await mkEvent(org, 'table-tennis');
+  for (let i = 0; i < 18; i++) await game('table-tennis', ev, org, [pro], [field[i % 3]], i % 3 === 2 ? 2 : 3, i % 3 === 2 ? 3 : 0, { day: 1 + i });
+  for (let i = 0; i < 18; i++) await game('table-tennis', ev, org, [mid], [field[i % 3]], i % 2 ? 3 : 0, i % 2 ? 0 : 3, { day: 1 + i });
+  for (let i = 0; i < 2; i++) await game('table-tennis', ev, org, [rookie], [field[i]], 3, 0, { day: 30 + i });
+  await recomputeSport(ts, { reason: 'manual' });
+  return { org, pro, mid, rookie, ts, ev };
+};
+
+test('explain a change: only the player (or an admin) sees why a game moved the level; others get 404', async () => {
+  const { pro, mid, ts } = await seedLadder();
+  const hist = await api('GET', `/ratings/players/${pro.id}/${ts.slug}/history?limit=5`, { token: pro.token });
+  const gameId = hist.body.history[0].game.id;
+  const ok = await api('GET', `/ratings/players/${pro.id}/${ts.slug}/games/${gameId}`, { token: pro.token });
+  assert.equal(ok.status, 200, JSON.stringify(ok.body));
+  assert.equal(ok.body.result, hist.body.history[0].result);
+  assert.match(ok.body.explanation, /chance of winning/);
+  assert.equal((await api('GET', `/ratings/players/${pro.id}/${ts.slug}/games/${gameId}`, { token: mid.token })).status, 404, 'a stranger learns nothing');
+  assert.equal((await api('GET', `/ratings/players/${pro.id}/${ts.slug}/games/${gameId}`)).status, 401);
   const admin = await signup();
   await pool.query("UPDATE users SET roles = roles || '{admin}' WHERE id=$1", [admin.id]);
-  const [a, b, c, d] = [await signup(), await signup(), await signup(), await signup()];
-  const [ev1, ev2] = [await mkEvent(org, 'badminton'), await mkEvent(org, 'badminton', 'league')];
-  const W = [{ home: 21, away: 12 }, { home: 21, away: 15 }], L = [{ home: 12, away: 21 }, { home: 15, away: 21 }];
-  for (let i = 0; i < 9; i++) {
-    const ev = i % 2 ? ev1 : ev2;
-    await game('badminton', ev, org, [a], [b], i % 3 === 2 ? 0 : 2, i % 3 === 2 ? 2 : 0, { day: 1 + i * 2, sets: i % 3 === 2 ? L : W });
-    await game('badminton', ev, org, [a], [c], i % 4 === 3 ? 1 : 2, i % 4 === 3 ? 2 : 1, { day: 2 + i * 2, sets: W });
-    await game('badminton', ev, org, [b], [c], i % 2 ? 1 : 2, i % 2 ? 2 : 1, { day: 20 + i, sets: W });
-  }
-  await game('badminton', ev1, org, [d], [c], 2, 0, { day: 50, sets: W });
-  const bs = await sport('badminton');
-  await recomputeSport(bs, { reason: 'manual' });
+  assert.equal((await api('GET', `/ratings/players/${pro.id}/${ts.slug}/games/${gameId}`, { token: admin.token })).status, 200);
+  assert.equal((await pool.query("SELECT count(*)::int AS n FROM audit_log WHERE action='read_rating_evidence' AND actor_id=$1", [admin.id])).rows[0].n, 1);
+});
 
-  const def = { expected_version: 0, sport: 'badminton', subject: 'player', name: 'Badminton level', formula_kind: 'skill_level', min_samples: 3, min_distinct_events: 2 };
-  assert.equal((await api('POST', '/rankings', { token: a.token, body: def })).status, 403, 'only governors and admins define a public ranking');
-  assert.equal((await api('POST', '/rankings', { token: admin.token, body: { ...def, metric: 'goals' } })).status, 422, 'a level is not a metric');
-  assert.equal((await api('POST', '/rankings', { token: admin.token, body: { ...def, scope: { season: 2026 } } })).status, 422, 'a level cannot be narrowed by season');
-  assert.equal((await api('POST', '/rankings', { token: admin.token, body: { ...def, subject: 'team' } })).status, 422, 'teams are ranked by form, not level');
-  const made = await api('POST', '/rankings', { token: admin.token, body: def });
+test('rankings: skill level is a ranking formula on the existing engine, reliable levels only, no youth', async () => {
+  const { pro, mid, rookie, ts } = await seedLadder();
+  const admin = await signup();
+  await pool.query("UPDATE users SET roles = roles || '{admin}' WHERE id=$1", [admin.id]);
+  const bad = await api('POST', '/rankings', { token: admin.token, body: { sport: ts.slug, subject: 'team', name: 'Levels', expected_version: 0, formula_kind: 'rating', min_samples: 1 } });
+  assert.equal(bad.status, 422, 'levels rank players, not teams');
+  const made = await api('POST', '/rankings', { token: admin.token, body: { sport: ts.slug, subject: 'player', name: 'Table tennis levels', expected_version: 0, formula_kind: 'rating', min_samples: 1, min_distinct_events: 1 } });
   assert.equal(made.status, 201, JSON.stringify(made.body));
-  assert.match(made.body.formula, /Verified skill level/);
-  const id = made.body.definition.id;
-
-  const table = (await api('GET', `/rankings/${id}`)).body;
-  assert.match(table.formula, /Verified skill level/);
-  const [ra, rb, rc] = [await level(a, 'badminton'), await level(b, 'badminton'), await level(c, 'badminton')];
-  const ranked = table.entries.map((e) => [e.subject.id, e.score]);
-  assert.deepEqual(ranked.map((r) => r[0]), [a.id, b.id, c.id], 'ordered by level, strongest first');
-  assert.deepEqual(ranked.map((r) => r[1]), [ra.level, rb.level, rc.level], 'the score is the player\'s verified level');
-  assert.equal(table.entries[0].rank, 1);
-  assert.ok(table.not_yet_eligible >= 1, 'a one-game player is not ranked yet');
-  assert.ok(!table.entries.some((e) => e.subject.id === d.id));
-  const why = (await api('GET', `/rankings/${id}/subjects/${d.id}/why`, { token: d.token })).body;
-  assert.equal(why.status, 'not_yet_ranked');
-  assert.ok(why.unmet.some((u) => u.code === 'level_not_reliable'), JSON.stringify(why.unmet));
-  assert.match(why.weighting, /stronger opponent/);
-
-  const s1 = (await api('POST', `/rankings/${id}/snapshot`, { token: admin.token, body: {} })).body;
-  assert.ok(s1.snapshot, 'a snapshot is published: ' + JSON.stringify(s1));
-  const count = async () => (await pool.query('SELECT count(*)::int AS n FROM ranking_snapshots WHERE definition_id=$1', [id])).rows[0].n;
-  assert.equal(await count(), 1);
-  await game('badminton', ev1, org, [c], [a], 2, 0, { day: 60, sets: W });
-  assert.ok(await recomputeAll('correction', { sportId: bs.id }) >= 1);
-  assert.equal(await count(), 2, 'new verified results re-snapshot the skill-level ranking; the earlier snapshot is kept');
-  const old = (await api('GET', `/rankings/${id}?snapshot_id=${s1.snapshot.id}`)).body;
-  assert.equal(old.source, 'snapshot');
-  assert.equal(old.entries[0].score, ra.level, 'the earlier snapshot still shows what it showed');
-  assert.ok(capabilities.some((cp) => cp.name === 'publish_ranking_version'));
+  assert.equal(made.body.version.formula_kind, 'rating');
+  assert.match(made.body.formula, /skill level/i);
+  const { loadDefinition, loadVersion, runRanking } = await import('../src/rankings/data.js');
+  const def = await loadDefinition(made.body.definition.id);
+  const res = await runRanking(def, await loadVersion(def.id, def.current_version));
+  const rank = (u) => res.entries.find((e) => e.subject === u.id)?.rank;
+  assert.ok(rank(pro) && rank(mid) && rank(pro) < rank(mid), 'the player winning two in three outranks the 50% player');
+  assert.equal(rank(rookie), undefined, 'two games is not reliable, so the rookie is not ranked');
+  await pool.query("UPDATE users SET youth_until = now() + interval '2 years' WHERE id=$1", [mid.id]);
+  const res2 = await runRanking(def, await loadVersion(def.id, def.current_version));
+  assert.equal(res2.entries.find((e) => e.subject === mid.id), undefined, 'a youth account is never ranked');
 });

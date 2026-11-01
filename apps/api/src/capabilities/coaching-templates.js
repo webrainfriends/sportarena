@@ -2,6 +2,7 @@ import { z } from 'zod';
 import { cap, id } from '../registry.js';
 import { one, tx } from '../db.js';
 import { badRequest, conflict, forbidden, notFound } from '../errors.js';
+import { sportBySlugOrId } from '../helpers.js';
 import { hasOrgGrant } from '../org-access.js';
 import { block, openSession, ownRecord, savePlan, requireTeam } from './coaching-journal.js';
 
@@ -29,12 +30,17 @@ async function readable(user, templateId) {
 cap({
   name: 'save_coaching_template', method: 'POST', path: '/coaching/templates', tag: TAG, auth: COACH, status: 201,
   summary: 'Save a whole session plan, or one block of it, as a private template. Only the generic parts are kept - no athletes, groups or coach-only notes. Send session_record_id (and block_id for a single block), or the blocks directly.',
-  input: z.object({ title: text(120).min(2), scope: z.enum(['block', 'session']).default('session'), session_record_id: id.optional(), block_id: z.string().max(60).optional(), blocks: z.array(block).max(30).optional(), sport: z.string().optional() }),
+  input: z.object({ title: text(120).min(2), scope: z.enum(['block', 'session']).default('session'), session_record_id: id.optional(), block_id: z.string().max(60).optional(), blocks: z.array(block).max(30).optional(), sport: z.string().max(80).optional().describe('sport slug or id, so the drill can be found by sport; a session\'s own sport is used when you save from a session') }),
   async handler({ user }, i) {
     let blocks = i.blocks, sportId = null;
+    if (i.sport) {
+      const sp = await sportBySlugOrId(i.sport);
+      if (!sp) throw notFound('Sport');
+      sportId = sp.id;
+    }
     if (i.session_record_id) {
       const rec = await ownRecord(user, i.session_record_id);
-      sportId = rec.sport_id;
+      sportId = rec.sport_id ?? sportId;
       const plan = await one('SELECT blocks FROM coaching_session_plan_versions WHERE session_record_id=$1 AND version=$2', [rec.id, rec.plan_version]);
       blocks = plan?.blocks ?? [];
       if (i.scope === 'block') {

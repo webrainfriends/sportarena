@@ -12,7 +12,7 @@ import { countryName } from '../country-picker';
 import { rightChip, rightLabel, territoryText, money, fmtRange, fmtDT, nice, StateTag, Tags } from '../media-ui';
 import { PackageForm, OfferForm, LicenceSheet } from './media-licence';
 import { ProductionPanel, StreamsPanel } from './media-production';
-import { AssetsPanel } from './media-assets';
+import { AssetsPanel, RightsLog } from './media-assets';
 
 const SUBS = [['rights', '🧾 Rights'], ['production', '🎬 Production'], ['streams', '📺 Streams'], ['media', '🎞️ Media'], ['data', '📡 Data & reports']];
 
@@ -25,7 +25,7 @@ export function BroadcastTab({ id, e, isOrg, games }) {
       {sub === 'rights' ? <RightsPanel id={id} e={e} games={games} /> : null}
       {sub === 'production' ? <ProductionPanel id={id} isOrg games={games} /> : null}
       {sub === 'streams' ? <StreamsPanel id={id} isOrg games={games} /> : null}
-      {sub === 'media' ? <AssetsPanel id={id} isOrg games={games} partners={[]} /> : null}
+      {sub === 'media' ? <><AssetsPanel id={id} isOrg games={games} partners={[]} /><RightsLog id={id} /></> : null}
       {sub === 'data' ? <DataPanel id={id} /> : null}
     </>
   );

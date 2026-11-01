@@ -182,6 +182,9 @@ cap({
     if (i.task === 'summarise_session' && !i.session_record_id) throw badRequest('session_record_id is required to summarise a session');
     if (i.task === 'plan_session' && !i.session_record_id) throw badRequest('Open the session record you are planning (session_record_id)');
     const g = await gather(user, i);
+    // the coach's own stated approach (their profile) keeps drafts consistent with how they coach; it holds no player data
+    const approach = await one('SELECT philosophy, coaching_styles FROM coach_profiles WHERE user_id=$1', [user.id]);
+    if (approach?.philosophy || approach?.coaching_styles?.length) g.facts.coach_approach = { philosophy: approach.philosophy ? quoteData(approach.philosophy, 600) : undefined, styles: approach.coaching_styles };
     if (i.task === 'compare_metrics') await metricFacts(user, i, g);
     let out = null, aiOutputId = null, model = null;
     if (aiConfigured()) {
@@ -191,7 +194,7 @@ cap({
       if (hit) { out = hit.output; aiOutputId = hit.id; model = aiModel(); } else {
         await audit(null, user.id, 'ai_coaching_assist', 'coaching_draft', null);
         out = await askJson({
-          system: `You are a careful assistant to a sports coach. ${TASK_BRIEF[i.task]} Players appear only as labels such as "Player A"; keep using the labels. Cite the source refs (e.g. O1, G2) that support each item. Separate what the coach observed (basis "observed", needs a source ref) from your own suggestion (basis "suggestion"). Never diagnose, never mention injuries or treatment, never clear anyone to play, and never rank or compare players. Keep it short and practical. ${AI_RULES}`,
+          system: `You are a careful assistant to a sports coach. ${TASK_BRIEF[i.task]} Players appear only as labels such as "Player A"; keep using the labels. Cite the source refs (e.g. O1, G2) that support each item. Separate what the coach observed (basis "observed", needs a source ref) from your own suggestion (basis "suggestion"). Never diagnose, never mention injuries or treatment, never clear anyone to play, and never rank or compare players. Where facts.coach_approach is present it is the coach's own stated philosophy; keep suggestions consistent with it, but never treat it as evidence about a player. Keep it short and practical. ${AI_RULES}`,
           user: `<data>${JSON.stringify(payload)}</data>`, schema: outSchema, shape: SHAPE, maxTokens: 1400,
         });
         if (out) {

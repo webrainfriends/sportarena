@@ -40,6 +40,8 @@ export const SPONSOR_ACTIONS = {
   dispute_read: ['manager', 'finance', 'legal', 'approver', 'auditor'], // read and export the disputes of the brand's agreements (#308)
   roi: ['manager', 'finance', 'approver', 'auditor'], // ROI & portfolio intelligence: exposure, deliverable health, comparison, renewal packs, reports (#519)
   valuation: ['manager', 'finance'], // configure the brand's own valuation assumptions (#519)
+  introductions: ['manager', 'approver', 'evaluator'], // athletes an institution introduced to the brand, and the offer that follows (#339)
+  vendor_invite: ['manager', 'approver'], // answer an event's sponsorship request or vendor invitation for the brand (#339)
   budget_approve: ['manager', 'approver', 'finance'], // second approval of an offer above a budget's threshold (#293)
 };
 // Representative role -> sponsor role. A portfolio manager acts as manager, but only on brands in an assigned portfolio.
@@ -67,6 +69,12 @@ export async function sponsorAccess(user, sponsor, c = pool) {
     return rr ? { role: FROM_REP[rr.role], repRole: rr.role, departmentId: rr.department_id, owner: rr.role === 'owner', archived: !!rr.org_status && rr.org_status !== 'active' } : null;
   }
   return user.id === sponsor.owner_id ? { role: 'manager', repRole: 'owner', departmentId: null, owner: true, archived: false } : null;
+}
+
+/** True when the caller may do the action now (live, archived workspaces are read-only). Platform admins are handled by callers. */
+export async function sponsorMay(user, sponsor, action, c = pool) {
+  const a = await sponsorAccess(user, sponsor, c);
+  return !!a && SPONSOR_ACTIONS[action].includes(a.role) && !a.departmentId && (action === 'read' || !a.archived || a.owner);
 }
 
 /** Throws unless the access may do the action (and, for a department-scoped member, only on that department). */

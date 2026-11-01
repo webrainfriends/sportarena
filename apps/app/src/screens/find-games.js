@@ -9,8 +9,10 @@ import { SportSelect } from '../sportpicker';
 import { currentPosition } from '../location';
 import { c, when } from '../theme';
 import { locale } from '../locale';
+import { t } from '../i18n';
 import { useCols } from './marketplace';
 import { HostGameSheet } from './host-game';
+import { ClassSheet } from './coach-classes';
 
 /** A card whose content is spaced, so a title never touches the line under it. */
 const Card = ({ children, gap = 6, ...p }) => <BaseCard {...p}><View style={{ gap }}>{children}</View></BaseCard>;
@@ -37,19 +39,6 @@ export function Seats({ g }) {
   );
 }
 
-const FIT_WORD = { fits: 'fits', below: 'below range', above: 'above range' };
-/**
- * The viewer's own level against this game (#633): their verified level once it is reliable, otherwise the level they stated (labelled as stated, never as verified).
- * Hidden for the host and when signed out; a game with no stated range just shows the level.
- */
-export function MyLevelTag({ my }) {
-  if (!my) return null;
-  if (!my.source) return my.fit === 'unknown' ? <Tag label="Add your level" color={c.violetSoft} /> : null;
-  const word = FIT_WORD[my.fit];
-  const label = my.source === 'verified' ? `Your level ${my.level.toFixed(1)}${word ? ` · ${word}` : ''}` : `Your level: ${my.label.replace(/ level$/, '')} (stated)${word ? ` · ${word}` : ''}`;
-  return <Tag label={label} color={my.fit === 'fits' ? c.mint : my.fit === 'below' || my.fit === 'above' ? c.sun : c.violetSoft} />;
-}
-
 export function GameCard({ g, width, onOpen }) {
   const km = g.distance_km != null ? (g.distance_km < 1 ? 'under 1 km' : `~${Math.round(g.distance_km)} km`) : null;
   const [bl, bc] = BOOKING[g.booking_state] ?? BOOKING.no_venue;
@@ -69,7 +58,7 @@ export function GameCard({ g, width, onOpen }) {
           <Seats g={g} />
           <View style={{ flexDirection: 'row', gap: 6, flexWrap: 'wrap' }}>
             <Tag label={g.skill.label} />
-            <MyLevelTag my={g.my_level} />
+            {g.my_level ? <View accessible accessibilityLabel={t('skill.my_level_a11y', { level: g.my_level.level.toFixed(1) })}><Tag label={t('skill.my_level', { level: g.my_level.level.toFixed(1) })} color={c.mint} /></View> : null}
             {g.audience !== 'adults' ? <Tag label={g.audience === 'youth' ? 'Young players' : 'All ages'} color={c.cyan} /> : null}
             {g.venue_id ? <Tag label={bl} color={bc} /> : null}
             {g.has_team ? <Tag label={`${g.team_emoji ?? ''} ${g.team_name}`.trim()} color={c.sun} /> : null}
@@ -94,13 +83,34 @@ export function GameCard({ g, width, onOpen }) {
 function GuardianRequests() {
   const { toast } = useSession();
   const q = useLoad(() => api.get('/me/open-game-guardian-requests', { limit: 20 }), []);
+  const classes = useLoad(() => api.get('/me/coach-class-guardian-requests', { limit: 20 }), []);   // coach classes ask in the same queue as games
+  const [openClass, setOpenClass] = useState(null);
   const { push } = useNav();
   const decide = async (r, decision) => { try { await api.post(`/open-games/${r.open_game_id}/members/${r.member_id}/guardian-decision`, { decision }); toast(decision === 'approve' ? 'Approved' : 'Declined'); q.reload(); } catch (e) { toast(e.message); } };
-  if (!q.data?.length) return null;
+  const decideClass = async (r, decision) => {
+    try {
+      const seat = await api.post(`/coach/classes/${r.class_id}/seats/${r.seat_id}/guardian-decision`, { decision });
+      // a paid class holds the seat until it is paid: open the class so the guardian can pay, instead of letting an approved seat quietly lapse
+      if (decision === 'approve' && seat?.status === 'held') { toast(t('cls.pay_seat')); setOpenClass(r.class_id); } else toast(decision === 'approve' ? t('cls.approved') : t('cls.declined'));
+      classes.reload();
+    } catch (e) { toast(e.message); }
+  };
+  // the class sheet stays mounted even when the queue empties (the last request was just decided)
+  if (!q.data?.length && !classes.data?.length) return openClass ? <ClassSheet id={openClass} onClose={() => setOpenClass(null)} onChanged={classes.reload} /> : null;
   return (
     <View style={{ gap: 10, marginTop: 14 }}>
-      <T weight="800" size={13} color={c.mute} style={{ letterSpacing: 0.8 }}>WAITING FOR YOUR APPROVAL</T>
-      {q.data.map((r) => (
+      <T weight="800" size={13} color={c.mute} style={{ letterSpacing: 0.8 }}>{t('cls.guardian_title')}</T>
+      {(classes.data ?? []).map((r) => (
+        <Card key={r.seat_id} pad={14} color={c.sunSoft} style={{ gap: 4 }}>
+          <T weight="800">{t('cls.guardian_asked', { child: r.child_name, title: r.title })}</T>
+          <T size={13}>{r.sport} · {when(r.starts_at)} · {r.is_online ? t('cls.online') : r.venue_name}{r.price_cents > 0 ? ` · ${t('cls.costs_money')}` : ''}</T>
+          <View style={{ flexDirection: 'row', gap: 8, flexWrap: 'wrap', marginTop: 8 }}>
+            <Btn small title={t('cls.approve')} onPress={() => decideClass(r, 'approve')} /><Btn small title={t('cls.decline')} color={c.paper} ink={c.red} onPress={() => decideClass(r, 'decline')} /><Btn small title={t('cls.view_class')} color={c.paper} ink={c.ink} onPress={() => setOpenClass(r.class_id)} />
+          </View>
+        </Card>
+      ))}
+      {openClass ? <ClassSheet id={openClass} onClose={() => setOpenClass(null)} onChanged={classes.reload} /> : null}
+      {(q.data ?? []).map((r) => (
         <Card key={r.member_id} pad={14} color={c.sunSoft} style={{ gap: 4 }}>
           <T weight="800">{r.child_name} asked to join {r.title}</T>
           <T size={13}>{r.sport} · {when(r.starts_at)} · {r.venue_name ?? r.location}{r.cost_mode !== 'free' ? ' · costs money' : ''}</T>

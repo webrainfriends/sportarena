@@ -49,6 +49,21 @@ function Manage({ onCreate }) {
   );
 }
 
+/** The event manager's own screen (shown under their queue on the Workbench): events they run and their teams, with the create sheets. */
+export function EventsWorkspace() {
+  const { push } = useNav();
+  const [form, setForm] = useState(null);
+  const [tick, setTick] = useState(0);
+  const created = () => setTick((n) => n + 1);
+  return (
+    <View style={{ flex: 1 }}>
+      <Manage key={tick} onCreate={() => setForm('event')} />
+      <StartTeamSheet visible={form === 'team'} onClose={() => setForm(null)} onCreated={created} />
+      <CreateEvent visible={form === 'event'} onClose={() => setForm(null)} onCreated={(e) => { created(); push('EventCommand', { id: e.id }); }} />
+    </View>
+  );
+}
+
 /** Schedule tab: create, book, track and manage in one place. `section` (via goTab) opens a specific part. */
 export function Schedule({ section }) {
   const { push } = useNav();

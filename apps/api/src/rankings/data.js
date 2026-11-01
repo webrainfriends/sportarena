@@ -6,7 +6,7 @@ import { PUBLIC_USER, PUBLIC_ROLES_SQL } from '../helpers.js';
 import { NOT_YOUTH_SQL } from '../youth.js';
 import { metricKey } from '../scoring/metric-defs.js';
 import { computeRanking, describeFormula } from './engine.js';
-import { onRatingsEvidenceChanged, afterRatingsChange } from '../ratings/data.js';
+import { onRatingsEvidenceChanged } from '../ratings/data.js';
 import { toLevel, inflate, RELIABLE_RD } from '../ratings/engine.js';
 
 const q = (c) => c ?? { query };
@@ -23,34 +23,23 @@ export async function isClubMember(user, def, c) {
   return !!(await q(c).query("SELECT 1 FROM team_members WHERE team_id=$1 AND user_id=$2 AND status='active'", [def.scope_team_id, user.id])).rows[0];
 }
 
-/**
- * Evidence for a skill-level ranking: one row per verified game of the player's current rating run, valued at the level after that game, so the
- * ordinary engine ranks the latest level (aggregation 'last') with the same sample, event, window and tie rules as every other ranking.
- * `reliable` is the player's reliability today; the engine leaves unreliable levels out as "not yet ranked".
- */
-async function skillEvidence(def, v, c) {
-  const s = sc(v);
-  return (await q(c).query(
-    `SELECT md5(ch.run_id::text || ch.user_id::text || ch.game_id::text)::uuid AS id, ch.user_id AS subject, ch.after_r, ch.event_id, ch.game_kind, ch.game_id, ch.played_at, r.rd, r.sigma, r.last_played_at
-       FROM skill_ratings r
-       JOIN skill_rating_changes ch ON ch.run_id = r.run_id AND ch.user_id = r.user_id AND ch.sport_id = r.sport_id
-       JOIN users u ON u.id = r.user_id
+/** Eligible evidence for a player ranking. Official rankings read approved competition results only; youth accounts and unapproved accounts never appear. */
+/** The verified skill level (#633) as ranking evidence: one row per person, reliable levels only, youth and unapproved accounts never appear. */
+async function ratingEvidence(def, v, c) {
+  const rows = (await q(c).query(
+    `SELECT r.user_id, r.rating, r.rd, r.sigma, r.games, r.last_played_at
+       FROM skill_ratings r JOIN users u ON u.id = r.user_id
       WHERE r.sport_id = $1 AND r.status = 'active' AND ${NOT_YOUTH_SQL} AND u.access_status = 'approved'
-        AND ($2::text IS NULL OR EXISTS (SELECT 1 FROM active_sport_profiles sp WHERE sp.user_id = u.id AND sp.sport_id = r.sport_id
-                                            AND EXISTS (SELECT 1 FROM unnest(sp.positions) x WHERE lower(x) = lower($2))))
-        AND ($3::uuid IS NULL OR EXISTS (SELECT 1 FROM team_members tm WHERE tm.team_id = $3 AND tm.user_id = u.id AND tm.status = 'active'))
-      ORDER BY ch.played_at, ch.id`,
-    [def.sport_id, s.position ?? null, def.visibility === 'club' ? def.scope_team_id : null])).rows
-    .map((r) => ({
-      id: r.id, subject: r.subject, value: toLevel(r.after_r), on: new Date(r.played_at).toISOString(), event_id: r.event_id ?? null,
-      fixture_id: r.game_kind === 'fixture' ? r.game_id : null,
-      reliable: inflate({ rd: r.rd, sigma: r.sigma }, r.last_played_at ? (Date.now() - new Date(r.last_played_at).getTime()) / 86400000 : 0) <= RELIABLE_RD,
-    }));
+        AND ($2::uuid IS NULL OR EXISTS (SELECT 1 FROM team_members tm WHERE tm.team_id = $2 AND tm.user_id = u.id AND tm.status = 'active'))
+      ORDER BY r.user_id`, [def.sport_id, def.visibility === 'club' ? def.scope_team_id : null])).rows;
+  return rows
+    .filter((r) => (r.last_played_at ? inflate({ rd: r.rd, sigma: r.sigma }, (Date.now() - new Date(r.last_played_at).getTime()) / 86400000) : Number(r.rd)) <= RELIABLE_RD)
+    .map((r) => ({ id: r.user_id, subject: r.user_id, value: toLevel(r.rating), minutes: null, event_id: null, fixture_id: null, same_owner: false,
+      on: (r.last_played_at ? new Date(r.last_played_at) : new Date()).toISOString().slice(0, 10), games: r.games }));
 }
 
-/** Eligible evidence for a player ranking. Official rankings read approved competition results only; youth accounts and unapproved accounts never appear. */
 async function playerEvidence(def, v, c) {
-  if (v.formula_kind === 'skill_level') return skillEvidence(def, v, c);
+  if (v.formula_kind === 'rating') return ratingEvidence(def, v, c);
   const s = sc(v);
   const development = v.evidence === 'development';
   return (await q(c).query(
@@ -152,10 +141,8 @@ const flagText = (f) => ({
 }[f.kind]);
 
 /** Snapshot every published ranking (optionally just one sport). Used by the weekly worker step and after results are corrected. */
-export async function snapshotAll(reason, { sportId, skill } = {}) { // skill: 'only' or 'skip' limits it to (or leaves out) skill-level rankings
-  const defs = await many(
-    `SELECT d.* FROM ranking_definitions d LEFT JOIN ranking_definition_versions v ON v.definition_id = d.id AND v.version = d.current_version
-      WHERE d.status='published' AND d.current_version > 0 AND ($1::uuid IS NULL OR d.sport_id=$1) AND ($2::text IS NULL OR (v.formula_kind = 'skill_level') = ($2 = 'only'))`, [sportId ?? null, skill ?? null]);
+export async function snapshotAll(reason, { sportId } = {}) {
+  const defs = await many("SELECT * FROM ranking_definitions WHERE status='published' AND current_version > 0 AND ($1::uuid IS NULL OR sport_id=$1)", [sportId ?? null]);
   let n = 0;
   for (const def of defs) {
     try { if (await takeSnapshot(def, await loadVersion(def.id, def.current_version), reason)) n++; } catch { /* one broken ranking never stops the rest */ }
@@ -163,9 +150,7 @@ export async function snapshotAll(reason, { sportId, skill } = {}) { // skill: '
   return n;
 }
 /** Called after a result is approved, corrected or superseded; never blocks or fails the caller. */
-export const onResultsChanged = (sportId) => Promise.all([snapshotAll('correction', { sportId, skill: 'skip' }).catch(() => 0), onRatingsEvidenceChanged(sportId)]).then(([n]) => n);
-// a recompute that changed ratings re-snapshots that sport's skill-level rankings (earlier snapshots are kept)
-afterRatingsChange(async (sportIds) => { for (const sportId of sportIds) await snapshotAll('correction', { sportId, skill: 'only' }).catch(() => 0); });
+export const onResultsChanged = (sportId) => Promise.all([snapshotAll('correction', { sportId }).catch(() => 0), onRatingsEvidenceChanged(sportId)]).then(([n]) => n);
 
 /** The plain-language "Why am I here?" for one subject in a ranking. */
 export async function explain(def, v, res, subjectId, { unit, full }) {
@@ -184,8 +169,7 @@ export async function explain(def, v, res, subjectId, { unit, full }) {
   return {
     status: entry ? 'ranked' : 'not_yet_ranked',
     rank: entry?.rank ?? null, score: entry?.score ?? null, sample_n: (entry ?? out).sample_n, events_n: (entry ?? out).events_n,
-    formula: describeFormula(v, { unit }),
-    weighting: v.formula_kind === 'skill_level' ? 'A level weighs who you beat (a stronger opponent moves you more), the score and how long ago; there is no boost for paid plans. The per-game reasons are on the player’s own level card.' : 'Every eligible result counts equally; there is no hidden weighting and no boost for paid plans.',
+    formula: describeFormula(v, { unit }), weighting: 'Every eligible result counts equally; there is no hidden weighting and no boost for paid plans.',
     included, excluded: full ? excluded : [], excluded_counts: counts,
     unmet: out ? out.reasons : [],
     limits: limitsOf(def, v, res),
@@ -194,7 +178,6 @@ export async function explain(def, v, res, subjectId, { unit, full }) {
 
 const limitsOf = (def, v, res) => [
   `Based on ${v.evidence === 'official' ? 'approved competition results only' : 'development data (practice and imported results are allowed and never public)'}.`,
-  ...(v.formula_kind === 'skill_level' ? ['A level is ranked only while it is reliable; it fades back to “not yet ranked” if a player stops playing verified games.'] : []),
   `A person needs at least ${v.min_samples} eligible ${def.subject === 'team' ? 'games' : 'results'}${sc(v).event_id ? '' : ` across at least ${v.min_distinct_events} events`} to appear.`,
   'Youth accounts are never ranked. Results still awaiting approval or under dispute do not count.',
   `Ranked from ${res.rows.length} eligible ${def.subject === 'team' ? 'team-games' : 'results'} as at the time shown; a corrected result re-runs this ranking and the earlier snapshot is kept.`,

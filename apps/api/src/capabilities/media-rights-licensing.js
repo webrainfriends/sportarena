@@ -8,7 +8,7 @@ import { badRequest, conflict, forbidden, notFound } from '../errors.js';
 import { notify } from '../notify.js';
 import { orgFor } from '../org-access.js';
 import {
-  RIGHTS, RIGHT_KEYS, PLATFORMS, PARTNER_KINDS, IN_FORCE, LIC_STAGE, logMr, historyOf, eventOf, isOrganiserOf, myPartners, partnerFor, partnerAdmins, eventOrganisers,
+  RIGHTS, RIGHT_KEYS, PLATFORMS, PARTNER_KINDS, IN_FORCE, LIC_STAGE, CREW_ACCRED, logMr, historyOf, eventOf, isOrganiserOf, myPartners, partnerFor, partnerAdmins, eventOrganisers,
   terr, territoryWithin, platformsWithin, exclusivityConflicts, entitlementsFor, assetState, licenceCovers, ASSET_COLS, LIVE_RIGHTS,
 } from '../media-rights.js';
 
@@ -379,7 +379,7 @@ cap({
     const runSheet = eventIds.length ? await many(
       `SELECT r.id, r.event_id, r.fixture_id, r.phase, r.title, r.starts_at, r.ends_at, r.location, r.status FROM mr_run_items r WHERE r.event_id = ANY($1) AND r.status <> 'cancelled' AND r.ends_at > now() - interval '1 day' ORDER BY r.starts_at LIMIT 200`, [eventIds]) : [];
     const crew = await many(
-      `SELECT c.id, c.event_id, c.fixture_id, c.role, c.status, c.call_time, c.zones, u.display_name, coalesce((SELECT m.accreditation FROM event_department_members m WHERE m.id=c.department_member_id), 'none') AS accreditation
+      `SELECT c.id, c.event_id, c.fixture_id, c.role, c.status, c.call_time, c.zones, u.display_name, ${CREW_ACCRED} AS accreditation
          FROM mr_crew c JOIN users u ON u.id=c.user_id WHERE c.licence_id = ANY($1) AND c.status <> 'released' ORDER BY c.call_time NULLS LAST`, [all.map((l) => l.id)]);
     const feeds = await many(
       `SELECT g.id, g.licence_id, g.consumer_name, g.datasets, g.mode, g.rate_per_minute, g.daily_quota, g.valid_to, (g.status='active' AND g.valid_to > now()) AS usable,

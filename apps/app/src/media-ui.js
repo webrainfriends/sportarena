@@ -1,5 +1,6 @@
 // Sports Media, Broadcast & Rights (#482): the vocabulary, formats and small pieces every media screen shares, in the Arena palette of the event console.
 // The server is the authority on every rule (scope, exclusivity, embargo, consent, entitlement); these only show what it returns and hide what a role cannot use.
+import { formatMoney } from './money';
 import React from 'react';
 import { View } from 'react-native';
 import { locale } from './locale';
@@ -36,7 +37,7 @@ export const PROVIDERS = { youtube: 'YouTube Live', twitch: 'Twitch', vimeo: 'Vi
 export const fmtDT = (iso) => (iso ? new Date(iso).toLocaleString(locale, { weekday: 'short', day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' }) : '');
 export const fmtD = (iso) => (iso ? new Date(iso).toLocaleDateString(locale, { day: 'numeric', month: 'short', year: 'numeric' }) : '');
 export const fmtRange = (a, b) => (a && b ? `${fmtD(a)} → ${fmtD(b)}` : fmtD(a ?? b));
-export const money = (minor, cur) => { try { const f = new Intl.NumberFormat(locale, { style: 'currency', currency: cur }); return f.format(Number(minor) / 10 ** f.resolvedOptions().maximumFractionDigits); } catch { return `${minor} ${cur ?? ''}`; } };
+export const money = (minor, cur) => formatMoney(minor, cur);
 const pad = (n) => String(n).padStart(2, '0');
 export const dayOf = (iso) => { const d = new Date(iso); return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`; };
 /** A calendar range (YYYY-MM-DD, YYYY-MM-DD) becomes the instants it covers in the person's own time zone: start of the first day to the end of the last. */
@@ -45,7 +46,7 @@ export const nice = (s) => String(s ?? '').replace(/_/g, ' ');
 
 const TONE = {
   active: A.green, live: A.green, published: A.green, ready: A.green, acknowledged: A.green, issued: A.green, verified: A.green, delivered: A.green, open: A.green, resolved: A.green, usable: A.green, done: A.green,
-  proposed: A.sun, negotiating: A.sun, scheduled: A.cyan, embargoed: A.sun, assigned: A.sun, requested: A.sun, planned: A.cyan, draft: A.mute, attention: A.orange, suspended: A.orange, minor: A.sun, major: A.orange, unconfirmed: A.orange,
+  allowed: A.green, pending: A.sun, blocked: A.red, proposed: A.sun, negotiating: A.sun, scheduled: A.cyan, embargoed: A.sun, assigned: A.sun, requested: A.sun, planned: A.cyan, draft: A.mute, attention: A.orange, suspended: A.orange, minor: A.sun, major: A.orange, unconfirmed: A.orange,
   expired: A.mute, ended: A.mute, withdrawn: A.mute, closed: A.mute, released: A.mute, archived: A.mute, offline: A.mute, none: A.mute, not_started: A.mute, info: A.cyan,
   terminated: A.red, declined: A.red, taken_down: A.red, consent_lapsed: A.red, source_withdrawn: A.red, revoked: A.red, missed: A.red, critical: A.red,
 };
@@ -75,7 +76,7 @@ export const LSection = ({ title, sub, action, onAction }) => (
 const LTONE = { green: c.mint, sun: c.sun, orange: c.orange, red: c.pinkSoft, mute: c.violetSoft, cyan: c.cyan };
 const LMAP = {
   active: 'green', live: 'green', published: 'green', ready: 'green', acknowledged: 'green', issued: 'green', verified: 'green', delivered: 'green', open: 'green', resolved: 'green', usable: 'green', done: 'green',
-  proposed: 'sun', negotiating: 'sun', embargoed: 'sun', assigned: 'sun', requested: 'sun', minor: 'sun', scheduled: 'cyan', planned: 'cyan', info: 'cyan', attention: 'orange', suspended: 'orange', major: 'orange', unconfirmed: 'orange',
+  allowed: 'green', pending: 'sun', blocked: 'red', proposed: 'sun', negotiating: 'sun', embargoed: 'sun', assigned: 'sun', requested: 'sun', minor: 'sun', scheduled: 'cyan', planned: 'cyan', info: 'cyan', attention: 'orange', suspended: 'orange', major: 'orange', unconfirmed: 'orange',
   terminated: 'red', declined: 'red', taken_down: 'red', consent_lapsed: 'red', source_withdrawn: 'red', revoked: 'red', missed: 'red', critical: 'red',
 };
 export const LTag = ({ state, label }) => <Tag label={label ?? nice(state)} color={LTONE[LMAP[state] ?? 'mute']} />;
@@ -85,3 +86,7 @@ export const LEmpty = ({ title, sub }) => <View style={{ alignItems: 'center', g
 
 /** A row of small tag chips (rights, platforms). */
 export const Tags = ({ items, tone = A.violet }) => (items?.length ? <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>{items.map((t) => <ATag key={t} label={t} tone={tone} />)}</View> : null);
+
+/** The crew badge as [label, state]: the real event accreditation (issued, pending, suspended) or the older department flag (requested, revoked). */
+export const BADGE = { none: ['No badge', 'none'], requested: ['Badge requested', 'requested'], pending: ['Badge in review', 'pending'], issued: ['Badge issued', 'issued'], suspended: ['Badge suspended', 'suspended'], revoked: ['Badge revoked', 'revoked'] };
+export const badgeOf = (k) => BADGE[k] ?? BADGE.none;

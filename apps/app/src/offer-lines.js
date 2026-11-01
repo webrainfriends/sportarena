@@ -1,6 +1,7 @@
 // Contribution lines of a sponsorship offer (#309): the form state the offer builder edits, and its conversion to the API's `lines`.
 // Pure functions only (no React / React Native) so they are unit-tested. The server stays the authority on every rule (schedule, money,
 // quantities, period): `lineProblems` only spots what is plainly missing so the person is told before the review step.
+import { formatMoneyIn } from './money-core.js';
 
 export const KINDS = [
   { kind: 'money', emoji: '💰', title: 'Cash', add: 'Cash', label: 'Cash support' },
@@ -81,6 +82,4 @@ export function buildLines(lines, fixedCurrency) {
 }
 
 /** Preview totals line, each currency on its own. */
-export function money(cents, cur) {
-  try { const f = new Intl.NumberFormat(undefined, { style: 'currency', currency: cur }); return f.format(cents / 10 ** f.resolvedOptions().maximumFractionDigits); } catch { return `${cents} ${cur ?? ''}`.trim(); }
-}
+export function money(cents, cur) { return formatMoneyIn(undefined, cents, cur); }

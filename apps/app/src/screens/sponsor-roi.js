@@ -13,6 +13,8 @@ import { EntityPicker } from '../entity-picker';
 import { c } from '../theme';
 import { explain, LoadError } from '../access';
 import { useNav } from '../nav';
+import { t } from '../i18n';
+import { Lifecycle, ActivationCalendar, RenewalPipeline } from './sponsor-lifecycle';
 
 const fmt = (cents, cur) => { if (cents == null) return '—'; try { const f = new Intl.NumberFormat(undefined, { style: 'currency', currency: cur }); return f.format(cents / 10 ** f.resolvedOptions().maximumFractionDigits); } catch { return `${cents} ${cur ?? ''}`; } };
 const num = (n) => (n == null ? '—' : Number(n).toLocaleString());
@@ -23,6 +25,8 @@ const STATE_TONE = { accepted: c.lime, awaiting_review: c.sunSoft, rework: c.pin
 const BASIS = { platform_measured: ['Measured by Sportarena', c.lime], provider_reported: ['Reported by a provider', c.sunSoft] };
 const CATEGORIES = ['beverage', 'nutrition', 'apparel', 'footwear', 'equipment', 'banking_finance', 'insurance', 'telecom', 'automotive', 'technology', 'healthcare', 'education', 'travel_hospitality', 'media', 'retail', 'other'].map((v) => ({ value: v, label: word(v) }));
 const DELIVERABLES = ['appearance', 'content', 'hospitality', 'challenge_reward', 'activation', 'other'].map((v) => ({ value: v, label: word(v) }));
+const PLATFORMS = ['linear_tv', 'ott', 'web', 'mobile_app', 'social', 'radio', 'in_venue', 'print'];
+const platformOptions = () => PLATFORMS.map((v) => ({ value: v, label: t(`spl.platform.${v}`) }));
 const PROVIDER_METRICS = ['page_views', 'attendance', 'tickets_scanned', 'hospitality_guests'].map((v) => ({ value: v, label: word(v) }));
 
 const deliver = async (out) => {
@@ -185,15 +189,16 @@ function ProviderFigures({ id, reload }) {
 }
 
 function AgreementPanel({ deal, role, onClose }) {
-  const tabs = role === 'sponsor' ? ['Exposure', 'Deliverables', 'Estimate', 'Renewal pack', 'Inventory'] : ['Exposure', 'Deliverables', 'Renewal pack', 'Inventory'];
-  const [tab, setTab] = useState('Exposure');
+  const tabs = ['Lifecycle', ...(role === 'sponsor' ? ['Exposure', 'Deliverables', 'Estimate', 'Renewal pack', 'Inventory'] : ['Exposure', 'Deliverables', 'Renewal pack', 'Inventory'])];
+  const [tab, setTab] = useState('Lifecycle');
   const exp = useLoad(() => api.get(`/sponsorships/${deal.id}/exposure`), [deal.id]);
   const inv = useLoad(() => (tab === 'Inventory' ? api.get(`/sponsorships/${deal.id}/inventory`) : Promise.resolve(null)), [deal.id, tab]);
   return (
     <Card color={c.paper}>
       <View style={{ gap: 10 }}>
         <Row><Btn small title="← Back" color={c.paper} ink={c.ink} onPress={onClose} accessibilityLabel="Back to the list" /><T weight="800" size={16} style={{ flex: 1 }}>{deal.beneficiary} · {deal.sponsor}{deal.ref ? ` · ${deal.ref}` : ''}</T></Row>
-        <Row>{tabs.map((t) => <Chip key={t} label={t} active={tab === t} onPress={() => setTab(t)} />)}</Row>
+        <Row>{tabs.map((x) => <Chip key={x} label={x === 'Lifecycle' ? t('spl.lifecycle') : x} active={tab === x} onPress={() => setTab(x)} />)}</Row>
+        {tab === 'Lifecycle' ? <Lifecycle id={deal.id} /> : null}
         {tab === 'Exposure' ? (exp.error ? <LoadError error={exp.error} onRetry={exp.reload} /> : exp.data ? <View style={{ gap: 10 }}>{role !== 'sponsor' ? <ProviderFigures id={deal.id} reload={exp.reload} /> : null}<Metrics exposure={exp.data} />
           {exp.data.signals.length ? <T size={12} color={c.mute}>Provider figures on file: {exp.data.signals.filter((s) => !s.superseded_at).length} (corrections keep the earlier value in history).</T> : null}</View> : <Loading />) : null}
         {tab === 'Deliverables' ? <Deliverables id={deal.id} role={role} /> : null}
@@ -389,22 +394,59 @@ export function Inventory({ target }) {
       {inv.data.units.map((u) => (
         <Card key={u.id} color={c.paper}><View style={{ gap: 6 }}>
           <Row><T weight="800" style={{ flex: 1 }}>{u.name}</T><Tag label={u.kind_label} color={c.violetSoft} />{u.exclusive_category ? <Tag label="Category-exclusive" color={c.sunSoft} /> : null}</Row>
-          <T size={12} color={c.mute}>{u.window.free} of {u.capacity} free {u.window.from} → {u.window.to}{u.blocked_categories.length ? ` · blocked: ${u.blocked_categories.map(word).join(', ')}` : ''}{u.placement_slot ? ` · backs the “${word(u.placement_slot)}” public slot` : ''}</T>
+          <T size={12} color={c.mute}>{u.territory_mode !== 'worldwide' ? `${t(`spl.territory_mode.${u.territory_mode}`)}: ${u.countries.join(', ')} · ` : ''}{u.platforms.length ? `${u.platforms.map((p) => t(`spl.platform.${p}`)).join(', ')} · ` : ''}{u.asking_price_minor != null ? `${fmt(u.asking_price_minor, u.asking_currency)} · ` : ''}{u.window.free} of {u.capacity} free {u.window.from} → {u.window.to}{u.blocked_categories.length ? ` · blocked: ${u.blocked_categories.map(word).join(', ')}` : ''}{u.placement_slot ? ` · backs the “${word(u.placement_slot)}” public slot` : ''}</T>
           {(u.bookings ?? []).filter((b) => b.status === 'confirmed').map((b) => (
             <Row key={b.id}><T size={13} style={{ flex: 1 }}>• {b.sponsor_name} · {word(b.category)} · {b.starts_on} → {b.ends_on}</T><Btn small title="Release…" color={c.paper} ink={c.red} onPress={() => setForm({ type: 'release', b })} /></Row>))}
           <Btn small title="Book for a sponsor" color={c.mint} ink={c.ink} style={{ alignSelf: 'flex-start' }} onPress={() => setForm({ type: 'book', u })} disabled={!mine.length} />
           {!mine.length ? <T size={12} color={c.mute}>Booking needs an accepted sponsorship with {target.label}.</T> : null}
         </View></Card>))}
+      <Packages target={target} units={inv.data.units.filter((u) => u.status === 'active')} onOpen={() => setForm(null)} />
       <FormSheet visible={form?.type === 'unit'} onClose={() => setForm(null)} title="Offer inventory" submitLabel="Offer" color={c.pink}
         fields={[{ key: 'kind', label: 'What', type: 'chips', options: KINDS }, { key: 'name', label: 'Name' }, { key: 'capacity', label: 'Sponsors at once', type: 'stepper', min: 1, max: 100, default: 1 },
-          { key: 'exclusive_category', label: 'Only one sponsor per category in a period', type: 'switch' }, { key: 'avail', label: 'Available', type: 'daterange', toKey: 'avail_to', optional: true }]}
-        onSubmit={async (v) => { await api.post('/sponsor-inventory', { target_type: target.type, target_id: target.id, kind: v.kind, name: v.name, capacity: v.capacity, exclusive_category: v.exclusive_category, ...(v.avail ? { available_from: v.avail, available_to: v.avail_to } : {}) }); inv.reload(); return 'Inventory offered'; }} />
+          { key: 'exclusive_category', label: 'Only one sponsor per category in a period', type: 'switch' }, { key: 'avail', label: 'Available', type: 'daterange', toKey: 'avail_to', optional: true },
+          { key: 'territory_mode', label: t('spl.territory'), type: 'chips', default: 'worldwide', options: ['worldwide', 'include', 'exclude'].map((x) => ({ value: x, label: t(`spl.territory_mode.${x}`) })) },
+          { key: 'countries', label: t('spl.countries'), type: 'countries', optional: true, show: (v) => v.territory_mode && v.territory_mode !== 'worldwide' },
+          { key: 'platforms', label: t('spl.platforms'), type: 'multimenu', optional: true, options: platformOptions() },
+          { key: 'exclusivity_scope', label: t('spl.scope'), optional: true, hint: t('spl.scope_hint') },
+          { key: 'asking_currency', label: t('spl.currency'), type: 'currency', optional: true },
+          { key: 'asking_price_minor', label: t('spl.price'), type: 'money', optional: true, currency: (v) => v.asking_currency, show: (v) => !!v.asking_currency }]}
+        onSubmit={async (v) => { await api.post('/sponsor-inventory', { target_type: target.type, target_id: target.id, kind: v.kind, name: v.name, capacity: v.capacity, exclusive_category: v.exclusive_category, ...(v.avail ? { available_from: v.avail, available_to: v.avail_to } : {}),
+          territory_mode: v.territory_mode ?? 'worldwide', ...(v.countries?.length ? { countries: v.countries } : {}), ...(v.platforms?.length ? { platforms: v.platforms } : {}), ...(v.exclusivity_scope ? { exclusivity_scope: v.exclusivity_scope } : {}),
+          ...(v.asking_currency && v.asking_price_minor != null ? { asking_price_minor: v.asking_price_minor, asking_currency: v.asking_currency } : {}) }); inv.reload(); return 'Inventory offered'; }} />
       <FormSheet visible={form?.type === 'book'} onClose={() => setForm(null)} title={`Book “${form?.u?.name}”`} submitLabel="Book" color={c.mint}
         notice="Refused if the unit is full or another sponsor of the same category holds it in that period."
-        fields={[{ key: 'sponsorship_id', label: 'Sponsor', type: 'chips', options: mine }, { key: 'category', label: 'Sponsor category', type: 'chips', options: CATEGORIES }, { key: 'starts_on', label: 'Dates', type: 'daterange', toKey: 'ends_on' }]}
+        fields={[{ key: 'sponsorship_id', label: 'Sponsor', type: 'chips', options: mine }, { key: 'category', label: 'Sponsor category', type: 'chips', options: CATEGORIES }, { key: 'starts_on', label: 'Dates', type: 'daterange', toKey: 'ends_on' },
+          { key: 'countries', label: t('spl.countries'), type: 'countries', optional: true, hint: t('spl.booking_scope_hint') },
+          { key: 'platforms', label: t('spl.platforms'), type: 'multimenu', optional: true, options: platformOptions().filter((o) => !form?.u?.platforms?.length || form.u.platforms.includes(o.value)) }]}
         onSubmit={async (v) => { await api.post(`/sponsor-inventory/${form.u.id}/bookings`, v); inv.reload(); return 'Booked'; }} />
       <FormSheet visible={form?.type === 'release'} onClose={() => setForm(null)} title="Release this booking" submitLabel="Release" fields={[{ key: 'reason', label: 'Reason (shown to the sponsor)', type: 'multiline' }]}
         onSubmit={async (v) => { const r = await api.post(`/sponsor-inventory-bookings/${form.b.id}/release`, v); inv.reload(); return r.placements_ended ? `Released; ${r.placements_ended} public placement ended` : 'Released'; }} />
+    </View>
+  );
+}
+
+/** Sellable bundles of the units above. A package only groups units: booking still goes unit by unit, so availability and rights are never bypassed. */
+function Packages({ target, units }) {
+  const pk = useLoad(() => api.get('/sponsor-rights-packages', { target_type: target.type, target_id: target.id }), [target.type, target.id]);
+  const [edit, setEdit] = useState(null);
+  if (!pk.data) return null;
+  const opts = units.map((u) => ({ value: u.id, label: u.name, sub: u.kind_label }));
+  return (
+    <View style={{ gap: 8 }}>
+      <Card color={c.paper}><Row><T weight="800" style={{ flex: 1 }}>{t('spl.packages')}</T><Btn small title={`＋ ${t('spl.new_package')}`} color={c.sun} ink={c.ink} onPress={() => setEdit({})} disabled={!opts.length} accessibilityLabel={t('spl.new_package')} /></Row></Card>
+      {pk.data.packages.map((p) => (
+        <Card key={p.id} color={c.paper} onPress={() => setEdit(p)} accessibilityLabel={p.name}>
+          <Row><T weight="800" style={{ flex: 1 }}>{p.name}</T><Tag label={t(`spl.status.${p.status}`)} color={c.violetSoft} />{p.price_minor != null ? <Tag label={fmt(p.price_minor, p.currency)} color={c.sunSoft} /> : null}</Row>
+          <T size={12} color={c.mute}>{p.units.map((u) => u.name).join(' · ')}</T>
+        </Card>))}
+      <FormSheet visible={!!edit} onClose={() => setEdit(null)} title={edit?.id ? edit.name : t('spl.new_package')} submitLabel={t('common.save')} color={c.sun}
+        initial={edit?.id ? { name: edit.name, unit_ids: edit.units.map((u) => u.id), status: edit.status, currency: edit.currency, price_minor: edit.price_minor, valid_from: edit.valid_from, valid_to: edit.valid_to } : { status: 'draft' }}
+        fields={[{ key: 'name', label: t('spl.package_name') }, { key: 'unit_ids', label: t('spl.units'), type: 'multimenu', options: opts },
+          { key: 'currency', label: t('spl.currency'), type: 'currency', optional: true }, { key: 'price_minor', label: t('spl.price'), type: 'money', optional: true, currency: (v) => v.currency, show: (v) => !!v.currency },
+          { key: 'valid_from', label: t('spl.valid'), type: 'daterange', toKey: 'valid_to', optional: true },
+          { key: 'status', label: t('spl.status_label'), type: 'chips', options: ['draft', 'open', 'archived'].map((x) => ({ value: x, label: t(`spl.status.${x}`) })) }]}
+        onSubmit={async (v) => { await api.post('/sponsor-rights-packages', { target_type: target.type, target_id: target.id, ...(edit?.id ? { package_id: edit.id, row_version: edit.row_version } : {}), name: v.name, unit_ids: v.unit_ids, status: v.status ?? 'draft',
+          ...(v.currency && v.price_minor != null ? { price_minor: v.price_minor, currency: v.currency } : {}), ...(v.valid_from ? { valid_from: v.valid_from, valid_to: v.valid_to } : {}) }); pk.reload(); return t('spl.saved'); }} />
     </View>
   );
 }
@@ -441,8 +483,8 @@ export function SponsorRoi() {
     ...(user.roles?.includes('athlete') ? [{ id: user.id, label: 'Me (athlete)', sub: 'Athlete', type: 'athlete' }] : []),
   ];
   const tgt = target[0] ? targets.find((x) => x.id === target[0].id) : null;
-  const tabs = isBrand ? ['Portfolio', 'Compare', 'Valuation', 'Reports'] : ['Inventory', 'Sponsorships', 'Reports'];
-  const t = tabs.includes(tab) ? tab : tabs[0];
+  const tabs = isBrand ? ['Portfolio', 'Compare', 'Valuation', 'Calendar', 'Renewals', 'Reports'] : ['Inventory', 'Sponsorships', 'Calendar', 'Renewals', 'Reports'];
+  const tabSel = tabs.includes(tab) ? tab : tabs[0];
   if (!brands.data && brands.loading) return <Screen><Loading /></Screen>;
   return (
     <Screen>
@@ -453,15 +495,17 @@ export function SponsorRoi() {
       {isBrand && brands.data?.length > 1 ? <EntityPicker label="Brand" noun="brand" value={cur ? [cur] : []} onChange={setBrand} options={brands.data.map((b) => ({ id: b.id, label: b.name, sub: b.my_role, emoji: b.emoji }))} /> : null}
       {isBrand && !brands.data?.length ? <Empty emoji="🏷" title="You do not run a brand" sub="Create a sponsor brand, or switch to “I am sponsored” if you are an event organiser, team owner or athlete." /> : null}
       {!isBrand ? <EntityPicker label="Event, team or athlete" noun="one" value={tgt ? [tgt] : []} onChange={setTarget} options={targets} /> : null}
-      <Row>{tabs.map((x) => <Chip key={x} label={x} active={t === x} onPress={() => { setTab(x); setPanel(null); }} />)}</Row>
-      {isBrand && cur && t === 'Portfolio' ? <Portfolio brand={cur} onOpen={(a) => setPanel({ id: a.id, beneficiary: a.beneficiary, sponsor: a.sponsor, sponsor_id: cur.id, ref: a.ref })} /> : null}
-      {isBrand && cur && t === 'Compare' ? <Compare brand={cur} /> : null}
-      {isBrand && cur && t === 'Valuation' ? <Valuation brand={cur} /> : null}
-      {isBrand && cur && t === 'Reports' ? <Reports role="sponsor" brand={cur} /> : null}
-      {!isBrand && t === 'Inventory' && tgt?.type === 'event' ? <Btn small title="Open the event console" color={c.violet} style={{ alignSelf: 'flex-start' }} onPress={() => push('EventCommand', { id: tgt.id })} /> : null}
-      {!isBrand && t === 'Inventory' ? (tgt?.type === 'event' ? <Empty emoji="⚡" title="Event inventory lives in the event console" sub="Offer, book and release an event’s sponsor inventory under Business in the event console, next to its sponsors and vendors." /> : tgt ? <Inventory target={tgt} /> : <Empty emoji="👆" title="Pick an event, team or athlete" sub="Inventory belongs to what you run." />) : null}
-      {!isBrand && t === 'Sponsorships' ? <BeneficiaryDeals target={tgt} onOpen={setPanel} /> : null}
-      {!isBrand && t === 'Reports' ? <Reports role="recipient" /> : null}
+      <Row>{tabs.map((x) => <Chip key={x} label={x === 'Calendar' ? t('spl.calendar') : x === 'Renewals' ? t('spl.renewals') : x} active={tabSel === x} onPress={() => { setTab(x); setPanel(null); }} />)}</Row>
+      {isBrand && cur && tabSel === 'Portfolio' ? <Portfolio brand={cur} onOpen={(a) => setPanel({ id: a.id, beneficiary: a.beneficiary, sponsor: a.sponsor, sponsor_id: cur.id, ref: a.ref })} /> : null}
+      {isBrand && cur && tabSel === 'Compare' ? <Compare brand={cur} /> : null}
+      {isBrand && cur && tabSel === 'Valuation' ? <Valuation brand={cur} /> : null}
+      {isBrand && cur && tabSel === 'Reports' ? <Reports role="sponsor" brand={cur} /> : null}
+      {!isBrand && tabSel === 'Inventory' && tgt?.type === 'event' ? <Btn small title="Open the event console" color={c.violet} style={{ alignSelf: 'flex-start' }} onPress={() => push('EventCommand', { id: tgt.id })} /> : null}
+      {!isBrand && tabSel === 'Inventory' ? (tgt?.type === 'event' ? <Empty emoji="⚡" title="Event inventory lives in the event console" sub="Offer, book and release an event’s sponsor inventory under Business in the event console, next to its sponsors and vendors." /> : tgt ? <Inventory target={tgt} /> : <Empty emoji="👆" title="Pick an event, team or athlete" sub="Inventory belongs to what you run." />) : null}
+      {!isBrand && tabSel === 'Sponsorships' ? <BeneficiaryDeals target={tgt} onOpen={setPanel} /> : null}
+      {tabSel === 'Calendar' ? <ActivationCalendar /> : null}
+      {tabSel === 'Renewals' ? <RenewalPipeline /> : null}
+      {!isBrand && tabSel === 'Reports' ? <Reports role="recipient" /> : null}
       </>}
     </Screen>
   );

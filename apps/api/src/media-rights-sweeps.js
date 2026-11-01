@@ -3,6 +3,7 @@
 // the expiry reminders. Every step is idempotent (row-locked, guarded by the expected stage, deduplicated notifications).
 import { tx, many } from './db.js';
 import { notify } from './notify.js';
+import { sendMediaFollowerAlerts } from './media-fans.js';
 import { logMr, partnerAdmins, eventOrganisers, eventOf } from './media-rights.js';
 
 const REMIND_DAYS = [30, 7];
@@ -52,4 +53,4 @@ export async function sendMediaRightsReminders() {
   return n;
 }
 
-export const runMediaRightsSweeps = async () => ({ changed: await expireMediaRights(), reminders: await sendMediaRightsReminders() });
+export const runMediaRightsSweeps = async () => ({ changed: await expireMediaRights(), reminders: await sendMediaRightsReminders(), fan_alerts: await sendMediaFollowerAlerts() });

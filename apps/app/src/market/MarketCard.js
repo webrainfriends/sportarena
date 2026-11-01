@@ -59,7 +59,7 @@ export function MarketCard({ p, user, gate, onChanged, feed }) {
         <T weight="800" size={feed ? 19 : 17} style={{ letterSpacing: -0.4, lineHeight: feed ? 25 : 23 }}>{p.title}</T>
         {p.body ? <T size={14} color="#334155" style={{ lineHeight: 21 }} numberOfLines={feed ? 8 : 3}>{p.body}</T> : null}
         {facts.length ? <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>{facts.map((f) => <View key={f} style={{ backgroundColor: c.bg, borderRadius: 999, paddingHorizontal: 10, paddingVertical: 5 }}><T size={12} weight="600" color="#334155">{f}</T></View>)}</View> : null}
-        {p.price_cents != null ? <T size={22} weight="800" color={tone}>{money(p.price_cents)}</T> : null}
+        {p.price_cents != null ? <T size={22} weight="800" color={tone}>{money(p.price_cents, p.currency)}</T> : null}
 
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flexWrap: 'wrap', marginTop: 2 }}>
           <Pressable onPress={() => gate('react', p)} style={{ flexDirection: 'row', alignItems: 'center', gap: 5, paddingVertical: 8, paddingRight: 10 }}>

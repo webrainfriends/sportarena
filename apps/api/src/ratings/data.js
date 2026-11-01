@@ -4,7 +4,7 @@
 import { createHash } from 'node:crypto';
 import { query, many, one, tx } from '../db.js';
 import { NOT_YOUTH_SQL } from '../youth.js';
-import { replay, present, toLevel, bucketOf, RELIABLE_RD, inflate } from './engine.js';
+import { replay, present, toLevel, bucketOf, RELIABLE_RD, inflate, reliabilityOf } from './engine.js';
 import { modelOf, usesMargin } from './models.js';
 
 const q = (c) => c ?? { query };
@@ -122,10 +122,6 @@ export async function recomputeSport(sport, { reason = 'sweep', userId = null } 
   });
 }
 
-const listeners = new Set();
-/** Run `fn(sportIds)` after a recompute that changed ratings (the rankings module re-snapshots its skill-level rankings from here, so ratings never import rankings). */
-export const afterRatingsChange = (fn) => { listeners.add(fn); };
-
 /** Every sport that has any verified game or an earlier run (so a sport whose evidence was withdrawn is re-run too). */
 export async function recomputeAll(reason = 'sweep', { sportId } = {}) {
   const sports = await many(
@@ -136,11 +132,9 @@ export async function recomputeAll(reason = 'sweep', { sportId } = {}) {
           OR EXISTS (SELECT 1 FROM event_sessions es JOIN event_disciplines d ON d.id = es.discipline_id WHERE d.sport_id = s.id AND es.status = 'completed'))
       ORDER BY s.slug`, [sportId ?? null]);
   let runs = 0;
-  const changed = [];
   for (const s of sports) {
-    try { if ((await recomputeSport(s, { reason })).changed) { runs++; changed.push(s.id); } } catch (e) { console.error('[ratings]', s.slug, e.message); } // one sport never stops the rest
+    try { if ((await recomputeSport(s, { reason })).changed) runs++; } catch (e) { console.error('[ratings]', s.slug, e.message); } // one sport never stops the rest
   }
-  if (changed.length) for (const fn of listeners) await fn(changed).catch((e) => console.error('[ratings] listener', e.message));
   return runs;
 }
 /** Called after a result is approved, corrected or superseded; never blocks or fails the caller. */
@@ -203,5 +197,22 @@ export async function historyOf(userId, sportId, { ledger, limit, offset }, c) {
       played_at: r.played_at, level: toLevel(r.after_r), delta: Math.round((toLevel(r.after_r) - toLevel(r.before_r)) * 100) / 100,
       ...(ledger ? { result: r.result, expected_win_chance: Math.round(r.expected * 100), opponent_level: toLevel(r.opponent_r), event: r.event_id ? { id: r.event_id, name: r.event_name } : null, game: { kind: r.game_kind, id: r.game_id } } : {}),
     })),
+  };
+}
+
+/** One verified game's effect on a person's level, in the newest run (the evidence ledger row). Null when there is no such game. */
+export async function changeOf(userId, sportId, gameId, c) {
+  const run = (await q(c).query("SELECT run_id FROM skill_ratings WHERE user_id=$1 AND sport_id=$2 AND status='active'", [userId, sportId])).rows[0];
+  if (!run) return null;
+  const r = (await q(c).query(
+    `SELECT ch.*, e.name AS event_name FROM skill_rating_changes ch LEFT JOIN events e ON e.id = ch.event_id
+      WHERE ch.run_id=$1 AND ch.user_id=$2 AND ch.game_id=$3 ORDER BY ch.id DESC LIMIT 1`, [run.run_id, userId, gameId])).rows[0];
+  if (!r) return null;
+  const before = toLevel(r.before_r), after = toLevel(r.after_r);
+  return {
+    played_at: r.played_at, result: r.result, event: r.event_id ? { id: r.event_id, name: r.event_name } : null, game: { kind: r.game_kind, id: r.game_id },
+    level_before: before, level_after: after, delta: Math.round((after - before) * 100) / 100,
+    expected_win_chance: Math.round(r.expected * 100), opponent_level: toLevel(r.opponent_r),
+    reliability_before: reliabilityOf(r.before_rd), reliability_after: reliabilityOf(r.after_rd),
   };
 }

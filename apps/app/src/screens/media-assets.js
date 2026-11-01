@@ -1,7 +1,7 @@
 // Media rights (#482): governed media and clips. Every asset carries who owns it (declared, never assumed from the upload), what right it is released under,
 // who may see it, where and on which platforms, when it publishes, lifts its embargo and expires, who appears in it with their consent, and what it was cut from.
 // What each viewer sees is decided by the server on every request; this screen shows the live state it returns and the reason when something is held back.
-import React, { useState } from 'react';
+import React, { useRef, useState } from 'react';
 import { View } from 'react-native';
 import { api } from '../api';
 import { useLoad } from '../hooks';
@@ -127,6 +127,7 @@ function AssetSheet({ id, isOrg, onClose, onChanged }) {
             {a.can?.act && a.status === 'published' ? <ABtn small title="Withdraw" tone="sun" onPress={() => setAsk('withdraw')} /> : null}
             {a.can?.take_down && !['taken_down'].includes(a.status) ? <ABtn small title="Take down" tone="live" onPress={() => setAsk('take_down')} /> : null}
             {a.can?.take_down && ['withdrawn', 'taken_down'].includes(a.status) ? <ABtn small title="Restore to draft" tone="ghost" onPress={() => act('restore')} /> : null}
+            <ABtn small title="Check rights" tone="ghost" onPress={() => setForm('check')} />
             {a.can?.act && !['withdrawn', 'taken_down'].includes(a.status) ? <ABtn small title="Edit rights" tone="ghost" onPress={() => setForm('rights')} /> : null}
             {a.can?.act && !['withdrawn', 'taken_down'].includes(a.status) ? <ABtn small title="+ Person in it" tone="ghost" onPress={() => setForm('person')} /> : null}
           </View>
@@ -140,6 +141,7 @@ function AssetSheet({ id, isOrg, onClose, onChanged }) {
           ) : null}
           {a.derivatives?.length ? <><LSection title="Clips cut from it" />{a.derivatives.map((x) => <T key={x.id} size={13} color={c.mute}>{x.title} · {nice(x.status)}</T>)}</> : null}
           {a.history ? <><LSection title="History" /><LCard>{a.history.map((h, i) => <T key={i} size={12.5} color={c.mute}>{fmtDT(h.at)} · <T size={12.5} weight="800">{nice(h.action)}</T>{h.actor_name ? ` · ${h.actor_name}` : ''}{h.detail?.reason ? ` · ${h.detail.reason}` : ''}</T>)}</LCard></> : null}
+          {form === 'check' ? <RightsCheck asset={a} onClose={() => { setForm(null); reload(); }} /> : null}
           <ReasonSheet visible={!!ask} onClose={() => setAsk(null)} title={ask === 'take_down' ? 'Take this down' : 'Withdraw this'} sub={ask === 'take_down' ? 'It disappears at once for everyone, along with every clip cut from it. Nothing is deleted: the file and history are kept for retention and contract purposes.' : 'It is hidden from its audience. Nothing is deleted.'}
             presets={ask === 'take_down' ? ['Rights dispute', 'Safeguarding', 'Legal request', 'Wrong content'] : ['Superseded', 'Licence ended', 'Error']} confirmLabel={ask === 'take_down' ? 'Take down' : 'Withdraw'} tone="live" onConfirm={async (reason) => { await act(ask, reason); }} />
           <FormSheet visible={form === 'rights'} onClose={() => setForm(null)} title="Edit rights"
@@ -157,5 +159,52 @@ function AssetSheet({ id, isOrg, onClose, onChanged }) {
         </>
       )}
     </Sheet>
+  );
+}
+
+/** Ask the server whether this asset may be published, exported or handed to a partner, for a platform and country. Every rule is shown with its answer, and the check is kept in the audit log. */
+function RightsCheck({ asset, onClose }) {
+  const [res, setRes] = useState(null);
+  const sent = useRef(false);
+  const lic = useLoad(() => (asset.can?.act ? api.get(`/events/${asset.event_id}/media/licences`, { stage: 'active', limit: 100 }) : Promise.resolve([])), [asset.id]);
+  const purposes = [...(asset.can?.act && asset.status === 'draft' ? [{ value: 'publish', label: '🚀 Publish it' }] : []), { value: 'export', label: '📤 Export or share it' }, ...(asset.can?.act ? [{ value: 'distribute', label: '🤝 Hand it to a partner' }] : [])];
+  if (res) {
+    return (
+      <Sheet visible onClose={onClose} title={res.outcome === 'allowed' ? '✅ Allowed' : '⛔ Blocked'}>
+        <T size={13} color={c.mute}>{res.outcome === 'allowed' ? 'Every rule passed. This check is kept in the audit log.' : 'At least one rule failed. Nothing was released, and this check is kept in the audit log.'}</T>
+        {res.rules.map((r) => (
+          <ARow key={r.rule} left={<AT size={20}>{r.ok ? '✅' : '⛔'}</AT>} title={r.label} sub={r.ok ? null : r.detail} />
+        ))}
+        {res.provenance ? <Facts rows={[['Owner', res.provenance.owner_name ?? nice(res.provenance.owner_kind)], ['Credit', res.provenance.credit], ['Cut from', res.provenance.cut_from?.length ? res.provenance.cut_from.map((x) => x.title).join(' ← ') : null]]} /> : null}
+        <ABtn title="Done" tone="ghost" onPress={onClose} />
+      </Sheet>
+    );
+  }
+  return (
+    <FormSheet visible onClose={() => { if (!sent.current) onClose(); }} title="Check rights" submitLabel="Check"
+      fields={[
+        { key: 'purpose', label: 'What do you want to do with it?', type: 'chips', options: purposes, default: purposes[0].value },
+        { key: 'licence_id', label: 'Under which partner licence', type: 'choice', show: (v) => v.purpose === 'distribute', options: (lic.data ?? []).filter((l) => l.in_force).map((l) => ({ value: l.id, label: `${l.partner_name} · ${l.licence_no}` })), hint: 'The asset is judged against this licence: rights, platforms, territory, scope and delay.' },
+        { key: 'platform', label: 'Platform', type: 'chips', optional: true, options: platformOptions(), show: (v) => v.purpose !== 'publish' },
+        { key: 'country', label: 'Country it will be used in', type: 'country', optional: true, show: (v) => v.purpose !== 'publish' },
+      ]}
+      onSubmit={async (v) => { const r = await api.post(`/media/assets/${asset.id}/rights-check`, v); sent.current = true; setRes(r); return null; }} />
+  );
+}
+
+/** The audit trail of rights checks for an event (organiser): who asked, for what, the answer and what failed. */
+export function RightsLog({ id }) {
+  const d = useLoad(() => api.get(`/events/${id}/media/rights-checks`, { limit: 20 }), [id]);
+  if (d.error) return <ErrorBox error={d.error} onRetry={d.reload} />;
+  if (!d.data) return <Loading />;
+  return (
+    <>
+      <ASection title="Rights check log" sub="Every check before publishing, exporting or handing content over. It cannot be edited." />
+      {!d.data.items.length ? <AEmpty emoji="🧾" title="No checks yet" sub="Checks appear here when anyone publishes media, checks its rights, or takes a licensed file." /> : d.data.items.map((k) => (
+        <ARow key={k.id} left={<AT size={22}>{k.outcome === 'allowed' ? '✅' : '⛔'}</AT>} title={`${nice(k.purpose)} · ${k.asset_title}`}
+          sub={[k.checked_by, fmtDT(k.checked_at), k.licence_no, k.country, k.platform ? nice(k.platform) : null, k.failed?.length ? `failed: ${k.failed.map(nice).join(', ')}` : null].filter(Boolean).join(' · ')}
+          right={<StateTag state={k.outcome} />} />
+      ))}
+    </>
   );
 }

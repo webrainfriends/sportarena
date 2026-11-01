@@ -10,7 +10,7 @@ import { newOpaqueToken, sha256 } from '../crypto.js';
 import { standings } from '../helpers.js';
 import { liveState } from '../scoring/state.js';
 import { notify } from '../notify.js';
-import { RIGHTS, RIGHT_KEYS, IN_FORCE, LIC_STAGE, logMr, eventOf, isOrganiserOf, partnerFor, partnerAdmins, eventOrganisers, ASSET_COLS, assetState } from '../media-rights.js';
+import { RIGHTS, RIGHT_KEYS, IN_FORCE, LIC_STAGE, CREW_ACCRED, logMr, eventOf, isOrganiserOf, partnerFor, partnerAdmins, eventOrganisers, ASSET_COLS, assetState } from '../media-rights.js';
 
 const TAG = 'Media data feeds';
 const text = (n) => z.string().trim().max(n);
@@ -224,7 +224,7 @@ cap({
       const games = await q(`SELECT f.id, f.scheduled_at, f.status, f.round, h.name AS home_name, a.name AS away_name,
           (SELECT count(*)::int FROM mr_crew c WHERE c.event_id=f.event_id AND (c.fixture_id=f.id OR c.fixture_id IS NULL) AND c.status IN ('assigned','acknowledged')) AS crew,
           (SELECT count(*)::int FROM mr_crew c WHERE c.event_id=f.event_id AND (c.fixture_id=f.id OR c.fixture_id IS NULL) AND c.status='acknowledged') AS confirmed,
-          (SELECT count(*)::int FROM mr_crew c JOIN event_department_members dm ON dm.id=c.department_member_id WHERE c.event_id=f.event_id AND (c.fixture_id=f.id OR c.fixture_id IS NULL) AND c.status IN ('assigned','acknowledged') AND dm.accreditation='issued') AS badged,
+          (SELECT count(*)::int FROM mr_crew c WHERE c.event_id=f.event_id AND (c.fixture_id=f.id OR c.fixture_id IS NULL) AND c.status IN ('assigned','acknowledged') AND ${CREW_ACCRED}='issued') AS badged,
           (SELECT count(*)::int FROM mr_run_items r WHERE r.event_id=f.event_id AND (r.fixture_id=f.id OR r.fixture_id IS NULL) AND r.status <> 'cancelled') AS run_items,
           (SELECT count(*)::int FROM mr_streams s WHERE s.event_id=f.event_id AND (s.fixture_id=f.id OR s.fixture_id IS NULL) AND s.status='active') AS streams,
           (SELECT count(*)::int FROM mr_incidents n WHERE n.event_id=f.event_id AND (n.fixture_id=f.id OR n.fixture_id IS NULL) AND n.status='open') AS open_incidents

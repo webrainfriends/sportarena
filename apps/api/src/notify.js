@@ -8,6 +8,7 @@ import { config } from './config.js';
 import { decrypt, encrypt } from './crypto.js';
 import { audit } from './helpers.js';
 import { planComms } from './comms.js';
+import { holdsBack } from './quiet-hours.js';
 
 export const DEFAULT_PREFS = { in_app: true, email: true, push: true, whatsapp: false, sms: false, reminder_hours: 24, muted_kinds: [], comm_categories_off: [], comm_locale: 'en-IN' };
 
@@ -33,21 +34,23 @@ export async function notify(c, userId, msg) {
   }
 }
 
-async function deliver(db, c, userId, { kind, title, body, data = {}, dedupe_key = null, comm = null }) {
+async function deliver(db, c, userId, { kind, title, body, data = {}, dedupe_key = null, comm = null, urgent = false }) {
   const prefs = (await db.query('SELECT * FROM notification_prefs WHERE user_id=$1', [userId])).rows[0] ?? DEFAULT_PREFS;
   if (prefs.muted_kinds.includes(kind) || (!prefs.in_app && !prefs.email && prefs.push === false && !prefs.whatsapp && !prefs.sms)) return null;
   const n = (await db.query('INSERT INTO notifications(user_id, kind, title, body, data, dedupe_key) VALUES ($1,$2,$3,$4,$5,$6) ON CONFLICT (user_id, dedupe_key) WHERE dedupe_key IS NOT NULL DO NOTHING RETURNING *', [userId, kind, title, body, data, dedupe_key])).rows[0];
   if (!n) return null; // same business event already notified for this recipient
   if (prefs.email) await db.query("INSERT INTO notification_deliveries(notification_id, channel) VALUES ($1,'email')", [n.id]);
   if (!prefs.in_app) await db.query('UPDATE notifications SET read_at=now() WHERE id=$1', [n.id]); // no in-app channel: keep the inbox clean
+  // quiet hours hold back push / WhatsApp / SMS (the inbox and email still get it); an urgent notice breaks through unless the person said otherwise
+  const quiet = holdsBack(prefs, { urgent: urgent || comm?.essential === true });
   // push goes straight to the person's phones / browsers, as soon as the data is committed
-  if (prefs.push !== false && (await db.query('SELECT 1 FROM push_devices WHERE user_id=$1 AND disabled_at IS NULL LIMIT 1', [userId])).rowCount) {
+  if (!quiet && prefs.push !== false && (await db.query('SELECT 1 FROM push_devices WHERE user_id=$1 AND disabled_at IS NULL LIMIT 1', [userId])).rowCount) {
     await db.query("INSERT INTO notification_deliveries(notification_id, channel) VALUES ($1,'push')", [n.id]);
     const kick = () => import('./push.js').then((m) => m.dispatchPush()).catch((e) => console.error('[push]', e.message));
     if (c?.afterCommit) c.afterCommit(kick); else setImmediate(kick);
   }
   // WhatsApp Business / SMS templates (India): planned by the communications layer from the same notification, never by the calling module
-  const comms = await planCommsSafely(db, c, userId, n, { kind, data, comm });
+  const comms = quiet ? { whatsappCloud: false, blockLegacyWhatsapp: true } : await planCommsSafely(db, c, userId, n, { kind, data, comm });
   // Legacy WhatsApp (OpenWA, free text) is opt-in (verified number + switch) and limited to an allow-list of kinds; the worker sends it paced.
   // It is skipped when an approved template for the same message was just queued, so nobody gets the same message twice on WhatsApp.
   if (!comms.whatsappCloud && !comms.blockLegacyWhatsapp && prefs.whatsapp && await (await import('./whatsapp.js')).whatsappEligible(db, userId, kind)) await db.query("INSERT INTO notification_deliveries(notification_id, channel) VALUES ($1,'whatsapp')", [n.id]);
@@ -240,9 +243,10 @@ export async function notificationCycle() {
   const push = await isolated('push', () => dispatchPush(), null);
   const whatsapp = await isolated('whatsapp', async () => (await import('./whatsapp.js')).dispatchWhatsapp(), { configured: false, pending: 0, sent: 0, failed: 0 });
   const comms = await isolated('comms', async () => (await import('./comms-dispatch.js')).dispatchComms(), { configured: false, pending: 0, sent: 0, failed: 0 });
+  const inboxSweep = await isolated('inbox', async () => { const m = await import('./inbox.js'); return { escalated: await m.escalateUnacknowledged(), archived: await m.archiveStaleConversations() }; }, { escalated: 0, archived: 0 });
   const email = await isolated('email', () => dispatchPending(), { configured: !!config.notifyWebhook.url, pending: 0, sent: 0, failed: 0 });
-  const errors = Object.fromEntries(Object.entries({ reminders, coaching, notify: retries, push, whatsapp, comms, email }).filter(([, r]) => !r.ok).map(([k, r]) => [k, r.error]));
-  return { reminders: reminders.value, push: push.value, whatsapp: whatsapp.value, comms: comms.value, ...email.value, ...(Object.keys(errors).length ? { errors } : {}) };
+  const errors = Object.fromEntries(Object.entries({ reminders, coaching, notify: retries, push, whatsapp, comms, inbox: inboxSweep, email }).filter(([, r]) => !r.ok).map(([k, r]) => [k, r.error]));
+  return { reminders: reminders.value, push: push.value, whatsapp: whatsapp.value, comms: comms.value, inbox: inboxSweep.value, ...email.value, ...(Object.keys(errors).length ? { errors } : {}) };
 }
 
 export const inbox = (userId, { unread, limit, offset }) =>

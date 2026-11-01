@@ -5,6 +5,15 @@ const Ctx = createContext(null);
 const LEGACY_TABS = { Play: 'Explore', Book: 'Schedule', Hub: 'Home' }; // Hub (the old More page) is now the wheel overlay
 export const useNav = () => useContext(Ctx);
 
+/** Open the exact record a link names: a pushed screen, or a tab section. Links are resolved by the API (one resolver for every list). */
+export function openLink(nav, link) {
+  if (!link) return false;
+  if (link.tab) nav.goTab(link.tab, link.params ?? {});
+  else if (link.screen) nav.push(link.screen, link.params ?? {});
+  else return false;
+  return true;
+}
+
 /** Tiny stack navigator: one root per tab + a pushed-screen stack (mirrors browser history on web). */
 export function NavProvider({ children }) {
   const [tab, setTab] = useState('Home');

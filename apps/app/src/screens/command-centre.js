@@ -14,20 +14,14 @@ import { c } from '../theme';
 import { dateTimeIn } from '../vtime';
 import { locale } from '../locale';
 import { HomeSchedule, Item } from './athlete-home';
+import { InboxBody } from './inbox';
 
 export const SECTIONS = [['today', 'Today'], ['actions', 'Actions'], ['calendar', 'Calendar'], ['inbox', 'Inbox'], ['work', 'Work'], ['insights', 'Insights'], ['community', 'Community']];
 // the global account role that matches a persona, so the rest of the app's role-aware tools follow the switch
 const ACCOUNT_ROLE = { athlete: 'athlete', coach: 'coach', official: 'referee', event_manager: 'organizer', doctor: 'doctor', physio: 'physio', sponsor: 'sponsor', supplier: 'supplier', venue_operator: 'venue_manager', agent: 'recruiter' };
 const PINNABLE = { team: 'team', event: 'event', venue: 'venue', org: 'org' };
 
-/** Open the exact record a link names: a pushed screen, or a tab section. */
-export function openLink(nav, link) {
-  if (!link) return false;
-  if (link.tab) nav.goTab(link.tab, link.params ?? {});
-  else if (link.screen) nav.push(link.screen, link.params ?? {});
-  else return false;
-  return true;
-}
+export { openLink } from '../nav';
 
 /** Which role and scope the person is working as. Lives above the section so it survives switching between sections. */
 export function useWorkspace() {
@@ -211,34 +205,10 @@ function CalendarSection({ ws }) {
   );
 }
 
-/** The notification inbox. Used on Home and on the Notifications screen, so there is one inbox with deep links resolved by the API. */
-export function InboxList({ role, limit = 30 }) {
-  const nav = useNav();
-  const { toast } = useSession();
+/** The inbox on Home: the same unified inbox as the Notifications screen (one inbox), in its short form. */
+export function InboxList() {
   const { user } = useSession();
-  const [unread, setUnread] = useState(false);
-  const q = useLoad(() => api.get('/me/workspace/inbox', { ...(role ? { role } : {}), unread, limit }), [role, unread, limit]);
-  const open = async (n) => {
-    if (!n.read_at) { try { await api.post('/notifications/read', { ids: [n.id] }); q.reload(); } catch (e) { toast(e.message); } }
-    openLink(nav, n.link);
-  };
-  const readAll = async () => { try { await api.post('/notifications/read', {}); q.reload(); } catch (e) { toast(e.message); } };
-  if (!user) return null;
-  return (
-    <View style={{ gap: 10 }}>
-      <HScroll>
-        <Chip label="All" active={!unread} onPress={() => setUnread(false)} />
-        <Chip label={`Unread${q.data?.unread ? ` · ${q.data.unread}` : ''}`} active={unread} onPress={() => setUnread(true)} />
-        {q.data?.unread ? <Chip label="Mark all read" onPress={readAll} /> : null}
-      </HScroll>
-      <Frame q={q}>
-        {(d) => (d.items.length ? d.items.map((n) => (
-          <Row key={n.id} onPress={() => open(n)} color={n.read_at ? c.paper : c.pinkSoft} title={n.title}
-            sub={`${n.body ? `${n.body} · ` : ''}${new Date(n.created_at).toLocaleString(locale)}${n.link ? ' · opens the record' : ''}`} />
-        )) : <Empty emoji="🔕" title={unread ? 'Nothing unread' : 'Nothing yet'} sub="Decisions, reminders and changes land here and open the exact record." />)}
-      </Frame>
-    </View>
-  );
+  return user ? <InboxBody compact /> : null;
 }
 
 function InboxSection({ ws }) { return <InboxList role={ws.role} />; }

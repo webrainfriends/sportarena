@@ -4,18 +4,18 @@ The app opens on what the signed-in person does, not on the platform's modules. 
 Android and the web; phone gets a bottom bar, tablet and desktop a floating bar and a two-column Home.
 
 ## Navigation
-Bottom bar: **Home · Calendar · Work · Inbox · Profile**.
+Bottom bar: **Home · Calendar · More (centre swivel) · Workbench · Profile**. The Inbox is the button at the top right, beside the account button.
 
 | Tab | What it is | Where it comes from |
 | --- | --- | --- |
 | Home | today, what needs me, headline numbers, fast actions, role/organisation switch | `GET /me/role-workspace` |
 | Calendar | the existing agenda (`Schedule`, section `agenda`): matches, sessions, duty, bookings, health, other calendars | unchanged |
-| Work | the whole queue of the active role, most urgent first, plus its fast actions and **All tools** (the tools wheel) | `GET /me/role-workspace` |
+| Workbench (route `Work`) | the one page of the active role: its queue (most urgent first) and fast actions, with the role's own screen (coach, official, venue, sponsor ...) below. Replaces the separate Work tab and Workspace tile | `GET /me/role-workspace` |
 | Inbox | every notification; a tap opens the record using the same mapping as a tapped push | `GET /notifications` |
 | Profile | roles, security, device lock, settings | unchanged (`Me`) |
 
-Explore, the community feed (`Community`) and the player studio stay reachable from Home, Work and the tools wheel; nothing was removed.
-Switching role (or organisation) is the chip row on Home and Work. It uses the session's `activeRole`, the same one the tools wheel sets.
+Explore, the community feed (`Community`) and the player studio stay reachable from Home, the Workbench and the More swivel; nothing was removed.
+Switching role (or organisation) is the chip row on Home and the Workbench. It uses the session's `activeRole`, the same one the tools wheel sets.
 
 ## API
 `get_my_workspace` — `GET /me/role-workspace?role=` (REST, OpenAPI and MCP from one definition, `apps/api/src/capabilities/workspace.js`).

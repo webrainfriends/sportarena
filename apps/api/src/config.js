@@ -28,6 +28,10 @@ export const config = {
   // (see scripts/kms-init.js); the app unwraps it at start-up, so the plaintext key never sits on disk.
   keyProvider: env.KEY_PROVIDER ?? 'env',
   masterKey: (env.KEY_PROVIDER ?? 'env') === 'env' ? secret('SPORTARENA_MASTER_KEY') : null,
+  // Keyring: KEY_IDS lists every key that must stay loaded (default just k1); KEY_ACTIVE is the one new values are written with.
+  // Env provider: extra keys come from SPORTARENA_MASTER_KEY_<ID>. KMS provider: from <MASTER_KEY_FILE>.<id> (scripts/kms-init.js --key-id <id>).
+  keyIds: (env.KEY_IDS ?? 'k1').split(',').map((s) => s.trim()).filter(Boolean),
+  activeKeyId: env.KEY_ACTIVE ?? 'k1',
   kmsKeyId: env.KMS_KEY_ID,
   kmsRegion: env.KMS_REGION ?? 'ap-southeast-1',
   masterKeyFile: env.MASTER_KEY_FILE ?? '/var/lib/sportarena/master.key.enc',

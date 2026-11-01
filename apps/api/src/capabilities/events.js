@@ -8,6 +8,7 @@ import { canManageTeam } from './teams.js';
 import { hasOrgGrant } from '../org-access.js';
 import { reserve } from './venues.js';
 import { notify } from '../notify.js';
+import { onEventCancelled, onFixtureChanged, refundTicketsNow } from '../ticketing.js';
 import { WHO_FOR, levels as LEVELS_FIELD, ageBand, AGE_BAND_MSG } from '../opportunity-fields.js';
 import { afterResult, decideWinner } from '../tournament/advance.js';
 import { createRequest } from '../event-planning.js';
@@ -179,7 +180,12 @@ cap({
       one("SELECT round(avg(rating),2) AS avg, count(*)::int AS n FROM testimonials WHERE subject_type='event' AND subject_id=$1 AND status='published' AND visibility='public'", [i.id]),
       ev.venue_id ? one('SELECT id, name, city, emoji FROM venues WHERE id=$1', [ev.venue_id]) : null,
     ]);
-    return { ...ev, verified: (await badgesFor('event', [ev.id])).get(ev.id) ?? [], venue, entrants, standings: table, sponsors, rating };
+    // a competition season IS this event: say so, so the event workspace (departments, tasks, staff, venue, budget) and the competition point at each other
+    const cs = await one(
+      `SELECT cm.id AS competition_id, cm.name AS competition, cm.is_public, cm.status AS competition_status, cm.owner_id, cm.organisation_id, s.id AS season_id, s.label AS season, s.status AS season_status
+         FROM comp_seasons s JOIN comp_competitions cm ON cm.id=s.competition_id WHERE s.event_id=$1`, [ev.id]);
+    const competition = cs && ((cs.is_public && cs.competition_status !== 'draft' && cs.season_status !== 'draft') || (user && (isAdmin(user) || cs.owner_id === user.id || (await hasOrgGrant(user, cs.organisation_id, ['owner', 'admin']))))) ? { id: cs.competition_id, name: cs.competition, season_id: cs.season_id, season: cs.season, season_status: cs.season_status } : null;
+    return { ...ev, verified: (await badgesFor('event', [ev.id])).get(ev.id) ?? [], venue, entrants, standings: table, sponsors, rating, competition };
   },
 });
 
@@ -197,7 +203,7 @@ cap({
     brand_kit_id: id.nullable().optional().describe('the brand kit whose logo appears on this event\'s documents (null clears it)'),
   }),
   async handler({ user }, i) {
-    return tx(async (c) => {
+    const res = await tx(async (c) => {
       const ev = (await c.query('SELECT * FROM events WHERE id=$1 FOR UPDATE', [i.id])).rows[0];
       if (!ev) throw notFound('Event');
       mustOwn(user, ev.organizer_id, 'event');
@@ -222,9 +228,12 @@ cap({
       if (i.status === 'cancelled' && ev.status !== 'cancelled') {
         const who = (await c.query("SELECT DISTINCT coalesce(t.owner_id, e.user_id) AS uid FROM event_entries e LEFT JOIN teams t ON t.id=e.team_id WHERE e.event_id=$1 AND e.status IN ('pending','accepted','waitlisted')", [i.id])).rows;
         for (const r of who) if (r.uid) await notify(c, r.uid, { kind: 'event_cancelled', title: 'Event cancelled', body: `${ev.name} was cancelled by the organiser.`, data: { event_id: ev.id } });
+        await onEventCancelled(c, ev, user);   // spectator tickets: every live ticket becomes refund_due; the refund sweep pays them back through the original payments
       }
       return out;
     });
+    if (i.status === 'cancelled') await refundTicketsNow(i.id);   // the transaction has committed: pay the spectators back now (the sweep only retries what fails)
+    return res;
   },
 });
 
@@ -392,7 +401,7 @@ cap({
   summary: 'Move, re-time, assign a referee to (invitation), or cancel a fixture. Officials are re-validated against the new time; confirmed officials must acknowledge a change.',
   input: z.object({ id, scheduled_at: dt.optional(), duration_min: z.number().int().min(10).max(600).optional(), referee_id: id.optional(), status: z.enum(['scheduled', 'live', 'cancelled']).optional() }),
   async handler({ user }, i) {
-    return tx(async (c) => {
+    const res = await tx(async (c) => {
       const f = (await c.query('SELECT * FROM fixtures WHERE id=$1 FOR UPDATE', [i.id])).rows[0];
       if (!f) throw notFound('fixture');
       const ev = await eventForOrganizer(user, f.event_id, c);
@@ -408,6 +417,7 @@ cap({
       }
       const out = (await c.query('UPDATE fixtures SET scheduled_at=$2, duration_min=$3, status=coalesce($4,status) WHERE id=$1 RETURNING *', [f.id, start, dur, i.status])).rows[0];
       if (i.status === 'cancelled') {
+        await onFixtureChanged(c, ev, f, { kind: 'cancelled' }, user);   // tickets that only admit to this match become refund_due
         for (const fo of open) {
           await closeOfficial(c, fo, user.id, 'cancelled', 'Fixture cancelled');
           await notify(c, fo.user_id, { kind: 'official_assignment', title: 'Fixture cancelled', body: `Your ${fo.role} assignment for ${ev.name} was cancelled.`, data: { fixture_id: f.id, official_id: fo.id } });
@@ -415,6 +425,7 @@ cap({
         return out;
       }
       if (retimed) {
+        await onFixtureChanged(c, ev, f, { kind: 'rescheduled', oldAt: f.scheduled_at, newAt: start }, user);   // ticket holders are told and may refund past the usual cutoff
         for (const fo of open) {
           if (fo.status === 'accepted') await c.query('UPDATE fixture_officials SET needs_ack=true WHERE id=$1', [fo.id]);
           await notify(c, fo.user_id, { kind: 'official_assignment', title: 'Fixture time changed', body: `${ev.name} now starts ${new Date(start).toISOString()}. Please ${fo.status === 'accepted' ? 'acknowledge' : 'respond'}.`, data: { fixture_id: f.id, official_id: fo.id } });
@@ -432,6 +443,8 @@ cap({
       }
       return (await c.query('SELECT * FROM fixtures WHERE id=$1', [f.id])).rows[0];
     });
+    if (i.status === 'cancelled') await refundTicketsNow(res.event_id);
+    return res;
   },
 });
 

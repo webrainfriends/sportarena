@@ -128,27 +128,30 @@ cap({
   },
 });
 
+/** Your teams' chats with the latest message and unread count (also the team-chat rows of the unified inbox). */
+export async function myTeamChats(user) {
+  const teams = await many(
+    `SELECT t.id AS team_id, t.name, t.emoji, t.color FROM teams t WHERE
+       EXISTS (SELECT 1 FROM team_members m WHERE m.team_id=t.id AND m.user_id=$1 AND m.status='active')
+       OR EXISTS (SELECT 1 FROM team_members tm JOIN users u ON u.id=tm.user_id JOIN guardian_links l ON l.child_id=tm.user_id
+                   WHERE tm.team_id=t.id AND tm.status='active' AND l.guardian_id=$1 AND l.status='active' AND l.revoked_at IS NULL AND (l.expires_at IS NULL OR l.expires_at > now()) AND ${YOUTH_SQL})`, [user.id]);
+  const out = [];
+  for (const t of teams) {
+    const { audiences } = await chatAccess(user, t.team_id);
+    const last = await one(
+      'SELECT lm.body, lm.created_at, lu.display_name AS sender, lm.kind FROM team_messages lm JOIN users lu ON lu.id=lm.sender_id WHERE lm.team_id=$1 AND lm.deleted_at IS NULL AND lm.audience = ANY($2) ORDER BY lm.seq DESC LIMIT 1', [t.team_id, audiences]);
+    const unread = await one(
+      `SELECT count(*)::int AS n FROM team_messages um LEFT JOIN team_chat_reads r ON r.team_id=um.team_id AND r.user_id=$1
+        WHERE um.team_id=$2 AND um.deleted_at IS NULL AND um.audience = ANY($3) AND um.sender_id<>$1 AND um.created_at > coalesce(r.last_read_at, '-infinity')`, [user.id, t.team_id, audiences]);
+    out.push({ ...t, last_message: last, unread: unread.n, channels: audiences });
+  }
+  const at = (x) => (x.last_message ? +new Date(x.last_message.created_at) : -Infinity);
+  return out.sort((a, b) => (at(b) === at(a) ? a.name.localeCompare(b.name) : at(b) - at(a)));
+}
+
 cap({
   name: 'list_my_team_chats', method: 'GET', path: '/me/team-chats', tag: 'Team chat', summary: 'Your teams\' chats (as a member, or as a guardian of a young member) with the latest message and how many are unread.', input: z.object({}),
-  async handler({ user }) {
-    const teams = await many(
-      `SELECT t.id AS team_id, t.name, t.emoji, t.color FROM teams t WHERE
-         EXISTS (SELECT 1 FROM team_members m WHERE m.team_id=t.id AND m.user_id=$1 AND m.status='active')
-         OR EXISTS (SELECT 1 FROM team_members tm JOIN users u ON u.id=tm.user_id JOIN guardian_links l ON l.child_id=tm.user_id
-                     WHERE tm.team_id=t.id AND tm.status='active' AND l.guardian_id=$1 AND l.status='active' AND l.revoked_at IS NULL AND (l.expires_at IS NULL OR l.expires_at > now()) AND ${YOUTH_SQL})`, [user.id]);
-    const out = [];
-    for (const t of teams) {
-      const { audiences } = await chatAccess(user, t.team_id);
-      const last = await one(
-        'SELECT lm.body, lm.created_at, lu.display_name AS sender, lm.kind FROM team_messages lm JOIN users lu ON lu.id=lm.sender_id WHERE lm.team_id=$1 AND lm.deleted_at IS NULL AND lm.audience = ANY($2) ORDER BY lm.seq DESC LIMIT 1', [t.team_id, audiences]);
-      const unread = await one(
-        `SELECT count(*)::int AS n FROM team_messages um LEFT JOIN team_chat_reads r ON r.team_id=um.team_id AND r.user_id=$1
-          WHERE um.team_id=$2 AND um.deleted_at IS NULL AND um.audience = ANY($3) AND um.sender_id<>$1 AND um.created_at > coalesce(r.last_read_at, '-infinity')`, [user.id, t.team_id, audiences]);
-      out.push({ ...t, last_message: last, unread: unread.n, channels: audiences });
-    }
-    const at = (x) => (x.last_message ? +new Date(x.last_message.created_at) : -Infinity);
-    return out.sort((a, b) => (at(b) === at(a) ? a.name.localeCompare(b.name) : at(b) - at(a)));
-  },
+  handler: ({ user }) => myTeamChats(user),
 });
 
 // ------------------------------------------------------------------ reactions, pins

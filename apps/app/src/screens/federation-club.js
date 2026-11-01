@@ -14,7 +14,7 @@ import { A, ABtn, ACard, AEmpty, AT, ASection, ATag } from '../arena';
 import { Counter, DateField } from '../pickers';
 import { explain, LoadError } from '../access';
 import { c } from '../theme';
-import { Banner, BodyPicker, Checks, StatusTag, fmtDate, fmtRange, issueDocument, money, statusLabel } from '../federation-ui';
+import { Banner, BodyPicker, JurisdictionPick, Checks, StatusTag, fmtDate, fmtRange, issueDocument, money, statusLabel } from '../federation-ui';
 
 const thisYear = new Date().getFullYear();
 // which organisation kinds a category is for (mirrors the server, which is the authority)
@@ -32,6 +32,7 @@ function ApplySheet({ visible, onClose, org, bodyId, onDone }) {
   const [cats, setCats] = useState(null);
   const [cat, setCat] = useState(null);
   const [season, setSeason] = useState(thisYear);
+  const [juris, setJuris] = useState();
   const [note, setNote] = useState('');
   const [busy, setBusy] = useState(false);
   useEffect(() => { if (visible) { setCat(null); setNote(''); setSeason(thisYear); if (!bodyId) setBody(null); } }, [visible, bodyId]);
@@ -46,7 +47,7 @@ function ApplySheet({ visible, onClose, org, bodyId, onDone }) {
   const submit = async () => {
     setBusy(true);
     try {
-      const a = await api.post('/federation/affiliations', { body_id: body.id, organisation_id: org.id, category_id: cat.id, season_year: season, ...(note.trim() ? { note: note.trim() } : {}) });
+      const a = await api.post('/federation/affiliations', { body_id: body.id, organisation_id: org.id, category_id: cat.id, season_year: season, ...(juris ? { jurisdiction_id: juris } : {}), ...(note.trim() ? { note: note.trim() } : {}) });
       toast('Application started. Add the documents and send it.'); onClose(); onDone?.(); push('FederationRecord', { type: 'affiliation', id: a.id });
     } catch (e) { toast(explain(e)); } finally { setBusy(false); }
   };
@@ -71,6 +72,7 @@ function ApplySheet({ visible, onClose, org, bodyId, onDone }) {
         {cat ? (
           <>
             <Counter label="Season" value={season} onChange={setSeason} min={thisYear - 1} max={thisYear + 2} />
+            <JurisdictionPick bodyId={body.id} value={juris} onChange={setJuris} />
             <Field label="Note for the registrar (optional)" value={note} onChangeText={setNote} multiline maxLength={1000} />
             <Btn title="Start application" loading={busy} onPress={submit} />
           </>) : null}
@@ -219,6 +221,7 @@ function LicenceApplySheet({ visible, onClose, bodyId, kids, onDone }) {
   const [club, setClub] = useState(null);
   const [holder, setHolder] = useState(null);
   const [note, setNote] = useState('');
+  const [juris, setJuris] = useState();
   const [busy, setBusy] = useState(false);
   const [consent, setConsent] = useState(false);
   useEffect(() => { if (visible) { setType(null); setClub(null); setHolder(null); setNote(''); setConsent(false); if (!bodyId) setBody(null); } }, [visible, bodyId]);
@@ -233,7 +236,7 @@ function LicenceApplySheet({ visible, onClose, bodyId, kids, onDone }) {
   const submit = async () => {
     setBusy(true); setConsent(false);
     try {
-      const l = await api.post('/federation/licences', { body_id: body.id, type_id: type.id, ...(holder ? { holder_id: holder.id } : {}), ...(club ? { affiliation_id: club.id } : {}), ...(note.trim() ? { note: note.trim() } : {}) });
+      const l = await api.post('/federation/licences', { body_id: body.id, type_id: type.id, ...(holder ? { holder_id: holder.id } : {}), ...(club ? { affiliation_id: club.id } : {}), ...(juris ? { jurisdiction_id: juris } : {}), ...(note.trim() ? { note: note.trim() } : {}) });
       toast('Application started. Add the documents and send it.'); onClose(); onDone?.(); push('FederationRecord', { type: 'licence', id: l.id });
     } catch (e) { if (e.details?.code === 'guardian_consent_required') setConsent(true); else toast(explain(e)); } finally { setBusy(false); }
   };
@@ -276,6 +279,7 @@ function LicenceApplySheet({ visible, onClose, bodyId, kids, onDone }) {
           </View>) : null}
         {ready ? (
           <>
+            <JurisdictionPick bodyId={body.id} value={juris} onChange={setJuris} />
             <Field label="Note (optional)" value={note} onChangeText={setNote} multiline maxLength={1000} />
             {consent ? <Banner tone={c.sunSoft} action="Family & guardians" onAction={() => { onClose(); push('Family'); }}>A verified guardian has not given current consent for taking part. Allow it under Family & guardians, then apply again.</Banner> : null}
             <Btn title="Start application" loading={busy} onPress={submit} />
@@ -332,6 +336,7 @@ function SanctionSheet({ visible, onClose, event, onDone }) {
   const [from, setFrom] = useState(null);
   const [to, setTo] = useState(null);
   const [note, setNote] = useState('');
+  const [juris, setJuris] = useState();
   const [busy, setBusy] = useState(false);
   useEffect(() => { if (visible) { setBody(null); setReady(null); setCats([]); setDraft(''); setRule(null); setFrom(event.starts_on ? String(event.starts_on).slice(0, 10) : null); setTo(event.ends_on ? String(event.ends_on).slice(0, 10) : null); setNote(''); } }, [visible, event.id]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => { if (visible) api.get('/ruleset-versions', { sport: event.sport_id, limit: 50 }).then((r) => setRules(r.versions ?? [])).catch(() => setRules([])); }, [visible, event.sport_id]);
@@ -344,7 +349,7 @@ function SanctionSheet({ visible, onClose, event, onDone }) {
   const submit = async () => {
     setBusy(true);
     try {
-      const s = await api.post('/federation/sanctions', { body_id: body.id, event_id: event.id, categories: cats, ...(rule ? { ruleset_version_id: rule.id } : {}), ...(from ? { starts_on: from } : {}), ...(to ? { ends_on: to } : {}), ...(note.trim() ? { note: note.trim() } : {}) });
+      const s = await api.post('/federation/sanctions', { body_id: body.id, event_id: event.id, categories: cats, ...(juris ? { jurisdiction_id: juris } : {}), ...(rule ? { ruleset_version_id: rule.id } : {}), ...(from ? { starts_on: from } : {}), ...(to ? { ends_on: to } : {}), ...(note.trim() ? { note: note.trim() } : {}) });
       toast('Sanction requested'); onClose(); onDone?.(); push('FederationRecord', { type: 'sanction', id: s.id });
     } catch (e) { toast(explain(e)); } finally { setBusy(false); }
   };
@@ -374,6 +379,7 @@ function SanctionSheet({ visible, onClose, event, onDone }) {
                   {rules.map((r) => <Chip key={r.id} label={`${r.label} v${r.version}`} active={rule?.id === r.id} onPress={() => setRule(r)} />)}
                 </View>
               </View>) : null}
+            <JurisdictionPick bodyId={body.id} value={juris} onChange={setJuris} hint="Where the competition is held." />
             <DateField label="Sanctioned from" value={from} onChange={setFrom} optional hint="Defaults to the event's own dates." />
             <DateField label="Sanctioned to" value={to} onChange={setTo} optional min={from ?? undefined} />
             <Field label="Note (optional)" value={note} onChangeText={setNote} multiline maxLength={1000} />

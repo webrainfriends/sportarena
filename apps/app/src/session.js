@@ -5,6 +5,7 @@ import { api, setSessionTokens, setTokensHandler, setUnauthorizedHandler, storag
 import { c } from './theme';
 import { clearOutbox } from './outbox';
 import { beforeSignOut, initOffline } from './offline';
+import { clearPack } from './scorer/pack';
 
 const Ctx = createContext(null);
 export const useSession = () => useContext(Ctx);
@@ -18,6 +19,7 @@ export function SessionProvider({ children }) {
   const signOut = useCallback(async () => {
     await beforeSignOut().catch(() => {}); // upload the player's saved drafts, then keep or remove the rest as they chose (offline.js)
     clearOutbox(); // queued coaching writes belong to this account and must not outlive the session
+    await clearPack(); // the match-day pack holds lineups: it goes with the account (the games can be saved again)
     try { await api.post('/auth/logout'); } catch { /* already signed out, or offline: still clear this device */ }
     setSessionTokens(null);
     await Promise.all([storage.del('token'), storage.del('refresh')]);

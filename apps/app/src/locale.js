@@ -4,6 +4,7 @@ import { Platform } from 'react-native';
 // (browser language list or OS setting); if the device only gives a bare language ("en"), the region is inferred from
 // the device time zone ("en" + Asia/Kolkata -> en-IN), so day/month order, 12/24-hour clock and digits match the place.
 // Times are shown in the device's time zone (venue-local times use the venue's zone, see vtime.js).
+// The app's text is translated through ./i18n (ta, te, ml, mr, kn, bn, or, hi, si, ur, id + English).
 // Resolved once at load (screens format at import/render time); changing the choice reloads the app (appearance.js).
 
 export const LOCALE_KEY = 'locale'; // BCP 47 tag, or absent = follow the device
@@ -50,11 +51,11 @@ export const timeZone = deviceZone; // always the device's own zone; venue times
 export const followsDevice = !chosenLocale;
 
 const EN_REGIONS = ['IN', 'SG', 'GB', 'US', 'AU', 'CA', 'NZ', 'IE', 'ZA', 'AE', 'MY', 'PH', 'HK', 'PK', 'BD', 'LK', 'NG', 'KE'];
-/** Languages and regions offered in the picker (the app's own text is English for now; dates, times, numbers and currency follow the pick).
+/** Languages and regions offered in the picker (screen text follows the language packs in ./i18n, English where a string is not translated yet; dates, times, numbers and currency follow the pick).
  *  English is offered for every region we know, so someone in Singapore can pick English (Singapore) rather than a nearby country. */
 export const LOCALES = [
   ...EN_REGIONS.map((r) => `en-${r}`),
-  'hi-IN', 'bn-IN', 'bn-BD', 'ta-IN', 'ta-SG', 'ta-LK', 'te-IN', 'mr-IN', 'gu-IN', 'kn-IN', 'ml-IN', 'pa-IN', 'ur-PK', 'ne-NP', 'si-LK', 'ar-AE', 'ar-SA',
+  'hi-IN', 'bn-IN', 'bn-BD', 'ta-IN', 'ta-SG', 'ta-LK', 'te-IN', 'mr-IN', 'gu-IN', 'kn-IN', 'ml-IN', 'or-IN', 'pa-IN', 'ur-PK', 'ur-IN', 'ne-NP', 'si-LK', 'ar-AE', 'ar-SA',
   'zh-SG', 'zh-CN', 'zh-TW', 'zh-HK', 'ms-MY', 'ms-SG', 'id-ID', 'th-TH', 'vi-VN', 'fil-PH', 'ja-JP', 'ko-KR',
   'fr-FR', 'fr-CA', 'de-DE', 'es-ES', 'es-MX', 'pt-BR', 'pt-PT', 'it-IT', 'nl-NL', 'sv-SE', 'pl-PL', 'tr-TR', 'ru-RU',
 ].filter(valid);

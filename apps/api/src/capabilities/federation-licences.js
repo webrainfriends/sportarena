@@ -11,8 +11,9 @@ import { notify } from '../notify.js';
 import { encrypt } from '../crypto.js';
 import { requireApproved } from '../access.js';
 import { hasConsent, requireConsent, isYouth } from '../youth.js';
-import { authority, need, mustBeActive, bodyById, lockBody, logFed, historyOf, nextNumber, policyAt, paramsOf, check, blocking, LIC_STATUS, AFF_STATUS, addMonths, today, isGuardianOf, subtree } from '../federation.js';
+import { openException, authority, need, jurisdictionScope, mustBeJurisdictionOf, mustBeActive, bodyById, lockBody, logFed, historyOf, nextNumber, policyAt, paramsOf, check, blocking, LIC_STATUS, AFF_STATUS, addMonths, today, isGuardianOf, subtree } from '../federation.js';
 import { developmentChecks } from '../officials-development.js';
+import { gate } from '../federation-approvals.js';
 import { subjectFor, needStaff, staffCan, staffRecipients, evidenceIn, addEvidence, evidenceList, readEvidence, removeEvidence, missingDocuments } from '../federation-subjects.js';
 
 const TAG = 'Federation';
@@ -63,7 +64,7 @@ cap({
 });
 
 // ------------------------------------------------------------------ views
-const LIC_COLS = `l.id, l.body_id, bo.name AS body_name, b.abbreviation AS body_abbreviation, l.type_id, t.name AS type_name, t.holder_role, t.sport_id, s.name AS sport_name, t.discipline, l.grade, t.grade_rank,
+const LIC_COLS = `l.id, l.jurisdiction_id, (SELECT j.name FROM fed_jurisdictions j WHERE j.id=l.jurisdiction_id) AS jurisdiction_name, l.body_id, bo.name AS body_name, b.abbreviation AS body_abbreviation, l.type_id, t.name AS type_name, t.holder_role, t.sport_id, s.name AS sport_name, t.discipline, l.grade, t.grade_rank,
   l.holder_id, u.display_name AS holder_name, u.handle AS holder_handle, l.affiliation_id, af.affiliation_no, l.status AS recorded_status, ${LIC_STATUS('l')} AS status,
   l.licence_no, l.public_code, l.issued_on::text AS issued_on, l.expires_on::text AS expires_on, l.suspended_until::text AS suspended_until, l.previous_id, l.fee_minor, l.fee_currency, l.fee_status, l.override_reason, l.decision_reason, l.submitted_at, l.decided_at, l.row_version, l.created_at,
   CASE WHEN l.expires_on IS NOT NULL THEN l.expires_on - current_date END AS days_to_expiry`;
@@ -133,7 +134,7 @@ async function detail(s, c = pool) {
 cap({
   name: 'apply_licence', method: 'POST', path: '/federation/licences', tag: TAG, status: 201,
   summary: 'Apply for a federation licence. You apply for yourself; a verified guardian applies for a young person (who needs current guardian consent for taking part). Optionally attach it to an affiliated club you belong to. Attach the required documents, then submit.',
-  input: z.object({ body_id: id, type_id: id, holder_id: id.optional().describe('defaults to you; a young person you are a verified guardian of'), affiliation_id: id.optional(), note: text(1000).optional() }),
+  input: z.object({ body_id: id, type_id: id, holder_id: id.optional().describe('defaults to you; a young person you are a verified guardian of'), affiliation_id: id.optional(), jurisdiction_id: id.optional().describe('the region, state or district of the body the holder belongs to'), note: text(1000).optional() }),
   handler: ({ user }, i) => tx(async (c) => {
     requireApproved(user);
     const holderId = i.holder_id ?? user.id;
@@ -153,8 +154,8 @@ cap({
     if ((await c.query("SELECT 1 FROM fed_licences WHERE body_id=$1 AND type_id=$2 AND holder_id=$3 AND (status IN ('draft','submitted','under_review','needs_info') OR (status IN ('active','suspended') AND expires_on >= current_date)) LIMIT 1", [i.body_id, i.type_id, holderId])).rowCount) throw conflict('There is already an open or current licence of this type for that person');
     let l;
     try {
-      l = (await c.query('INSERT INTO fed_licences(body_id, type_id, holder_id, applicant_id, affiliation_id, grade, fee_minor, fee_currency, note) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING *',
-        [i.body_id, i.type_id, holderId, user.id, i.affiliation_id ?? null, type.grade, type.fee_minor, type.currency, i.note || null])).rows[0];
+      l = (await c.query('INSERT INTO fed_licences(body_id, type_id, holder_id, applicant_id, affiliation_id, grade, fee_minor, fee_currency, note, jurisdiction_id) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING *',
+        [i.body_id, i.type_id, holderId, user.id, i.affiliation_id ?? null, type.grade, type.fee_minor, type.currency, i.note || null, await mustBeJurisdictionOf(c, i.body_id, i.jurisdiction_id)])).rows[0];
     } catch (e) { if (e.code === '23505') throw conflict('There is already an open or current licence of this type for that person'); throw e; }
     await logFed(c, i.body_id, 'licence', l.id, 'created', { to: 'draft', actor: user.id });
     return licenceRow(l.id, c);
@@ -216,8 +217,8 @@ cap({
     if (await isYouth(s.row.holder_id, c)) await requireConsent(s.row.holder_id, 'participation', 'a federation licence', c);
     let n;
     try {
-      n = (await c.query('INSERT INTO fed_licences(body_id, type_id, holder_id, applicant_id, affiliation_id, grade, previous_id, fee_minor, fee_currency) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING *',
-        [s.row.body_id, s.row.type_id, s.row.holder_id, user.id, null, type.grade, s.row.id, type.fee_minor, type.currency])).rows[0];
+      n = (await c.query('INSERT INTO fed_licences(body_id, type_id, holder_id, applicant_id, affiliation_id, grade, previous_id, fee_minor, fee_currency, jurisdiction_id) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING *',
+        [s.row.body_id, s.row.type_id, s.row.holder_id, user.id, null, type.grade, s.row.id, type.fee_minor, type.currency, s.row.jurisdiction_id])).rows[0];
     } catch (e) { if (e.code === '23505') throw conflict('There is already an open application of this type'); throw e; }
     if (i.carry_over_documents) {
       await c.query(`INSERT INTO fed_evidence(body_id, subject_type, subject_id, requirement, reference_enc, file_name, content_type, size_bytes, sha256, file_enc, added_by)
@@ -233,7 +234,7 @@ cap({
 cap({
   name: 'decide_licence', method: 'POST', path: '/federation/licences/:id/decision', tag: TAG,
   summary: 'Review a licence (licensing officer/admin): start_review, request_info, approve (issues the licence and its number), reject, suspend (optionally until a date), reinstate or revoke. Approval runs the type\'s own requirements and the body\'s published licence policy; a failed requirement needs an `override_reason`, recorded as a compliance exception. Pass `version` to refuse a decision on a record that changed meanwhile.',
-  input: z.object({ id, action: z.enum(['start_review', 'request_info', 'approve', 'reject', 'suspend', 'reinstate', 'revoke']), reason: text(500).optional(), issued_on: day.optional(), expires_on: day.optional(), suspended_until: day.optional(), override_reason: text(500).min(5).optional(), version: z.number().int().min(1).optional() }),
+  input: z.object({ id, action: z.enum(['start_review', 'request_info', 'approve', 'reject', 'suspend', 'reinstate', 'revoke']), reason: text(500).optional(), issued_on: day.optional(), expires_on: day.optional(), suspended_until: day.optional(), override_reason: text(500).min(5).optional(), version: z.number().int().min(1).optional(), approval_id: id.optional().describe('the second person\'s approval, where the body requires four eyes') }),
   handler: ({ user }, i) => tx(async (c) => {
     const s = await subjectFor(user, 'licence', i.id, { c, lock: true });
     needStaff(s, 'licences');
@@ -266,12 +267,14 @@ cap({
       const { checks, policy } = await licenceChecks(c, l, type, { issuedOn: issued });
       const fails = blocking(checks);
       if (fails.length && !i.override_reason) throw conflict(`Not all requirements are met: ${fails.map((x) => x.label).join('; ')}. Fix them, or approve with an override reason.`, { code: 'requirements_not_met', checks });
+      if (fails.length) await gate(c, user, { bodyId: l.body_id, actions: ['credential_exception'], subjectType: 'licence', subjectId: l.id, request: { act: 'approve', override: i.override_reason }, approvalId: i.approval_id });
       to = 'active';
       patch = { licence_no: l.licence_no ?? await nextNumber(c, l.body_id, 'licence', issued.slice(0, 4)), public_code: l.public_code ?? randomBytes(6).toString('hex').toUpperCase(), issued_on: issued, expires_on: expires, grade: type.grade,
         checks: JSON.stringify(checks), policy_version_id: policy?.version_id ?? null, override_reason: fails.length ? i.override_reason : null, decision_reason: i.reason ?? null, suspended_until: null };
     }
     const keys = Object.keys(patch);
     await c.query(`UPDATE fed_licences SET status=$2, decided_by=$3, decided_at=now(), row_version=row_version+1, updated_at=now()${keys.map((k, n) => `, ${k}=$${n + 4}`).join('')} WHERE id=$1`, [l.id, to, user.id, ...keys.map((k) => patch[k])]);
+    if (patch.override_reason) await openException(c, l.body_id, 'licence', l.id, patch.override_reason, patch.checks, user.id);
     await logFed(c, l.body_id, 'licence', l.id, i.action, { from: l.status, to, actor: user.id, reason: i.reason ?? patch.override_reason,
       detail: { ...(patch.override_reason ? { override_reason: patch.override_reason } : {}), ...(patch.licence_no ? { licence_no: patch.licence_no, issued_on: patch.issued_on, expires_on: patch.expires_on } : {}), ...(patch.suspended_until ? { suspended_until: patch.suspended_until } : {}), ...(patch.policy_version_id ? { policy_version_id: patch.policy_version_id } : {}) } });
     const msg = { start_review: ['Licence under review', 'The federation has started reviewing your licence application.'], request_info: ['More information needed', i.reason], approve: ['Licence issued', `Your licence ${patch.licence_no ?? ''} is active until ${patch.expires_on ?? ''}.`],
@@ -302,7 +305,7 @@ cap({
 // ------------------------------------------------------------------ reads
 const FILTER = `($1::uuid IS NULL OR l.body_id=$1) AND ($2::uuid[] IS NULL OR l.holder_id = ANY($2)) AND ($3::text IS NULL OR (${LIC_STATUS('l')})=$3) AND ($4::uuid IS NULL OR l.type_id=$4) AND ($5::uuid IS NULL OR t.sport_id=$5)
   AND ($6::int IS NULL OR (l.status='active' AND l.expires_on BETWEEN current_date AND current_date + $6::int)) AND ($7::text IS NULL OR u.display_name ILIKE '%'||$7||'%' OR l.licence_no ILIKE '%'||$7||'%')
-  AND ($8::boolean OR l.status <> 'draft') AND ($9::uuid[] IS NULL OR l.body_id = ANY($9))`;
+  AND ($8::boolean OR l.status <> 'draft') AND ($9::uuid[] IS NULL OR l.body_id = ANY($9)) AND ($10::uuid[] IS NULL OR l.jurisdiction_id = ANY($10))`;
 cap({
   name: 'list_licences', method: 'GET', path: '/federation/licences', tag: TAG,
   summary: 'Licences. As a body\'s staff (or staff of a body above it): pass `body_id`, optionally `include_descendants`, and filter by status, type, sport, expiry or holder name. As a person: pass `mine` for your own and those of young people you are a verified guardian of. Status is as of today: an active licence past its expiry reads as expired.',
@@ -310,18 +313,18 @@ cap({
     expiring_within_days: z.coerce.number().int().min(1).max(365).optional(), q: text(80).optional(), include_descendants: z.coerce.boolean().default(false), ...page }),
   async handler({ user }, i) {
     if (!i.body_id && !i.mine) throw badRequest('Give body_id, or mine');
-    let ids = null, bodyIds = null;
+    let ids = null, bodyIds = null, scope = null;
     if (i.mine) {
       ids = [user.id, ...(await many("SELECT child_id FROM guardian_links WHERE guardian_id=$1 AND status='active' AND revoked_at IS NULL AND (expires_at IS NULL OR expires_at > now())", [user.id])).map((r) => r.child_id)];
     }
     if (i.body_id) {
       const auth = await authority(user, i.body_id, { optional: true });
       if (!auth && !i.mine) throw notFound('Governing body');
-      if (auth) bodyIds = i.include_descendants ? await subtree(i.body_id) : [i.body_id];
+      if (auth) { scope = jurisdictionScope(auth); bodyIds = i.include_descendants && !scope ? await subtree(i.body_id) : [i.body_id]; }
     }
-    const a = [i.body_id && !i.include_descendants ? i.body_id : null, ids, i.status ?? null, i.type_id ?? null, i.sport_id ?? null, i.expiring_within_days ?? null, i.q || null, !!i.mine, i.include_descendants ? bodyIds : null];
+    const a = [i.body_id && !i.include_descendants ? i.body_id : null, ids, i.status ?? null, i.type_id ?? null, i.sport_id ?? null, i.expiring_within_days ?? null, i.q || null, !!i.mine, i.include_descendants && !scope ? bodyIds : null, scope];
     const total = await one(`SELECT count(*)::int AS n FROM ${LIC_FROM} WHERE ${FILTER}`, a);
-    const items = await many(`SELECT ${LIC_COLS} FROM ${LIC_FROM} WHERE ${FILTER} ORDER BY (l.status IN ('submitted','under_review')) DESC, l.submitted_at DESC NULLS LAST, l.created_at DESC, l.id LIMIT $10 OFFSET $11`, [...a, i.limit, i.offset]);
+    const items = await many(`SELECT ${LIC_COLS} FROM ${LIC_FROM} WHERE ${FILTER} ORDER BY (l.status IN ('submitted','under_review')) DESC, l.submitted_at DESC NULLS LAST, l.created_at DESC, l.id LIMIT $11 OFFSET $12`, [...a, i.limit, i.offset]);
     return { total: total.n, items: items.map(withStanding) };
   },
 });

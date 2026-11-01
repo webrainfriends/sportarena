@@ -18,7 +18,7 @@ const EVENT_LABEL = { submitted: 'Submitted', correction_requested: 'Returned fo
 const mirrorKey = (r, t, i) => `sa-draft:${r}:${t}:${i}`;
 
 /** A file question: the files attached to it, and a button to add one (a PDF or a photo; kept encrypted, seen only by you and the sponsor). */
-function FileQuestion({ f, files, applicationId, ensureDraft, onChanged, disabled }) {
+function FileQuestion({ f, files, applicationId, ensureDraft, onChanged, disabled, uploadBase = '/program-applications', removeBase = '/application-files', who = "the sponsor's program staff" }) {
   const { toast } = useSession();
   const [busy, setBusy] = useState(false);
   const mine = files.filter((x) => x.field_key === f.key);
@@ -28,11 +28,11 @@ function FileQuestion({ f, files, applicationId, ensureDraft, onChanged, disable
       const picked = await pickDocument();
       if (!picked) return;
       const id = applicationId ?? (await ensureDraft());
-      await api.upload(`/program-applications/${id}/files`, picked.blob, { field: f.key, name: picked.name });
+      await api.upload(`${uploadBase}/${id}/files`, picked.blob, { field: f.key, name: picked.name });
       await onChanged();
     } catch (e) { toast(explain(e)); } finally { setBusy(false); }
   };
-  const remove = async (x) => { try { await api.del(`/application-files/${x.id}`); await onChanged(); } catch (e) { toast(explain(e)); } };
+  const remove = async (x) => { try { await api.del(`${removeBase}/${x.id}`); await onChanged(); } catch (e) { toast(explain(e)); } };
   return (
     <View style={{ gap: 6 }}>
       {mine.map((x) => (
@@ -42,7 +42,7 @@ function FileQuestion({ f, files, applicationId, ensureDraft, onChanged, disable
         </View>
       ))}
       {!disabled && mine.length < (f.max_files ?? 5) ? <Btn small title={mine.length ? 'Attach another file' : 'Attach a PDF or photo'} color={c.violet} loading={busy} onPress={add} style={{ alignSelf: 'flex-start' }} /> : null}
-      <T size={12} color={c.mute}>Up to {f.max_files ?? 5} file{(f.max_files ?? 5) === 1 ? '' : 's'}, 10 MB each. Stored encrypted; only you and the sponsor's program staff can open them.</T>
+      <T size={12} color={c.mute}>Up to {f.max_files ?? 5} file{(f.max_files ?? 5) === 1 ? '' : 's'}, 10 MB each. Stored encrypted; only you and {who} can open them.</T>
     </View>
   );
 }
@@ -92,7 +92,7 @@ function ReferencesEditor({ f, refs, setRefs, disabled }) {
 }
 
 /** One question, with the right control for its kind. */
-function Question({ f, form, disabled, bad }) {
+export function Question({ f, form, disabled, bad }) {
   const { values, setValue, currency, texts, setText } = form;
   const v = values[f.key];
   const label = <T weight="800" size={13}>{f.label}{f.required ? '' : ' (optional)'}{f.confidential ? '  🔒' : ''}</T>;
@@ -112,7 +112,7 @@ function Question({ f, form, disabled, bad }) {
         ? <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>{f.options.map((o) => <Chip key={o.value} label={o.label} active={v === o.value} onPress={() => setValue(f.key, o.value)} />)}</View>
         : <Seg options={f.options} value={v} onChange={(x) => setValue(f.key, x)} color={c.pink} />;
       case 'multi': return <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>{f.options.map((o) => <Chip key={o.value} label={o.label} active={v?.includes(o.value)} onPress={() => setValue(f.key, v?.includes(o.value) ? v.filter((x) => x !== o.value) : [...(v ?? []), o.value])} />)}</View>;
-      case 'file': return <FileQuestion f={f} files={form.files} applicationId={form.applicationId} ensureDraft={form.ensureDraft} onChanged={form.reloadFiles} disabled={disabled} />;
+      case 'file': return <FileQuestion f={f} files={form.files} applicationId={form.applicationId} ensureDraft={form.ensureDraft} onChanged={form.reloadFiles} disabled={disabled} uploadBase={form.uploadBase} removeBase={form.removeBase} who={form.who} />;
       case 'budget': return <BudgetEditor f={f} lines={form.budget} setLines={form.setBudget} currency={currency} requested={form.requested} disabled={disabled} bad={bad} />;
       case 'references': return <ReferencesEditor f={f} refs={form.refs} setRefs={form.setRefs} disabled={disabled} />;
       default: return null;

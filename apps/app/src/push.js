@@ -61,6 +61,8 @@ export async function disablePush(deviceId) {
 
 /** Where a tapped notification should land: [screen, params] or null. */
 export function targetFor(data = {}) {
+  if (data.conversation_id) return ['Conversation', { id: data.conversation_id }]; // a message, announcement or urgent notice in the Inbox
+  if (data.rx_entry_id) return ['RegistrationEntry', { id: data.rx_entry_id }]; // a registration was decided, sent back, promoted off the waiting list or changed
   if (data.governance_notice) return ['MyIntegrity', {}]; // a generic notice: the substance is only ever shown after opening the app
   if (data.spectator && data.fixture_id) return ['LiveCentre', { id: data.fixture_id }]; // an alert for a game you follow
   if (data.screen === 'PlayerFunding') return ['PlayerFunding', data.athlete_id ? { athlete_id: data.athlete_id } : {}]; // an athlete shared their funding with a coach
@@ -72,6 +74,8 @@ export function targetFor(data = {}) {
   if (data.report_id && data.fixture_id) return ['OfficialMatch', { id: data.fixture_id }]; // an official filed a report on your match
   if (data.proposal_id) return ['ScoringTool', { proposalId: data.proposal_id }]; // a proposed result to review, or the outcome of yours
   if ((data.ops_incident_id || data.ops_requirement) && data.event_id) return ['EventCommand', { id: data.event_id, tab: 'operations' }]; // an incident alert / handover, or a readiness requirement you own
+  if (data.subscription_id) return data.for_coach ? ['CoachRates', {}] : ['Wallet', {}]; // a monthly coaching subscription: payer messages open the Wallet, the coach's open Rate cards
+  if (data.ticket) return ['MyTickets', {}]; // a spectator ticket was issued, received, refunded or its match moved
   if (data.accreditation_id && data.event_id) return ['MyAccreditations', {}]; // a nomination, approval, reissue or revocation of your badge
   if (data.request_id && data.event_id) return ['EventInbox', {}];
   if (data.kpi_report_run_id) return ['Analytics', { tab: 'reports', run: data.kpi_report_run_id }]; // a scheduled analytics report is ready (it carries no figures)
@@ -96,14 +100,23 @@ export function targetFor(data = {}) {
 
 export function parseTarget(t) {
   const [kind, id, extra] = String(t ?? '').split(':');
+  if (kind === 'registration') return ['RegistrationHome', id ? { tab: id } : {}];
+  if (kind === 'registration-programme' && id) return ['RegistrationApply', { id }];
+  if (kind === 'registration-entry' && id) return ['RegistrationEntry', { id }];
+  if (kind === 'registration-manage' && id) return ['RegistrationManage', { id }];
+  if (kind === 'registration-setup') return ['RegistrationSetup', id ? { id } : {}];
+  if (kind === 'registration-form' && id) return ['RegistrationForm', { id }];
   if (kind === 'assessment' && id) return ['OfficialAssessment', { id }];
   if (kind === 'officials-development') return ['OfficialsDevelopment', id ? { tab: id } : {}];
+  if (kind === 'competition') return ['Competitions', id ? { id } : {}];
   if (kind === 'federation' && id) return ['FederationHome', extra ? { id, tab: extra } : { id }];
   if (kind === 'integrity-case' && id) return ['IntegrityCase', { id }];
   if (kind === 'my-integrity') return ['MyIntegrity', {}];
   if (kind === 'open-game' && id) return ['OpenGame', { id }];
   if (kind === 'find-games') return ['FindGames', {}];
   if (kind === 'family') return ['Family', {}];
+  if (kind === 'career') return ['CareerTimeline', {}];
+  if (kind === 'history-sources') return ['HistorySources', {}];
   if (kind === 'finance') return ['Finance', id ? { id } : {}];
   if (kind === 'reservation' && id) return ['Reservation', { id }];
   if (kind === 'cover') return ['Cover', {}];
@@ -123,6 +136,7 @@ export function parseTarget(t) {
   if (kind === 'tender-builder') return ['TenderBuilder', id ? { id } : {}];
   if (kind === 'tenders') return ['TenderHome', {}];
   if (kind === 'tender-zone') return ['TenderZone', {}];
+  if (kind === 'platform-security') return ['PlatformSecurity', {}];
   if (kind === 'billboard') return ['Billboard', {}];
   if (kind === 'event' && id) return ['Event', { id }];
   if (kind === 'fixture' && id) return ['LiveCentre', { id }];
@@ -131,6 +145,14 @@ export function parseTarget(t) {
   if (kind === 'event-ops' && id) return ['EventCommand', { id, tab: 'operations' }];
   if (kind === 'event-accreditation' && id) return ['EventCommand', { id, tab: 'accreditation' }];
   if (kind === 'gate' && id) return ['GateScan', { id }];
+  if (kind === 'tickets' && id) return ['Tickets', { id }];   // buy tickets for an event
+  if (kind === 'event-tickets' && id) return ['EventCommand', { id, tab: 'tickets' }];   // the organiser's ticketing tab
+  if (kind === 'my-tickets') return ['MyTickets', {}];
+  if (kind === 'venue-seating' && id) return ['Manage', { id, tab: 'seating' }];   // a venue's capacity and seating map
+  if (kind === 'venue-setup' && id) return ['Manage', { id, wizard: true, step: extra === 'seating' ? 3 : undefined }];   // the venue onboarding wizard
+  if (kind === 'wallet') return ['Wallet', {}];
+  if (kind === 'coach-rates') return ['CoachRates', {}];
+  if (kind === 'coach' && id) return ['CoachProfile', { id }];
   if (kind === 'tender-orders') return ['TenderOrders', {}];
   if (kind === 'tender-reports') return ['TenderReports', {}];
   if (kind === 'tender-order' && id) return ['TenderOrder', { id }];

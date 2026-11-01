@@ -9,11 +9,10 @@ import { useSession } from '../session';
 import { A, ABtn, ACard, AChip, AEmpty, ARow, ASection, AStat, AT, ReasonSheet } from '../arena';
 import { ErrorBox, Loading } from '../ui';
 import { FormSheet } from '../FormSheet';
-import { CREW_ROLES, ZONES, PHASES, PROVIDERS, crewRole, fmtDT, nice, StateTag, Tags } from '../media-ui';
+import { CREW_ROLES, ZONES, PHASES, PROVIDERS, crewRole, fmtDT, nice, badgeOf, StateTag, Tags } from '../media-ui';
 
 const gameLabel = (g) => `${g.home?.name ?? g.home_name ?? 'TBC'} v ${g.away?.name ?? g.away_name ?? 'TBC'} · ${fmtDT(g.scheduled_at)}`;
 const gameOptions = (games) => (games ?? []).filter((g) => !['completed', 'cancelled'].includes(g.status)).slice(0, 40).map((g) => ({ value: g.id, label: gameLabel(g) }));
-const BADGE = { none: ['No badge', 'none'], requested: ['Badge requested', 'requested'], issued: ['Badge issued', 'issued'], revoked: ['Badge revoked', 'revoked'] };
 
 /** Crew, run sheet and incidents of an event. `licences` are the caller's own licences in force (a partner assigns only under one); the organiser needs none. */
 export function ProductionPanel({ id, isOrg, games, licences = [], canAct }) {
@@ -45,7 +44,7 @@ export function ProductionPanel({ id, isOrg, games, licences = [], canAct }) {
       <ASection title="Crew" sub="Roles, call times and positions" action={act ? '+ Assign' : undefined} onAction={() => { setEdit(null); setForm('crew'); }} />
       {!s.crew.length ? <AEmpty emoji="🎬" title="No crew assigned" sub={act ? 'Assign producers, camera operators, commentators and photographers to this event or a game.' : 'Nobody is assigned yet.'} action={act ? 'Assign crew' : undefined} onAction={() => setForm('crew')} /> : s.crew.map((c) => (
         <ARow key={c.id} title={`${c.display_name} · ${crewRole(c.role)}`} sub={[c.call_time ? `Call ${fmtDT(c.call_time)}` : null, c.camera_position, c.booth_ref, c.technical_provider, c.partner_name].filter(Boolean).join(' · ') || 'No call time set'}
-          right={<><StateTag state={c.status} /><StateTag state={BADGE[c.accreditation][1]} label={BADGE[c.accreditation][0]} />{c.restricted_zones_approved ? <StateTag state="attention" label="Restricted zones" /> : null}{act && !c.mine ? <ABtn small title="Release" tone="ghost" onPress={() => setRelease(c)} /> : null}</>}
+          right={<><StateTag state={c.status} /><StateTag state={badgeOf(c.accreditation)[1]} label={badgeOf(c.accreditation)[0]} />{c.zone_gaps?.length ? <StateTag state="attention" label={`Badge lacks ${c.zone_gaps.map(nice).join(', ')}`} /> : null}{c.restricted_zones_approved ? <StateTag state="attention" label="Restricted zones" /> : null}{act && !c.mine ? <ABtn small title="Release" tone="ghost" onPress={() => setRelease(c)} /> : null}</>}
           left={<AT size={22}>{c.ready ? '✅' : '🎥'}</AT>} />
       ))}
       {s.crew.filter((c) => c.mine && c.status === 'assigned').map((c) => (

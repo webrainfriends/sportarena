@@ -18,7 +18,7 @@ const LINK_LABEL = { connecting: 'Connecting…', live: 'Live', reconnecting: 'R
 const newId = () => `c-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
 
 /** A protected picture (it needs the sign-in header, so it is fetched, then shown from a local URL). */
-function ProtectedImage({ media }) {
+export function ProtectedImage({ media }) {
   const [uri, setUri] = useState(null);
   const [bad, setBad] = useState(false);
   useEffect(() => {

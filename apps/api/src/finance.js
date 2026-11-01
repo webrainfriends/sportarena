@@ -6,15 +6,15 @@ import { sharesFor } from './settlement.js';
 
 /** payments.purpose_type -> the business module whose money it is. A type missing here is labelled 'other', never dropped. */
 export const MODULE_OF = {
-  shop_order: 'shop', shop_checkout: 'shop', coach_hire: 'coaching', appointment: 'health', physio_package: 'health', insurance_policy: 'insurance',
+  shop_order: 'shop', shop_checkout: 'shop', coach_hire: 'coaching', coach_class_seat: 'coaching', coach_subscription_period: 'coaching', appointment: 'health', physio_package: 'health', insurance_policy: 'insurance',
   venue_invoice: 'venue', venue_plan: 'venue', pos_sale: 'venue', wallet_topup: 'wallet', gift_card: 'wallet', sponsorship_payment: 'sponsorship',
-  academy_charge: 'registration', team_charge: 'registration', team_contribution: 'registration', media_rights_fee: 'media', ad_funding: 'advertising',
-  service_invoice: 'suppliers',
+  academy_charge: 'registration', registration_instalment: 'registration', team_charge: 'registration', team_contribution: 'registration', media_rights_fee: 'media', ad_funding: 'advertising',
+  service_invoice: 'suppliers', ticket_order: 'tickets',
 };
 export const moduleOf = (type) => MODULE_OF[type] ?? 'other';
 export const MODULE_LABEL = {
   registration: 'Registration & dues', venue: 'Venue', coaching: 'Coaching', health: 'Doctor & physio', shop: 'Shop', wallet: 'Wallet', sponsorship: 'Sponsorship',
-  suppliers: 'Suppliers', insurance: 'Insurance', media: 'Media rights', advertising: 'Advertising', travel: 'Travel', officials: 'Officials', agents: 'Agents', other: 'Other',
+  suppliers: 'Suppliers', insurance: 'Insurance', media: 'Media rights', advertising: 'Advertising', travel: 'Travel', officials: 'Officials', agents: 'Agents', tickets: 'Spectator tickets', other: 'Other',
 };
 
 const q = (c) => c ?? pool;
@@ -42,12 +42,18 @@ async function parties(c, p) {
   } else if (t === 'academy_charge') {
     const r = await get('SELECT organisation_id FROM academy_charges WHERE id=$1');
     if (r) out.payeeOrgId = r.organisation_id;
+  } else if (t === 'registration_instalment') {
+    const r = await get('SELECT p.owner_id, p.organisation_id FROM rx_instalments i JOIN rx_entries e ON e.id=i.entry_id JOIN rx_programmes p ON p.id=e.programme_id WHERE i.id=$1');
+    if (r) { out.payeeId = r.owner_id; out.payeeOrgId = r.organisation_id; }
   } else if (t === 'team_charge') {
     const r = await get('SELECT t.owner_id, t.organisation_id FROM team_charges ch JOIN teams t ON t.id=ch.team_id WHERE ch.id=$1');
     if (r) { out.payeeId = r.owner_id; out.payeeOrgId = r.organisation_id; }
   } else if (t === 'team_contribution') {
     const r = await get('SELECT t.owner_id, t.organisation_id FROM team_contributions c JOIN team_fundraisers f ON f.id=c.fundraiser_id JOIN teams t ON t.id=f.team_id WHERE c.id=$1');
     if (r) { out.payeeId = r.owner_id; out.payeeOrgId = r.organisation_id; }
+  } else if (t === 'ticket_order') {
+    const r = await get('SELECT e.organizer_id, e.organisation_id FROM ticket_orders o JOIN events e ON e.id=o.event_id WHERE o.id=$1');
+    if (r) { out.payeeId = r.organizer_id; out.payeeOrgId = r.organisation_id; }
   } else if (t === 'media_rights_fee') {
     const r = await get('SELECT m.organisation_id FROM mr_fees f JOIN mr_licences l ON l.id=f.licence_id JOIN media_partners m ON m.id=l.partner_id WHERE f.id=$1');
     if (r) out.payerOrgId = r.organisation_id;

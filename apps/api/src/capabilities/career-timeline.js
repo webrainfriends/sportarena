@@ -11,7 +11,7 @@ import { notify } from '../notify.js';
 import { toCsv } from '../csv.js';
 import { hasOrgGrant } from '../org-access.js';
 import { isYouth, hasConsent, requireConsent, requireGuardian } from '../youth.js';
-import { CAREER_VIEW_SQL, EVIDENCE_KINDS, LEVELS, snapshot } from '../career.js';
+import { CAREER_VIEW_SQL, EVIDENCE_KINDS, LEVELS, extVisible, snapshot } from '../career.js';
 import { canManageTeam } from './teams.js';
 
 const TAG = 'Career';
@@ -19,7 +19,7 @@ const iso = z.string().date();
 const STAFF_ORG_ROLES = ['owner', 'admin', 'coach'];
 
 /** Whose timeline? Yourself, or a young person you are a verified guardian of. A young person writing for themselves needs a guardian's current consent. */
-async function subject(user, userId, { write = false, share = false } = {}, client) {
+export async function subject(user, userId, { write = false, share = false } = {}, client) {
   const target = userId ?? user.id;
   if (target === user.id) {
     if (await isYouth(target, client)) {
@@ -96,7 +96,7 @@ cap({
     const target = await subject(user, i.user_id);
     const sport = i.sport ? await sportBySlugOrId(i.sport) : null;
     if (target !== user.id) await audit(null, user.id, 'read_career', 'users', target);
-    return many(`${DETAIL} WHERE c.user_id=$1 AND ($2::uuid IS NULL OR c.sport_id=$2) AND ($3::boolean OR c.archived_at IS NULL) ORDER BY c.starts_on DESC, c.id LIMIT $4 OFFSET $5`,
+    return many(`${DETAIL} WHERE c.user_id=$1 AND ($2::uuid IS NULL OR c.sport_id=$2) AND ($3::boolean OR c.archived_at IS NULL) AND ${extVisible()} ORDER BY c.starts_on DESC, c.id LIMIT $4 OFFSET $5`,
       [target, sport?.id ?? null, i.include_archived, i.limit, i.offset]);
   },
 });
@@ -298,9 +298,9 @@ cap({
   input: z.object({ user_id: id.optional() }),
   async handler({ user }, i) {
     const target = await subject(user, i.user_id, { share: true });
-    const rows = await many(`${CAREER_VIEW_SQL} WHERE c.user_id=$1 AND c.archived_at IS NULL ORDER BY c.starts_on DESC, c.id`, [target]);
+    const rows = await many(`${CAREER_VIEW_SQL} WHERE c.user_id=$1 AND c.archived_at IS NULL AND ${extVisible()} ORDER BY c.starts_on DESC, c.id`, [target]);
     await audit(null, user.id, 'export_career', 'users', target);
-    const cols = ['sport', 'club', 'unlisted', 'season_label', 'starts_on', 'ends_on', 'position', 'competition_level', 'jersey_no', 'verification_status', 'verified_at'];
+    const cols = ['sport', 'club', 'unlisted', 'season_label', 'starts_on', 'ends_on', 'position', 'competition_level', 'jersey_no', 'verification_status', 'verified_at', 'verified_via', 'external_source'];
     return { filename: 'career-timeline.csv', rows: rows.length, csv: toCsv(cols, rows) };
   },
 });

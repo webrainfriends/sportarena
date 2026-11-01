@@ -9,7 +9,7 @@ import { badRequest, conflict, forbidden, notFound } from '../errors.js';
 import { isAdmin } from '../helpers.js';
 import { publish } from '../live.js';
 import { serialized } from '../serialize.js';
-import { fixtureContext, authorityOf, assertInLineup, broadcast } from './match-tracking.js';
+import { fixtureContext, authorityOf, assertInLineup, broadcast, occurredAt, controlInput, missedEvents } from './match-tracking.js';
 import { liveState, loggedEvents, rulesetForEvent, redactForPublic, publiclyNameable } from '../scoring/state.js';
 import { pluginFor, sessionPlugin, SESSION_KINDS } from '../scoring/plugins/index.js';
 import { sessionDefaults, AGGREGATES } from '../scoring/session.js';
@@ -242,6 +242,13 @@ export async function sessionLive(sessionId, user = null, { sinceSeq = 0, limit 
     events: rows.filter((r) => r.seq > sinceSeq && (includeVoided || !r.voided_at)).slice(-limit).map((r) => ({ seq: r.seq, kind: r.kind, entry_id: r.entry_id, payload: r.payload, recorded_at: r.recorded_at, voided: !!r.voided_at, ...(includeVoided ? { id: r.id, void_reason: r.void_reason, authority: r.source_authority } : {}) })),
   };
 }
+/** Everything a device needs to keep a heat / final / flight going with no signal: the live view, the log (void included), and the pinned config the pure session plugin projects from. */
+export async function sessionPack(user, sessionId) {
+  const s = (await pool.query('SELECT s.*, d.result_type, d.live_rules, d.sport_id FROM event_sessions s JOIN event_disciplines d ON d.id=s.discipline_id WHERE s.id=$1', [sessionId])).rows[0];
+  const live = await sessionLive(sessionId, user, { sinceSeq: 0, limit: 100000, includeVoided: true });
+  const cfg = await sessionConfig(pool, s, s);
+  return { ...live, config: cfg, viewer: { can_score: true } };
+}
 const broadcastSession = async (sessionId) => { const st = await sessionLive(sessionId); publish(`session:${sessionId}`, st); return st; };
 
 cap({
@@ -262,7 +269,7 @@ cap({
   summary: 'Record what happened in a heat, final or field flight (organiser, or the official assigned to the session): status (call_room, ready, in_progress), start, lane, split, finish, attempt (valid / foul / pass) or entry_status (dns, dnf, dq). Positions are derived, never typed. Send a client_key to make retries safe and expected_seq to be told with 409 stale_state if someone else has recorded since. The official result is only written by finalize_session_live / record_session_results.',
   input: z.object({
     id, kind: z.enum(SESSION_KINDS), entry_id: id.optional(), payload: z.record(z.string(), z.any()).default({}),
-    client_key: z.string().min(1).max(80).optional(), expected_seq: z.number().int().min(0).optional(),
+    client_key: z.string().min(1).max(80).optional(), expected_seq: z.number().int().min(0).optional(), occurred_at: controlInput.occurred_at,
   }),
   async handler({ user }, i) {
     let duplicate = false, stale = null;
@@ -287,28 +294,29 @@ cap({
       if (i.kind === 'lane') await c.query('UPDATE event_session_entries SET lane=$2 WHERE id=$1 AND session_id=$3 AND result_status <> \'scratched\'', [entry_id, rest.lane, i.id]);
       if (x.s.status !== 'live') await c.query("UPDATE event_sessions SET status='live' WHERE id=$1 AND status IN ('draft','scheduled')", [i.id]);
       return (await c.query(
-        `INSERT INTO session_events(session_id, event_id, seq, client_key, kind, entry_id, payload, source_authority, recorded_by) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING *`,
-        [i.id, x.s.event_id, lastSeq + 1, i.client_key ?? null, i.kind, entry_id ?? null, JSON.stringify(rest), x.authority, user.id])).rows[0];
+        `INSERT INTO session_events(session_id, event_id, seq, client_key, kind, entry_id, payload, source_authority, recorded_by, occurred_at) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING *`,
+        [i.id, x.s.event_id, lastSeq + 1, i.client_key ?? null, i.kind, entry_id ?? null, JSON.stringify(rest), x.authority, user.id, i.occurred_at ? occurredAt(i.occurred_at) : null])).rows[0];
     }));
-    if (stale != null) throw conflict('The session has moved on since you last looked; review the current state and send the event again', { code: 'stale_state', last_seq: stale, expected_seq: i.expected_seq, state: await sessionLive(i.id, user, { includeVoided: true }) });
+    if (stale != null) throw conflict('The session has moved on since you last looked; review the current state and send the event again', { code: 'stale_state', last_seq: stale, expected_seq: i.expected_seq, state: await sessionLive(i.id, user, { includeVoided: true }), missed: await missedEvents('session_events', 'session_id', i.id, i.expected_seq, user.id) });
     return { duplicate, event: row, state: await broadcastSession(i.id) };
   },
 });
 
 cap({
   name: 'void_session_event', method: 'POST', path: '/session-events/:id/void', tag: TAG,
-  summary: 'Cancel a wrongly recorded session event with a reason (organiser, or the assigned official, while the session is not completed). It stays in the log, marked void, and the live state is recomputed from the remaining events.',
-  input: z.object({ id, reason: z.string().min(2).max(300) }),
+  summary: 'Cancel a wrongly recorded session event with a reason (organiser, or the assigned official, while the session is not completed). It stays in the log, marked void, and the live state is recomputed from the remaining events. Offline-safe: a client_key makes a retry a no-op.',
+  input: z.object({ id, reason: z.string().min(2).max(300), client_key: z.string().min(1).max(80).optional().describe('idempotency key: sending the same one again returns the current state and changes nothing') }),
   async handler({ user }, i) {
     const m = (await pool.query('SELECT session_id FROM session_events WHERE id=$1', [i.id])).rows[0];
     if (!m) throw notFound('Session event');
     await tx(async (c) => {
       const x = await sessionContext(user, m.session_id, c, { lock: true });
       needScorer(x);
+      if (i.client_key && (await c.query('SELECT 1 FROM session_events WHERE session_id=$1 AND void_client_key=$2', [m.session_id, i.client_key])).rowCount) return;
       if (x.s.status === 'completed') throw conflict('The session is completed; re-record its result with record_session_results to correct it');
       const cur = (await c.query('SELECT voided_at FROM session_events WHERE id=$1', [i.id])).rows[0];
       if (cur.voided_at) throw conflict('Already voided');
-      await c.query('UPDATE session_events SET voided_at=now(), voided_by=$2, void_reason=$3 WHERE id=$1', [i.id, user.id, i.reason]);
+      await c.query('UPDATE session_events SET voided_at=now(), voided_by=$2, void_reason=$3, void_client_key=$4 WHERE id=$1', [i.id, user.id, i.reason, i.client_key ?? null]);
     });
     return broadcastSession(m.session_id);
   },

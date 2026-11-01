@@ -2,7 +2,8 @@
 // quotes, bookings), what finalizing one does, and the budget it feeds.
 import { badRequest, conflict, notFound } from './errors.js';
 import { notify, venueTeam } from './notify.js';
-import { sponsorContactUser, sponsorRole, CAN } from './sponsor-identity-access.js';
+import { sponsorContactUser } from './sponsor-identity-access.js';
+import { sponsorMay, sponsorRecipients } from './sponsor-access.js';
 
 export const REQUEST_KINDS = ['team', 'coach', 'referee', 'umpire', 'judge', 'scorer', 'timekeeper', 'physio', 'doctor', 'first_aider', 'volunteer', 'supplier', 'venue', 'insurer', 'sponsor'];
 export const STAFF_KINDS = ['referee', 'umpire', 'judge', 'scorer', 'timekeeper', 'physio', 'doctor', 'first_aider', 'volunteer'];
@@ -22,7 +23,7 @@ export async function canAnswer(c, user, r) {
   // a sponsor request is answered by the people who may act for that brand now, not by whoever was the contact when it was sent
   if (r.kind === 'sponsor' && r.sponsor_id) {
     const sp = (await q(c, 'SELECT id, owner_id, entity_id FROM sponsors WHERE id=$1', [r.sponsor_id]))[0];
-    return !!sp && CAN.manage.includes(await sponsorRole(c, user, sp, { asAdmin: false }));
+    return !!sp && sponsorMay(user, sp, 'vendor_invite', c);
   }
   if (r.recipient_id === user.id) return true;
   if (r.kind === 'venue' && r.venue_id) return (await venueTeam(c, r.venue_id)).includes(user.id);
@@ -36,6 +37,10 @@ export async function canAnswer(c, user, r) {
 async function audience(c, r) {
   const set = new Set([r.recipient_id].filter(Boolean));
   if (r.kind === 'venue' && r.venue_id) for (const u of await venueTeam(c, r.venue_id)) set.add(u);
+  if (r.kind === 'sponsor' && r.sponsor_id) {
+    const sp = (await q(c, 'SELECT id, owner_id, entity_id FROM sponsors WHERE id=$1', [r.sponsor_id]))[0];
+    if (sp) for (const u of await sponsorRecipients(c, sp, 'vendor_invite')) set.add(u);
+  }
   if (r.kind === 'team' && r.team_id) for (const x of await q(c, "SELECT user_id FROM team_members WHERE team_id=$1 AND status='active' AND role IN ('captain','manager')", [r.team_id])) set.add(x.user_id);
   return [...set];
 }

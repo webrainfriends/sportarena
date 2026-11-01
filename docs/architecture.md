@@ -81,13 +81,16 @@ capabilities/*.js  ->  registry
 
 ### 2.4 Encryption and audit
 * `crypto.js`: AES-256-GCM per value, random IV, ciphertext bound to `table.column` through AAD, format
-  `v1.<iv>.<tag>.<ct>`. Keys derive by HKDF from the master key. `blindIndex` (HMAC-SHA256) allows equality lookup
+  `v1.<iv>.<tag>.<ct>` (or `v2.<keyId>.<iv>.<tag>.<ct>` once a rotated key is active; `v1` always means key `k1`). Keys derive by HKDF from the master key. `blindIndex` (HMAC-SHA256) allows equality lookup
   (email login) without plaintext. Passwords use scrypt, derived asynchronously off the event loop with bounded concurrency (see `docs/operations.md`).
 * `kms.js`: `KEY_PROVIDER=env` (local dev) or `aws-kms`. In KMS mode the master key is unwrapped at start-up from
   `MASTER_KEY_FILE`; the process refuses to start if it cannot be.
 * `helpers.js` `audit(client, actor, action, entity, id)` writes `audit_log` (who, what, when, never values). It is
   called on every decrypted read of personal or clinical data (`read_pii`, `read_clinical`, evidence reads) and on
   admin actions (`adjust_wallet`, `mark_invoice_paid`, `override_booking`).
+* `key-rotation.js` re-encrypts stored values under the active key (resumable, idempotent, never deletes, leaves what it cannot map as it is and
+  reports it). `audit-chain.js` seals `audit_log` rows into a hash chain (migration 129: the database refuses any edit or delete, the one allowed
+  change to a row is its sealing). Both are platform-admin only (`capabilities/security-keys.js`), shown in the app under **Keys & audit**.
 
 ### 2.5 Payments and webhooks (`src/payments`, see [payments.md](payments.md))
 * Hosted checkout only (Stripe Checkout, PayPal orders). The amount is always read from the database.

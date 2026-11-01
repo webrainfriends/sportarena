@@ -60,6 +60,11 @@ cap({
     recent.sort((a, b) => new Date(b.scheduled_at) - new Date(a.scheduled_at));
     const racesCap = capabilities.find((c) => c.name === 'list_event_races');
     const races = racesCap ? (await racesCap.handler({ user }, { id: ev.id }).catch(() => [])).filter((r) => r.public ?? r.pub ?? true).map((r) => ({ id: r.id, name: r.name, sport: r.sport_name ?? r.sport, emoji: r.emoji, status: r.status })) : [];
+    // spectator tickets (#480) are a separate thing from registration above: what can be bought, from what price, and whether anything is on sale
+    const ticketCap = capabilities.find((c) => c.name === 'list_public_ticket_products');
+    const offer = ticketCap ? await ticketCap.handler({ user }, { id: ev.id }).catch(() => null) : null;
+    const priceOf = (offer?.products ?? []).filter((p) => ['available', 'low'].includes(p.availability));
+    const ticketsBlock = offer && offer.products.length ? { on_sale: offer.on_sale, products: offer.products.length, from_price_minor: priceOf.length ? Math.min(...priceOf.map((p) => p.price_minor)) : null, currency: priceOf[0]?.currency ?? offer.products[0].currency, link: { screen: 'Tickets', id: ev.id } } : null;
     const spots = ev.capacity == null ? null : Math.max(ev.capacity - (await one("SELECT count(*)::int AS n FROM event_entries WHERE event_id=$1 AND status IN ('accepted','pending')", [ev.id])).n, 0);
     const regOpen = ev.status === 'open' && (!ev.registration_deadline || new Date(ev.registration_deadline) > new Date()) && (spots == null || spots > 0);
     return {
@@ -71,7 +76,7 @@ cap({
         format: { stages, points: { win: ev.points_win, draw: ev.points_draw, loss: ev.points_loss } },
       },
       registration: { open: regOpen, fee_cents: ev.entry_fee_cents, currency: ev.currency, deadline: ev.registration_deadline, capacity: ev.capacity, spots_left: spots, link: { screen: 'Event', id: ev.id } },
-      tickets: null, // ticketing is not part of the platform yet; registration above is the only entry link
+      tickets: ticketsBlock,
       fixtures: { counts: by, live: liveNow, next, recent },
       standings: table,
       bracket: { ...bracket, label: ev.status === 'completed' ? 'final' : 'provisional' },
@@ -193,7 +198,7 @@ cap({
 });
 
 // ------------------------------------------------------------------ following: subscribes to public alerts, grants nothing private
-const subject = z.object({ subject_type: z.enum(['event', 'team', 'athlete', 'fixture']), subject_id: id, alerts: z.array(z.enum(ALERTS)).max(4).optional() });
+const subject = z.object({ subject_type: z.enum(['event', 'team', 'athlete', 'fixture']), subject_id: id, alerts: z.array(z.enum(ALERTS)).max(5).optional() });
 
 async function checkFollowable(user, type, sid) {
   if (type === 'event') await loadViewableEvent(user, sid);
@@ -208,7 +213,7 @@ async function checkFollowable(user, type, sid) {
 
 cap({
   name: 'follow_subject', method: 'POST', path: '/me/follows', tag: 'Following', status: 201,
-  summary: 'Follow an event, a team, an athlete (adults only) or a single game, and choose which alerts you want: start, score, result, schedule (default: start, result and schedule changes). Calling it again changes the alerts. Following only subscribes you to public alerts; it never grants access to a roster, health, finance or youth information.',
+  summary: 'Follow an event, a team, an athlete (adults only) or a single game, and choose which alerts you want: start, score, result, schedule, media (new public photos and clips; default: start, result and schedule changes). Calling it again changes the alerts. Following only subscribes you to public alerts; it never grants access to a roster, health, finance or youth information.',
   input: subject,
   async handler({ user }, i) {
     await checkFollowable(user, i.subject_type, i.subject_id);

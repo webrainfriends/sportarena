@@ -148,12 +148,39 @@ function Conflicts({ eventId, list, reload }) {
   );
 }
 
+/** Change the format of a stage whose games have not started (bronze game, grand-final reset): a recorded format revision, with a reason once published. */
+export function FormatSheet({ visible, onClose, eventId, stage, onDone }) {
+  const { toast } = useSession();
+  const [third, setThird] = useState(false), [reset, setReset] = useState(false), [reason, setReason] = useState(''), [busy, setBusy] = useState(false);
+  const f = stage?.format ?? {};
+  const dbl = stage?.kind === 'double_elimination', ko = stage?.kind === 'knockout';
+  useEffect(() => { if (visible) { setThird(!!f.third_place); setReset(!!f.reset); setReason(''); } }, [visible]);
+  const published = !!stage?.published_at;
+  const need = published && reason.trim().length < 5;
+  const apply = async () => {
+    setBusy(true);
+    try {
+      await api.post(`/events/${eventId}/stages/${stage.id}/redraw`, { mode: 'seeds', reason: reason.trim() || undefined, ...(ko ? { third_place: third } : {}), ...(dbl ? { format_config: { reset } } : {}) });
+      toast('Format revised: the old games are kept as history'); onDone?.(); onClose();
+    } catch (x) { toast('' + x.message); } finally { setBusy(false); }
+  };
+  return (
+    <Sheet visible={visible} onClose={onClose} title="Change the format">
+      <T size={13} color="#475569">Only possible before any game has started. The stage is redrawn from the current seeds and the change is kept in the history.</T>
+      {ko ? <View style={{ flexDirection: 'row', gap: 8, flexWrap: 'wrap' }}><AChip label="Third-place game" active={third} onPress={() => setThird(!third)} /></View> : null}
+      {dbl ? <View style={{ flexDirection: 'row', gap: 8, flexWrap: 'wrap' }}><AChip label="Grand-final reset game" active={reset} onPress={() => setReset(!reset)} /></View> : null}
+      {published ? <Field label="Why is the format changing? (kept in the audit trail)" value={reason} onChangeText={setReason} multiline /> : null}
+      <ABtn title="Revise the format" loading={busy} disabled={need} onPress={apply} />
+    </Sheet>
+  );
+}
+
 /** All stages of the event with the organiser's actions. */
 export function StageDesk({ id, accepted, openGame, reload: reloadAll }) {
   const { toast } = useSession();
   const st = useLoad(() => api.get(`/events/${id}/stages`), [id]);
   const cf = useLoad(() => api.get(`/events/${id}/bracket-conflicts?status=open`), [id]);
-  const [seeds, setSeeds] = useState(null), [check, setCheck] = useState(null), [audit, setAudit] = useState(null), [busy, setBusy] = useState(null), [share, setShare] = useState(false);
+  const [seeds, setSeeds] = useState(null), [fmt, setFmt] = useState(null), [check, setCheck] = useState(null), [audit, setAudit] = useState(null), [busy, setBusy] = useState(null), [share, setShare] = useState(false);
   const refresh = () => { st.reload(); cf.reload(); reloadAll?.(); };
   const teams = accepted.map((a) => ({ team_id: a.team_id, name: a.name, city: a.city }));
   const act = async (key, fn, ok) => { setBusy(key); try { const r = await fn(); toast(typeof ok === 'function' ? ok(r) : ok); refresh(); return r; } catch (x) { toast('' + x.message); return null; } finally { setBusy(null); } };
@@ -175,6 +202,7 @@ export function StageDesk({ id, accepted, openGame, reload: reloadAll }) {
               {s.swiss && s.next_round_ready ? <ABtn small tone="hero" title={`Pair round ${s.swiss.rounds_generated + 1}`} loading={busy === `r${s.id}`} onPress={() => act(`r${s.id}`, () => api.post(`/events/${id}/stages/${s.id}/next-round`), (r) => `Round ${r.round} paired${r.bye ? ` · bye: ${teams.find((t) => t.team_id === r.bye.team)?.name ?? ''}` : ''}`)} /> : null}
               {s.kind === 'pools' && s.pools_complete && !s.child_stage_id ? <ABtn small tone="hero" title="Create the knockout" loading={busy === `k${s.id}`} onPress={() => act(`k${s.id}`, () => api.post(`/events/${id}/stages/${s.id}/advance`, { third_place: !!s.format?.pools?.third_place, publish: true }), (r) => `Knockout created · ${r.created} games`)} /> : null}
               {s.format?.repechage_template && semisDone && !hasRepechage ? <ABtn small tone="hero" title="Generate repechage" loading={busy === `x${s.id}`} onPress={() => act(`x${s.id}`, () => api.post(`/events/${id}/stages/${s.id}/repechage`, {}), (r) => `Repechage created · ${r.created} games`)} /> : null}
+              {['knockout', 'double_elimination'].includes(s.kind) && !s.locked && s.status !== 'completed' ? <ABtn small tone="ghost" title="Change format" onPress={() => setFmt(s)} /> : null}
               <ABtn small tone="ghost" title="Check schedule" onPress={() => setCheck(s)} />
               <ABtn small tone="ghost" title="History" onPress={() => setAudit(s)} />
               {s.status !== 'draft' ? <ABtn small tone="ghost" title="Share · print · embed" onPress={() => setShare(true)} /> : null}
@@ -186,6 +214,7 @@ export function StageDesk({ id, accepted, openGame, reload: reloadAll }) {
       <SeedSheet visible={!!seeds} onClose={() => setSeeds(null)} eventId={id} format={seeds?.kind} teams={teams} start={seeds ? stages.find((x) => x.id === seeds.id)?.field : null} published={!!seeds?.published_at}
         poolCount={seeds?.format?.pools?.pool_count} title={seeds?.status === 'draft' ? 'Seeds & draw' : 'Redraw this stage'} confirmLabel={seeds?.status === 'draft' ? 'Apply new order' : 'Redraw with this order'}
         onApply={async (body, reason) => { await api.post(`/events/${id}/stages/${seeds.id}/redraw`, { ...body, reason: reason || undefined }); toast(seeds.status === 'draft' ? 'Draw updated' : 'Redrawn: the old games are kept as history'); setSeeds(null); refresh(); }} />
+      {fmt ? <FormatSheet visible eventId={id} stage={fmt} onClose={() => setFmt(null)} onDone={refresh} /> : null}
       <ShareSheet visible={share} onClose={() => setShare(false)} eventId={id} />
       {check ? <CheckSheet visible onClose={() => setCheck(null)} eventId={id} stage={check} /> : null}
       {audit ? <AuditSheet visible onClose={() => setAudit(null)} eventId={id} stage={audit} /> : null}

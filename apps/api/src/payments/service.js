@@ -5,6 +5,7 @@ import { provider, paymentsEnabled, enabledProviders } from './providers.js';
 import { markInvoicePaid } from '../booking/invoices.js';
 import { completeTopup, activateGiftCard } from '../wallet.js';
 import { activateUserPlan } from '../booking/plans.js';
+import { activateCoachPeriod } from '../coach-subscriptions.js';
 import { activatePhysioPackage } from '../capabilities/provider-packages.js';
 import { fulfilSponsorshipPayment } from '../sponsor-agreements.js';
 import { fulfilChargePaid } from '../academy-invoices.js';
@@ -12,6 +13,8 @@ import { fulfilServiceInvoicePaid } from '../svc/finance.js';
 import { fulfilMarketplacePaid } from '../marketplace/engine.js';
 import { fulfilMediaFeePaid } from '../media-fees.js';
 import { fulfilContributionPaid, fulfilTeamChargePaid } from '../team-money.js';
+import { fulfilInstalmentPaid } from '../registration-money.js';
+import { checkGuardianScope } from '../youth.js';
 import { raiseException, recordSale, syncRefunds } from '../settlement.js';
 import { coachSessionDone } from '../rewards/activity.js';
 import { saleDue, confirmOnlineSalePayment } from '../pos/due.js';
@@ -19,6 +22,7 @@ import { coverFor, startUse, settleUse } from '../cover.js';
 import { fulfilAdFundingPaid } from '../ads/engine.js';
 import { recordCharge, closeCharge, recordPayment, recordRefund } from '../finance.js';
 import { describeSubscription, fulfilSubscriptionPaid } from '../commercial/engine.js';
+import { confirmOrder } from '../ticketing.js';
 
 export { paymentsEnabled, enabledProviders };
 
@@ -26,17 +30,32 @@ export { paymentsEnabled, enabledProviders };
 export async function describePurpose(c, type, id) {
   const q = async (sql) => (await c.query(sql, [id])).rows[0];
   if (type === 'shop_order') {
-    const o = await q('SELECT o.id, o.buyer_id AS payer_id, o.total_cents AS amount, o.status, p.name FROM shop_orders o JOIN shop_products p ON p.id=o.product_id WHERE o.id=$1 FOR UPDATE OF o');
-    return o && { payerId: o.payer_id, amount: Number(o.amount), name: o.name, payable: o.status === 'awaiting_payment' };
+    const o = await q('SELECT o.id, o.buyer_id AS payer_id, o.total_cents AS amount, o.currency, o.status, p.name FROM shop_orders o JOIN shop_products p ON p.id=o.product_id WHERE o.id=$1 FOR UPDATE OF o');
+    return o && { payerId: o.payer_id, amount: Number(o.amount), currency: o.currency, name: o.name, payable: o.status === 'awaiting_payment' };
   }
   if (type === 'shop_checkout') {
     // everything bought together in one cart: pay what is still awaiting payment (lines cancelled meanwhile drop out)
-    const o = (await c.query("SELECT min(buyer_id::text)::uuid AS payer_id, coalesce(sum(total_cents) FILTER (WHERE status='awaiting_payment'), 0) AS amount, count(*) FILTER (WHERE status='awaiting_payment')::int AS due FROM shop_orders WHERE checkout_id=$1", [id])).rows[0];
-    return o?.payer_id && { payerId: o.payer_id, amount: Number(o.amount), name: `Gotmygame Shop order (${o.due} item${o.due === 1 ? '' : 's'})`, payable: o.due > 0 };
+    const o = (await c.query("SELECT min(buyer_id::text)::uuid AS payer_id, min(currency) AS currency, count(DISTINCT currency)::int AS currencies, coalesce(sum(total_cents) FILTER (WHERE status='awaiting_payment'), 0) AS amount, count(*) FILTER (WHERE status='awaiting_payment')::int AS due FROM shop_orders WHERE checkout_id=$1", [id])).rows[0];
+    return o?.payer_id && o.currencies === 1 && { payerId: o.payer_id, amount: Number(o.amount), currency: o.currency, name: `Gotmygame Shop order (${o.due} item${o.due === 1 ? '' : 's'})`, payable: o.due > 0 };
   }
   if (type === 'coach_hire') {
-    const h = await q("SELECT h.hirer_id AS payer_id, h.total_cents - h.loyalty_credit_cents AS amount, h.status, h.payment_status, u.display_name FROM coach_hires h JOIN users u ON u.id=h.coach_id WHERE h.id=$1 FOR UPDATE OF h");
-    return h && { payerId: h.payer_id, amount: Number(h.amount), name: `Coaching session with ${h.display_name}`, payable: h.payment_status === 'unpaid' && h.status !== 'cancelled' && Number(h.amount) > 0 };
+    const h = await q("SELECT h.hirer_id AS payer_id, h.total_cents - h.loyalty_credit_cents AS amount, h.currency, h.status, h.payment_status, h.series_id, u.display_name, s.pay_mode, s.payment_id, s.anchor_hire_id FROM coach_hires h JOIN users u ON u.id=h.coach_id LEFT JOIN coach_series s ON s.id=h.series_id WHERE h.id=$1 FOR UPDATE OF h");
+    if (h?.series_id && h.pay_mode === 'once') {
+      // a pay-once block is paid in one go, raised on its anchor date: the amount is everything still unpaid in the block
+      const due = (await c.query("SELECT coalesce(sum(total_cents - loyalty_credit_cents), 0)::bigint AS amount, count(*)::int AS n FROM coach_hires WHERE series_id=$1 AND payment_status='unpaid' AND status IN ('requested','confirmed') AND series_state IS DISTINCT FROM 'paused'", [h.series_id])).rows[0];
+      return { payerId: h.payer_id, amount: Number(due.amount), currency: h.currency, name: `Coaching block with ${h.display_name} (${due.n} session${due.n === 1 ? '' : 's'})`, payable: !h.payment_id && h.anchor_hire_id === id && h.payment_status === 'unpaid' && h.status !== 'cancelled' && Number(due.amount) > 0 };
+    }
+    return h && { payerId: h.payer_id, amount: Number(h.amount), currency: h.currency, name: `Coaching session with ${h.display_name}`, payable: h.payment_status === 'unpaid' && h.status !== 'cancelled' && Number(h.amount) > 0 };
+  }
+  if (type === 'coach_subscription_period') {
+    // payable while the period waits for payment and the agreement is still alive (a paused or lapsed one cannot be paid into)
+    const u = await q("SELECT up.user_id AS payer_id, up.price_cents AS amount, up.currency, up.status, up.name, s.status AS sub_status, c.display_name FROM user_plans up JOIN coach_subscriptions s ON s.id=up.subscription_id JOIN users c ON c.id=up.coach_id WHERE up.id=$1 FOR UPDATE OF up");
+    return u && { payerId: u.payer_id, amount: Number(u.amount), currency: u.currency, name: `${u.name} · ${u.display_name}`, payable: u.status === 'awaiting_payment' && ['active', 'past_due'].includes(u.sub_status) };
+  }
+  if (type === 'coach_class_seat') {
+    // a seat is payable only while it is held (reserved for the payer) and the class is still open
+    const z = await q("SELECT coalesce(z.applied_by, z.user_id) AS payer_id, z.amount_cents AS amount, z.status, k.status AS class_status, k.title, k.currency FROM coach_class_seats z JOIN coach_classes k ON k.id=z.class_id WHERE z.id=$1 FOR UPDATE OF z");
+    return z && { payerId: z.payer_id, amount: Number(z.amount), name: `Class: ${z.title}`, payable: z.status === 'held' && z.class_status === 'open' && Number(z.amount) > 0 };
   }
   if (type === 'appointment') {
     const a = await q("SELECT a.athlete_id AS payer_id, a.fee_cents AS amount, a.currency, a.status, a.payment_status, u.display_name FROM appointments a JOIN users u ON u.id=a.provider_id WHERE a.id=$1 FOR UPDATE OF a");
@@ -80,6 +99,10 @@ export async function describePurpose(c, type, id) {
     const inDesk = x && (await c.query("SELECT 1 FROM pos_sale_lines l JOIN pos_sales s ON s.id=l.sale_id WHERE l.charge_id=$1 AND s.status='awaiting_payment'", [id])).rowCount > 0;
     return x && { payerId: x.payer_id, amount: Number(x.amount), currency: x.currency, name: `Academy ${x.kind} · ${x.name}`, payable: !inDesk && x.status === 'awaiting_payment' && Number(x.amount) > 0 };
   }
+  if (type === 'registration_instalment') {
+    const x = await q("SELECT e.submitted_by AS payer_id, i.amount_cents AS amount, i.currency, i.status, e.status AS entry_status, p.title FROM rx_instalments i JOIN rx_entries e ON e.id=i.entry_id JOIN rx_programmes p ON p.id=e.programme_id WHERE i.id=$1 FOR UPDATE OF i");
+    return x && { payerId: x.payer_id, amount: Number(x.amount), currency: x.currency, name: `Registration · ${x.title}`, payable: x.status === 'unpaid' && ['submitted', 'under_review', 'info_requested', 'approved'].includes(x.entry_status) };
+  }
   if (type === 'team_charge') {
     const x = await q("SELECT ch.payer_id, ch.amount_minor - ch.adjusted_minor - ch.settled_minor AS amount, b.currency, ch.status, b.title, b.status AS batch_status, t.name FROM team_charges ch JOIN team_charge_batches b ON b.id=ch.batch_id JOIN teams t ON t.id=ch.team_id WHERE ch.id=$1 FOR UPDATE OF ch");
     return x && { payerId: x.payer_id, amount: Number(x.amount), currency: x.currency, name: `${x.title} · ${x.name}`, payable: x.status === 'awaiting_payment' && x.batch_status === 'active' && Number(x.amount) > 0 };
@@ -95,6 +118,10 @@ export async function describePurpose(c, type, id) {
   if (type === 'ad_funding') {
     const x = await q("SELECT f.payer_id, f.amount_minor AS amount, f.currency, f.status, f.number, c.name, c.status AS camp_status FROM ad_fundings f JOIN ad_campaigns c ON c.id=f.campaign_id WHERE f.id=$1 FOR UPDATE OF f");
     return x && { payerId: x.payer_id, amount: Number(x.amount), currency: x.currency, name: `Advertising funds ${x.number} · ${x.name}`, payable: x.status === 'awaiting_payment' && !['ended', 'withdrawn'].includes(x.camp_status) };
+  }
+  if (type === 'ticket_order') {
+    const o = await q("SELECT o.buyer_id AS payer_id, o.total_minor AS amount, o.currency, o.status, e.name FROM ticket_orders o JOIN events e ON e.id=o.event_id WHERE o.id=$1 FOR UPDATE OF o");
+    return o && { payerId: o.payer_id, amount: Number(o.amount), currency: o.currency, name: `Tickets · ${o.name}`, payable: o.status === 'pending_payment' && Number(o.amount) > 0 };
   }
   if (type === 'commercial_subscription') return describeSubscription(c, id);
   if (type === 'marketplace_engagement') {
@@ -115,6 +142,7 @@ async function fulfil(c, type, id, payment) {
     shop_order: "UPDATE shop_orders SET status='placed' WHERE id=$1 AND status='awaiting_payment'",
     shop_checkout: "UPDATE shop_orders SET status='placed' WHERE checkout_id=$1 AND status='awaiting_payment'",
     coach_hire: "UPDATE coach_hires SET payment_status='paid', status=CASE WHEN request_response_id IS NOT NULL AND status='requested' THEN 'confirmed' ELSE status END WHERE id=$1 AND payment_status='unpaid' AND status IN ('requested','confirmed')",
+    coach_class_seat: "UPDATE coach_class_seats SET status='confirmed', payment_status='paid', hold_expires_at=NULL, updated_at=now() WHERE id=$1 AND status='held'",
     insurance_policy: "UPDATE insurance_policies SET status='active' WHERE id=$1 AND status='pending_payment'",
     appointment: "UPDATE appointments SET payment_status='paid', updated_at=now() WHERE id=$1 AND payment_status='unpaid' AND status IN ('requested','confirmed')",
   }[type];
@@ -123,6 +151,7 @@ async function fulfil(c, type, id, payment) {
   if (type === 'wallet_topup') return completeTopup(c, id);
   if (type === 'gift_card') return activateGiftCard(c, id);
   if (type === 'venue_plan') return activateUserPlan(c, id);
+  if (type === 'coach_subscription_period') return activateCoachPeriod(c, id);
   if (type === 'physio_package') return activatePhysioPackage(c, id);
   if (type === 'sponsorship_payment') return fulfilSponsorshipPayment(c, id);
   if (type === 'academy_charge') return fulfilChargePaid(c, id, { method: 'online', payment });
@@ -131,8 +160,23 @@ async function fulfil(c, type, id, payment) {
   if (type === 'media_rights_fee') return fulfilMediaFeePaid(c, id);
   if (type === 'ad_funding') return fulfilAdFundingPaid(c, id);
   if (type === 'commercial_subscription') return fulfilSubscriptionPaid(c, id, payment.payer_id);
+  if (type === 'ticket_order') return confirmOrder(c, id, payment.payer_id);   // false (cancelled, sold out meanwhile) = the payment is refunded straight away
+  if (type === 'registration_instalment') return fulfilInstalmentPaid(c, id, payment);
   if (type === 'team_charge') return fulfilTeamChargePaid(c, id, payment);
   if (type === 'team_contribution') return fulfilContributionPaid(c, id, payment);
+  if (type === 'coach_hire') {
+    const s = (await c.query("SELECT s.id, s.pay_mode FROM coach_hires h JOIN coach_series s ON s.id=h.series_id WHERE h.id=$1", [id])).rows[0];
+    if (s?.pay_mode === 'once') {
+      // one payment covers every unpaid date still to come in the block; remember it so a later cancel refunds each date's share
+      const owed = (await c.query("SELECT coalesce(sum(total_cents - loyalty_credit_cents), 0)::bigint AS n FROM coach_hires WHERE series_id=$1 AND payment_status='unpaid' AND status IN ('requested','confirmed') AND series_state IS DISTINCT FROM 'paused'", [s.id])).rows[0].n;
+      if (Number(owed) !== Number(payment.amount_cents)) return false;   // the block changed after checkout began: refund rather than mis-allocate
+      const paid = (await c.query("UPDATE coach_hires SET payment_status='paid', status=CASE WHEN request_response_id IS NOT NULL AND status='requested' THEN 'confirmed' ELSE status END WHERE series_id=$1 AND payment_status='unpaid' AND status IN ('requested','confirmed') AND series_state IS DISTINCT FROM 'paused' RETURNING id", [s.id])).rows;
+      if (!paid.length) return false;
+      await c.query('UPDATE coach_series SET payment_id=$2, anchor_hire_id=$3, updated_at=now() WHERE id=$1', [s.id, payment.id, id]);
+      for (const r of paid) await coachSessionDone(c, r.id);
+      return true;
+    }
+  }
   const done = (await c.query(sql, [id])).rowCount > 0;
   if (done && type === 'coach_hire') await coachSessionDone(c, id);   // a session completed before it was paid earns once the payment lands
   return done;
@@ -217,6 +261,13 @@ export function safeReturnBase(requested) {
 }
 
 /** Start a hosted checkout for something `user` owes. The amount and currency are read from the record, never from the client. */
+/** A guardian paying a young person's team or academy fee needs the `pay` scope (and the academy's own policy, if it reserves payment for the primary guardian). */
+async function checkPayScope(c, userId, type, id) {
+  const r = type === 'team_charge' ? (await c.query('SELECT member_id AS child_id, NULL::uuid AS org_id FROM team_charges WHERE id=$1', [id])).rows[0]
+    : type === 'academy_charge' ? (await c.query('SELECT coalesce(e.user_id, a.athlete_id) AS child_id, ch.organisation_id AS org_id FROM academy_charges ch LEFT JOIN org_enrolments e ON e.id=ch.enrolment_id LEFT JOIN academy_applications a ON a.id=ch.application_id WHERE ch.id=$1', [id])).rows[0] : null;
+  if (r) await checkGuardianScope(userId, r.child_id, 'pay', r.org_id, c);
+}
+
 export async function startCheckout(user, i) {
   if (!enabledProviders().includes(i.provider)) throw badRequest(`${i.provider} is not enabled on this server`);
   const client = await pool.connect();
@@ -229,6 +280,7 @@ export async function startCheckout(user, i) {
     // someone else's bill: allowed only under a live cover agreement that both sides approved and that covers this bill
     const cover = d.payerId === user.id ? null : await coverFor(client, user, d, { purposeType: i.purpose_type, purposeId: i.purpose_id, currency });
     if (d.payerId !== user.id && !cover) throw forbidden('This is not yours to pay');
+    if (d.payerId === user.id) await checkPayScope(client, user.id, i.purpose_type, i.purpose_id);
     if (!d.payable) throw conflict('Nothing to pay: it is already paid, cancelled or free');
     if (d.amount <= 0) throw conflict('Nothing to pay');
     const row = (await client.query('INSERT INTO payments(payer_id, provider, purpose_type, purpose_id, amount_cents, currency, cover_mandate_id) VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING id', [user.id, i.provider, i.purpose_type, i.purpose_id, d.amount, currency, cover?.id ?? null])).rows[0];

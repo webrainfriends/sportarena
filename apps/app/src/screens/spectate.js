@@ -2,6 +2,8 @@
 // Everything reads the public projection (/public/...); the UI only calls the API. Works on phone, tablet, desktop web, iOS and Android:
 // no web-only APIs without a Platform branch, 44pt touch targets, accessible labels, and lists as well as drawings for tables and brackets.
 import { locale } from '../locale';
+import { t } from '../i18n';
+import { moneyIn } from '../vtime';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Linking, Platform, Pressable, Share, View } from 'react-native';
 import { API, api, mediaUrl } from '../api';
@@ -15,11 +17,12 @@ import { A, ABracket, ABtn, ACard, AChip, AEmpty, AScreen, ASection, AT, ScoreTi
 import { StageBoard } from '../bracket-board';
 import { StandingsTable } from '../blocks';
 import { c } from '../theme';
+import { openStored } from '../tender-ui';
 
 // ---------------------------------------------------------------- labels
 export const STATE = { live: ['LIVE', c.red], upcoming: ['UPCOMING', c.cyan], in_progress: ['UNDER WAY', c.mint], paused: ['PAUSED', c.sun], completed: ['COMPLETED', c.lime], cancelled: ['CANCELLED', c.mute] };
 const RESULT = { live: ['LIVE', c.red], provisional: ['FULL TIME · PROVISIONAL', c.sun], final: ['FINAL', c.lime], scheduled: null, cancelled: ['CANCELLED', c.mute], postponed: ['POSTPONED', c.sun], abandoned: ['ABANDONED', c.red] };
-const ALERTS = [['start', 'Kick-off'], ['score', 'Scores'], ['result', 'Results'], ['schedule', 'Schedule changes']];
+const ALERTS = [['start', 'Kick-off'], ['score', 'Scores'], ['result', 'Results'], ['schedule', 'Schedule changes'], ['media', 'New photos & clips']];
 const REACT = { fire: '🔥', clap: '👏', wow: '😮', strong: '💪' };
 const stamp = (iso, tz) => { try { return new Date(iso).toLocaleString(locale, { weekday: 'short', day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit', timeZone: tz || undefined }); } catch { return ''; } };
 const dayKey = (iso, tz) => { try { return new Date(iso).toLocaleDateString(locale, { weekday: 'long', day: 'numeric', month: 'long', timeZone: tz || undefined }); } catch { return ''; } };
@@ -296,6 +299,7 @@ export function SpectatorBody({ id, p, openGame, goTeam, extra = [] }) {
 
 // ---------------------------------------------------------------- the public event header (shared by the event page and the signed-out page)
 export function EventHeader({ p, mine, onFollowChange }) {
+  const { push } = useNav();
   const e = p.event;
   const st = STATE[e.state] ?? STATE.upcoming;
   return (
@@ -308,6 +312,7 @@ export function EventHeader({ p, mine, onFollowChange }) {
       <View style={{ flexDirection: 'row', gap: 8, flexWrap: 'wrap' }}>
         <FollowButton type="event" id={e.id} name={e.name} mine={mine} onChange={onFollowChange} />
         <ShareButton card={p.share.card} />
+        {p.tickets?.on_sale ? <Btn small title={`🎟️ ${t('tix.get_tickets')}${p.tickets.from_price_minor != null ? ` · ${p.tickets.from_price_minor ? moneyIn(p.tickets.from_price_minor, p.tickets.currency) : t('tix.free')}` : ''}`} onPress={() => push('Tickets', { id: e.id })} accessibilityLabel={t('tix.get_tickets')} /> : null}
       </View>
     </View>
   );
@@ -471,12 +476,22 @@ export function Following() {
   const { toast } = useSession();
   const list = useLoad(() => api.get('/me/follows'), []);
   const [edit, setEdit] = useState(null);
+  const feed = useLoad(() => api.get('/me/media-feed', { limit: 12 }), []);
+  const openMedia = async (m) => { try { if (m.link?.startsWith('http')) await Linking.openURL(m.link); else await openStored(m.link, m.title); } catch (e) { toast('' + e.message); } };
   const open = (x) => (x.subject_type === 'event' ? push('Event', { id: x.subject_id }) : x.subject_type === 'fixture' ? push('LiveCentre', { id: x.subject_id }) : x.subject_type === 'team' ? push('Team', { id: x.subject_id }) : push('Person', { id: x.subject_id }));
   const NAME = { event: 'Events', team: 'Teams', athlete: 'Athletes', fixture: 'Games' };
   return (
     <Screen>
       <H2 style={{ marginTop: 8 }}>Following</H2>
       <T color={c.mute}>Alerts for the events, teams, athletes and games you follow. Following never gives access to private information.</T>
+      {feed.data?.items?.length ? (
+        <View style={{ marginTop: 18, gap: 8 }}>
+          <T size={13} weight="800" color={c.mute} accessibilityRole="header">NEW PHOTOS & CLIPS</T>
+          {feed.data.items.map((m) => (
+            <Row key={m.id} onPress={() => openMedia(m)} left={<Bubble emoji={m.kind === 'photo' ? '📸' : '🎞️'} color={c.violetSoft} />} title={m.title} sub={[m.event.name, m.credit].filter(Boolean).join(' · ')} right={<T size={13} weight="800" color={c.violet}>Open</T>} />
+          ))}
+        </View>
+      ) : null}
       {list.loading && !list.data ? <Loading /> : list.error ? <ErrorBox error={list.error} onRetry={list.reload} /> : !list.data.length ? <Empty emoji="🔔" title="You are not following anything yet" sub="Open an event, team or live game and tap Follow." /> : (
         Object.keys(NAME).filter((k) => list.data.some((x) => x.subject_type === k)).map((k) => (
           <View key={k} style={{ marginTop: 18, gap: 8 }}>

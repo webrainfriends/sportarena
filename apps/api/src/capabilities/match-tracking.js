@@ -48,6 +48,25 @@ export async function assertInLineup(c, f, side, playerIds) {
 const named = (i) => [i.player_id, i.payload?.assist_player_id];
 export const broadcast = async (fixtureId) => { const s = await liveState(fixtureId); publish(`fixture:${fixtureId}`, s); return s; };
 
+// Offline-safe controls: the same client_key never acts twice, and the time the official really pressed the button is kept (bounded).
+export const controlInput = {
+  client_key: z.string().min(1).max(80).optional().describe('idempotency key: sending the same one again returns the current state and changes nothing'),
+  occurred_at: z.string().datetime().optional().describe('when the official pressed it on their device (an offline control is sent later); kept only within the last 24 hours and never in the future'),
+};
+/** Device time, clamped to [now - 24 h, now]. A missing or unreadable time is the server's own. */
+export function occurredAt(at, now = Date.now()) {
+  const t = at ? Date.parse(at) : NaN;
+  return new Date(Number.isFinite(t) ? Math.min(now, Math.max(now - 24 * 3600e3, t)) : now);
+}
+export const controlSeen = async (c, fixtureId, key) => !!key && (await c.query('SELECT 1 FROM fixture_control_ops WHERE fixture_id=$1 AND client_key=$2', [fixtureId, key])).rowCount > 0;
+export const controlDone = (c, fixtureId, user, op, i, at) => i.client_key
+  ? c.query('INSERT INTO fixture_control_ops(fixture_id, client_key, op, occurred_at, recorded_by) VALUES ($1,$2,$3,$4,$5) ON CONFLICT (fixture_id, client_key) DO NOTHING', [fixtureId, i.client_key, op, at, user.id])
+  : null;
+
+/** What happened after the caller's last_seq, for the conflict view: kind, side and whether it was the caller's own. Never who else scored (no identity is leaked). */
+export const missedEvents = async (table, col, id, afterSeq, userId) => (await pool.query(
+  `SELECT seq, kind, ${table === 'match_events' ? 'side, period,' : 'entry_id,'} payload, recorded_at, (recorded_by=$3) AS by_you, (voided_at IS NOT NULL) AS voided FROM ${table} WHERE ${col}=$1 AND seq > $2 ORDER BY seq LIMIT 100`, [id, afterSeq ?? 0, userId])).rows;
+
 // ------------------------------------------------------------------ rulesets
 cap({
   name: 'get_scoring_ruleset', method: 'GET', path: '/events/:id/scoring-ruleset', tag: TAG, auth: 'public',
@@ -92,18 +111,21 @@ cap({
 // ------------------------------------------------------------------ match control
 cap({
   name: 'start_match', method: 'POST', path: '/fixtures/:id/start', tag: TAG,
-  summary: 'Kick off a game (organiser or match official). Both teams must be decided and the event must be running.',
-  input: z.object({ id }),
+  summary: 'Kick off a game (organiser or match official). Both teams must be decided and the event must be running. Safe to send late from an offline device: client_key makes a retry a no-op and occurred_at records when it was really pressed.',
+  input: z.object({ id, ...controlInput }),
   async handler({ user }, i) {
     await tx(async (c) => {
       const x = await fixtureContext(user, i.id, c, { lock: true });
       needScorer(x);
+      if (await controlSeen(c, i.id, i.client_key)) return;
       if (x.f.status !== 'scheduled') throw conflict(`A game that is ${x.f.status} cannot be started`);
       if (!x.f.home_team_id || !x.f.away_team_id) throw conflict('The teams for this game are not decided yet');
       if (['draft', 'paused', 'completed', 'cancelled'].includes(x.ev.status)) throw conflict(`Event is ${x.ev.status}`);
       await lockFixtureEligibility(c, x.ev, x.f, user.id, 'start');   // re-check eligibility at kick-off and preserve the decision (no-op without a registration policy)
       await pinFixtureRuleset(i.id, x.f.event_id, c);
-      await c.query("UPDATE fixtures SET status='live', started_at=now() WHERE id=$1", [i.id]);
+      const at = occurredAt(i.occurred_at);
+      await c.query("UPDATE fixtures SET status='live', started_at=$2 WHERE id=$1", [i.id, at]);
+      await controlDone(c, i.id, user, 'start', i, at);
     });
     return broadcast(i.id);
   },
@@ -111,13 +133,15 @@ cap({
 
 cap({
   name: 'pause_match', method: 'POST', path: '/fixtures/:id/pause', tag: TAG,
-  summary: 'Stop play in a live game (injury, weather, protest).', input: z.object({ id }),
+  summary: 'Stop play in a live game (injury, weather, protest). Offline-safe like start_match.', input: z.object({ id, ...controlInput }),
   async handler({ user }, i) {
     await tx(async (c) => {
       const x = await fixtureContext(user, i.id, c, { lock: true });
       needScorer(x);
+      if (await controlSeen(c, i.id, i.client_key)) return;
       if (x.f.status !== 'live') throw conflict(`Only a live game can be paused; this one is ${x.f.status}`);
       await c.query("UPDATE fixtures SET status='paused', paused_by_event=false WHERE id=$1", [i.id]);
+      await controlDone(c, i.id, user, 'pause', i, occurredAt(i.occurred_at));
     });
     return broadcast(i.id);
   },
@@ -125,14 +149,16 @@ cap({
 
 cap({
   name: 'resume_match', method: 'POST', path: '/fixtures/:id/resume', tag: TAG,
-  summary: 'Restart play in a paused game. A game frozen by an event pause restarts with the event.', input: z.object({ id }),
+  summary: 'Restart play in a paused game. A game frozen by an event pause restarts with the event. Offline-safe like start_match.', input: z.object({ id, ...controlInput }),
   async handler({ user }, i) {
     await tx(async (c) => {
       const x = await fixtureContext(user, i.id, c, { lock: true });
       needScorer(x);
+      if (await controlSeen(c, i.id, i.client_key)) return;
       if (x.f.status !== 'paused') throw conflict(`Only a paused game can be resumed; this one is ${x.f.status}`);
       if (x.ev.status === 'paused') throw conflict('The whole event is paused; resume the event first');
       await c.query("UPDATE fixtures SET status='live', paused_by_event=false WHERE id=$1", [i.id]);
+      await controlDone(c, i.id, user, 'resume', i, occurredAt(i.occurred_at));
     });
     return broadcast(i.id);
   },
@@ -143,7 +169,8 @@ cap({
   summary: 'Log what just happened in a live game: a scoring event (goal, 3-pointer, raid point, rally point, a cricket ball, a tennis point …) or a tracked parameter (foul, card, timeout, ace …), plus period_start / period_end / note. The score is computed from the pinned ruleset, never typed in. Send a client_key to make retries safe; send expected_seq (the last_seq you saw) to be told with 409 stale_state when someone else has scored since.',
   input: z.object({ id, kind: kindKey, side: z.enum(['home', 'away']).optional(), period: z.number().int().min(1).max(20).optional(), clock_seconds: z.number().int().min(0).max(36000).optional(),
     player_id: id.optional(), payload: z.record(z.string(), z.any()).optional(), client_key: z.string().min(1).max(80).optional(),
-    expected_seq: z.number().int().min(0).optional().describe('the last_seq the caller has seen; the event is refused with 409 stale_state if the game has moved on') }),
+    expected_seq: z.number().int().min(0).optional().describe('the last_seq the caller has seen; the event is refused with 409 stale_state if the game has moved on'),
+    occurred_at: controlInput.occurred_at }),
   async handler({ user }, i) {
     let duplicate = false, stale = null;
     const row = await serialized(`fixture:${i.id}`, () => tx(async (c) => {
@@ -176,30 +203,31 @@ cap({
       if (i.kind === 'lineup') for (const s of ['home', 'away']) if (Array.isArray(i.payload?.[s])) await assertInLineup(c, x.f, s, i.payload[s]);
       const seq = lastSeq + 1;
       return (await c.query(
-        `INSERT INTO match_events(fixture_id, event_id, seq, client_key, kind, side, team_id, player_id, period, clock_seconds, payload, recorded_by, source_authority)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13) RETURNING *`,
-        [i.id, x.f.event_id, seq, i.client_key ?? null, i.kind, i.side ?? null, i.side ? x.f[`${i.side}_team_id`] : null, i.player_id ?? null, period, i.clock_seconds ?? null, JSON.stringify(i.payload ?? {}), user.id, authorityOf(x, user)])).rows[0];
+        `INSERT INTO match_events(fixture_id, event_id, seq, client_key, kind, side, team_id, player_id, period, clock_seconds, payload, recorded_by, source_authority, occurred_at)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14) RETURNING *`,
+        [i.id, x.f.event_id, seq, i.client_key ?? null, i.kind, i.side ?? null, i.side ? x.f[`${i.side}_team_id`] : null, i.player_id ?? null, period, i.clock_seconds ?? null, JSON.stringify(i.payload ?? {}), user.id, authorityOf(x, user), i.occurred_at ? occurredAt(i.occurred_at) : null])).rows[0];
     }));
-    if (stale != null) throw conflict('The game has moved on since you last looked; review the current score and send the event again', { code: 'stale_state', last_seq: stale, expected_seq: i.expected_seq, state: await liveState(i.id) });
+    if (stale != null) throw conflict('The game has moved on since you last looked; review the current score and send the event again', { code: 'stale_state', last_seq: stale, expected_seq: i.expected_seq, state: await liveState(i.id), missed: await missedEvents('match_events', 'fixture_id', i.id, i.expected_seq, user.id) });
     return { duplicate, event: row, state: await broadcast(i.id) };
   },
 });
 
 cap({
   name: 'void_match_event', method: 'POST', path: '/match-events/:id/void', tag: TAG,
-  summary: 'Cancel a wrongly logged event with a reason (organiser or match official, while the game is live or paused). The event stays in the log, marked void, with a revision record of who did it and in what capacity, and the score is recomputed.',
-  input: z.object({ id, reason: z.string().min(2).max(300) }),
+  summary: 'Cancel a wrongly logged event with a reason (organiser or match official, while the game is live or paused). The event stays in the log, marked void, with a revision record of who did it and in what capacity, and the score is recomputed. Offline-safe: a client_key makes a retry a no-op.',
+  input: z.object({ id, reason: z.string().min(2).max(300), client_key: z.string().min(1).max(80).optional().describe('idempotency key: sending the same one again returns the current state and changes nothing') }),
   async handler({ user }, i) {
     const m = (await pool.query('SELECT * FROM match_events WHERE id=$1', [i.id])).rows[0];
     if (!m) throw notFound('Match event');
     await serialized(`fixture:${m.fixture_id}`, () => tx(async (c) => {
       const x = await fixtureContext(user, m.fixture_id, c, { lock: true });
       needScorer(x);
+      if (i.client_key && (await c.query('SELECT 1 FROM match_event_revisions WHERE fixture_id=$1 AND client_key=$2', [m.fixture_id, i.client_key])).rowCount) return;
       if (!['live', 'paused'].includes(x.f.status)) throw conflict('Events can only be voided while the game is live or paused; after full time, correct the score sheet instead');
       const cur = (await c.query('SELECT * FROM match_events WHERE id=$1', [i.id])).rows[0];
       if (cur.voided_at) throw conflict('Already voided');
       await c.query('UPDATE match_events SET voided_at=now(), voided_by=$2, void_reason=$3 WHERE id=$1', [i.id, user.id, i.reason]);
-      await c.query("INSERT INTO match_event_revisions(fixture_id, match_event_id, action, authority, reason, before, actor_id) VALUES ($1,$2,'void',$3,$4,$5,$6)", [m.fixture_id, i.id, authorityOf(x, user), i.reason, JSON.stringify(cur), user.id]);
+      await c.query("INSERT INTO match_event_revisions(fixture_id, match_event_id, action, authority, reason, before, actor_id, client_key) VALUES ($1,$2,'void',$3,$4,$5,$6,$7)", [m.fixture_id, i.id, authorityOf(x, user), i.reason, JSON.stringify(cur), user.id, i.client_key ?? null]);
     }));
     return broadcast(m.fixture_id);
   },

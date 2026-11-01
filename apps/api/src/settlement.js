@@ -13,13 +13,13 @@ import { syncMediaFeeRefund } from './media-fees.js';
 import { syncAdFundingRefund } from './ads/engine.js';
 
 /** Who ends up owning the money of a paid payment. */
-export const PROVIDER_PURPOSES = ['coach_hire', 'appointment', 'physio_package', 'shop_order', 'shop_checkout', 'sponsorship_payment', 'marketplace_engagement'];
+export const PROVIDER_PURPOSES = ['coach_hire', 'coach_class_seat', 'coach_subscription_period', 'appointment', 'physio_package', 'shop_order', 'shop_checkout', 'sponsorship_payment', 'marketplace_engagement'];
 export function fundsClass(purposeType) {
   if (PROVIDER_PURPOSES.includes(purposeType)) return 'provider';
   if (purposeType === 'venue_invoice' || purposeType === 'venue_plan') return 'partner_settlement';   // settled through the venue's partner contract
   if (purposeType === 'wallet_topup' || purposeType === 'gift_card') return 'platform_wallet';          // stored value owed to the customer, not provider money
   if (purposeType === 'service_invoice') return 'supplier_receivable';                                  // collected for a supplier; paying the supplier out is a manual, audited record (svc_payments.payout_state)
-  if (purposeType === 'media_rights_fee') return 'organisation_receivable';                           // owed to the event organiser; not a provider payout
+  if (purposeType === 'media_rights_fee' || purposeType === 'ticket_order') return 'organisation_receivable';   // ticket money is owed to the event organiser                           // owed to the event organiser; not a provider payout
   if (purposeType === 'ad_funding' || purposeType === 'commercial_subscription') return 'platform_revenue';                                           // advertising funds belong to the platform; spend and refunds are tracked in the ad ledger
   if (purposeType === 'team_charge' || purposeType === 'team_contribution') return 'team_receivable';                  // collected for the team's contribution ledger; the team settles it among its members, nothing is a provider payout
   if (purposeType === 'academy_charge') return 'organisation_receivable';                               // owed to the academy; not a provider payout until a settlement confirms it
@@ -53,6 +53,8 @@ async function providerTax(c, sellerId, taxClass, gross, at) {
 export async function sharesFor(c, p) {
   const one1 = async (sql) => (await c.query(sql, [p.purpose_id])).rows[0];
   if (p.purpose_type === 'coach_hire') { const h = await one1('SELECT coach_id FROM coach_hires WHERE id=$1'); return h ? [{ sellerId: h.coach_id, amount: Number(p.amount_cents) }] : []; }
+  if (p.purpose_type === 'coach_class_seat') { const k = await one1('SELECT k.coach_id FROM coach_class_seats z JOIN coach_classes k ON k.id=z.class_id WHERE z.id=$1'); return k ? [{ sellerId: k.coach_id, amount: Number(p.amount_cents) }] : []; }
+  if (p.purpose_type === 'coach_subscription_period') { const h = await one1('SELECT coach_id FROM user_plans WHERE id=$1'); return h ? [{ sellerId: h.coach_id, amount: Number(p.amount_cents) }] : []; }
   if (p.purpose_type === 'appointment') { const a = await one1('SELECT provider_id, tax_class FROM appointments WHERE id=$1'); return a ? [{ sellerId: a.provider_id, amount: Number(p.amount_cents), taxClass: a.tax_class }] : []; }
   if (p.purpose_type === 'physio_package') { const k = await one1('SELECT provider_id, tax_class FROM patient_packages WHERE id=$1'); return k ? [{ sellerId: k.provider_id, amount: Number(p.amount_cents), taxClass: k.tax_class }] : []; }
   if (p.purpose_type === 'marketplace_engagement') { const m = await one1('SELECT provider_id FROM marketplace_engagements WHERE id=$1'); return m ? [{ sellerId: m.provider_id, amount: Number(p.amount_cents) }] : []; }

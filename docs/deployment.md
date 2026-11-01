@@ -65,6 +65,17 @@ everything to the existing `:9255` site (so `:9255` keeps working and stays the 
 - **At rest (unaffected):** personal fields are AES-256-GCM encrypted by the app; the master key is KMS-wrapped
   (`KEY_PROVIDER=aws-kms`) with an encryption context (`app=sportarena`). Losing the KMS key or `master.key.enc`
   makes the data unreadable — **back up `/var/lib/sportarena/master.key.enc`** and never delete the KMS key.
+- **Key rotation.** The keyring is `KEY_IDS` (every key that must stay loaded, default `k1`) and `KEY_ACTIVE` (the key new values are
+  written with, default `k1`, so nothing changes until you choose). Order of work, all through GitHub Actions: set the repository variables
+  `KEY_IDS=k1,k2` and `KEY_ACTIVE=k2` (Settings → Secrets and variables → Actions → Variables) and run the deploy workflow. The deploy creates
+  the KMS-wrapped key for `k2` (`master.key.enc.k2`, mode 600; back it up like `master.key.enc`) and refuses to continue if `KEY_IDS` lacks
+  `k1` or `KEY_ACTIVE` is not in `KEY_IDS`. Then, as the platform admin, open **Keys & audit** and start the rotation; it continues in the
+  background and can be started again if interrupted. Never delete `k1`'s wrapped key or the KMS key: an old key is only retired (removed from
+  `KEY_IDS`) when the screen shows it protects no stored value, which cannot happen while append-only tables still hold values written under it.
+  The blind index (email lookup) is always keyed from `k1`.
+- **Audit log.** `audit_log` is append-only and hash-chained; the worker seals new rows every cycle. Export the log and its head hash from
+  **Keys & audit** and keep a copy outside the database (for example with your auditor): the chain proves nothing sealed was changed or removed
+  through the application or ordinary SQL, but a database superuser who disables triggers could rewrite all of it.
 - Postgres is bound to localhost and the API is reachable only through nginx.
 
 ## Authorising the deploy key without logging in (EC2 Instance Connect)

@@ -175,15 +175,20 @@ export const Seg = ({ options, value, onChange, color = c.violet }) => (
   </HScroll>
 );
 
+// A page that hosts another screen (the Work tab hosts the active role's workspace) hands that screen a header: the Screen it renders puts it on top.
+const HeaderCtx = React.createContext(null);
+export const ScreenHeaderProvider = HeaderCtx.Provider;
+
 export function Screen({ children, scroll = true, refreshing, onRefresh, padBottom, style, wide }) {
   const L = useLayout();
+  const header = React.useContext(HeaderCtx);
   const Inner = scroll ? ScrollView : View;
   const bottom = padBottom ?? L.bottomPad;
   return (
     <View style={{ flex: 1, backgroundColor: c.bg }}>
       <Inner style={{ flex: 1 }} contentContainerStyle={scroll ? { paddingHorizontal: L.gutter, paddingTop: 8, paddingBottom: bottom, maxWidth: wide ? L.contentMax : Math.min(L.contentMax, L.tablet ? 860 : 760), width: '100%', alignSelf: 'center' } : undefined}
         showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled" automaticallyAdjustKeyboardInsets>
-        {scroll ? children : <View style={[{ flex: 1, padding: L.gutter }, style]}>{children}</View>}
+        {scroll ? <>{header}{children}</> : <View style={[{ flex: 1, padding: L.gutter }, style]}>{children}</View>}
       </Inner>
     </View>
   );
