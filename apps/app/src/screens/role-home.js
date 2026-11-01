@@ -10,6 +10,8 @@ import { workspaceOf } from './more-catalog';
 import { HScroll } from '../pickers';
 import { SetupCard } from './setup';
 import { c, day, when } from '../theme';
+import { t } from '../i18n';
+import { actionLabel, hintText, statLabel } from '../ws-text';
 
 // Home and Workbench: the two role-driven tabs of the mobile shell (issue #599). Both read the one workspace the API composes for the active
 // role. Home answers "what is on today and what is waiting on me"; Workbench is the role's one page: its queue and fast actions on top of its own screen.
@@ -17,7 +19,7 @@ const EMOJI = { calendar: '📅', qr: '🎟️', edit: '✍️', search: '🔎',
 const DOT = { now: c.red, soon: c.sun, info: c.mute };
 // a date-only value (an event with no start time) shows the date, not a made-up midnight
 const at = (iso) => (/^\d{4}-\d{2}-\d{2}$/.test(String(iso)) ? day(iso) : when(iso));
-const URGENCY = { now: 'Needs you now', soon: 'Soon', info: '' };
+const URGENCY = { now: t('ws.u_now'), soon: t('ws.u_soon'), info: '' };
 
 /** Role chips (only when the person holds several), organisation chips, and the offline / waiting notices. */
 function Context({ ws }) {
@@ -29,30 +31,30 @@ function Context({ ws }) {
     <View style={{ gap: 10 }}>
       {d.roles.length > 1 || d.organisations.length ? (
         <HScroll>
-          {d.roles.length > 1 ? d.roles.map((r) => <Chip key={r.key} label={r.label} active={r.key === d.role} onPress={() => setActiveRole(r.key)} />) : null}
+          {d.roles.length > 1 ? d.roles.map((r) => <Chip key={r.key} label={roleLabel(r.key)} active={r.key === d.role} onPress={() => setActiveRole(r.key)} />) : null}
           {d.organisations.map((o) => <Chip key={o.id} label={`🏢 ${o.name}`} onPress={() => push('Org', { id: o.id })} />)}
         </HScroll>
       ) : null}
       {ws.offlineSince ? (
         <View accessibilityRole="alert" accessibilityLiveRegion="polite" style={{ backgroundColor: c.sunSoft, borderRadius: 12, padding: 12 }}>
-          <T weight="700" size={13}>You are offline</T>
-          <T size={12.5} color={c.mute}>Showing what was loaded at {when(d.as_of)}. Answers you give are saved here and sent as soon as the connection is back.</T>
+          <T weight="700" size={13}>{t('ws.offline')}</T>
+          <T size={12.5} color={c.mute}>{t('ws.offline_sub', { when: when(d.as_of) })}</T>
         </View>
       ) : null}
-      {ws.queued ? <T size={12.5} color={c.mute} accessibilityLiveRegion="polite">{ws.queued} answer{ws.queued === 1 ? '' : 's'} waiting to send…</T> : null}
-      {d.unavailable?.length ? <T size={12.5} color={c.mute}>Some of this could not be loaded. Pull down to try again.</T> : null}
+      {ws.queued ? <T size={12.5} color={c.mute} accessibilityLiveRegion="polite">{ws.queued === 1 ? t('ws.queued_one', { n: ws.queued }) : t('ws.queued_many', { n: ws.queued })}</T> : null}
+      {d.unavailable?.length ? <T size={12.5} color={c.mute}>{t('ws.unavailable')}</T> : null}
     </View>
   );
 }
 
-function Tiles({ items }) {
+function Tiles({ items, role }) {
   if (!items?.length) return null;
   return (
     <View style={{ flexDirection: 'row', gap: 10 }}>
       {items.map((s) => (
-        <View key={s.key} accessible accessibilityLabel={`${s.label}: ${s.value}`} style={{ flex: 1, minHeight: 76, backgroundColor: c.paper, borderRadius: 16, borderWidth: 1, borderColor: c.line, padding: 12, justifyContent: 'center' }}>
+        <View key={s.key} accessible accessibilityLabel={`${statLabel(role, s)}: ${s.value}`} style={{ flex: 1, minHeight: 76, backgroundColor: c.paper, borderRadius: 16, borderWidth: 1, borderColor: c.line, padding: 12, justifyContent: 'center' }}>
           <T weight="800" size={26} style={{ letterSpacing: -0.8 }}>{s.value}</T>
-          <T size={12} weight="700" color={c.mute} numberOfLines={1}>{s.label}</T>
+          <T size={12} weight="700" color={c.mute} numberOfLines={1}>{statLabel(role, s)}</T>
         </View>
       ))}
     </View>
@@ -60,7 +62,7 @@ function Tiles({ items }) {
 }
 
 /** The fast actions of the role: big touch targets, each opens the screen that does the job. */
-export function Actions({ actions, cols }) {
+export function Actions({ actions, cols, role }) {
   const go = useGo();
   const { tablet } = useLayout();
   const w = cols === 2 || !tablet ? '48%' : '23.5%';
@@ -70,13 +72,13 @@ export function Actions({ actions, cols }) {
       {actions.map((a) => {
         const off = !!a.disabled;
         return (
-          <Pressable key={a.key} disabled={off} onPress={() => go(a.target)} accessibilityRole="button" accessibilityLabel={a.label} accessibilityHint={off ? a.disabled : a.camera ? 'Opens the camera scanner' : undefined} accessibilityState={{ disabled: off }}
+          <Pressable key={a.key} disabled={off} onPress={() => go(a.target)} accessibilityRole="button" accessibilityLabel={actionLabel(role, a)} accessibilityHint={off ? hintText(a.disabled) : a.camera ? t('ws.a11y_camera') : undefined} accessibilityState={{ disabled: off }}
             style={({ pressed }) => ({ width: w, flexGrow: 1, minHeight: 88, opacity: off ? 0.45 : pressed ? 0.8 : 1 })}>
             <View style={{ flex: 1, backgroundColor: c.paper, borderRadius: 16, borderWidth: 1, borderColor: c.line, padding: 14, justifyContent: 'space-between', gap: 6 }}>
               <T size={26}>{EMOJI[a.icon] ?? '▫️'}</T>
               <View>
-                <T weight="700" size={14} numberOfLines={2}>{a.label}</T>
-                {off ? <T size={11.5} color={c.mute} numberOfLines={2}>{a.disabled}</T> : a.hint ? <T size={11.5} color={c.mute} numberOfLines={2}>{a.hint}</T> : null}
+                <T weight="700" size={14} numberOfLines={2}>{actionLabel(role, a)}</T>
+                {off ? <T size={11.5} color={c.mute} numberOfLines={2}>{hintText(a.disabled)}</T> : a.hint ? <T size={11.5} color={c.mute} numberOfLines={2}>{hintText(a.hint)}</T> : null}
               </View>
             </View>
           </Pressable>
@@ -104,7 +106,7 @@ export function QueueItem({ x, ws }) {
       </Pressable>
       {x.quick?.length ? (
         <View style={{ flexDirection: 'row', gap: 10, marginTop: 10, alignItems: 'center', flexWrap: 'wrap' }}>
-          {sent ? <Tag label="Waiting to send" color={c.sun} /> : x.quick.map((q) => <Btn key={q.label} small title={q.label} color={q.tone === 'yes' ? c.pink : c.paper} ink={c.ink} onPress={() => ws.answer(q)} />)}
+          {sent ? <Tag label={t('ws.waiting_send')} color={c.sun} /> : x.quick.map((q) => <Btn key={q.label} small title={q.label} color={q.tone === 'yes' ? c.pink : c.paper} ink={c.ink} onPress={() => ws.answer(q)} />)}
         </View>
       ) : null}
     </Card>
@@ -142,33 +144,33 @@ export function RoleHome() {
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, marginTop: 4 }}>
           <Avatar user={user} size={46} />
           <View style={{ flex: 1 }}>
-            <T size={13} color={c.mute} weight="700">{d.role_label ?? 'Welcome'}{d.generic && d.role ? ' · basic workspace' : ''}</T>
-            <H1 style={{ fontSize: 26, letterSpacing: -0.8 }}>{first ? `Hello, ${first}` : 'Hello'}</H1>
+            <T size={13} color={c.mute} weight="700">{d.role ? roleLabel(d.role) : t('ws.welcome')}{d.generic && d.role ? ` · ${t('ws.basic')}` : ''}</T>
+            <H1 style={{ fontSize: 26, letterSpacing: -0.8 }}>{first ? t('ws.hello_name', { name: first }) : t('ws.hello')}</H1>
           </View>
         </View>
         <View style={{ marginTop: 14 }}><Context ws={ws} /></View>
         <SetupCard />
-        <View style={{ marginTop: 14 }}><Tiles items={d.summary} /></View>
+        <View style={{ marginTop: 14 }}><Tiles items={d.summary} role={d.role} /></View>
         <View style={tablet ? { flexDirection: 'row', gap: 24, alignItems: 'flex-start' } : null}>
           <View style={{ flex: 1 }}>
-            <Heading>Today</Heading>
+            <Heading>{t('ws.today')}</Heading>
             {d.today.length ? d.today.map((x, i) => (
               <Card key={`${x.kind}${i}`} onPress={() => go(x.target)} pad={14} style={{ marginBottom: 10 }} accessibilityLabel={`${x.title}. ${x.detail}${x.at ? `. ${at(x.at)}` : ''}`}>
                 <T weight="700">{x.title}</T>
                 {x.detail ? <T size={13} color={c.mute}>{x.detail}</T> : null}
                 {x.at ? <T size={12} color={c.mute}>{at(x.at)}</T> : null}
               </Card>
-            )) : <Empty emoji="🌤️" title="Nothing scheduled today" sub="What is coming up appears here, and in your Calendar." />}
-            <Heading action={d.work.length > top.length ? `All ${d.work.length}` : undefined} onAction={() => goTab('Work')}>Needs you</Heading>
-            {top.length ? top.map((x, i) => <View key={`${x.kind}${i}`} style={{ marginBottom: 10 }}><QueueItem x={x} ws={ws} /></View>) : <Empty emoji="✅" title="You are all caught up" sub="Requests, approvals and replies waiting on you show up here." />}
+            )) : <Empty emoji="🌤️" title={t('ws.nothing_today')} sub={t('ws.nothing_today_sub')} />}
+            <Heading action={d.work.length > top.length ? t('ws.all_n', { n: d.work.length }) : undefined} onAction={() => goTab('Work')}>{t('ws.needs_you')}</Heading>
+            {top.length ? top.map((x, i) => <View key={`${x.kind}${i}`} style={{ marginBottom: 10 }}><QueueItem x={x} ws={ws} /></View>) : <Empty emoji="✅" title={t('ws.caught_up')} sub={t('ws.caught_up_sub')} />}
           </View>
           <View style={{ flex: tablet ? 0.9 : undefined, width: tablet ? undefined : '100%' }}>
-            <Heading>Quick actions</Heading>
-            <Actions actions={d.actions} cols={2} />
-            <Heading>Beyond your role</Heading>
+            <Heading>{t('ws.quick_actions')}</Heading>
+            <Actions actions={d.actions} cols={2} role={d.role} />
+            <Heading>{t('ws.beyond')}</Heading>
             <View style={{ gap: 10 }}>
-              <Card onPress={() => push('Community')} pad={14} accessibilityLabel="Community: posts, wanted ads and open positions"><T weight="700">💬 Community</T><T size={13} color={c.mute}>Posts, wanted ads, matches and open positions</T></Card>
-              <Card onPress={() => goTab('Explore')} pad={14} accessibilityLabel="Explore events, teams and people"><T weight="700">🧭 Explore</T><T size={13} color={c.mute}>Find events, teams, venues and people</T></Card>
+              <Card onPress={() => push('Community')} pad={14} accessibilityLabel={t('ws.a11y_community')}><T weight="700">💬 {t('ws.community')}</T><T size={13} color={c.mute}>{t('ws.community_sub')}</T></Card>
+              <Card onPress={() => goTab('Explore')} pad={14} accessibilityLabel={t('ws.a11y_explore')}><T weight="700">🧭 {t('ws.explore')}</T><T size={13} color={c.mute}>{t('ws.explore_sub')}</T></Card>
             </View>
           </View>
         </View>
@@ -183,14 +185,14 @@ function RoleQueue({ ws }) {
   const actions = own ? d.actions.filter((a) => a.key !== 'home') : d.actions;
   return (
     <View style={{ marginBottom: 8 }}>
-      <H1 style={{ fontSize: 28, marginTop: 4 }}>Workbench</H1>
-      <T color={c.mute} weight="600">{d.role_label ? `${d.role_label} · ` : ''}{d.work.length ? `${d.work.length} waiting on you` : 'Nothing waiting on you'}</T>
+      <H1 style={{ fontSize: 28, marginTop: 4 }}>{t('ws.workbench')}</H1>
+      <T color={c.mute} weight="600">{d.role ? `${roleLabel(d.role)} · ` : ''}{d.work.length ? t('ws.n_waiting', { n: d.work.length }) : t('ws.none_waiting')}</T>
       <View style={{ marginTop: 12 }}><Context ws={ws} /></View>
-      {d.summary?.length ? <View style={{ marginTop: 14 }}><Tiles items={d.summary} /></View> : null}
-      <Heading>Fast actions</Heading>
-      <Actions actions={actions} />
-      <Heading>Waiting on you</Heading>
-      {d.work.length ? d.work.map((x, i) => <View key={`${x.kind}${i}`} style={{ marginBottom: 10 }}><QueueItem x={x} ws={ws} /></View>) : <Empty emoji="✅" title="You are all caught up" sub="Requests, approvals and replies waiting on you show up here." />}
+      {d.summary?.length ? <View style={{ marginTop: 14 }}><Tiles items={d.summary} role={d.role} /></View> : null}
+      <Heading>{t('ws.fast_actions')}</Heading>
+      <Actions actions={actions} role={d.role} />
+      <Heading>{t('ws.waiting_on_you')}</Heading>
+      {d.work.length ? d.work.map((x, i) => <View key={`${x.kind}${i}`} style={{ marginBottom: 10 }}><QueueItem x={x} ws={ws} /></View>) : <Empty emoji="✅" title={t('ws.caught_up')} sub={t('ws.caught_up_sub')} />}
     </View>
   );
 }
@@ -213,8 +215,8 @@ export function WorkTab({ pages }) {
       {queue}
       {space ? (
         <>
-          <Heading>{`${roleLabel(space[0])} tools`}</Heading>
-          <Card onPress={() => goTab(space[3].tab, { section: space[3].section })} pad={14} accessibilityLabel={`${space[2]}. Open`}><T weight="700">{space[2]}</T><T size={13} color={c.mute}>Open</T></Card>
+          <Heading>{t('ws.tools', { role: roleLabel(space[0]) })}</Heading>
+          <Card onPress={() => goTab(space[3].tab, { section: space[3].section })} pad={14} accessibilityLabel={t('ws.a11y_open_x', { name: space[2] })}><T weight="700">{space[2]}</T><T size={13} color={c.mute}>{t('ws.open')}</T></Card>
         </>
       ) : null}
     </Screen>
