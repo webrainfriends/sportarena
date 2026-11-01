@@ -19,6 +19,7 @@ import { locale } from '../locale';
 import { moneyIn } from '../vtime';
 import { t } from '../i18n';
 import { QrCode } from './passport';
+import { PRICE_POINTS, POINT_COLOUR } from './venue-seating';
 import { CameraScan, hasCamera } from '../camera-scan';
 import { makeStore } from '../offline-store';
 
@@ -30,29 +31,35 @@ const AVAIL_TONE = { available: A.green, low: A.sun, sold_out: A.red, not_starte
 
 // ---- buy ------------------------------------------------------------------------------------------------------------------------------------------
 
-/** A seat grid for reserved seating: rows by seats, 44pt touch targets, taken seats disabled, exactly `need` to choose. */
-function SeatSheet({ product, need, value, onClose, onChange }) {
-  const map = useLoad(() => (product ? api.get(`/ticket-products/${product.id}/seats`) : Promise.resolve(null)), [product?.id]);
-  const s = map.data?.section;
-  const taken = new Set(map.data?.taken ?? []);
-  const rows = s ? Array.from({ length: s.rows_count }, (_, r) => String.fromCharCode(65 + (r % 26)).repeat(1 + Math.floor(r / 26))) : [];
-  const toggle = (lbl) => onChange(value.includes(lbl) ? value.filter((x) => x !== lbl) : value.length < need ? [...value, lbl] : [...value.slice(1), lbl]);
+/** One zone of the seat map: its seats as a grid in the zone's colour, taken seats greyed out, up to `max` chosen. Several tickets (adult, youth ...) may sell seats in a zone. */
+function ZoneSheet({ zone, value, onChange, onClose }) {
+  const [pid, setPid] = useState(null);
+  const open = !!zone;
+  const p = zone ? zone.products.find((x) => x.id === (pid ?? zone.products[0].id)) : null;
+  const picked = p ? value[p.id] ?? [] : [];
+  const others = Object.entries(value).reduce((n, [k, v]) => n + (k === p?.id ? 0 : v.length), 0);
+  const max = p ? Math.max(0, Math.min(p.per_order_limit, 100) - others) : 0;
+  const taken = new Set(p?.taken ?? []);
+  const rows = zone ? Array.from({ length: zone.rows_count }, (_, r) => String.fromCharCode(65 + (r % 26)).repeat(1 + Math.floor(r / 26))) : [];
+  const toggle = (lbl) => onChange(p.id, picked.includes(lbl) ? picked.filter((x) => x !== lbl) : picked.length < max ? [...picked, lbl] : [...picked.slice(1), lbl]);
   return (
-    <Sheet visible={!!product} onClose={onClose} title={t('tix.choose_seats', { n: need })}
-      footer={<Btn title={t('common.done')} onPress={onClose} disabled={value.length !== need} />}>
-      {!map.data ? <Loading /> : (
-        <View style={{ gap: 6 }}>
-          <T size={13} color={c.mute}>{s.name} · {t('tix.seats_taken_grey')}</T>
+    <Sheet visible={open} onClose={onClose} title={zone ? `${zone.name} · ${t(`seat.point.${zone.price_point ?? 'standard'}`)}` : ''}
+      footer={<Btn title={picked.length ? t('seat.done_n', { n: picked.length, total: moneyIn(picked.length * (p?.price_minor ?? 0), p?.currency) }) : t('common.done')} onPress={onClose} />}>
+      {zone ? (
+        <View style={{ gap: 8 }}>
+          {zone.products.length > 1 ? <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>{zone.products.map((x) => <Chip key={x.id} label={`${x.name} · ${x.price_minor ? moneyIn(x.price_minor, x.currency) : t('tix.free')}`} active={x.id === p.id} onPress={() => setPid(x.id)} />)}</View> : null}
+          <T size={13} color={c.mute}>{t('seat.pick_up_to', { n: max })} · {t('tix.seats_taken_grey')}</T>
+          <View style={{ alignSelf: 'stretch', height: 6, borderRadius: 3, backgroundColor: zone.colour }} accessibilityElementsHidden />
           {rows.map((row) => (
             <View key={row} style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
               <T size={13} weight="800" style={{ width: 24 }}>{row}</T>
               <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 4, flex: 1 }}>
-                {Array.from({ length: s.seats_per_row }, (_, n) => `${row}${n + 1}`).map((lbl) => {
-                  const on = value.includes(lbl), off = taken.has(lbl);
+                {Array.from({ length: zone.seats_per_row }, (_, n) => `${row}${n + 1}`).map((lbl) => {
+                  const on = picked.includes(lbl), off = taken.has(lbl);
                   return (
                     <Pressable key={lbl} disabled={off} onPress={() => toggle(lbl)} accessibilityRole="button" accessibilityState={{ selected: on, disabled: off }} accessibilityLabel={`${t('tix.seat')} ${lbl}${off ? `, ${t('tix.taken')}` : ''}`}
-                      style={{ width: 44, height: 44, borderRadius: 10, alignItems: 'center', justifyContent: 'center', backgroundColor: on ? c.violet : off ? c.line : c.paper, borderWidth: 1, borderColor: on ? c.violet : c.line, opacity: off ? 0.5 : 1 }}>
-                      <T size={11} weight="800" color={on ? '#fff' : c.ink}>{lbl}</T>
+                      style={{ width: 44, height: 44, borderRadius: 10, alignItems: 'center', justifyContent: 'center', backgroundColor: on ? zone.colour : off ? c.line : c.paper, borderWidth: 1.5, borderColor: on ? zone.colour : c.line, opacity: off ? 0.45 : 1 }}>
+                      <T size={11} weight="800" color={on ? '#23252F' : c.ink}>{lbl}</T>
                     </Pressable>
                   );
                 })}
@@ -60,8 +67,39 @@ function SeatSheet({ product, need, value, onClose, onChange }) {
             </View>
           ))}
         </View>
-      )}
+      ) : null}
     </Sheet>
+  );
+}
+
+/** The seating plan: a pitch, then every zone as a coloured block (price point, from-price, seats left). Tap a zone to choose seats; choices from several zones go into one order. */
+function SeatPlan({ zones, value, onOpen }) {
+  const present = [...new Set(zones.map((z) => z.price_point).filter(Boolean))];
+  return (
+    <Card style={{ gap: 10 }}>
+      <T size={17} weight="800">{t('seat.choose_title')}</T>
+      <T size={12} color={c.mute}>{t('seat.choose_sub')}</T>
+      <View accessibilityElementsHidden style={{ alignSelf: 'stretch', height: 34, borderRadius: 12, backgroundColor: c.line, alignItems: 'center', justifyContent: 'center' }}><T size={11} weight="800" color={c.mute} style={{ letterSpacing: 2 }}>{t('seat.pitch')}</T></View>
+      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10 }}>
+        {zones.map((z) => {
+          const left = z.products.some((p) => ['available', 'low'].includes(p.availability));
+          const from = Math.min(...z.products.map((p) => p.price_minor));
+          const n = z.products.reduce((k, p) => k + (value[p.id]?.length ?? 0), 0);
+          const free = z.seats - Math.max(...z.products.map((p) => p.taken.length));
+          return (
+            <Pressable key={z.section_id} disabled={!left} onPress={() => onOpen(z)} accessibilityRole="button" accessibilityLabel={`${z.name}, ${t(`seat.point.${z.price_point ?? 'standard'}`)}, ${moneyIn(from, z.products[0].currency)}, ${t('seat.n_free', { n: free })}`}
+              style={{ flexGrow: 1, flexBasis: 150, minHeight: 96, borderRadius: 16, borderWidth: 2, borderColor: n ? z.colour : c.line, backgroundColor: c.paper, padding: 12, gap: 4, opacity: left ? 1 : 0.5, overflow: 'hidden' }}>
+              <View style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: 8, backgroundColor: z.colour }} />
+              <T size={15} weight="800" style={{ marginLeft: 6 }}>{z.name}</T>
+              <T size={12} color={c.mute} style={{ marginLeft: 6 }}>{t(`seat.point.${z.price_point ?? 'standard'}`)} · {t('seat.from_price', { price: from ? moneyIn(from, z.products[0].currency) : t('tix.free') })}</T>
+              <T size={12} weight="700" style={{ marginLeft: 6 }} color={left ? c.ink : c.red}>{left ? t('seat.n_free', { n: free }) : t('tix.avail.sold_out')}</T>
+              {n ? <View style={{ position: 'absolute', right: 8, top: 8, minWidth: 26, height: 26, borderRadius: 13, backgroundColor: z.colour, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 6 }}><T size={12} weight="800" color="#23252F">{n}</T></View> : null}
+            </Pressable>
+          );
+        })}
+      </View>
+      {present.length > 1 ? <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10 }}>{present.map((pt) => <View key={pt} style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}><View style={{ width: 12, height: 12, borderRadius: 6, backgroundColor: zones.find((z) => z.price_point === pt).colour }} /><T size={12} color={c.mute}>{t(`seat.point.${pt}`)}</T></View>)}</View> : null}
+    </Card>
   );
 }
 
@@ -70,21 +108,26 @@ export function TicketShop({ id }) {
   const { push } = useNav();
   const page = useLoad(() => api.get(`/public/events/${id}`), [id]);
   const offer = useLoad(() => api.get(`/public/events/${id}/tickets`), [id]);
-  const [qty, setQty] = useState({}), [seats, setSeats] = useState({}), [seatFor, setSeatFor] = useState(null), [pay, setPay] = useState(null), [busy, setBusy] = useState(false);
+  const plan = useLoad(() => api.get(`/public/events/${id}/tickets/seat-map`).catch(() => ({ zones: [] })), [id]);
+  const [qty, setQty] = useState({}), [seats, setSeats] = useState({}), [zone, setZone] = useState(null), [pay, setPay] = useState(null), [busy, setBusy] = useState(false);
   const idem = useRef(key());
-  const products = offer.data?.products ?? [];
-  const chosen = products.filter((p) => (qty[p.id] ?? 0) > 0);
-  const cur = chosen[0]?.currency;
-  const total = chosen.reduce((n, p) => n + p.price_minor * qty[p.id], 0);
-  const seatsOk = chosen.every((p) => p.seating !== 'reserved' || (seats[p.id] ?? []).length === qty[p.id]);
-  const set = (p, n) => { idem.current = key(); setQty((q) => ({ ...q, [p.id]: n })); setSeats((s) => ({ ...s, [p.id]: (s[p.id] ?? []).slice(0, n) })); };
+  const zones = plan.data?.zones ?? [];
+  const seated = new Set(zones.flatMap((z) => z.products.map((p) => p.id)));
+  const all = [...(offer.data?.products ?? []), ...zones.flatMap((z) => z.products.filter((p) => !(offer.data?.products ?? []).some((o) => o.id === p.id)))];
+  const products = (offer.data?.products ?? []).filter((p) => !seated.has(p.id));   // seated tickets are sold from the seat map
+  const byId = Object.fromEntries(all.map((p) => [p.id, p]));
+  const lines = [...Object.keys(qty).filter((k) => qty[k] > 0 && !seated.has(k)).map((k) => ({ p: byId[k], n: qty[k], seats: undefined })), ...Object.keys(seats).filter((k) => seats[k].length).map((k) => ({ p: byId[k], n: seats[k].length, seats: seats[k] }))].filter((l) => l.p);
+  const cur = lines[0]?.p.currency;
+  const total = lines.reduce((n, l) => n + l.p.price_minor * l.n, 0);
+  const set = (p, n) => { idem.current = key(); setQty((q) => ({ ...q, [p.id]: n })); };
+  const pick = (pid, labels) => { idem.current = key(); setSeats((s) => ({ ...s, [pid]: labels })); };
   const reserve = async () => {
     setBusy(true);
     try {
-      const o = await api.post(`/events/${id}/ticket-orders`, { idempotency_key: idem.current, lines: chosen.map((p) => ({ product_id: p.id, quantity: qty[p.id], seats: p.seating === 'reserved' ? seats[p.id] : undefined })) });
+      const o = await api.post(`/events/${id}/ticket-orders`, { idempotency_key: idem.current, lines: lines.map((l) => ({ product_id: l.p.id, quantity: l.n, seats: l.seats })) });
       if (o.pay) setPay({ id: o.id, type: 'ticket_order', label: `${page.data?.event?.name ?? ''} · ${t('tix.tickets')}`, amount: o.total_minor, currency: o.currency });
       else { toast(t('tix.ready')); push('MyTickets', {}); }
-    } catch (x) { toast('' + x.message); offer.reload(); } finally { setBusy(false); }
+    } catch (x) { toast('' + x.message); offer.reload(); plan.reload(); } finally { setBusy(false); }
   };
   if (offer.error) return <Screen><ErrorBox error={offer.error} onRetry={offer.reload} /></Screen>;
   if (!offer.data) return <Screen><Loading /></Screen>;
@@ -92,7 +135,9 @@ export function TicketShop({ id }) {
     <Screen>
       <T size={13} color={c.mute}>{page.data?.event?.name}</T>
       <T size={26} weight="800">{t('tix.get_tickets')}</T>
-      {!products.length ? <Empty emoji="🎟️" title={t('tix.none_on_sale')} sub={t('tix.none_on_sale_sub')} /> : products.map((p) => {
+      {!products.length && !zones.length ? <Empty emoji="🎟️" title={t('tix.none_on_sale')} sub={t('tix.none_on_sale_sub')} /> : null}
+      {zones.length ? <SeatPlan zones={zones} value={seats} onOpen={setZone} /> : null}
+      {products.map((p) => {
         const sellable = ['available', 'low'].includes(p.availability);
         const clash = cur && p.currency !== cur && !(qty[p.id] > 0);
         const max = Math.min(p.per_order_limit, p.remaining ?? p.per_order_limit);
@@ -101,7 +146,7 @@ export function TicketShop({ id }) {
             <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 10 }}>
               <View style={{ flex: 1, gap: 2 }}>
                 <T size={17} weight="800">{p.name}</T>
-                <T size={13} color={c.mute}>{className(p.class, p.class_label)}{p.kind === 'pass' ? ` · ${t('tix.pass')}` : ''}{p.seating === 'reserved' ? ` · ${t('tix.reserved_seat')}` : ''}</T>
+                <T size={13} color={c.mute}>{className(p.class, p.class_label)}{p.kind === 'pass' ? ` · ${t('tix.pass')}` : ''}</T>
               </View>
               <View style={{ alignItems: 'flex-end' }}>
                 <T size={20} weight="800">{p.price_minor ? moneyIn(p.price_minor, p.currency) : t('tix.free')}</T>
@@ -115,21 +160,21 @@ export function TicketShop({ id }) {
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
                 <View style={{ minWidth: 190, flexShrink: 1 }}><Counter value={qty[p.id] ?? 0} onChange={(n) => set(p, n)} min={0} max={max} label={t('tix.tickets')} /></View>
                 {clash ? <T size={12} color={c.mute}>{t('tix.one_currency')}</T> : null}
-                {p.seating === 'reserved' && (qty[p.id] ?? 0) > 0 ? <Btn small title={(seats[p.id] ?? []).length === qty[p.id] ? (seats[p.id] ?? []).join(', ') : t('tix.choose_seats', { n: qty[p.id] })} color={c.paper} ink={c.ink} onPress={() => setSeatFor(p)} /> : null}
               </View>
             ) : null}
           </Card>
         );
       })}
-      {chosen.length ? (
+      {lines.length ? (
         <Card style={{ gap: 8 }}>
+          {lines.map((l) => <View key={l.p.id} style={{ flexDirection: 'row', justifyContent: 'space-between', gap: 8 }}><T size={13} style={{ flex: 1 }}>{l.n} × {l.p.name}{l.seats ? ` (${l.seats.join(', ')})` : ''}</T><T size={13} weight="700">{moneyIn(l.p.price_minor * l.n, l.p.currency)}</T></View>)}
           <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}><T size={15} weight="800">{t('tix.total')}</T><T size={20} weight="800">{total ? moneyIn(total, cur) : t('tix.free')}</T></View>
           <T size={12} color={c.mute}>{t('tix.hold_note')}</T>
-          <Btn title={total ? t('tix.reserve_pay') : t('tix.get_free')} onPress={reserve} loading={busy} disabled={!seatsOk} accessibilityLabel={t('tix.reserve_pay')} />
+          <Btn title={total ? t('tix.reserve_pay') : t('tix.get_free')} onPress={reserve} loading={busy} accessibilityLabel={t('tix.reserve_pay')} />
         </Card>
       ) : null}
-      <SeatSheet product={seatFor} need={seatFor ? qty[seatFor.id] ?? 0 : 0} value={seatFor ? seats[seatFor.id] ?? [] : []} onClose={() => setSeatFor(null)} onChange={(v) => { idem.current = key(); setSeats((s) => ({ ...s, [seatFor.id]: v })); }} />
-      {pay ? <PaySheet target={pay} onClose={() => { setPay(null); offer.reload(); }} onDone={() => { setQty({}); push('MyTickets', {}); }} /> : null}
+      <ZoneSheet zone={zone} value={seats} onChange={pick} onClose={() => setZone(null)} />
+      {pay ? <PaySheet target={pay} onClose={() => { setPay(null); offer.reload(); plan.reload(); }} onDone={() => { setQty({}); setSeats({}); push('MyTickets', {}); }} /> : null}
     </Screen>
   );
 }
@@ -280,7 +325,7 @@ export function TicketsTab({ id, e, isOrg }) {
   const reload = () => { report.reload(); products.reload(); settings.reload(); sections.reload(); allocs.reload(); found.reload(); };
   const act = useDo(reload);
   const fixtureOpts = useMemo(() => (fx.data ?? []).map((f) => ({ value: f.id, label: `${f.home_name ?? t('tix.tbc')} v ${f.away_name ?? t('tix.tbc')} · ${stamp(f.scheduled_at)}` })), [fx.data]);
-  const sectionOpts = (sections.data ?? []).map((s) => ({ value: s.id, label: `${s.name} (${s.seats})` }));
+  const sectionOpts = (sections.data ?? []).map((s) => ({ value: s.id, label: `${s.name}${s.price_point ? ` · ${t(`seat.point.${s.price_point}`)}` : ''} (${s.seats})` }));
   if (!isOrg) {
     return <ACard><AT size={15} weight="800">{t('tix.organiser_only')}</AT><Btn title={t('tix.get_tickets')} onPress={() => push('Tickets', { id })} style={{ marginTop: 10 }} /></ACard>;
   }
@@ -338,7 +383,9 @@ export function TicketsTab({ id, e, isOrg }) {
           <ARow title={t('tix.refund_policy')} sub={t(`tix.policy.${S.refund_policy}`, { h: S.refund_cutoff_hours })} />
           <ARow title={t('tix.transfers')} sub={S.transfer_allowed ? t('tix.transfer_until', { h: S.transfer_cutoff_hours }) : t('tix.transfer_off')} />
           <ASection title={t('tix.sections')} sub={t('tix.sections_sub')} action={t('tix.add_section')} onAction={() => setSecForm(true)} />
-          {(sections.data ?? []).map((s) => <ARow key={s.id} title={s.name} sub={t('tix.section_line', { rows: s.rows_count, per: s.seats_per_row })} right={<AT size={16} weight="900" num>{s.seats}</AT>} />)}
+          <ABtn small tone="lime" title={t('seat.use_venue_map')} onPress={() => act(async () => { const r = await api.post(`/events/${id}/ticket-sections/from-venue`, { create_products: true }); return r; }, (r) => (r?.sections?.length ? t('seat.imported', { n: r.sections.length }) : t('seat.nothing_new')))} accessibilityLabel={t('seat.use_venue_map')} />
+          <AT size={12} color={A.mute}>{t('seat.use_venue_map_sub')}</AT>
+          {(sections.data ?? []).map((s) => <ARow key={s.id} left={<View style={{ width: 10, height: 36, borderRadius: 5, backgroundColor: s.colour ?? A.violet }} />} title={s.name} sub={`${s.price_point ? `${t(`seat.point.${s.price_point}`)} · ` : ''}${t('tix.section_line', { rows: s.rows_count, per: s.seats_per_row })}${s.venue_zone_id ? ` · ${t('seat.from_venue')}` : ''}`} right={<AT size={16} weight="900" num>{s.seats}</AT>} />)}
           <ASection title={t('tix.gates_readers')} sub={t('tix.gates_readers_sub')} />
           <AccessPoints eventId={id} zones={[]} />
         </>
@@ -387,9 +434,9 @@ export function TicketsTab({ id, e, isOrg }) {
           { key: 'transfer_cutoff_hours', label: t('tix.transfer_cutoff'), type: 'stepper', min: 0, max: 720, step: 1, suffix: ' h', show: (v) => v.transfer_allowed },
         ]}
         onSubmit={async (v) => { await api.patch(`/events/${id}/tickets/settings`, { spectator_capacity: v.spectator_capacity === '' || v.spectator_capacity == null ? null : Number(v.spectator_capacity), safety_capacity: v.safety_capacity === '' || v.safety_capacity == null ? null : Number(v.safety_capacity), count_participants: !!v.count_participants, count_accreditations: !!v.count_accreditations, hold_minutes: v.hold_minutes, refund_policy: v.refund_policy, refund_cutoff_hours: v.refund_cutoff_hours, transfer_allowed: !!v.transfer_allowed, transfer_cutoff_hours: v.transfer_cutoff_hours }); reload(); return null; }} />
-      <FormSheet visible={secForm} onClose={() => setSecForm(false)} title={t('tix.add_section')} submitLabel={t('tix.create')} initial={{ rows_count: 10, seats_per_row: 20 }}
-        fields={[{ key: 'name', label: t('tix.section_name') }, { key: 'rows_count', label: t('tix.rows'), type: 'stepper', min: 1, max: 100 }, { key: 'seats_per_row', label: t('tix.seats_per_row'), type: 'stepper', min: 1, max: 200 }]}
-        onSubmit={async (v) => { await api.post(`/events/${id}/ticket-sections`, v); reload(); return null; }} />
+      <FormSheet visible={secForm} onClose={() => setSecForm(false)} title={t('tix.add_section')} submitLabel={t('tix.create')} initial={{ rows_count: 10, seats_per_row: 20, price_point: 'standard' }}
+        fields={[{ key: 'name', label: t('tix.section_name') }, { key: 'price_point', label: t('seat.price_point'), type: 'chips', options: PRICE_POINTS.map((x) => ({ value: x, label: t(`seat.point.${x}`) })) }, { key: 'rows_count', label: t('tix.rows'), type: 'stepper', min: 1, max: 100 }, { key: 'seats_per_row', label: t('tix.seats_per_row'), type: 'stepper', min: 1, max: 200 }]}
+        onSubmit={async (v) => { await api.post(`/events/${id}/ticket-sections`, { ...v, colour: v.price_point ? POINT_COLOUR[v.price_point] : undefined }); reload(); return null; }} />
       <FormSheet visible={allocForm} onClose={() => setAllocForm(false)} title={t('tix.new_allocation')} submitLabel={t('tix.create')} initial={{ kind: 'sponsor', quota: 10 }}
         fields={[
           { key: 'product_id', label: t('tix.product'), type: 'chips', options: (products.data ?? []).filter((p) => p.channels.includes('complimentary') && Number(p.price_minor) === 0).map((p) => ({ value: p.id, label: p.name })), hint: t('tix.alloc_product_hint') },

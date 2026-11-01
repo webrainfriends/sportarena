@@ -20,7 +20,7 @@ import { toCsv } from '../csv.js';
 import { DOC_LIMITS, docHeaders, loadEncrypted, readBody, saveEncrypted, sniffDoc } from '../doc-store.js';
 import { validateApplication, splitConfidential } from '../application-forms.js';
 import { hasOrgGrant } from '../org-access.js';
-import { guardianLink, requireConsent, isYouth, hasConsent } from '../youth.js';
+import { checkGuardianScope, guardianLink, requireConsent, isYouth, hasConsent } from '../youth.js';
 import { evaluate, latestPolicy, protectedIds, PROTECTED_NAME } from '../registration.js';
 import { canManageTeam } from './teams.js';
 import { isEventStaff } from './registration.js';
@@ -435,6 +435,7 @@ async function resolveParty(c, user, p, i) {
     const manager = team && (await canManageTeam(user, team));
     const guardian = p.allow_dependents && !!(await guardianLink(user.id, participant, c));
     if (!(staff || manager || guardian)) throw notFound('Participant');
+    if (guardian && !staff && !manager) await checkGuardianScope(user.id, participant, 'register', null, c);
   }
   if (!(await c.query('SELECT 1 FROM users WHERE id=$1', [participant])).rows[0]) throw notFound('Participant');
   return { participant_id: participant, team_id: team?.id ?? null };

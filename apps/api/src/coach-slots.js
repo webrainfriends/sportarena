@@ -20,7 +20,8 @@ export async function openCoachSlots(coachId, from, to, { duration, schedule } =
   const sched = schedule ?? await loadCoachSchedule(coachId);
   if (!sched.windows.length) return [];
   const booked = await many("SELECT starts_at, duration_min FROM coach_hires WHERE coach_id=$1 AND status IN ('requested','confirmed') AND starts_at < $3 AND starts_at + make_interval(mins => duration_min) > $2", [coachId, from, to]);
-  const busy = [...booked.map((b) => [+new Date(b.starts_at), +new Date(b.starts_at) + b.duration_min * 60_000]), ...(await commitmentBusy(coachId, from, to))];
+  const rostered = await many("SELECT starts_at, ends_at FROM venue_coach_slots WHERE coach_id=$1 AND status='agreed' AND starts_at < $3 AND ends_at > $2", [coachId, from, to]);   // agreed at a venue
+  const busy = [...booked.map((b) => [+new Date(b.starts_at), +new Date(b.starts_at) + b.duration_min * 60_000]), ...rostered.map((b) => [+new Date(b.starts_at), +new Date(b.ends_at)]), ...(await commitmentBusy(coachId, from, to))];
   const len = duration ?? sched.slot_min, earliest = Date.now() + MIN_NOTICE_MIN * 60_000, out = [];
   // one day of slack either side because the local date can differ from the UTC date
   for (const date of dateRange(addDays(toLocal(from, sched.timezone).date, -1), addDays(toLocal(to, sched.timezone).date, 1))) {

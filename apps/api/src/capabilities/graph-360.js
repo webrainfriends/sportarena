@@ -14,7 +14,7 @@ import { canManageTeam } from './teams.js';
 import { sharedClearance } from './academy-athlete360.js';
 import { EDGE_COLS, RELS, canManageEntity, describe, ownerLike, personAccess } from '../graph.js';
 import { visibleEdges, withEnds } from './graph.js';
-import { ORG_STAFF, PERSON_PRIVATE, orgMedia, orgSponsorships, personRegistrations, personSponsorships, personStatistics, personTrainingForCoach } from '../graph-sources.js';
+import { ORG_STAFF, PERSON_PRIVATE, orgMedia, orgSponsorships, personRegistrations, personSponsorships, personCoaching, personStatistics, personTrainingForCoach } from '../graph-sources.js';
 import { COMPARE_DOMAINS, METRICS, ORIGINS, ORIGIN_KEYS, careerOrigin, edgeOrigin, overlaps, resolveWindow, summarise, within } from '../athlete-journey.js';
 
 const TAG = 'Sports Graph';
@@ -97,7 +97,7 @@ const filtersOf = (w) => ({ sport: w.sport, from: w.from, to: w.to, label: w.lab
 
 cap({
   name: 'get_athlete_360', method: 'GET', path: '/graph/athletes/:id/360', tag: TAG,
-  summary: 'Universal 360 of one person assembled from the canonical sources, section by section: identity, relationships, career (with derived moves between clubs), competitions played, results in every sport, performance statistics, achievements, contracts (terms only), development goals and plans (the athlete and guardian only) and health availability (status only, shared by the athlete or guardian). Every row says whether it is verified, user-entered or external. Each section is decided by the caller\'s relationship; sections they cannot see say so. Filter by sport, dates, an organisation season or one club stint. Pass organisation_id to read health availability the athlete shared with that organisation.',
+  summary: 'Universal 360 of one person assembled from the canonical sources, section by section: identity, relationships, career (with derived moves between clubs), competitions played, results in every sport, performance statistics, achievements, contracts (terms only), development goals and plans (the athlete and guardian only), coach-set goals and actions (the athlete, guardian and the coach who set them) and health availability (status only, shared by the athlete or guardian). Every row says whether it is verified, user-entered or external. Each section is decided by the caller\'s relationship; sections they cannot see say so. Filter by sport, dates, an organisation season or one club stint. Pass organisation_id to read health availability the athlete shared with that organisation.',
   input: z.object({ id, organisation_id: id.optional(), ...WINDOW }),
   async handler({ user }, i) {
     const access = await personAccess(user, i.id);
@@ -111,7 +111,7 @@ cap({
     s.identity = ok('users', await identity(user, 'person', i.id, owner));
     s.relationships = ok('graph_edges', await relationships(user, 'person', i.id));
     if (limited) {
-      for (const k of ['career', 'competitions', 'results', 'statistics', 'achievements', 'contracts', 'development']) s[k] = denied('Shown only to the young person and their guardian');
+      for (const k of ['career', 'competitions', 'results', 'statistics', 'achievements', 'contracts', 'development', 'coaching']) s[k] = denied('Shown only to the young person and their guardian');
     } else {
       const career = (await publicCareer(i.id)).filter((m) => inSport(m.sport_slug) && overlaps(m.starts_on, m.ends_on, w)).map((m) => ({ ...m, origin: careerOrigin(m) }));
       s.career = ok('career_memberships', { stints: career, moves: moves(career).map((mv) => ({ ...mv, origin: 'user_entered' })) });
@@ -124,6 +124,8 @@ cap({
       s.achievements = ok('awards', (await awardsOf(i.id)).filter((a) => inSport(a.sport_slug) && within(a.awarded_at, w)).map((a) => ({ ...a, origin: 'verified' })));
       const contracts = (await visibleContracts(user, access, i.id)).filter((k) => within(k.starts_on ?? k.created_at, w)).map((k) => ({ ...k, origin: 'verified' }));
       s.contracts = owner || contracts.length ? ok('player_contracts', contracts) : denied('Contract terms are shown to the athlete, their guardian and the contracting team');
+      const coaching = (await personCoaching(user, i.id, owner)).map(asItem).filter((r) => inSport(r.sport_slug) && within(r.at, w));
+      s.coaching = owner || coaching.length ? ok('coaching_goals', coaching) : denied('Coaching goals are shown to the athlete, their guardian and the coach who set them');
       s.development = owner ? ok('player_goals', (await PERSON_PRIVATE.development(i.id)).map(asItem).filter((r) => inSport(r.sport_slug) && within(r.at, w))) : denied('Development goals are shown to the athlete and their guardian');
     }
     s.health = limited ? denied() : await availability(user, access, i.id, i.organisation_id);
@@ -165,7 +167,7 @@ cap({
   },
 });
 
-const DOMAINS = ['career', 'competition', 'result', 'statistics', 'achievement', 'contract', 'relationship', 'health', 'development', 'organisation', 'registration', 'accreditation', 'travel', 'payment', 'invoice', 'sponsorship', 'assessment', 'media', 'training', 'opportunity', 'supplier'];
+const DOMAINS = ['career', 'competition', 'result', 'statistics', 'achievement', 'contract', 'relationship', 'health', 'development', 'coaching', 'organisation', 'registration', 'accreditation', 'travel', 'payment', 'invoice', 'sponsorship', 'assessment', 'media', 'training', 'opportunity', 'supplier'];
 const PERSON_ONLY_PRIVATE = ['payment', 'invoice', 'accreditation', 'travel', 'assessment', 'opportunity', 'development', 'media'];
 
 /** The person's timeline rows for the domains asked, each decided by the viewer's relationship: `access` is what personAccess returned ('public' for a shared portfolio, which has no signed-in viewer). */
@@ -197,6 +199,7 @@ export async function personItems(viewer, access, id, want, organisationId) {
   if (gate('relationship')) for (const e of await relationships(viewer, 'person', id)) add('relationship', e.valid_from, e.rel, `${e.from.label} ${e.rel_label} ${e.to.label}`, e.verification_state, 'graph_edges', e.id, { verification: e.verification_state, origin: edgeOrigin(e) });
   const push = (rows) => { for (const r of rows) add(...r); };
   for (const d of PERSON_ONLY_PRIVATE) if (want.includes(d)) { if (owner && !youthLimited) push(await PERSON_PRIVATE[d](id)); else hidden.push(d); }
+  if (gate('coaching')) push(await personCoaching(viewer, id, owner));
   if (gate('registration')) push(await personRegistrations(viewer, id, owner));
   if (gate('sponsorship')) push(await personSponsorships(viewer, id, owner));
   if (gate('training')) push(owner ? await PERSON_PRIVATE.training(id) : await personTrainingForCoach(viewer, id));
@@ -258,7 +261,7 @@ cap({
 
 cap({
   name: 'compare_athlete_periods', method: 'GET', path: '/graph/athletes/:id/compare', tag: TAG,
-  summary: 'Compare two development periods of one athlete side by side: matches, verified minutes, results, wins, podiums, awards, performance records, clubs joined, moves, training sessions and goals set/achieved, with the change from period A to period B and how many of the rows behind each period are verified, user-entered or external. Each period is two dates, an organisation season (a_season_id / b_season_id) or one club stint (a_membership_id / b_membership_id); an optional sport narrows both. Figures from a domain the caller may not see are left out and listed in hidden_domains (a goals comparison is the athlete\'s and guardian\'s only).',
+  summary: 'Compare two development periods of one athlete side by side: matches, verified minutes, results, wins, podiums, awards, performance records, clubs joined, moves, training sessions and goals set/achieved and coach goals and actions, with the change from period A to period B and how many of the rows behind each period are verified, user-entered or external. Each period is two dates, an organisation season (a_season_id / b_season_id) or one club stint (a_membership_id / b_membership_id); an optional sport narrows both. Figures from a domain the caller may not see are left out and listed in hidden_domains (a goals comparison is the athlete\'s and guardian\'s only).',
   input: z.object({ id, sport: z.string().max(60).optional(),
     a_from: z.string().date().optional(), a_to: z.string().date().optional(), a_season_id: id.optional(), a_membership_id: id.optional(),
     b_from: z.string().date().optional(), b_to: z.string().date().optional(), b_season_id: id.optional(), b_membership_id: id.optional() }),

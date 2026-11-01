@@ -2,11 +2,13 @@
 // Rules live here so every capability (REST, OpenAPI, MCP) enforces the same thing. Nothing in this file claims legal
 // compliance: policies are configuration an operator reviews for their jurisdiction.
 import { one, many, query } from './db.js';
-import { conflict, forbidden } from './errors.js';
+import { AppError, conflict, forbidden } from './errors.js';
 import { decrypt } from './crypto.js';
 import { audit, isAdmin } from './helpers.js';
 
 export const PURPOSES = ['participation', 'medical', 'media', 'contact', 'coaching', 'recruitment', 'recruitment_sharing', 'calendar_sharing'];
+/** What a guardian may do for a young person. A link carries a subset (all by default); an organisation can reserve some for the primary guardian. */
+export const SCOPES = ['pay', 'register', 'rsvp', 'travel_consent', 'consent', 'calendar'];
 export const RELATIONSHIPS = ['parent', 'legal_guardian', 'foster_carer', 'other'];
 
 /** Built-in policy used when no row exists for a jurisdiction. Operators override it with set_age_policy (a new version each time). */
@@ -69,11 +71,32 @@ export const guardianLink = async (guardianId, childId, client) => (await (clien
   `SELECT l.* FROM guardian_links l JOIN users u ON u.id = l.child_id
     WHERE l.guardian_id=$1 AND l.child_id=$2 AND l.status='active' AND l.revoked_at IS NULL AND (l.expires_at IS NULL OR l.expires_at > now()) AND ${YOUTH_SQL}`, [guardianId, childId])).rows[0] ?? null;
 
-export async function requireGuardian(user, childId, client) {
+const scopeDenied = (scope) => new AppError(403, 'guardian_scope_required', `Your guardian authority for this young person does not cover this (${scope})`, { scope });
+
+/** The guardian who was verified first is the primary one; organisations may reserve some scopes for them. */
+export const primaryGuardian = async (childId, client) => (await guardiansOf(childId, client))[0] ?? null;
+
+/** Does this verified link allow `scope`, and does the organisation (when the action happens in its context) leave it to this guardian? */
+export async function guardianCan(link, scope, orgId, client) {
+  if (!(link.scopes ?? SCOPES).includes(scope)) return false;
+  if (!orgId) return true;
+  const pol = (await (client ?? { query }).query('SELECT primary_only_scopes FROM org_guardian_policies WHERE organisation_id=$1 AND retired_at IS NULL', [orgId])).rows[0];
+  return !pol?.primary_only_scopes.includes(scope) || (await primaryGuardian(link.child_id, client)) === link.guardian_id;
+}
+
+export async function requireGuardian(user, childId, client, scope, orgId) {
   if (isAdmin(user)) return null;
   const l = await guardianLink(user.id, childId, client);
   if (!l) throw forbidden('You are not a verified guardian of this young person');
+  if (scope && !(await guardianCan(l, scope, orgId, client))) throw scopeDenied(scope);
   return l;
+}
+
+/** For callers where a guardian is only one of the ways in (payer, submitter): a guardian link that lacks the scope blocks; no link means the other checks decide. */
+export async function checkGuardianScope(userId, childId, scope, orgId, client) {
+  if (!childId || userId === childId) return;
+  const l = await guardianLink(userId, childId, client);
+  if (l && !(await guardianCan(l, scope, orgId, client))) throw scopeDenied(scope);
 }
 
 export const guardiansOf = async (childId, client) => (await (client ?? { query }).query(

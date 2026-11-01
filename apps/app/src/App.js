@@ -121,6 +121,7 @@ import { Copilots } from './screens/copilots';
 import { PerformanceStudio, CoachSession, CoachJournal, CoachGoals, CoachCopilot, CoachReports, CoachReport, CoachReportView, CoachMatch, CoachProgrammes, CoachRubrics, CoachGroups, CoachDrills } from './screens/coaching-studio';
 import { CoachProfile, CoachRequest, CoachBoard, CoachDesk, CoachSetup } from './screens/coaching';
 import { CoachRates, CoachCommitments, CoachReviews, CoachAnalytics } from './screens/coach-business';
+import { CoachVenues } from './screens/venue-coaches';
 import { CoachClasses } from './screens/coach-classes';
 import { SupplierWorkspace } from './screens/svc-supplier';
 import { ServicesBuyer } from './screens/svc-buyer';
