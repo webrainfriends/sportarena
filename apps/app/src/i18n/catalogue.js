@@ -45,7 +45,7 @@ export function translate(code, key, params) {
 export const hasKey = (key) => key in en;
 /** An enum value from the server (left_early, skill_drill…) as readable text: the translated enum.<value> key when we have one, else the value humanised. */
 export function translateEnum(code, value) {
-  const key = `enum.${value}`;
+  const key = `enum.${String(value ?? '').toLowerCase().replace(/[\s-]+/g, '_')}`;
   if (hasKey(key)) return translate(code, key);
   return String(value ?? '').replace(/_/g, ' ').replace(/^./, (x) => x.toUpperCase());
 }
