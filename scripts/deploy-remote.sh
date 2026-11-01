@@ -299,6 +299,18 @@ server {
         proxy_set_header X-Forwarded-Proto \$sportarena_proto;
     }
 
+    # verification evidence (base64 JSON, files up to 5 MB each): the API enforces the real limits; nginx's 2m default would 413 a photo
+    location ~ ^/api/v1/verification/cases(/[0-9a-f-]+/evidence)?$ {
+        client_max_body_size 24m;
+        proxy_read_timeout 120s;
+        proxy_pass http://127.0.0.1:${APP_PORT};
+        proxy_http_version 1.1;
+        proxy_set_header Host \$host;
+        proxy_set_header X-Real-IP \$remote_addr;
+        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto \$sportarena_proto;
+    }
+
     # large uploads (venue videos): streamed straight to the API, never buffered by nginx
     location ~ ^/api/v1/venues/[0-9a-f-]+/media$ {
         client_max_body_size 160m;

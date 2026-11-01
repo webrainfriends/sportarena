@@ -94,6 +94,8 @@ export function createApp() {
   app.use('/api/v1', insuranceDocsRouter());
   // Compliance evidence files arrive as base64 JSON (up to 10 MB of file): a bigger body limit on that one path only.
   app.use(/^\/api\/v1\/compliance\/records\/[0-9a-f-]{36}\/files$/, express.json({ limit: '14mb' }));
+  // Verification evidence arrives as base64 JSON (files up to 5 MB each, so ~7 MB encoded): a bigger body limit on the two submit paths only.
+  app.use(/^\/api\/v1\/verification\/cases(\/[0-9a-f-]{36}\/evidence)?$/, express.json({ limit: '24mb' }));
   app.use('/api/v1', complianceFilesRouter());
   app.use('/api/v1', teamChatRouter());
   app.use('/api/v1', inboxMediaRouter());
