@@ -1,8 +1,10 @@
 // Insurance for people, teams and events: find an insurer, compare plans, ask for a quote, track it, accept (cover is assigned),
 // pay, renew, keep the paperwork, claim. Insurers run their side from the Insurer desk (./insurer.js).
+import { docMaxMb } from '../upload-limits';
 import React, { useState } from 'react';
 import { Image, Linking, Modal, Platform, Pressable, View } from 'react-native';
 import { api, API, authHeader } from '../api';
+import { openProtected } from '../open-file';
 import { useLoad } from '../hooks';
 import { useSession } from '../session';
 import { useNav } from '../nav';
@@ -66,16 +68,15 @@ export function DocumentsSheet({ parent, subject, canEdit, linkable, title, kind
   };
   const open = async (d) => {
     try {
-      if (Platform.OS === 'web') { const url = URL.createObjectURL(await api.download(`${base}/${d.id}/file`)); window.open(url, '_blank', 'noopener'); setTimeout(() => URL.revokeObjectURL(url), 120000); }
-      else if (d.content_type.startsWith('image/')) setImg(d);
-      else toast('Open PDFs in the web app');
+      if (Platform.OS !== 'web' && d.content_type.startsWith('image/')) setImg(d);
+      else await openProtected(`${base}/${d.id}/file`, d.file_name ?? `document-${d.id}`);
     } catch (e) { toast(e.message); }
   };
   const remove = async (d) => { try { await api.del(`${base}/${d.id}`); await docs.reload(); onChanged?.(); } catch (e) { toast(e.message); } };
   const save = async (d) => { try { const r = await api.post('/documents/link', { insurance_document_id: d.id }); toast(r.already_linked ? 'Already in the documents folder' : 'Saved to the documents folder'); } catch (e) { toast(e.message); } };
   return (
     <Sheet visible={!!scope} onClose={onClose} title={title}>
-      <T size={12} color={c.mute}>{blurb ?? (subject ? 'PDF or photo, up to 10 MB each. Files are encrypted on the server. Everyone in the team, event or venue can open them; the people who manage it add and hide them. Removing one only hides it.' : 'PDF or photo, up to 10 MB each. Files are encrypted on the server and only the policy holder, the people who manage what is covered, and the insurer can open them. Removing one only hides it.')}</T>
+      <T size={12} color={c.mute}>{blurb ?? (subject ? `PDF or photo, up to ${docMaxMb()} MB each. Files are encrypted on the server. Everyone in the team, event or venue can open them; the people who manage it add and hide them. Removing one only hides it.` : `PDF or photo, up to ${docMaxMb()} MB each. Files are encrypted on the server and only the policy holder, the people who manage what is covered, and the insurer can open them. Removing one only hides it.`)}</T>
       {docs.loading ? <Loading /> : docs.error ? <ErrorBox error={docs.error} onRetry={docs.reload} /> : docs.data?.length ? docs.data.map((d) => (
         <Card key={d.id} pad={12}>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>

@@ -3,6 +3,7 @@
 import React, { useState } from 'react';
 import { Platform, Share, View } from 'react-native';
 import { api } from '../api';
+import { openProtected } from '../open-file';
 import { useLoad } from '../hooks';
 import { useSession } from '../session';
 import { Btn, Card, Chip, Empty, ErrorBox, Loading, Row, Section, StatPill, T, Tag } from '../ui';
@@ -214,8 +215,7 @@ export function VendorsContracts({ v }) {
   };
   const open = async (k) => {
     try {
-      if (Platform.OS === 'web') { const url = URL.createObjectURL(await api.download(`/documents/${k.document_id}/file`)); window.open(url, '_blank', 'noopener'); setTimeout(() => URL.revokeObjectURL(url), 12000); }
-      else toast('Open contract files in the web app');
+      await openProtected(`/documents/${k.document_id}/file`, `contract-${k.document_id}`);
     } catch (e) { toast(e.message); }
   };
   const vf = vendorForm ?? {};

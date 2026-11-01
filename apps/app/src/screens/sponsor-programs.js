@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Platform, View } from 'react-native';
 import { api } from '../api';
+import { openProtected } from '../open-file';
 import { useLoad } from '../hooks';
 import { useSession } from '../session';
 import { useNav } from '../nav';
@@ -245,7 +246,7 @@ function ReviewSheet({ app, may, onClose, onChanged }) {
   const [reason, setReason] = useState('');
   const [asking, setAsking] = useState(false);
   const d = detail.data;
-  const open = async (x) => { try { const blob = await api.download(`/application-files/${x.id}`); if (Platform.OS === 'web') { const u = URL.createObjectURL(blob); window.open(u, '_blank', 'noopener'); setTimeout(() => URL.revokeObjectURL(u), 120000); } else toast('Open documents in the web app'); } catch (e) { toast(explain(e)); } };
+  const open = async (x) => { try { await openProtected(`/application-files/${x.id}`, x.file_name ?? `file-${x.id}`); } catch (e) { toast(explain(e)); } };
   const send = async () => { try { await api.post(`/program-applications/${app.id}/request-correction`, { reason, fields: pick }); toast('Sent back to the applicant'); setAsking(false); setPick([]); setReason(''); onChanged(); onClose(); } catch (e) { toast(explain(e)); } };
   const fields = d?.form ? fieldsOf(d.form.definition) : [];
   const show = (f) => { const v = d.answers[f.key]; return Array.isArray(v) ? v.map((x) => f.options?.find((o) => o.value === x)?.label ?? x).join(', ') : f.type === 'yesno' ? (v ? 'Yes' : 'No') : f.type === 'money' ? fmtMoney(v, d.currency) : f.options?.find((o) => o.value === v)?.label ?? String(v); };
