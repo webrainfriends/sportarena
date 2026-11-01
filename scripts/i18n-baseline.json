@@ -129,7 +129,7 @@
  "screens/health-privacy.js": 55,
  "screens/history-sources.js": 61,
  "screens/host-game.js": 56,
- "screens/hub.js": 220,
+ "screens/hub.js": 2,
  "screens/inbox.js": 67,
  "screens/insurance-panel.js": 30,
  "screens/insurance.js": 84,

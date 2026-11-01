@@ -27,14 +27,23 @@ import { money as curMoney } from '../offer-lines';
 import { MyHealthFile } from './health-file';
 import { StreaksPanel } from './streaks';
 import { RankingsPanel } from './rankings';
-import { c, grad, money, day, when, withUnit, unitName } from '../theme';
+import { c, grad, money, day, when, withUnit } from '../theme';
+import { t, tEnum } from '../i18n';
 
-const STATUS_TAG = { recorded: ['Private', null], submitted: ['Waiting for approval', 'sun'], approved: ['Approved', 'lime'], disputed: ['Disputed — not counted', 'orangeSoft'], rejected: ['Rejected', 'orangeSoft'], superseded: ['Replaced by a correction', 'cyanSoft'] };
-const STEP = { submitted: 'Submitted', approved: 'Approved', rejected: 'Rejected', disputed: 'Problem reported', corrected: 'Correction proposed', superseded: 'Replaced by a correction' };
+const STATUS_TAG = { recorded: [t('hub.st_private'), null], submitted: [t('hub.st_submitted'), 'sun'], approved: [t('hub.step_approved'), 'lime'], disputed: [t('hub.st_disputed'), 'orangeSoft'], rejected: [t('hub.step_rejected'), 'orangeSoft'], superseded: [t('hub.st_superseded'), 'cyanSoft'] };
+const STEP = { submitted: t('hub.step_submitted'), approved: t('hub.step_approved'), rejected: t('hub.step_rejected'), disputed: t('hub.step_disputed'), corrected: t('hub.step_corrected'), superseded: t('hub.st_superseded') };
+const unitLabel = (u) => (u === 's' ? t('hub.unit_seconds') : u === 'm' ? t('hub.unit_metres') : t('hub.unit_count'));
+/** The scoring rule for the chosen metric, as one readable hint. */
+const ruleHint = (d) => {
+  const r = d?.rule;
+  if (!r) return undefined;
+  const std = d.standard && (d.standard.min_value !== r.min || d.standard.max_value !== r.max) ? ` ${t('hub.std_range', { min: d.standard.min_value, max: d.standard.max_value })}` : '';
+  return `${r.direction === 'lower' ? t('hub.lower_better') : t('hub.higher_better')} ${t('hub.allowed', { min: r.min, max: r.max })} ${t('hub.rule_ver', { v: r.version })}${r.governed ? ` (${t('hub.governed')})` : ''}.${std}`;
+};
 const thisYear = new Date().getFullYear();
 const todayIso = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; };
 const newKey = () => `ui-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
-const fixtureLabel = (f) => `${f.home_name ?? 'TBC'} vs ${f.away_name ?? 'TBC'} · ${day(f.scheduled_at)}`;
+const fixtureLabel = (f) => `${t('hub.vs', { home: f.home_name ?? t('hub.tbc'), away: f.away_name ?? t('hub.tbc') })} · ${day(f.scheduled_at)}`;
 
 function ResultRow({ r, mine, onAct, onHistory }) {
   const [label, tone] = STATUS_TAG[r.status] ?? [r.status, null];
@@ -42,14 +51,14 @@ function ResultRow({ r, mine, onAct, onHistory }) {
   return (
     <Card>
       <T weight="900">{r.emoji} {r.metric.replace(/_/g, ' ')} · {withUnit(r.value, r.unit)}</T>
-      <T size={12} color={c.mute}>{mine ? '' : `${r.display_name} · `}{r.event_name ? `${r.event_name} · ` : ''}{day(r.achieved_on)}{official && r.official_points != null ? ` · ${r.official_points} official pts` : ''}</T>
-      {r.decision_note && ['disputed', 'rejected'].includes(r.status) ? <T size={12} color={c.mute} style={{ marginTop: 4 }}>Reason: {r.decision_note}</T> : null}
-      {r.evidence_ref ? <T size={12} color={c.mute} numberOfLines={1}>Evidence: {r.evidence_ref}</T> : null}
+      <T size={12} color={c.mute}>{mine ? '' : `${r.display_name} · `}{r.event_name ? `${r.event_name} · ` : ''}{day(r.achieved_on)}{official && r.official_points != null ? ` · ${t('hub.official_pts', { n: r.official_points })}` : ''}</T>
+      {r.decision_note && ['disputed', 'rejected'].includes(r.status) ? <T size={12} color={c.mute} style={{ marginTop: 4 }}>{t('hub.reason_line', { text: r.decision_note })}</T> : null}
+      {r.evidence_ref ? <T size={12} color={c.mute} numberOfLines={1}>{t('hub.evidence_line', { text: r.evidence_ref })}</T> : null}
       <View style={{ flexDirection: 'row', gap: 6, flexWrap: 'wrap', marginTop: 8, alignItems: 'center' }}>
         <Tag label={r.evidence_label} color={official ? c.mintSoft : c.violetSoft} />
         {tone ? <Tag label={label} color={c[tone]} /> : null}
         {onAct}
-        {official && onHistory ? <Btn small title="History" color={c.paper} ink={c.ink} onPress={() => onHistory(r.id)} /> : null}
+        {official && onHistory ? <Btn small title={t('hub.history')} color={c.paper} ink={c.ink} onPress={() => onHistory(r.id)} /> : null}
       </View>
     </Card>
   );
@@ -59,15 +68,15 @@ function ResultRow({ r, mine, onAct, onHistory }) {
 function HistorySheet({ id, onClose }) {
   const h = useLoad(() => (id ? api.get(`/performances/${id}/history`) : Promise.resolve([])), [id]);
   return (
-    <Sheet visible={!!id} onClose={onClose} title="Result history">
+    <Sheet visible={!!id} onClose={onClose} title={t('hub.result_history')}>
       {h.loading && !h.data ? <Loading /> : h.error ? <ErrorBox error={h.error} onRetry={h.reload} /> : h.data?.length ? h.data.map((l) => (
         <Card key={l.id}>
           <T weight="800">{STEP[l.action] ?? l.action}</T>
           <T size={12} color={c.mute}>{l.actor} · {when(l.at)}</T>
           {l.note ? <T size={13} style={{ marginTop: 4 }}>{l.note}</T> : null}
-          {l.snapshot?.value !== undefined ? <T size={12} color={c.mute}>Recorded value {l.snapshot.value}{l.snapshot.official_points != null ? ` · ${l.snapshot.official_points} official pts` : ''}</T> : null}
+          {l.snapshot?.value !== undefined ? <T size={12} color={c.mute}>{t('hub.recorded_value', { v: l.snapshot.value })}{l.snapshot.official_points != null ? ` · ${t('hub.official_pts', { n: l.snapshot.official_points })}` : ''}</T> : null}
         </Card>
-      )) : <Empty emoji="🕘" title="No history yet" sub="Steps appear here as officials decide on this result." />}
+      )) : <Empty emoji="🕘" title={t('hub.no_history')} sub={t('hub.no_history_sub')} />}
     </Sheet>
   );
 }
@@ -96,49 +105,49 @@ function SubmitResultSheet({ visible, onClose, events, onDone }) {
   const submit = async () => {
     setErr(null);
     const n = Number(String(value).replace(',', '.'));
-    if (!eventId) return setErr('Pick the event this result belongs to.');
-    if (!sport) return setErr('Pick the sport.');
-    if (!athlete.length) return setErr('Pick the athlete.');
-    if (!metric?.trim()) return setErr('Say what was measured.');
-    if (value === '' || !Number.isFinite(n)) return setErr('Enter the result as a number.');
+    if (!eventId) return setErr(t('hub.err_event'));
+    if (!sport) return setErr(t('hub.err_sport'));
+    if (!athlete.length) return setErr(t('hub.err_athlete'));
+    if (!metric?.trim()) return setErr(t('hub.err_metric'));
+    if (value === '' || !Number.isFinite(n)) return setErr(t('hub.err_number'));
     setBusy(true);
     try {
       await api.post('/performances', { user_id: athlete[0].id, sport, metric: metric.trim(), value: n, event_id: eventId, fixture_id: fixtureId ?? undefined, achieved_on: date || undefined, evidence_ref: evidence.trim() || undefined, client_key: key.current });
       key.current = newKey();
       setValue(''); setAthlete([]); setEvidence('');
-      toast('Result submitted — a second official needs to approve it');
+      toast(t('hub.submitted_toast'));
       onDone(); onClose();
     } catch (e) { setErr(e.message); } finally { setBusy(false); }
   };
   return (
-    <Sheet visible={visible} onClose={onClose} title="Submit a competition result">
-      {!events?.length ? <Empty emoji="🗓️" title="No events to submit for" sub="Results can be submitted for events you organise or officiate." /> : <>
+    <Sheet visible={visible} onClose={onClose} title={t('hub.submit_title')}>
+      {!events?.length ? <Empty emoji="🗓️" title={t('hub.no_events_submit')} sub={t('hub.no_events_submit_sub')} /> : <>
         <View style={{ gap: 6 }}>
-          <T weight="800" size={13}>Event</T>
+          <T weight="800" size={13}>{t('hub.event')}</T>
           <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>{events.map((e) => <Chip key={e.id} label={e.name} active={e.id === eventId} onPress={() => pickEvent(e)} />)}</View>
         </View>
         {eventId ? <View style={{ gap: 6 }}>
-          <T weight="800" size={13}>Game (optional)</T>
+          <T weight="800" size={13}>{t('hub.game_optional')}</T>
           {fixtures.loading && !fixtures.data ? <Loading /> : fixtures.error ? <ErrorBox error={fixtures.error} onRetry={fixtures.reload} /> : <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
-            <Chip label="Whole event" active={fixtureId === null} onPress={() => setFixtureId(null)} />
+            <Chip label={t('hub.whole_event')} active={fixtureId === null} onPress={() => setFixtureId(null)} />
             {(fixtures.data ?? []).map((f) => <Chip key={f.id} label={fixtureLabel(f)} active={f.id === fixtureId} onPress={() => setFixtureId(f.id)} />)}
           </View>}
         </View> : null}
-        <SportPicker label="Sport" value={sport} onChange={(s) => { setSport(s); setMetric(null); setOther(false); }} />
-        <EntityPicker kind="person" label="Athlete" value={athlete} onChange={setAthlete} sport={sport ?? undefined} />
+        <SportPicker label={t('cs.sport')} value={sport} onChange={(s) => { setSport(s); setMetric(null); setOther(false); }} />
+        <EntityPicker kind="person" label={t('cs.aud_athlete')} value={athlete} onChange={setAthlete} sport={sport ?? undefined} />
         {sport ? <View style={{ gap: 6 }}>
-          <T weight="800" size={13}>What was measured</T>
+          <T weight="800" size={13}>{t('hub.measured')}</T>
           <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
             {(known.data?.metrics ?? []).map((m) => <Chip key={m.metric} label={m.metric.replace(/_/g, ' ')} active={!other && metric === m.metric} onPress={() => { setOther(false); setMetric(m.metric); }} />)}
-            <Chip label="Another metric" active={other} onPress={() => { setOther(true); setMetric(''); }} />
+            <Chip label={t('hub.another_metric')} active={other} onPress={() => { setOther(true); setMetric(''); }} />
           </View>
-          {other ? <Field label="Metric name" value={metric ?? ''} onChangeText={setMetric} placeholder="goals, assists, 100m_time_s …" hint="Names ending in _s are timed in seconds, names ending in _m are distances in metres; anything else is a whole-number count." /> : null}
+          {other ? <Field label={t('hub.metric_name')} value={metric ?? ''} onChangeText={setMetric} placeholder={t('hub.metric_ph')} hint={t('hub.metric_hint')} /> : null}
         </View> : null}
-        <Field label={`Result${unit ? ` (${unitName(unit)})` : ''}`} value={value} onChangeText={(x) => setValue(x.replace(/[^0-9.,]/g, ''))} keyboardType="decimal-pad" hint={rule.data?.rule ? `${rule.data.rule.direction === 'lower' ? 'Lower is better.' : 'Higher is better.'} Allowed ${rule.data.rule.min} to ${rule.data.rule.max}. Rule v${rule.data.rule.version}${rule.data.rule.governed ? ' (governed)' : ''}.${rule.data.standard && (rule.data.standard.min_value !== rule.data.rule.min || rule.data.standard.max_value !== rule.data.rule.max) ? ` Standard range is ${rule.data.standard.min_value} to ${rule.data.standard.max_value}.` : ''}` : undefined} />
-        <DateField label="Date achieved" value={date} onChange={setDate} max={todayIso()} />
-        <Field label="Evidence reference (optional)" value={evidence} onChangeText={setEvidence} placeholder="Link or timing-sheet number" />
+        <Field label={unit ? t('hub.result_unit', { unit: unitLabel(unit) }) : t('hub.result')} value={value} onChangeText={(x) => setValue(x.replace(/[^0-9.,]/g, ''))} keyboardType="decimal-pad" hint={ruleHint(rule.data)} />
+        <DateField label={t('hub.date_achieved')} value={date} onChange={setDate} max={todayIso()} />
+        <Field label={t('hub.evidence_opt')} value={evidence} onChangeText={setEvidence} placeholder={t('hub.evidence_ph')} />
         {err ? <T color={c.red} weight="800" accessibilityRole="alert">{err}</T> : null}
-        <Btn title="Submit result" color={c.pink} loading={busy} onPress={submit} />
+        <Btn title={t('hub.submit_result')} color={c.pink} loading={busy} onPress={submit} />
       </>}
     </Sheet>
   );
@@ -188,82 +197,82 @@ export function Leaderboard() {
     const blocked = r.recorded_by === user.id || r.user_id === user.id;
     return (
       <ResultRow key={r.id} r={r} onHistory={setHistory} onAct={<>
-        {['submitted', 'disputed'].includes(r.status) ? (blocked ? <Tag label="Waiting for another official" color={c.sunSoft} /> : <>
-          <Btn small title="Approve" color={c.mint} ink={c.ink} onPress={() => act(() => api.post(`/performances/${r.id}/approve`, {}), 'Result approved')} />
-          <Btn small title="Reject" color={c.paper} ink={c.red} onPress={() => setForm({ reject: r.id })} /></>) : null}
-        {['approved', 'disputed'].includes(r.status) ? <Btn small title="Correct" color={c.paper} ink={c.ink} onPress={() => setForm({ correct: { id: r.id, unit: r.unit } })} /> : null}
+        {['submitted', 'disputed'].includes(r.status) ? (blocked ? <Tag label={t('hub.waiting_other')} color={c.sunSoft} /> : <>
+          <Btn small title={t('enum.approve')} color={c.mint} ink={c.ink} onPress={() => act(() => api.post(`/performances/${r.id}/approve`, {}), t('hub.result_approved'))} />
+          <Btn small title={t('enum.reject')} color={c.paper} ink={c.red} onPress={() => setForm({ reject: r.id })} /></>) : null}
+        {['approved', 'disputed'].includes(r.status) ? <Btn small title={t('hub.correct')} color={c.paper} ink={c.ink} onPress={() => setForm({ correct: { id: r.id, unit: r.unit } })} /> : null}
       </>} />
     );
   };
   return (
     <Screen>
-      <H1>Leaderboard</H1>
-      <Seg options={[{ value: 'rank', label: 'Rankings', emoji: '🏆' }, { value: 'mine', label: 'My results', emoji: '📈' }, { value: 'streaks', label: 'Streaks', emoji: '🔥' }, ...(isOfficial ? [{ value: 'approve', label: `Officials${todo.length ? ` (${todo.length})` : ''}`, emoji: '✅' }] : [])]} value={tab} onChange={setTab} />
+      <H1>{t('nav.title.Leaderboard')}</H1>
+      <Seg options={[{ value: 'rank', label: t('hub.tab_rankings'), emoji: '🏆' }, { value: 'mine', label: t('hub.tab_mine'), emoji: '📈' }, { value: 'streaks', label: t('hub.tab_streaks'), emoji: '🔥' }, ...(isOfficial ? [{ value: 'approve', label: `${t('hub.tab_officials')}${todo.length ? ` (${todo.length})` : ''}`, emoji: '✅' }] : [])]} value={tab} onChange={setTab} />
       {tab === 'rank' ? <>
-        <SportSelect allLabel="All sports" value={sport} onChange={pickSport} />
-        <View style={{ marginTop: 8 }}><Seg options={[{ value: 'governed', label: 'By formula', emoji: '🏅' }, { value: 'points', label: 'Official points', emoji: '🔢' }]} value={view} onChange={setView} /></View>
+        <SportSelect allLabel={t('cs.all_sports')} value={sport} onChange={pickSport} />
+        <View style={{ marginTop: 8 }}><Seg options={[{ value: 'governed', label: t('hub.by_formula'), emoji: '🏅' }, { value: 'points', label: t('hub.official_points'), emoji: '🔢' }]} value={view} onChange={setView} /></View>
         {view === 'governed' ? <RankingsPanel sport={sport} sports={sports.data} onOfficial={() => setView('points')} /> : null}
       </> : null}
       {tab === 'streaks' ? <StreaksPanel sports={sports.data} /> : null}
       {tab === 'rank' && view === 'points' ? <>
-        {categories.length ? <View accessibilityLabel="Sport category filter" style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 8 }}>
-          <Chip label="All categories" active={category === null} onPress={() => { setCategory(null); setLim(25); }} />
+        {categories.length ? <View accessibilityLabel={t('hub.a11y_category')} style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 8 }}>
+          <Chip label={t('hub.all_categories')} active={category === null} onPress={() => { setCategory(null); setLim(25); }} />
           {categories.map((k) => <Chip key={k} label={k.replace(/_/g, ' ')} active={category === k} onPress={() => { setCategory(k); setLim(25); }} />)}
         </View> : null}
-        <View accessibilityLabel="Season filter" style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 8 }}>
-          <Chip label="All time" active={season === null} onPress={() => { setSeason(null); setLim(25); }} />
+        <View accessibilityLabel={t('hub.a11y_season')} style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 8 }}>
+          <Chip label={t('hub.all_time')} active={season === null} onPress={() => { setSeason(null); setLim(25); }} />
           {[0, 1, 2].map((k) => <Chip key={k} label={`${thisYear - k}`} active={season === thisYear - k} onPress={() => { setSeason(thisYear - k); setLim(25); }} />)}
         </View>
         {sport && rules.data?.metrics?.length ? <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 8 }}>
-          <Chip label="Overall points" active={metric === null} onPress={() => setMetric(null)} />
+          <Chip label={t('hub.overall_points')} active={metric === null} onPress={() => setMetric(null)} />
           {rules.data.metrics.map((m) => <Chip key={m.metric} label={`${m.metric.replace(/_/g, ' ')}${m.rule.direction === 'lower' ? ' ↓' : ''}`} active={metric === m.metric} onPress={() => setMetric(m.metric)} />)}
         </View> : null}
-        <T size={12} color={c.mute} style={{ marginTop: 8 }}>Only results approved by event officials count. Practice you log yourself never changes the rankings. {metric ? (lower ? 'Lowest time ranks first; equal times go to whoever achieved that time first.' : 'Highest value ranks first; equal values go to whoever achieved that value first.') : 'Ties go to the athlete with more approved results, then the one approved earliest.'}</T>
+        <T size={12} color={c.mute} style={{ marginTop: 8 }}>{t('hub.rank_note')} {metric ? (lower ? t('hub.tie_lower') : t('hub.tie_higher')) : t('hub.tie_default')}</T>
         <View style={{ gap: 10, marginTop: 10 }}>
           {lb.loading && !lb.data ? <Loading /> : lb.error ? <ErrorBox error={lb.error} onRetry={lb.reload} /> : lb.data?.length ? <>
             {lb.data.map((a) => (
               <Row key={a.id} color={a.rank === 1 ? c.sunSoft : c.paper} onPress={() => push('Person', { id: a.id })} left={<View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}><T weight="900" size={20}>{a.rank === 1 ? '🥇' : a.rank === 2 ? '🥈' : a.rank === 3 ? '🥉' : `#${a.rank}`}</T><Avatar user={a} size={40} /></View>}
-                title={a.display_name} sub={`${a.entries} approved result${a.entries === 1 ? '' : 's'} · ${a.evidence_label}`} right={<Tag label={metric ? withUnit(a.best, metricRule?.unit ?? (lower ? 's' : 'count')) : `${a.points} pts`} color={c.lime} />} />
+                title={a.display_name} sub={a.entries === 1 ? t('hub.approved_one', { n: a.entries, label: a.evidence_label }) : t('hub.approved_many', { n: a.entries, label: a.evidence_label })} right={<Tag label={metric ? withUnit(a.best, metricRule?.unit ?? (lower ? 's' : 'count')) : t('hub.pts', { n: a.points })} color={c.lime} />} />
             ))}
-            {lb.data.length >= lim ? <Btn title="Show more" color={c.paper} ink={c.ink} onPress={() => setLim(lim + 25)} /> : null}
-          </> : <Empty emoji="📈" title="No approved results yet" sub={season || category || sport ? 'Nothing matches these filters. Try widening them.' : 'Results appear here once an event official approves them.'} />}
+            {lb.data.length >= lim ? <Btn title={t('hub.show_more')} color={c.paper} ink={c.ink} onPress={() => setLim(lim + 25)} /> : null}
+          </> : <Empty emoji="📈" title={t('hub.no_approved')} sub={season || category || sport ? t('hub.no_match_filters') : t('hub.results_appear')} />}
         </View>
       </> : null}
       {tab === 'mine' ? <View style={{ gap: 10, marginTop: 10 }}>
-        <Btn title="Log practice" color={c.violet} onPress={() => setForm('practice')} />
-        <T size={12} color={c.mute}>Practice is private to you and labelled as self-reported (or imported, with your evidence). Competition results are submitted by event officials and appear here once entered.</T>
+        <Btn title={t('hub.log_practice')} color={c.violet} onPress={() => setForm('practice')} />
+        <T size={12} color={c.mute}>{t('hub.practice_note')}</T>
         {mine.loading && !mine.data ? <Loading /> : mine.error ? <ErrorBox error={mine.error} onRetry={mine.reload} /> : mine.data?.filter((r) => r.user_id === user.id).length ? mine.data.filter((r) => r.user_id === user.id).map((r) => (
-          <ResultRow key={r.id} r={r} mine onHistory={setHistory} onAct={r.provenance === 'approved_competition' && ['approved', 'submitted'].includes(r.status) ? <Btn small title="Something's wrong" color={c.paper} ink={c.red} onPress={() => setForm({ dispute: r.id })} /> : null} />
-        )) : <Empty emoji="📝" title="No results yet" sub="Log a practice session to start your history." />}
+          <ResultRow key={r.id} r={r} mine onHistory={setHistory} onAct={r.provenance === 'approved_competition' && ['approved', 'submitted'].includes(r.status) ? <Btn small title={t('hub.somethings_wrong')} color={c.paper} ink={c.red} onPress={() => setForm({ dispute: r.id })} /> : null} />
+        )) : <Empty emoji="📝" title={t('hub.no_results')} sub={t('hub.no_results_sub')} />}
       </View> : null}
       {tab === 'approve' && isOfficial ? <View style={{ gap: 10, marginTop: 10 }}>
-        <Btn title="Submit a result" color={c.pink} onPress={() => setForm('submit')} />
-        <T size={12} color={c.mute}>A result needs a second official: you can’t approve or reject one you submitted, or your own. Disputed results are listed first and are not counted until decided.</T>
-        <H2>Waiting for a decision</H2>
-        {queue.loading && !queue.data ? <Loading /> : queue.error ? <ErrorBox error={queue.error} onRetry={queue.reload} /> : todo.length ? todo.map((r) => workRow(r)) : <Empty emoji="✅" title="Nothing waiting" sub="Submitted and disputed results that need a decision show up here." />}
-        <H2>Results for an event</H2>
+        <Btn title={t('hub.submit_a_result')} color={c.pink} onPress={() => setForm('submit')} />
+        <T size={12} color={c.mute}>{t('hub.second_official_note')}</T>
+        <H2>{t('hub.waiting_decision')}</H2>
+        {queue.loading && !queue.data ? <Loading /> : queue.error ? <ErrorBox error={queue.error} onRetry={queue.reload} /> : todo.length ? todo.map((r) => workRow(r)) : <Empty emoji="✅" title={t('hub.nothing_waiting')} sub={t('hub.nothing_waiting_sub')} />}
+        <H2>{t('hub.results_for_event')}</H2>
         {events.loading && !events.data ? <Loading /> : events.error ? <ErrorBox error={events.error} onRetry={events.reload} /> : <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
-          {(events.data ?? []).length ? events.data.map((e) => <Chip key={e.id} label={e.name} active={evFilter === e.id} onPress={() => setEvFilter(evFilter === e.id ? null : e.id)} />) : <T size={12} color={c.mute}>You have no events to manage results for.</T>}
+          {(events.data ?? []).length ? events.data.map((e) => <Chip key={e.id} label={e.name} active={evFilter === e.id} onPress={() => setEvFilter(evFilter === e.id ? null : e.id)} />) : <T size={12} color={c.mute}>{t('hub.no_events_manage')}</T>}
         </View>}
-        {evFilter ? (evResults.loading && !evResults.data ? <Loading /> : evResults.error ? <ErrorBox error={evResults.error} onRetry={evResults.reload} /> : evResults.data?.length ? evResults.data.map((r) => workRow(r)) : <Empty emoji="📈" title="No results for this event" sub="Submit the first one above." />) : null}
+        {evFilter ? (evResults.loading && !evResults.data ? <Loading /> : evResults.error ? <ErrorBox error={evResults.error} onRetry={evResults.reload} /> : evResults.data?.length ? evResults.data.map((r) => workRow(r)) : <Empty emoji="📈" title={t('hub.no_results_event')} sub={t('hub.no_results_event_sub')} />) : null}
       </View> : null}
-      {tab === 'approve' && !isOfficial ? <Empty emoji="🔒" title="Officials only" sub="Only event organisers, referees and admins can approve results." /> : null}
+      {tab === 'approve' && !isOfficial ? <Empty emoji="🔒" title={t('hub.officials_only')} sub={t('hub.officials_only_sub')} /> : null}
       <HistorySheet id={history} onClose={() => setHistory(null)} />
       <SubmitResultSheet visible={form === 'submit'} onClose={() => setForm(null)} events={events.data} onDone={refresh} />
-      <FormSheet visible={form === 'practice'} onClose={() => setForm(null)} title="Log practice" submitLabel="Save practice"
-        fields={[{ key: 'sport', label: 'Sport', type: 'sport' }, { key: 'metric', label: 'What did you measure?', hint: 'For example goals, assists or 100m_time_s' }, { key: 'value', label: 'Result', type: 'number', input: 'decimal', hint: 'Seconds for a time, metres for a distance, otherwise a count' }, { key: 'achieved_on', label: 'Date', type: 'date', optional: true, max: todayIso() },
-          { key: 'imported', label: 'Imported from another app or device', type: 'switch', hint: 'Labelled as imported evidence. It still never changes official rankings.' },
-          { key: 'evidence_ref', label: 'Evidence reference', hint: 'A link or an id from the source app', show: (v) => !!v.imported }]}
-        onSubmit={async (v) => { await api.post('/performances', { sport: v.sport, metric: v.metric, value: Number(v.value), achieved_on: v.achieved_on || undefined, imported: v.imported || undefined, evidence_ref: v.imported ? v.evidence_ref : undefined }); setForm(null); toast(v.imported ? 'Imported result saved' : 'Practice saved'); mine.reload(); }} />
-      <FormSheet visible={!!form?.reject} onClose={() => setForm(null)} title="Reject this result" submitLabel="Reject result" color={c.red}
-        fields={[{ key: 'reason', label: 'Why is it being rejected?', type: 'multiline' }]}
-        onSubmit={async (v) => { await api.post(`/performances/${form.reject}/reject`, { reason: v.reason }); setForm(null); toast('Result rejected'); refresh(); }} />
-      <FormSheet visible={!!form?.dispute} onClose={() => setForm(null)} title="Report a problem with this result" submitLabel="Report problem" color={c.red}
-        fields={[{ key: 'reason', label: 'What is wrong?', type: 'multiline', hint: 'The result stops counting in the rankings until an official has reviewed it.' }]}
-        onSubmit={async (v) => { await api.post(`/performances/${form.dispute}/dispute`, { reason: v.reason }); setForm(null); toast('Reported — an official will review it'); refresh(); }} />
-      <FormSheet visible={!!form?.correct} onClose={() => setForm(null)} title="Correct this result" submitLabel="Propose correction"
-        fields={[{ key: 'value', label: `Corrected result (${unitName(form?.correct?.unit)})`, type: 'number', input: 'decimal', hint: 'The original keeps counting until a different official approves the correction.' }, { key: 'reason', label: 'Why is it being corrected?', type: 'multiline' }]}
-        onSubmit={async (v) => { await api.post(`/performances/${form.correct.id}/correct`, { value: Number(v.value), reason: v.reason }); setForm(null); toast('Correction sent for approval'); refresh(); }} />
+      <FormSheet visible={form === 'practice'} onClose={() => setForm(null)} title={t('hub.log_practice')} submitLabel={t('hub.save_practice')}
+        fields={[{ key: 'sport', label: t('cs.sport'), type: 'sport' }, { key: 'metric', label: t('hub.measure_q'), hint: t('hub.measure_hint') }, { key: 'value', label: t('hub.result'), type: 'number', input: 'decimal', hint: t('hub.result_hint') }, { key: 'achieved_on', label: t('cs.date'), type: 'date', optional: true, max: todayIso() },
+          { key: 'imported', label: t('hub.imported'), type: 'switch', hint: t('hub.imported_hint') },
+          { key: 'evidence_ref', label: t('hub.evidence_ref'), hint: t('hub.evidence_ref_hint'), show: (v) => !!v.imported }]}
+        onSubmit={async (v) => { await api.post('/performances', { sport: v.sport, metric: v.metric, value: Number(v.value), achieved_on: v.achieved_on || undefined, imported: v.imported || undefined, evidence_ref: v.imported ? v.evidence_ref : undefined }); setForm(null); toast(v.imported ? t('hub.imported_saved') : t('hub.practice_saved')); mine.reload(); }} />
+      <FormSheet visible={!!form?.reject} onClose={() => setForm(null)} title={t('hub.reject_title')} submitLabel={t('hub.reject_submit')} color={c.red}
+        fields={[{ key: 'reason', label: t('hub.reject_why'), type: 'multiline' }]}
+        onSubmit={async (v) => { await api.post(`/performances/${form.reject}/reject`, { reason: v.reason }); setForm(null); toast(t('hub.rejected_toast')); refresh(); }} />
+      <FormSheet visible={!!form?.dispute} onClose={() => setForm(null)} title={t('hub.dispute_title')} submitLabel={t('hub.dispute_submit')} color={c.red}
+        fields={[{ key: 'reason', label: t('hub.dispute_what'), type: 'multiline', hint: t('hub.dispute_hint') }]}
+        onSubmit={async (v) => { await api.post(`/performances/${form.dispute}/dispute`, { reason: v.reason }); setForm(null); toast(t('hub.dispute_toast')); refresh(); }} />
+      <FormSheet visible={!!form?.correct} onClose={() => setForm(null)} title={t('hub.correct_title')} submitLabel={t('hub.correct_submit')}
+        fields={[{ key: 'value', label: t('hub.corrected_result', { unit: unitLabel(form?.correct?.unit) }), type: 'number', input: 'decimal', hint: t('hub.correct_hint') }, { key: 'reason', label: t('hub.correct_why'), type: 'multiline' }]}
+        onSubmit={async (v) => { await api.post(`/performances/${form.correct.id}/correct`, { value: Number(v.value), reason: v.reason }); setForm(null); toast(t('hub.correct_toast')); refresh(); }} />
     </Screen>
   );
 }
@@ -273,8 +282,8 @@ export function Awards() {
   const E = { cup: '🏆', trophy: '🏅', medal_gold: '🥇', medal_silver: '🥈', medal_bronze: '🥉', mvp: '🌟', badge: '🎖️' };
   return (
     <Screen>
-      <ModuleHero name="Awards" title="Trophy room" sub="Cups, medals and MVPs" stats={[{ icon: 'Awards', value: aw.data?.length || null, label: 'Awards' }]} />
-      <ModuleSheet><View style={{ gap: 10 }}>{aw.loading && !aw.data ? <Loading /> : aw.data?.length ? aw.data.map((a, i) => <Row key={a.id} color={[c.sunSoft, c.pinkSoft, c.cyanSoft][i % 3]} left={<Bubble emoji={E[a.kind]} color={c.paper} />} title={a.name} sub={`${a.team_name ?? a.display_name ?? ''}${a.event_name ? ' · ' + a.event_name : ''}`} />) : <Empty emoji="🏆" title="Nothing awarded yet" />}</View></ModuleSheet>
+      <ModuleHero name="Awards" title={t('hub.trophy_room')} sub={t('hub.trophy_sub')} stats={[{ icon: 'Awards', value: aw.data?.length || null, label: t('rd.awards') }]} />
+      <ModuleSheet><View style={{ gap: 10 }}>{aw.loading && !aw.data ? <Loading /> : aw.data?.length ? aw.data.map((a, i) => <Row key={a.id} color={[c.sunSoft, c.pinkSoft, c.cyanSoft][i % 3]} left={<Bubble emoji={E[a.kind]} color={c.paper} />} title={a.name} sub={`${a.team_name ?? a.display_name ?? ''}${a.event_name ? ' · ' + a.event_name : ''}`} />) : <Empty emoji="🏆" title={t('hub.nothing_awarded')} />}</View></ModuleSheet>
     </Screen>
   );
 }
@@ -294,12 +303,12 @@ export function Health() {
   const act = async (fn, msg) => { try { await fn(); toast(msg); appts.reload(); } catch (e) { toast('' + e.message); } };
   return (
     <Screen>
-      <H1>Health</H1>
-      <Card color={c.mintSoft} pad={12}><T weight="900">Consent-first medical privacy</T><T size={12} color={c.mute}>Notes are encrypted. Doctors and physios only see your records after you grant access — and every read is logged.</T></Card>
-      {region.data && (!region.data.country || region.data.needs_notice) ? <Card color={c.sunSoft} pad={12} onPress={() => setTab('consent')} style={{ marginTop: 10 }}><T weight="900">{region.data.country ? 'The privacy rules changed — please read them' : 'Choose the country whose health-privacy rules apply to you'}</T><T size={12} color={c.mute}>Eleven countries are supported. It takes a minute and tells you your rights, deadlines and who can see what.</T><T size={12} weight="800" color={c.pink} style={{ marginTop: 6 }}>Open Privacy ›</T></Card> : null}
+      <H1>{t('nav.title.Health')}</H1>
+      <Card color={c.mintSoft} pad={12}><T weight="900">{t('hub.privacy_card_title')}</T><T size={12} color={c.mute}>{t('hub.privacy_card_sub')}</T></Card>
+      {region.data && (!region.data.country || region.data.needs_notice) ? <Card color={c.sunSoft} pad={12} onPress={() => setTab('consent')} style={{ marginTop: 10 }}><T weight="900">{region.data.country ? t('hub.privacy_changed') : t('hub.privacy_choose')}</T><T size={12} color={c.mute}>{t('hub.privacy_eleven')}</T><T size={12} weight="800" color={c.pink} style={{ marginTop: 6 }}>{t('hub.open_privacy')}</T></Card> : null}
       {isProv ? <View style={{ marginTop: 10 }}><DoctorEntry /></View> : null}
       {isProv ? <View style={{ marginTop: 10 }}><ClinicalStatusCard /></View> : null}
-      <View style={{ marginTop: 10 }}><Seg options={[...(has('athlete') ? [{ value: 'recovery', label: 'Recovery', emoji: '💚' }] : []), { value: 'find', label: 'Find a pro', emoji: '🔎' }, ...(isProv ? [{ value: 'practice', label: 'My practice', emoji: '🩺' }] : []), { value: 'rehab', label: 'My plans', emoji: '📝' }, { value: 'appts', label: 'Appointments', emoji: '📅' }, { value: 'records', label: 'My records', emoji: '📋' }, { value: 'file', label: 'My file', emoji: '🗂️' }, { value: 'followups', label: 'Follow-ups', emoji: '🗓️' }, { value: 'consent', label: 'Privacy', emoji: '🔒' }]} value={tab} onChange={setTab} color={c.mint} /></View>
+      <View style={{ marginTop: 10 }}><Seg options={[...(has('athlete') ? [{ value: 'recovery', label: t('enum.recovery'), emoji: '💚' }] : []), { value: 'find', label: t('hub.h_find'), emoji: '🔎' }, ...(isProv ? [{ value: 'practice', label: t('hub.h_practice'), emoji: '🩺' }] : []), { value: 'rehab', label: t('hub.h_plans'), emoji: '📝' }, { value: 'appts', label: t('hub.h_appts'), emoji: '📅' }, { value: 'records', label: t('hub.h_records'), emoji: '📋' }, { value: 'file', label: t('hub.h_file'), emoji: '🗂️' }, { value: 'followups', label: t('hub.h_followups'), emoji: '🗓️' }, { value: 'consent', label: t('hub.h_privacy'), emoji: '🔒' }]} value={tab} onChange={setTab} color={c.mint} /></View>
       <View style={{ gap: 10, marginTop: 8 }}>
         {tab === 'recovery' && <><RecoveryPanel /><WellnessSharing /></>}
         {tab === 'find' && <ProviderSearch onBooked={() => { appts.reload(); setTab('appts'); }} />}
@@ -310,36 +319,36 @@ export function Health() {
         {tab === 'file' && <MyHealthFile />}
         {tab === 'followups' && <FollowupsPanel />}
         {tab === 'appts' && (appts.data?.length ? appts.data.map((a) => (
-          <Card key={a.id}><T weight="900">{a.athlete_id === user.id ? `With ${a.provider_name}` : `Athlete: ${a.athlete_name}`}</T><T size={13} color={c.mute}>{when(a.starts_at)} · {a.duration_min} min</T>{a.reason ? <T size={13} style={{ marginTop: 4 }}>“{a.reason}”</T> : null}
-            <View style={{ flexDirection: 'row', gap: 8, marginTop: 8, alignItems: 'center', flexWrap: 'wrap' }}><Tag label={a.status} color={a.status === 'confirmed' ? c.lime : c.sun} />{a.payment_status === 'unpaid' ? <Tag label="unpaid" color={c.orangeSoft} /> : a.payment_status === 'paid' ? <Tag label="paid" color={c.lime} /> : null}{a.source === 'external' ? <Tag label="external" color={c.cyanSoft} /> : null}
-              {a.athlete_id === user.id && a.payment_status === 'unpaid' && a.status !== 'cancelled' ? <Btn small title={`Pay ${money(a.fee_cents, a.currency)}`} color={c.pink} onPress={() => setPaying({ type: 'appointment', id: a.id, amount: a.fee_cents, currency: a.currency, label: `Appointment with ${a.provider_name}` })} /> : null}
-              {a.provider_id === user.id && ['confirmed', 'completed'].includes(a.status) ? <Btn small title="Add follow-up" color={c.violet} onPress={() => setFu(a)} /> : null}
-              {a.provider_id === user.id && a.status === 'requested' ? <Btn small title="Confirm" color={c.mint} ink={c.ink} onPress={() => act(() => api.patch(`/appointments/${a.id}`, { status: 'confirmed' }), 'Confirmed')} /> : null}
-              {['requested', 'confirmed'].includes(a.status) ? <Btn small title="Cancel" color={c.paper} ink={c.red} onPress={() => setCancelA(a)} /> : null}
-              <Btn small title="History" color={c.paper} ink={c.mute} accessibilityLabel="Show the history of this appointment" onPress={() => setHist(a.id)} />
-              {a.provider_id === user.id && a.status === 'confirmed' && new Date(a.starts_at) <= new Date() ? <Btn small title="Complete" color={c.mint} ink={c.ink} onPress={() => act(() => api.patch(`/appointments/${a.id}`, { status: 'completed' }), 'Completed')} /> : null}
+          <Card key={a.id}><T weight="900">{a.athlete_id === user.id ? t('hub.with_provider', { name: a.provider_name }) : t('hub.athlete_name', { name: a.athlete_name })}</T><T size={13} color={c.mute}>{when(a.starts_at)} · {t('hub.n_min', { n: a.duration_min })}</T>{a.reason ? <T size={13} style={{ marginTop: 4 }}>“{a.reason}”</T> : null}
+            <View style={{ flexDirection: 'row', gap: 8, marginTop: 8, alignItems: 'center', flexWrap: 'wrap' }}><Tag label={tEnum(a.status)} color={a.status === 'confirmed' ? c.lime : c.sun} />{a.payment_status === 'unpaid' ? <Tag label={tEnum('unpaid')} color={c.orangeSoft} /> : a.payment_status === 'paid' ? <Tag label={tEnum('paid')} color={c.lime} /> : null}{a.source === 'external' ? <Tag label={tEnum('external')} color={c.cyanSoft} /> : null}
+              {a.athlete_id === user.id && a.payment_status === 'unpaid' && a.status !== 'cancelled' ? <Btn small title={t('hub.pay', { amount: money(a.fee_cents, a.currency) })} color={c.pink} onPress={() => setPaying({ type: 'appointment', id: a.id, amount: a.fee_cents, currency: a.currency, label: t('hub.appt_with', { name: a.provider_name }) })} /> : null}
+              {a.provider_id === user.id && ['confirmed', 'completed'].includes(a.status) ? <Btn small title={t('hub.add_followup')} color={c.violet} onPress={() => setFu(a)} /> : null}
+              {a.provider_id === user.id && a.status === 'requested' ? <Btn small title={t('enum.confirm')} color={c.mint} ink={c.ink} onPress={() => act(() => api.patch(`/appointments/${a.id}`, { status: 'confirmed' }), t('hub.confirmed'))} /> : null}
+              {['requested', 'confirmed'].includes(a.status) ? <Btn small title={t('common.cancel')} color={c.paper} ink={c.red} onPress={() => setCancelA(a)} /> : null}
+              <Btn small title={t('hub.history')} color={c.paper} ink={c.mute} accessibilityLabel={t('hub.a11y_appt_history')} onPress={() => setHist(a.id)} />
+              {a.provider_id === user.id && a.status === 'confirmed' && new Date(a.starts_at) <= new Date() ? <Btn small title={t('hub.complete')} color={c.mint} ink={c.ink} onPress={() => act(() => api.patch(`/appointments/${a.id}`, { status: 'completed' }), t('enum.completed'))} /> : null}
               {a.athlete_id === user.id && !['cancelled', 'completed'].includes(a.status) ? <>
-                <Btn small title="Share records" color={c.violet} onPress={() => setShare({ id: a.provider_id, name: a.provider_name })} />
-                <Btn small title="Revoke" color={c.paper} ink={c.red} onPress={() => act(() => api.del(`/medical/grants/${a.provider_id}`), 'Access revoked')} /></> : null}
+                <Btn small title={t('hub.share_records')} color={c.violet} onPress={() => setShare({ id: a.provider_id, name: a.provider_name })} />
+                <Btn small title={t('hub.revoke')} color={c.paper} ink={c.red} onPress={() => act(() => api.del(`/medical/grants/${a.provider_id}`), t('hub.access_revoked'))} /></> : null}
             </View></Card>
-        )) : <Empty emoji="📅" title="No appointments" />)}
+        )) : <Empty emoji="📅" title={t('hub.no_appts')} />)}
         {tab === 'records' && visits.data?.filter((v) => v.status === 'signed' && v.visit_summary).map((v) => (
-          <Card key={v.id}><Tag label="Visit summary" color={c.mint} />
+          <Card key={v.id}><Tag label={t('hub.visit_summary')} color={c.mint} />
             {v.visit_summary.problem ? <T weight="900" style={{ marginTop: 6 }}>{v.visit_summary.problem}</T> : null}
-            {v.visit_summary.plan ? <T size={13} color={c.mute}>Plan: {v.visit_summary.plan}</T> : null}
-            {v.visit_summary.actions ? <T size={13} color={c.mute}>What to do: {v.visit_summary.actions}</T> : null}
-            {v.visit_summary.follow_up_date ? <T size={13} color={c.mute}>Follow-up: {v.visit_summary.follow_up_date}</T> : null}
-            {v.visit_summary.escalation ? <T size={13} color={c.mute}>If it gets worse: {v.visit_summary.escalation}</T> : null}
-            <T size={11} color={c.mute}>Dr {v.provider_name} · {day(v.signed_at)}</T>
-            {v.patient_ack_at ? <T size={11} color={c.mute}>You marked this as read</T> : <Btn small title="Mark as read" color={c.mint} ink={c.ink} onPress={() => act(async () => { await api.post(`/medical/encounters/${v.id}/acknowledge`, {}); visits.reload(); }, 'Marked as read')} />}
+            {v.visit_summary.plan ? <T size={13} color={c.mute}>{t('hub.plan_is', { text: v.visit_summary.plan })}</T> : null}
+            {v.visit_summary.actions ? <T size={13} color={c.mute}>{t('hub.what_to_do', { text: v.visit_summary.actions })}</T> : null}
+            {v.visit_summary.follow_up_date ? <T size={13} color={c.mute}>{t('hub.followup_is', { text: v.visit_summary.follow_up_date })}</T> : null}
+            {v.visit_summary.escalation ? <T size={13} color={c.mute}>{t('hub.if_worse', { text: v.visit_summary.escalation })}</T> : null}
+            <T size={11} color={c.mute}>{t('hub.dr_line', { name: v.provider_name, day: day(v.signed_at) })}</T>
+            {v.patient_ack_at ? <T size={11} color={c.mute}>{t('hub.you_read')}</T> : <Btn small title={t('hub.mark_read')} color={c.mint} ink={c.ink} onPress={() => act(async () => { await api.post(`/medical/encounters/${v.id}/acknowledge`, {}); visits.reload(); }, t('hub.marked_read_toast'))} />}
           </Card>
         ))}
-        {tab === 'records' && (recs.data?.length ? recs.data.map((r) => <Card key={r.id}><View style={{ flexDirection: 'row', gap: 8 }}><Tag label={r.kind} color={c.cyan} />{r.clearance ? <Tag label={r.clearance.replace('_', ' ')} color={r.clearance === 'cleared' ? c.lime : c.orange} /> : null}</View><T weight="900" style={{ marginTop: 6 }}>{r.summary}</T>{r.details ? <T size={13} color={c.mute}>{r.details}</T> : null}<T size={11} color={c.mute}>{r.provider_name} · {day(r.created_at)}</T></Card>) : <Empty emoji="📋" title="No records" sub="Records written by providers you've granted access appear here." />)}
+        {tab === 'records' && (recs.data?.length ? recs.data.map((r) => <Card key={r.id}><View style={{ flexDirection: 'row', gap: 8 }}><Tag label={tEnum(r.kind)} color={c.cyan} />{r.clearance ? <Tag label={tEnum(r.clearance)} color={r.clearance === 'cleared' ? c.lime : c.orange} /> : null}</View><T weight="900" style={{ marginTop: 6 }}>{r.summary}</T>{r.details ? <T size={13} color={c.mute}>{r.details}</T> : null}<T size={11} color={c.mute}>{r.provider_name} · {day(r.created_at)}</T></Card>) : <Empty emoji="📋" title={t('hub.no_records')} sub={t('hub.no_records_sub')} />)}
       </View>
-      {hist ? <TimelineSheet kind="appointment" id={hist} meId={user.id} title="Appointment history" onClose={() => setHist(null)} /> : null}
-      <Confirm visible={!!cancelA} title="Cancel this appointment?" yes="Cancel appointment" danger askReason="Why are you cancelling?" onClose={() => setCancelA(null)}
-        body={cancelA ? `${cancelA.athlete_id === user.id ? cancelA.provider_name : cancelA.athlete_name} will be told.${cancelA.payment_status === 'paid' ? ' The payment is refunded.' : ''}` : ''}
-        onYes={async (reason) => { await act(() => api.patch(`/appointments/${cancelA.id}`, { status: 'cancelled', ...(reason ? { reason } : {}) }), cancelA.payment_status === 'paid' ? 'Cancelled — the payment is refunded' : 'Cancelled'); setCancelA(null); }} />
+      {hist ? <TimelineSheet kind="appointment" id={hist} meId={user.id} title={t('hub.appt_history')} onClose={() => setHist(null)} /> : null}
+      <Confirm visible={!!cancelA} title={t('hub.cancel_appt_q')} yes={t('hub.cancel_appt')} danger askReason={t('hub.cancel_why')} onClose={() => setCancelA(null)}
+        body={cancelA ? `${t('hub.will_be_told', { name: cancelA.athlete_id === user.id ? cancelA.provider_name : cancelA.athlete_name })}${cancelA.payment_status === 'paid' ? ` ${t('hub.refunded')}` : ''}` : ''}
+        onYes={async (reason) => { await act(() => api.patch(`/appointments/${cancelA.id}`, { status: 'cancelled', ...(reason ? { reason } : {}) }), cancelA.payment_status === 'paid' ? t('hub.cancelled_refund') : t('enum.cancelled')); setCancelA(null); }} />
       {paying ? <PaySheet target={paying} onClose={() => setPaying(null)} onDone={appts.reload} /> : null}
       <ShareRecordsSheet provider={share} onClose={() => setShare(null)} onDone={() => { appts.reload(); }} />
       <AddFollowupSheet appointment={fu} onClose={() => setFu(null)} onDone={() => { setFu(null); }} />
@@ -352,10 +361,10 @@ function Introductions({ brands, onOffer }) {
   const list = useLoad(async () => (await Promise.all(brands.map(async (b) => (await api.get(`/sponsors/${b.id}/introductions`, { status: 'introduced', limit: 50 })).map((x) => ({ ...x, brand: b.name }))))).flat(), [brands.map((b) => b.id).join()]);
   if (!list.data?.length) return null;
   return (
-    <Section title="Introduced by institutions" color={c.mint}>
+    <Section title={t('hub.introduced')} color={c.mint}>
       {list.data.map((a) => (
-        <Row key={a.id} left={<Avatar user={{ ...a, avatar_emoji: a.avatar_emoji, avatar_color: a.avatar_color }} />} title={a.display_name} sub={`${a.institution}${a.programme_title ? ` · ${a.programme_title}` : ''}${a.sport ? ` · ${a.sport}` : ''}${a.note ? `\n“${a.note}”` : ''}\nFor ${a.brand}`}
-          right={<Btn small title="Send offer" onPress={() => onOffer(a)} />} />
+        <Row key={a.id} left={<Avatar user={{ ...a, avatar_emoji: a.avatar_emoji, avatar_color: a.avatar_color }} />} title={a.display_name} sub={`${a.institution}${a.programme_title ? ` · ${a.programme_title}` : ''}${a.sport ? ` · ${a.sport}` : ''}${a.note ? `\n“${a.note}”` : ''}\n${t('hub.for_brand', { brand: a.brand })}`}
+          right={<Btn small title={t('hub.send_offer')} onPress={() => onOffer(a)} />} />
       ))}
     </Section>
   );
@@ -363,39 +372,41 @@ function Introductions({ brands, onOffer }) {
 
 
 
-const BRAND_INDUSTRIES = ['Sports & fitness', 'Apparel & footwear', 'Food & beverage', 'Health & nutrition', 'Banking & finance', 'Insurance', 'Technology', 'Telecom', 'Automotive', 'Travel & hospitality', 'Media & entertainment', 'Retail & e-commerce', 'Education', 'Real estate', 'Energy'];
-const BRAND_COLORS = [{ value: '#16a34a', label: 'Green' }, { value: '#2563eb', label: 'Blue' }, { value: '#7c3aed', label: 'Violet' }, { value: '#db2777', label: 'Pink' }, { value: '#dc2626', label: 'Red' }, { value: '#ea580c', label: 'Orange' }, { value: '#ca8a04', label: 'Gold' }, { value: '#0f766e', label: 'Teal' }, { value: '#111827', label: 'Black' }];
+// the stored value stays the English name (existing brands keep matching); only the label is translated
+const BRAND_INDUSTRIES = [['Sports & fitness', t('hub.ind_sports_fitness')], ['Apparel & footwear', t('hub.ind_apparel_footwear')], ['Food & beverage', t('hub.ind_food_beverage')], ['Health & nutrition', t('hub.ind_health_nutrition')], ['Banking & finance', t('hub.ind_banking_finance')], ['Insurance', t('hub.ind_insurance')], ['Technology', t('hub.ind_technology')], ['Telecom', t('hub.ind_telecom')], ['Automotive', t('hub.ind_automotive')], ['Travel & hospitality', t('hub.ind_travel_hospitality')], ['Media & entertainment', t('hub.ind_media_entertainment')], ['Retail & e-commerce', t('hub.ind_retail_ecommerce')], ['Education', t('hub.ind_education')], ['Real estate', t('hub.ind_real_estate')], ['Energy', t('hub.ind_energy')]].map(([value, label]) => ({ value, label }));
+const BRAND_COLORS = [{ value: '#16a34a', label: t('hub.col_green') }, { value: '#2563eb', label: t('hub.col_blue') }, { value: '#7c3aed', label: t('hub.col_violet') }, { value: '#db2777', label: t('hub.col_pink') }, { value: '#dc2626', label: t('hub.col_red') }, { value: '#ea580c', label: t('hub.col_orange') }, { value: '#ca8a04', label: t('hub.col_gold') }, { value: '#0f766e', label: t('hub.col_teal') }, { value: '#111827', label: t('hub.col_black') }];
 const BRAND_ICONS = ['💎', '🏆', '⚡', '🔥', '🌿', '🚀', '🎯', '🏅', '⭐', '🛡️'];
-const OFFERS = [{ value: 'cash', label: 'Cash' }, { value: 'equipment', label: 'Equipment' }, { value: 'apparel', label: 'Apparel' }, { value: 'travel', label: 'Travel' }, { value: 'nutrition', label: 'Nutrition' }, { value: 'coaching', label: 'Coaching' }, { value: 'media', label: 'Media & promotion' }];
-const BACKS = [{ value: 'athlete', label: 'Athletes' }, { value: 'team', label: 'Teams' }, { value: 'event', label: 'Events' }];
+const OFFERS = ['cash', 'equipment', 'apparel', 'travel', 'nutrition', 'coaching', 'media'].map((value) => ({ value, label: tEnum(value) }));
+const BACKS = [{ value: 'athlete', label: t('hub.back_athletes') }, { value: 'team', label: t('hub.back_teams') }, { value: 'event', label: t('hub.back_events') }];
+const ROLE_NOTE = { evaluator: t('hub.role_evaluator'), finance: t('hub.role_finance'), legal: t('hub.role_legal'), approver: t('hub.role_approver'), auditor: t('hub.role_auditor'), viewer: t('hub.role_viewer') };
 const BRAND_FIELDS = [
-  { key: 's1', type: 'section', label: 'Identity' },
-  { key: 'name', label: 'Brand name' },
-  { key: 'tagline', label: 'Tagline', optional: true, hint: 'One line shown under your name, up to 120 characters.' },
-  { key: 'emoji', label: 'Icon', type: 'chips', options: BRAND_ICONS, default: '💎' },
-  { key: 'brand_color', label: 'Brand colour', type: 'chips', options: BRAND_COLORS, optional: true },
-  { key: 'industry', label: 'Industry', type: 'chips', options: BRAND_INDUSTRIES, optional: true },
-  { key: 'about', label: 'About the brand', type: 'multiline', optional: true, hint: 'What you do and why you sponsor sport. Shown publicly.' },
-  { key: 'founded_year', label: 'Founded in', type: 'stepper', min: 1800, max: new Date().getFullYear(), default: new Date().getFullYear(), optional: true },
-  { key: 'country', label: 'Country', type: 'country', optional: true },
-  { key: 's2', type: 'section', label: 'What you sponsor' },
-  { key: 'backs', label: 'Who you back', type: 'multi', options: BACKS, optional: true },
-  { key: 'offers', label: 'What you can offer', type: 'multi', options: OFFERS, optional: true, hint: 'Athletes who are looking for these are matched to you.' },
-  { key: 'sports', label: 'Sports you support', type: 'sports', optional: true, hint: 'Leave empty to back any sport.' },
-  { key: 'regions', label: 'Cities and areas', type: 'regions', optional: true, hint: 'Leave empty to sponsor anywhere.' },
-  { key: 'budget_currency', label: 'Budget currency', type: 'currency', default: 'INR' },
-  { key: 'budget_min_cents', label: 'Yearly budget from', type: 'money', currency: (v) => v.budget_currency ?? 'INR', optional: true },
-  { key: 'budget_max_cents', label: 'Yearly budget up to', type: 'money', currency: (v) => v.budget_currency ?? 'INR', optional: true, hint: 'Only your brand managers see the budget.' },
-  { key: 's3', type: 'section', label: 'Online' },
-  { key: 'website', label: 'Website', input: 'url', optional: true },
-  { key: 'link_instagram', label: 'Instagram', input: 'url', optional: true },
-  { key: 'link_linkedin', label: 'LinkedIn', input: 'url', optional: true },
-  { key: 'link_x', label: 'X', input: 'url', optional: true },
-  { key: 'link_youtube', label: 'YouTube', input: 'url', optional: true },
-  { key: 's4', type: 'section', label: 'Private contact' },
-  { key: 'contact_name', label: 'Contact person', optional: true },
-  { key: 'contact_email', label: 'Contact email', input: 'email', optional: true, hint: 'Encrypted — never shown publicly.' },
-  { key: 'contact_phone', label: 'Contact phone', input: 'phone', optional: true, hint: 'Encrypted — never shown publicly.' },
+  { key: 's1', type: 'section', label: t('hub.f_identity') },
+  { key: 'name', label: t('hub.f_brand_name') },
+  { key: 'tagline', label: t('hub.f_tagline'), optional: true, hint: t('hub.f_tagline_hint') },
+  { key: 'emoji', label: t('hub.f_icon'), type: 'chips', options: BRAND_ICONS, default: '💎' },
+  { key: 'brand_color', label: t('hub.f_brand_colour'), type: 'chips', options: BRAND_COLORS, optional: true },
+  { key: 'industry', label: t('hub.f_industry'), type: 'chips', options: BRAND_INDUSTRIES, optional: true },
+  { key: 'about', label: t('hub.f_about'), type: 'multiline', optional: true, hint: t('hub.f_about_hint') },
+  { key: 'founded_year', label: t('hub.f_founded'), type: 'stepper', min: 1800, max: new Date().getFullYear(), default: new Date().getFullYear(), optional: true },
+  { key: 'country', label: t('place.country'), type: 'country', optional: true },
+  { key: 's2', type: 'section', label: t('hub.f_what_sponsor') },
+  { key: 'backs', label: t('hub.f_back'), type: 'multi', options: BACKS, optional: true },
+  { key: 'offers', label: t('hub.f_offer'), type: 'multi', options: OFFERS, optional: true, hint: t('hub.f_offer_hint') },
+  { key: 'sports', label: t('hub.f_sports'), type: 'sports', optional: true, hint: t('hub.f_sports_hint') },
+  { key: 'regions', label: t('hub.f_regions'), type: 'regions', optional: true, hint: t('hub.f_regions_hint') },
+  { key: 'budget_currency', label: t('hub.f_budget_cur'), type: 'currency', default: 'INR' },
+  { key: 'budget_min_cents', label: t('hub.f_budget_from'), type: 'money', currency: (v) => v.budget_currency ?? 'INR', optional: true },
+  { key: 'budget_max_cents', label: t('hub.f_budget_to'), type: 'money', currency: (v) => v.budget_currency ?? 'INR', optional: true, hint: t('hub.f_budget_hint') },
+  { key: 's3', type: 'section', label: t('hub.f_online') },
+  { key: 'website', label: t('hub.f_website'), input: 'url', optional: true },
+  { key: 'link_instagram', label: t('hub.f_instagram'), input: 'url', optional: true },
+  { key: 'link_linkedin', label: t('hub.f_linkedin'), input: 'url', optional: true },
+  { key: 'link_x', label: t('hub.f_x'), input: 'url', optional: true },
+  { key: 'link_youtube', label: t('hub.f_youtube'), input: 'url', optional: true },
+  { key: 's4', type: 'section', label: t('hub.f_private_contact') },
+  { key: 'contact_name', label: t('hub.f_contact_person'), optional: true },
+  { key: 'contact_email', label: t('hub.f_contact_email'), input: 'email', optional: true, hint: t('hub.f_encrypted_hint') },
+  { key: 'contact_phone', label: t('hub.f_contact_phone'), input: 'phone', optional: true, hint: t('hub.f_encrypted_hint') },
 ];
 const LINK_KEYS = ['instagram', 'linkedin', 'x', 'youtube'];
 const brandInitial = (b) => ({ ...b, ...Object.fromEntries(LINK_KEYS.map((k) => [`link_${k}`, b.links?.[k]])), budget_currency: b.budget_currency ?? 'INR' });
@@ -417,29 +428,29 @@ function HomeSummary({ home }) {
   if (home.error) return <LoadError error={home.error} onRetry={home.reload} />;
   const h = home.data;
   const todo = [
-    [h.offers_to_answer, 'offer', 'awaiting your reply', 'Review', null],
-    [h.payments_to_confirm, 'payment', 'to confirm as received', 'Open', null],
-    [h.endorsements_to_review, 'endorsement submission', 'to review', 'Open', null],
-    [h.overdue, 'due', 'overdue', 'Open', c.red],
-    [h.due_30_days, 'due', 'in the next 30 days', 'Open', null],
-    [h.offers_awaiting_reply, 'offer', 'waiting for their reply', null, null],
+    [h.offers_to_answer, t('hub.td_offer_one'), t('hub.td_offer_many'), null],
+    [h.payments_to_confirm, t('hub.td_pay_one'), t('hub.td_pay_many'), null],
+    [h.endorsements_to_review, t('hub.td_endorse_one'), t('hub.td_endorse_many'), null],
+    [h.overdue, t('hub.td_overdue_one'), t('hub.td_overdue_many'), c.red],
+    [h.due_30_days, t('hub.td_due30_one'), t('hub.td_due30_many'), null],
+    [h.offers_awaiting_reply, t('hub.td_waiting_one'), t('hub.td_waiting_many'), null],
   ].filter(([n]) => n > 0);
   const live = h.agreements.some((x) => ['proposed', 'active', 'paused'].includes(x.status));
   if (!todo.length && !h.totals.length && !live) return null;
   return (
     <>
-      <Section title="Needs you" color={c.sun}>
-        {todo.length ? todo.map(([n, noun, rest, , tone]) => <T key={rest} accessibilityRole="text" color={tone ?? c.ink}><T weight="900" color={tone ?? c.ink}>{n}</T> {noun}{n === 1 ? '' : 's'} {rest}</T>) : <T color={c.mute}>Nothing needs you right now.</T>}
+      <Section title={t('hub.needs_you')} color={c.sun}>
+        {todo.length ? todo.map(([n, one, many, tone]) => <T key={one} accessibilityRole="text" color={tone ?? c.ink}><T weight="900" color={tone ?? c.ink}>{n}</T> {n === 1 ? one : many}</T>) : <T color={c.mute}>{t('hub.nothing_needs')}</T>}
       </Section>
       {h.totals.length ? (
-        <Section title="Committed cash" color={c.mint}>
-          {h.totals.map((t) => (
-            <Card key={t.currency}>
-              <T weight="900" size={20}>{curMoney(Number(t.committed_cents), t.currency)}</T>
-              <T size={12} color={c.mute}>Confirmed received {curMoney(Number(t.confirmed_cents), t.currency)}{Number(t.reported_unverified_cents) ? ` · reported, not yet confirmed ${curMoney(Number(t.reported_unverified_cents), t.currency)}` : ''}</T>
+        <Section title={t('hub.committed_cash')} color={c.mint}>
+          {h.totals.map((tt) => (
+            <Card key={tt.currency}>
+              <T weight="900" size={20}>{curMoney(Number(tt.committed_cents), tt.currency)}</T>
+              <T size={12} color={c.mute}>{t('hub.confirmed_received', { amount: curMoney(Number(tt.confirmed_cents), tt.currency) })}{Number(tt.reported_unverified_cents) ? ` · ${t('hub.reported_unconfirmed', { amount: curMoney(Number(tt.reported_unverified_cents), tt.currency) })}` : ''}</T>
             </Card>))}
-          {h.estimated_not_cash.map((e) => <T key={e.currency} size={12} color={c.mute}>Goods, services and endorsements valued at {curMoney(Number(e.estimated_cents), e.currency)} — an estimate, not cash.</T>)}
-          <T size={12} color={c.mute}>Each currency is shown on its own and never added to another. Reported payments only count once the recipient confirms them.</T>
+          {h.estimated_not_cash.map((e) => <T key={e.currency} size={12} color={c.mute}>{t('hub.estimate_note', { amount: curMoney(Number(e.estimated_cents), e.currency) })}</T>)}
+          <T size={12} color={c.mute}>{t('hub.currency_note')}</T>
         </Section>) : null}
     </>
   );
@@ -464,81 +475,81 @@ export function Sponsors() {
   const mayDeal = (d, action) => !roleOf(d.sponsor_id) || { withdraw: ['manager', 'approver'], end: ['manager', 'approver'] }[action].includes(roleOf(d.sponsor_id));
   return (
     <Screen>
-      <H1>Sponsor home</H1>
+      <H1>{t('nav.title.Sponsors')}</H1>
       {invites.data?.length ? (
-        <Section title="Invitations to a sponsor team" color={c.sun}>
+        <Section title={t('hub.invites_title')} color={c.sun}>
           {invites.data.map((i) => (
-            <Row key={i.representative_id} title={i.legal_name ?? 'A sponsor'} sub={`${SPONSOR_ROLE_LABEL[i.role] ?? i.role}${i.invited_by ? ` · invited by ${i.invited_by}` : ''}. You get access only after accepting.`}
+            <Row key={i.representative_id} title={i.legal_name ?? t('hub.a_sponsor')} sub={`${SPONSOR_ROLE_LABEL[i.role] ?? i.role}${i.invited_by ? ` · ${t('hub.invited_by', { name: i.invited_by })}` : ''}. ${t('hub.invite_access')}`}
               right={<View style={{ flexDirection: 'row', gap: 6 }}>
-                <Btn small title="Accept" color={c.violet} onPress={() => act(() => api.post(`/sponsor-representatives/${i.representative_id}/response`, { accept: true }).then(() => { invites.reload(); mine.reload(); }), 'You joined the team')} accessibilityLabel={`Accept the invitation from ${i.legal_name ?? 'a sponsor'}`} />
-                <Btn small title="Decline" color={c.paper} ink={c.ink} onPress={() => act(() => api.post(`/sponsor-representatives/${i.representative_id}/response`, { accept: false }).then(() => invites.reload()), 'Invitation declined')} accessibilityLabel={`Decline the invitation from ${i.legal_name ?? 'a sponsor'}`} />
+                <Btn small title={t('access.accept')} color={c.violet} onPress={() => act(() => api.post(`/sponsor-representatives/${i.representative_id}/response`, { accept: true }).then(() => { invites.reload(); mine.reload(); }), t('hub.joined_team'))} accessibilityLabel={t('hub.a11y_accept_inv', { name: i.legal_name ?? t('hub.a_sponsor') })} />
+                <Btn small title={t('cls.decline')} color={c.paper} ink={c.ink} onPress={() => act(() => api.post(`/sponsor-representatives/${i.representative_id}/response`, { accept: false }).then(() => invites.reload()), t('hub.inv_declined'))} accessibilityLabel={t('hub.a11y_decline_inv', { name: i.legal_name ?? t('hub.a_sponsor') })} />
               </View>} />
           ))}
         </Section>
       ) : null}
-      {has('sponsor') ? <View style={{ flexDirection: 'row', gap: 8, marginTop: 6, flexWrap: 'wrap' }}><Btn small title="＋ New offer" color={c.pink} onPress={() => push('SponsorOffer')} accessibilityLabel="Make a new sponsorship offer" /><Btn small title="Create brand" color={c.violet} onPress={() => setForm('brand')} /></View> : null}
+      {has('sponsor') ? <View style={{ flexDirection: 'row', gap: 8, marginTop: 6, flexWrap: 'wrap' }}><Btn small title={t('hub.new_offer')} color={c.pink} onPress={() => push('SponsorOffer')} accessibilityLabel={t('hub.a11y_new_offer')} /><Btn small title={t('hub.create_brand')} color={c.violet} onPress={() => setForm('brand')} /></View> : null}
       <HomeSummary home={home} />
       {has('athlete') ? (
-        <Section title="Open to sponsors" color={c.mint}>
-          <T size={13} color={c.mute}>Off by default. When you turn it on, sponsors can find your name, sports and pitch — never your contact details — and send you offers you can accept or decline.</T>
+        <Section title={t('hub.open_title')} color={c.mint}>
+          <T size={13} color={c.mute}>{t('hub.open_note')}</T>
           <View style={{ flexDirection: 'row', gap: 8, alignItems: 'center', marginTop: 6, flexWrap: 'wrap' }}>
-            <Chip label={pr?.open_to_sponsors ? '✓ Open to offers' : 'Not open to offers'} active={!!pr?.open_to_sponsors} onPress={() => act(() => api.post('/me/sponsorship-profile', { open_to_sponsors: !pr?.open_to_sponsors }).then(profile.reload), pr?.open_to_sponsors ? 'Hidden from sponsors' : 'Sponsors can find you')} />
-            <Btn small title="Edit pitch" color={c.violet} onPress={() => setForm('pitch')} />
+            <Chip label={pr?.open_to_sponsors ? t('hub.open_to_offers') : t('hub.not_open')} active={!!pr?.open_to_sponsors} onPress={() => act(() => api.post('/me/sponsorship-profile', { open_to_sponsors: !pr?.open_to_sponsors }).then(profile.reload), pr?.open_to_sponsors ? t('hub.hidden_from_sponsors') : t('hub.sponsors_can_find'))} />
+            <Btn small title={t('hub.edit_pitch')} color={c.violet} onPress={() => setForm('pitch')} />
           </View>
           {pr?.pitch ? <T size={13} style={{ marginTop: 6 }}>{pr.pitch}</T> : null}
-          {pr?.verified_sponsors_only ? <T size={12} color={c.mute}>Only verified sponsors can send you offers.</T> : null}
+          {pr?.verified_sponsors_only ? <T size={12} color={c.mute}>{t('hub.verified_only_note')}</T> : null}
         </Section>
       ) : null}
-      <Section title="Funding programs" color={c.lime}>
-        <T size={13} color={c.mute}>Sponsors run funding programs in rounds; athletes, teams and event organisers apply to the ones that are open. Awards become agreements here.</T>
+      <Section title={t('hub.funding_title')} color={c.lime}>
+        <T size={13} color={c.mute}>{t('hub.funding_note')}</T>
         <View style={{ flexDirection: 'row', gap: 8, marginTop: 6, flexWrap: 'wrap' }}>
-          <Btn small title="Sponsorship calls" color={c.pink} onPress={() => push('FundingOpportunities')} />
-          <Btn small title="Beneficiary portfolio" color={c.violet} onPress={() => push('SponsorPortfolio')} />
-          <Btn small title="Reports" color={c.violet} onPress={() => push('SponsorReports')} />
-          <Btn small title="ROI & exposure" color={c.violet} onPress={() => push('SponsorRoi')} />
-          {mine.data?.length ? <Btn small title="Run programs" color={c.violet} onPress={() => push('SponsorPrograms')} /> : null}
-          {mine.data?.some((b) => ['manager', 'finance', 'approver', 'auditor'].includes(b.my_role)) ? <Btn small title="Budgets" color={c.paper} ink={c.ink} onPress={() => push('SponsorBudgets')} /> : null}
+          <Btn small title={t('hub.b_calls')} color={c.pink} onPress={() => push('FundingOpportunities')} />
+          <Btn small title={t('hub.b_portfolio')} color={c.violet} onPress={() => push('SponsorPortfolio')} />
+          <Btn small title={t('hub.b_reports')} color={c.violet} onPress={() => push('SponsorReports')} />
+          <Btn small title={t('hub.b_roi')} color={c.violet} onPress={() => push('SponsorRoi')} />
+          {mine.data?.length ? <Btn small title={t('hub.b_run')} color={c.violet} onPress={() => push('SponsorPrograms')} /> : null}
+          {mine.data?.some((b) => ['manager', 'finance', 'approver', 'auditor'].includes(b.my_role)) ? <Btn small title={t('hub.b_budgets')} color={c.paper} ink={c.ink} onPress={() => push('SponsorBudgets')} /> : null}
         </View>
       </Section>
-      <Section title="Your deals" color={c.sun}>
+      <Section title={t('hub.deals_title')} color={c.sun}>
         {deals.data?.length ? deals.data.map((d) => (
-          <Card key={d.id} color={c.sunSoft}><View style={{ flexDirection: 'row', gap: 10, alignItems: 'center' }}><Bubble emoji={d.sponsor_emoji} color={c.paper} /><View style={{ flex: 1 }}><T weight="900">{d.sponsor_name}{d.sponsor_verified ? ' ✓' : ''} → {d.target_name ?? d.target_type}</T><T size={12} color={c.mute}>{[d.amount_cents ? money(d.amount_cents, d.currency) : null, d.in_kind].filter(Boolean).join(' + ') || 'Support offered'}{d.starts_on ? ` · ${day(d.starts_on)} to ${d.ends_on ? day(d.ends_on) : 'open'}` : ''}</T></View><View style={{ alignItems: 'flex-end', gap: 4 }}><Tag label={d.status.replace('_', ' ')} color={d.status === 'active' ? c.lime : d.status === 'proposed' ? c.sunSoft : c.pinkSoft} />{d.program_id ? <Tag label="Funding award" color={c.mint} /> : null}</View></View>
-            {d.objectives ? <T size={12} style={{ marginTop: 6 }}><T size={12} weight="800">Objectives: </T>{d.objectives}</T> : null}
-            {d.deliverables ? <T size={12}><T size={12} weight="800">Deliverables: </T>{d.deliverables}</T> : null}
+          <Card key={d.id} color={c.sunSoft}><View style={{ flexDirection: 'row', gap: 10, alignItems: 'center' }}><Bubble emoji={d.sponsor_emoji} color={c.paper} /><View style={{ flex: 1 }}><T weight="900">{d.sponsor_name}{d.sponsor_verified ? ' ✓' : ''} → {d.target_name ?? d.target_type}</T><T size={12} color={c.mute}>{[d.amount_cents ? money(d.amount_cents, d.currency) : null, d.in_kind].filter(Boolean).join(' + ') || t('hub.support_offered')}{d.starts_on ? ` · ${t('hub.date_range', { from: day(d.starts_on), to: d.ends_on ? day(d.ends_on) : t('hub.open_ended') })}` : ''}</T></View><View style={{ alignItems: 'flex-end', gap: 4 }}><Tag label={tEnum(d.status)} color={d.status === 'active' ? c.lime : d.status === 'proposed' ? c.sunSoft : c.pinkSoft} />{d.program_id ? <Tag label={t('hub.funding_award')} color={c.mint} /> : null}</View></View>
+            {d.objectives ? <T size={12} style={{ marginTop: 6 }}><T size={12} weight="800">{t('hub.objectives')} </T>{d.objectives}</T> : null}
+            {d.deliverables ? <T size={12}><T size={12} weight="800">{t('hub.deliverables')} </T>{d.deliverables}</T> : null}
             {d.message ? <T size={12} color={c.mute}>“{d.message}”</T> : null}
-            {d.decision_reason ? <T size={12} color={c.mute}>Reply: {d.decision_reason}</T> : null}
-            {d.agreement_ref ? <Btn small title={`Open agreement ${d.agreement_ref}`} color={c.violet} style={{ alignSelf: 'flex-start', marginTop: 8 }} onPress={() => push('SponsorDeal', { id: d.id })} /> : null}
-            {d.status === 'proposed' && !d.i_am_sponsor && d.agreement_ref ? <Btn small title="Review & answer" color={c.pink} style={{ alignSelf: 'flex-start', marginTop: 8 }} onPress={() => push('SponsorDeal', { id: d.id })} accessibilityLabel={`Review and answer the offer from ${d.sponsor_name}`} /> : null}
-            {d.status === 'proposed' && !d.i_am_sponsor && !d.agreement_ref ? <View style={{ flexDirection: 'row', gap: 8, marginTop: 8 }}><Btn small title="Accept" color={c.mint} ink={c.ink} onPress={() => act(() => api.patch(`/sponsorships/${d.id}`, { status: 'active' }), 'Deal on!')} /><Btn small title="Decline" color={c.paper} ink={c.red} onPress={() => act(() => api.patch(`/sponsorships/${d.id}`, { status: 'declined' }), 'Declined')} />{d.target_type === 'athlete' ? <Btn small title="Accept & show on sponsor page" color={c.paper} ink={c.ink} onPress={() => act(() => api.patch(`/sponsorships/${d.id}`, { status: 'active', show_publicly: true }), 'Deal on, shown publicly')} /> : null}</View> : null}
-            {d.i_am_sponsor && d.budget_approval === 'pending' ? <T size={12} color={c.mute}>Waiting for budget approval — the recipient has not been told about this offer yet.</T> : null}
-            {d.status === 'proposed' && d.i_am_sponsor && mayDeal(d, 'withdraw') ? <View style={{ flexDirection: 'row', gap: 8, marginTop: 8 }}><Btn small title="Withdraw offer" color={c.paper} ink={c.red} onPress={() => act(() => api.post(`/sponsorships/${d.id}/withdraw`), 'Offer withdrawn')} /></View> : null}
-            {['active', 'paused'].includes(d.status) && mayDeal(d, 'end') ? <View style={{ flexDirection: 'row', gap: 8, marginTop: 8 }}><Btn small title="End deal…" color={c.paper} ink={c.red} onPress={() => push('SponsorDeal', { id: d.id })} /></View> : null}
+            {d.decision_reason ? <T size={12} color={c.mute}>{t('hub.reply_line', { text: d.decision_reason })}</T> : null}
+            {d.agreement_ref ? <Btn small title={t('hub.open_agreement', { ref: d.agreement_ref })} color={c.violet} style={{ alignSelf: 'flex-start', marginTop: 8 }} onPress={() => push('SponsorDeal', { id: d.id })} /> : null}
+            {d.status === 'proposed' && !d.i_am_sponsor && d.agreement_ref ? <Btn small title={t('hub.review_answer')} color={c.pink} style={{ alignSelf: 'flex-start', marginTop: 8 }} onPress={() => push('SponsorDeal', { id: d.id })} accessibilityLabel={t('hub.a11y_review_offer', { name: d.sponsor_name })} /> : null}
+            {d.status === 'proposed' && !d.i_am_sponsor && !d.agreement_ref ? <View style={{ flexDirection: 'row', gap: 8, marginTop: 8 }}><Btn small title={t('access.accept')} color={c.mint} ink={c.ink} onPress={() => act(() => api.patch(`/sponsorships/${d.id}`, { status: 'active' }), t('hub.deal_on'))} /><Btn small title={t('cls.decline')} color={c.paper} ink={c.red} onPress={() => act(() => api.patch(`/sponsorships/${d.id}`, { status: 'declined' }), t('enum.declined'))} />{d.target_type === 'athlete' ? <Btn small title={t('hub.accept_show')} color={c.paper} ink={c.ink} onPress={() => act(() => api.patch(`/sponsorships/${d.id}`, { status: 'active', show_publicly: true }), t('hub.deal_on_public'))} /> : null}</View> : null}
+            {d.i_am_sponsor && d.budget_approval === 'pending' ? <T size={12} color={c.mute}>{t('hub.budget_wait')}</T> : null}
+            {d.status === 'proposed' && d.i_am_sponsor && mayDeal(d, 'withdraw') ? <View style={{ flexDirection: 'row', gap: 8, marginTop: 8 }}><Btn small title={t('hub.withdraw_offer')} color={c.paper} ink={c.red} onPress={() => act(() => api.post(`/sponsorships/${d.id}/withdraw`), t('hub.offer_withdrawn'))} /></View> : null}
+            {['active', 'paused'].includes(d.status) && mayDeal(d, 'end') ? <View style={{ flexDirection: 'row', gap: 8, marginTop: 8 }}><Btn small title={t('hub.end_deal')} color={c.paper} ink={c.red} onPress={() => push('SponsorDeal', { id: d.id })} /></View> : null}
           </Card>
-        )) : <Empty emoji="🤝" title="No deals yet" />}
+        )) : <Empty emoji="🤝" title={t('hub.no_deals')} />}
       </Section>
       {has('sponsor') && mine.data?.length ? <Introductions brands={mine.data} onOffer={(a) => push('SponsorOffer', { target: { type: 'athlete', id: a.athlete_id, name: a.display_name } })} /> : null}
       {has('sponsor') && mine.data?.length ? <YouthAuthorizations brands={mine.data} onOffer={(a) => push('SponsorOffer', { target: { type: 'athlete', id: a.id, name: a.display_name } })} /> : null}
-      <Section title="Your brands" color={c.violet}>
+      <Section title={t('hub.your_brands')} color={c.violet}>
         {mine.error ? <LoadError error={mine.error} onRetry={mine.reload} /> : mine.loading && !mine.data ? <Loading /> : mine.data?.length ? mine.data.map((s) => (
           <Row key={s.id} left={<Bubble emoji={s.emoji} color={c.sun} />} title={s.name}
-            sub={[s.tagline, s.industry, s.organisation_name ? `Run by ${s.organisation_name}` : 'Individual brand', asSponsorRole(s.my_role) !== 'manager' ? { evaluator: 'You evaluate and review; you cannot pay or sign', finance: 'You report payments; you cannot change terms', legal: 'You review and change terms; you cannot pay', approver: 'You propose, revise and withdraw; you cannot pay', auditor: 'Read-only, with exports', viewer: 'Read only' }[asSponsorRole(s.my_role)] : null].filter(Boolean).join(' · ')}
-            right={<View style={{ alignItems: 'flex-end', gap: 6 }}><Tag label={SPONSOR_ROLE_LABEL[s.my_role] ?? 'Team'} />
-              <Btn small title="Team & identity" color={c.paper} ink={c.ink} onPress={() => push('SponsorIdentity', { id: s.id })} accessibilityLabel={`Team and identity of ${s.name}`} />
-              {asSponsorRole(s.my_role) === 'manager' ? <Btn small title="Edit profile" color={c.violet} onPress={async () => { try { setEditBrand(await api.get(`/sponsors/${s.id}`)); } catch (e) { toast(explain(e)); } }} /> : null}
-              {asSponsorRole(s.my_role) === 'manager' && (!s.identity_confirmed || s.organisation_id) ? <Btn small title="Hand over" color={c.paper} ink={c.ink} onPress={() => setHandOver(s)} accessibilityLabel={`Hand over ${s.name} to a new owner`} /> : null}
-              {s.organisation_id && asSponsorRole(s.my_role) !== 'viewer' ? <Btn small title="Open workspace" color={c.paper} ink={c.ink} onPress={() => push('Org', { id: s.organisation_id })} /> : null}</View>} />
-        )) : <Empty emoji="🏷️" title="No brands yet" sub="Create a brand, or ask an organisation manager to invite you to theirs." />}
-        <T size={12} color={c.mute}>Everyone who acts for a brand — owners, managers, finance, legal and more — is managed in one place: open a brand's Team & identity. Link an organisation there to put its sponsor staff on the team.</T>
+            sub={[s.tagline, s.industry, s.organisation_name ? t('hub.run_by', { name: s.organisation_name }) : t('hub.individual_brand'), asSponsorRole(s.my_role) !== 'manager' ? ROLE_NOTE[asSponsorRole(s.my_role)] : null].filter(Boolean).join(' · ')}
+            right={<View style={{ alignItems: 'flex-end', gap: 6 }}><Tag label={SPONSOR_ROLE_LABEL[s.my_role] ?? t('hub.team')} />
+              <Btn small title={t('hub.team_identity')} color={c.paper} ink={c.ink} onPress={() => push('SponsorIdentity', { id: s.id })} accessibilityLabel={t('hub.a11y_team_identity', { name: s.name })} />
+              {asSponsorRole(s.my_role) === 'manager' ? <Btn small title={t('hub.edit_profile')} color={c.violet} onPress={async () => { try { setEditBrand(await api.get(`/sponsors/${s.id}`)); } catch (e) { toast(explain(e)); } }} /> : null}
+              {asSponsorRole(s.my_role) === 'manager' && (!s.identity_confirmed || s.organisation_id) ? <Btn small title={t('hub.hand_over')} color={c.paper} ink={c.ink} onPress={() => setHandOver(s)} accessibilityLabel={t('hub.a11y_hand_over', { name: s.name })} /> : null}
+              {s.organisation_id && asSponsorRole(s.my_role) !== 'viewer' ? <Btn small title={t('hub.open_workspace')} color={c.paper} ink={c.ink} onPress={() => push('Org', { id: s.organisation_id })} /> : null}</View>} />
+        )) : <Empty emoji="🏷️" title={t('hub.no_brands')} sub={t('hub.no_brands_sub')} />}
+        <T size={12} color={c.mute}>{t('hub.brands_note')}</T>
       </Section>
-      <Section title="Brands" color={c.pink}>{dir.data?.map((s) => <Row key={s.id} left={<Bubble emoji={s.emoji} color={c.sun} />} title={s.name} sub={s.industry ?? s.website} />)}</Section>
-      <FormSheet visible={form === 'brand'} onClose={() => setForm(null)} title="Create your brand" submitLabel="Create brand" fields={BRAND_FIELDS}
-        onSubmit={async (v) => { await api.post('/sponsors', brandBody(v, false)); dir.reload(); mine.reload(); return 'Brand created — finish its profile any time from Your brands'; }} />
-      <FormSheet visible={!!editBrand} onClose={() => setEditBrand(null)} title={`Edit ${editBrand?.name ?? 'brand'}`} fields={BRAND_FIELDS} initial={editBrand ? brandInitial(editBrand) : {}}
-        onSubmit={async (v) => { await api.patch(`/sponsors/${editBrand.id}`, brandBody(v, true)); dir.reload(); mine.reload(); return 'Brand profile saved'; }} />
+      <Section title={t('hub.brands')} color={c.pink}>{dir.data?.map((s) => <Row key={s.id} left={<Bubble emoji={s.emoji} color={c.sun} />} title={s.name} sub={s.industry ?? s.website} />)}</Section>
+      <FormSheet visible={form === 'brand'} onClose={() => setForm(null)} title={t('hub.create_your_brand')} submitLabel={t('hub.create_brand')} fields={BRAND_FIELDS}
+        onSubmit={async (v) => { await api.post('/sponsors', brandBody(v, false)); dir.reload(); mine.reload(); return t('hub.brand_created'); }} />
+      <FormSheet visible={!!editBrand} onClose={() => setEditBrand(null)} title={editBrand?.name ? t('hub.edit_brand', { name: editBrand.name }) : t('hub.edit_brand_default')} fields={BRAND_FIELDS} initial={editBrand ? brandInitial(editBrand) : {}}
+        onSubmit={async (v) => { await api.patch(`/sponsors/${editBrand.id}`, brandBody(v, true)); dir.reload(); mine.reload(); return t('hub.brand_saved'); }} />
       <HandOverBrand brand={handOver} visible={!!handOver} onClose={() => setHandOver(null)} onDone={() => { mine.reload(); dir.reload(); }} toast={toast} />
-      <FormSheet visible={form === 'pitch'} onClose={() => setForm(null)} title="Your sponsor pitch" initial={{ pitch: pr?.pitch ?? '', looking_for: pr?.looking_for ?? [], verified_sponsors_only: !!pr?.verified_sponsors_only }}
-        fields={[{ key: 'pitch', label: 'What should sponsors know about you?', type: 'multiline', optional: true, hint: 'Shown to sponsors. Do not include contact details.' }, { key: 'looking_for', label: 'What are you looking for?', type: 'multi', optional: true, options: ['cash', 'equipment', 'travel', 'coaching', 'apparel', 'nutrition', 'media'] }, { key: 'verified_sponsors_only', label: 'Only verified sponsors may send offers', type: 'switch' }]}
-        onSubmit={async (v) => { await api.post('/me/sponsorship-profile', { open_to_sponsors: !!pr?.open_to_sponsors, pitch: v.pitch ?? null, looking_for: v.looking_for ?? [], verified_sponsors_only: v.verified_sponsors_only }); profile.reload(); return 'Saved'; }} />
+      <FormSheet visible={form === 'pitch'} onClose={() => setForm(null)} title={t('hub.pitch_title')} initial={{ pitch: pr?.pitch ?? '', looking_for: pr?.looking_for ?? [], verified_sponsors_only: !!pr?.verified_sponsors_only }}
+        fields={[{ key: 'pitch', label: t('hub.pitch_q'), type: 'multiline', optional: true, hint: t('hub.pitch_hint') }, { key: 'looking_for', label: t('hub.looking_q'), type: 'multi', optional: true, options: OFFERS }, { key: 'verified_sponsors_only', label: t('hub.verified_only_switch'), type: 'switch' }]}
+        onSubmit={async (v) => { await api.post('/me/sponsorship-profile', { open_to_sponsors: !!pr?.open_to_sponsors, pitch: v.pitch ?? null, looking_for: v.looking_for ?? [], verified_sponsors_only: v.verified_sponsors_only }); profile.reload(); return t('access.saved'); }} />
     </Screen>
   );
 }
@@ -551,31 +562,31 @@ export function Supply() {
   const act = async (fn, m) => { try { await fn(); inv.reload(); ord.reload(); if (m) toast(m); } catch (e) { toast('' + e.message); } };
   return (
     <Screen>
-      <H1>Supply chain</H1>
-      <Btn small title="Add stock item" color={c.orange} onPress={() => setForm('item')} style={{ alignSelf: 'flex-start', marginTop: 6 }} />
-      <Section title="Inventory" color={c.orange}>
+      <H1>{t('nav.title.Supply')}</H1>
+      <Btn small title={t('hub.add_stock_item')} color={c.orange} onPress={() => setForm('item')} style={{ alignSelf: 'flex-start', marginTop: 6 }} />
+      <Section title={t('hub.inventory')} color={c.orange}>
         {inv.data?.length ? inv.data.map((i) => (
           <Card key={i.id} color={i.low_stock ? c.orangeSoft : c.paper} pad={12}>
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-              <View style={{ flex: 1 }}><T weight="900">{i.name}</T><T size={12} color={c.mute}>{i.category} · reorder at {i.reorder_level}</T>{i.low_stock ? <Tag label="low stock" color={c.red} ink="#fff" style={{ marginTop: 4 }} /> : null}</View>
+              <View style={{ flex: 1 }}><T weight="900">{i.name}</T><T size={12} color={c.mute}>{tEnum(i.category)} · {t('hub.reorder_at', { n: i.reorder_level })}</T>{i.low_stock ? <Tag label={t('hub.low_stock')} color={c.red} ink="#fff" style={{ marginTop: 4 }} /> : null}</View>
               <Btn small title="−" color={c.paper} ink={c.ink} onPress={() => act(() => api.post(`/inventory/${i.id}/adjust`, { delta: -1 }))} />
               <T weight="900" size={20} style={{ minWidth: 34, textAlign: 'center' }}>{i.quantity}</T>
               <Btn small title="+" color={c.mint} ink={c.ink} onPress={() => act(() => api.post(`/inventory/${i.id}/adjust`, { delta: 1 }))} />
             </View>
-            {i.low_stock ? <Btn small title="Reorder" color={c.ink} onPress={() => setForm({ order: i })} style={{ marginTop: 8, alignSelf: 'flex-start' }} /> : null}
+            {i.low_stock ? <Btn small title={t('hub.reorder')} color={c.ink} onPress={() => setForm({ order: i })} style={{ marginTop: 8, alignSelf: 'flex-start' }} /> : null}
           </Card>
-        )) : <Empty emoji="📦" title="No stock tracked" />}
+        )) : <Empty emoji="📦" title={t('hub.no_stock')} />}
       </Section>
-      <Section title="Orders" color={c.cyan}>
+      <Section title={t('hub.orders')} color={c.cyan}>
         {ord.data?.length ? ord.data.map((o) => (
-          <Row key={o.id} left={<Bubble emoji="🚚" color={c.cyanSoft} />} title={`${o.quantity} × ${o.item_name}`} sub={`${o.supplier}${o.expected_on ? ' · by ' + day(o.expected_on) : ''}`}
-            right={o.status === 'ordered' || o.status === 'shipped' ? <Btn small title="Received" color={c.mint} ink={c.ink} onPress={() => act(() => api.patch(`/supply-orders/${o.id}`, { status: 'received' }), 'Stock updated')} /> : <Tag label={o.status} color={c.lime} />} />
-        )) : <Empty emoji="🚚" title="No orders" />}
+          <Row key={o.id} left={<Bubble emoji="🚚" color={c.cyanSoft} />} title={`${o.quantity} × ${o.item_name}`} sub={`${o.supplier}${o.expected_on ? ' · ' + t('hub.by_date', { date: day(o.expected_on) }) : ''}`}
+            right={o.status === 'ordered' || o.status === 'shipped' ? <Btn small title={t('hub.received')} color={c.mint} ink={c.ink} onPress={() => act(() => api.patch(`/supply-orders/${o.id}`, { status: 'received' }), t('hub.stock_updated'))} /> : <Tag label={tEnum(o.status)} color={c.lime} />} />
+        )) : <Empty emoji="🚚" title={t('hub.no_orders')} />}
       </Section>
-      <FormSheet visible={form === 'item'} onClose={() => setForm(null)} title="Add stock" fields={[{ key: 'name', label: 'Item' }, { key: 'category', label: 'Category', type: 'choice', options: ['equipment', 'apparel', 'nutrition', 'medical', 'merch', 'other'] }, { key: 'quantity', label: 'Quantity', type: 'number' }, { key: 'reorder_level', label: 'Reorder at', type: 'number', optional: true }]}
-        onSubmit={async (v) => { await api.post('/inventory', v); inv.reload(); return 'Added'; }} />
-      <FormSheet visible={!!form?.order} onClose={() => setForm(null)} title={`Reorder ${form?.order?.name ?? ''}`} fields={[{ key: 'supplier', label: 'Supplier' }, { key: 'quantity', label: 'Quantity', type: 'number' }]}
-        onSubmit={async (v) => { await api.post('/supply-orders', { item_id: form.order.id, ...v }); ord.reload(); return 'Order placed'; }} />
+      <FormSheet visible={form === 'item'} onClose={() => setForm(null)} title={t('hub.add_stock')} fields={[{ key: 'name', label: t('hub.f_item') }, { key: 'category', label: t('cs.category'), type: 'choice', options: ['equipment', 'apparel', 'nutrition', 'medical', 'merch', 'other'].map((value) => ({ value, label: tEnum(value) })) }, { key: 'quantity', label: t('hub.f_quantity'), type: 'number' }, { key: 'reorder_level', label: t('hub.f_reorder_at'), type: 'number', optional: true }]}
+        onSubmit={async (v) => { await api.post('/inventory', v); inv.reload(); return t('hub.added'); }} />
+      <FormSheet visible={!!form?.order} onClose={() => setForm(null)} title={t('hub.reorder_title', { name: form?.order?.name ?? '' })} fields={[{ key: 'supplier', label: t('hub.f_supplier') }, { key: 'quantity', label: t('hub.f_quantity'), type: 'number' }]}
+        onSubmit={async (v) => { await api.post('/supply-orders', { item_id: form.order.id, ...v }); ord.reload(); return t('hub.order_placed'); }} />
     </Screen>
   );
 }
