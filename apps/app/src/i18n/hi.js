@@ -4426,4 +4426,7 @@ export default {
   'scr.check_none': 'आपका कुछ भी इस कॉल के लिए आवेदन नहीं कर सकता',
   'scr.check_hint': 'कुछ भी दाखिल नहीं होता। यह केवल दिखाता है कि क्या पूरा है और क्या बाकी।',
   'scr.f_amount': 'अनुरोधित राशि',
+  'invoice.pdf': 'इनवॉइस PDF डाउनलोड करें',
+  'invoice.receipt_pdf': 'रसीद PDF डाउनलोड करें',
+  'invoice.credit_note_pdf': 'क्रेडिट नोट PDF डाउनलोड करें',
 };

@@ -4426,4 +4426,7 @@ export default {
   'scr.check_none': 'ଆପଣଙ୍କର କିଛି ବି ଏହି କଲ୍‌ରେ ଆବେଦନ କରିପାରିବ ନାହିଁ',
   'scr.check_hint': 'କିଛି ଦାଖଲ ହୁଏ ନାହିଁ। କଣ ପୂରଣ ହୋଇଛି ଓ କଣ ବାକି ତାହା କେବଳ ଦେଖାଏ।',
   'scr.f_amount': 'ଅନୁରୋଧିତ ରାଶି',
+  'invoice.pdf': 'ଇନଭଏସ୍ PDF ଡାଉନଲୋଡ୍ କରନ୍ତୁ',
+  'invoice.receipt_pdf': 'ରସିଦ PDF ଡାଉନଲୋଡ୍ କରନ୍ତୁ',
+  'invoice.credit_note_pdf': 'କ୍ରେଡିଟ୍ ନୋଟ୍ PDF ଡାଉନଲୋଡ୍ କରନ୍ତୁ',
 };

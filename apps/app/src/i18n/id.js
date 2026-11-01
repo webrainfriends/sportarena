@@ -4426,4 +4426,7 @@ export default {
   'scr.check_none': 'Tidak ada milik Anda yang dapat mendaftar ke panggilan ini',
   'scr.check_hint': 'Tidak ada yang diajukan. Ini hanya menunjukkan apa yang terpenuhi dan apa yang kurang.',
   'scr.f_amount': 'Jumlah yang diminta',
+  'invoice.pdf': 'Unduh PDF faktur',
+  'invoice.receipt_pdf': 'Unduh PDF tanda terima',
+  'invoice.credit_note_pdf': 'Unduh PDF nota kredit',
 };

@@ -26,6 +26,7 @@ import { KIND } from './book';
 import { QuietHoursCard } from './inbox';
 import { addDays, dateTimeIn, dayLabel, fmtMin, localDate, hoursSummary, localToIso, moneyIn, offerLabel, timeIn, todayIn } from '../vtime';
 import { locale } from '../locale';
+import { openInvoicePdf } from './academy-ui';
 
 const open = (url) => (Platform.OS === 'web' ? window.open(url, '_blank', 'noopener') : Linking.openURL(url));
 const Line = ({ k, v, strong }) => <View style={{ flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 3 }}><T color={c.mute} weight={strong ? '700' : '500'}>{k}</T><T weight={strong ? '700' : '600'}>{v}</T></View>;
@@ -173,7 +174,7 @@ export function Invoice({ id }) {
         </View>
       </Card>
       {d.credit_notes?.length ? <Section title="Credit notes" color={c.sun}>{d.credit_notes.map((n) => <Row key={n.id} title={n.number} sub={n.refund_status} right={<T weight="700">−{money(n.total_cents)}</T>} />)}</Section> : null}
-      {Platform.OS === 'web' ? <Btn title="Print / save as PDF" color={c.violet} onPress={() => window.print()} style={{ marginTop: 14 }} /> : <Btn title="Share" color={c.violet} onPress={() => toast('Open this on the web app to print or save as PDF')} style={{ marginTop: 14 }} />}
+      <Btn title={t(credit ? 'invoice.credit_note_pdf' : d.status === 'paid' ? 'invoice.receipt_pdf' : 'invoice.pdf')} accessibilityLabel={t(credit ? 'invoice.credit_note_pdf' : d.status === 'paid' ? 'invoice.receipt_pdf' : 'invoice.pdf')} color={c.violet} onPress={() => openInvoicePdf(id, toast)} style={{ marginTop: 14 }} />
       {!credit ? <Btn small title="Dispute this invoice" color={c.paper} ink={c.ink} onPress={() => setReport(true)} style={{ marginTop: 10, alignSelf: 'flex-start' }} /> : null}
       <NewCaseSheet visible={report} onClose={() => setReport(false)} kind="dispute" links={[{ type: 'invoice', id }]} />
     </Screen>
