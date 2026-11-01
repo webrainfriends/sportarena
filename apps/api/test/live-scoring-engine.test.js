@@ -303,7 +303,8 @@ test('every sport family has a live model, and the defaults are the sport\'s own
   assert.deepEqual(sessionDefaults({ slug: 'archery', scoring: 'points', category: 'precision' }), { aggregate: 'sum', lowerIsBetter: false });
   assert.equal(liveModelOf({ slug: 'judo', scoring: 'combat' }).model, 'outcome', 'judo and chess stay manual in the Tools tracker: the result is the score');
   assert.equal(liveModelOf({ slug: 'chess', scoring: 'points', category: 'mind' }).model, 'outcome');
-  assert.equal(builtinRuleset({ slug: 'dodgeball', scoring: 'points', category: 'team_ball', name: 'Dodgeball' }).label, 'Dodgeball (points)', 'a labelled fallback for team ball sports');
+  assert.equal(builtinRuleset({ slug: 'new-team-sport', scoring: 'points', category: 'team_ball', name: 'New team sport' }).label, 'New team sport (points)', 'a labelled fallback for a team ball sport with no ruleset of its own');
+  assert.equal(builtinRuleset({ slug: 'dodgeball', scoring: 'points', category: 'team_ball', name: 'Dodgeball' }).label, 'Dodgeball', 'dodgeball has its own ruleset (#578)');
   assert.equal(liveModelOf({ slug: 'tennis', scoring: 'sets' }).model, 'racket');
   assert.equal(liveModelOf({ slug: 'boxing', scoring: 'points', category: 'combat' }).model, 'cards');
   assert.equal(liveModelOf({ slug: 'artistic-gymnastics', scoring: 'judged' }).model, 'session');

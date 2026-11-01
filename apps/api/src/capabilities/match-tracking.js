@@ -234,6 +234,24 @@ cap({
 });
 
 // ------------------------------------------------------------------ reading
+/** Staff-only operational detail of the same game (#578): who holds the scorer lease, how much was voided or corrected, the score-sheet stage, the clock's authority
+ *  and what fans can currently see. Authorised officials and the organiser only; it is derived from the canonical log, never stored. */
+async function opsOf(x, state) {
+  const [lease, voided, sheet, last, pub] = await Promise.all([
+    pool.query("SELECT u.display_name, l.claimed_at, l.expires_at FROM fixture_scorer_leases l JOIN users u ON u.id=l.user_id WHERE l.fixture_id=$1 AND l.expires_at > now()", [x.f.id]),
+    pool.query('SELECT count(*)::int AS n FROM match_events WHERE fixture_id=$1 AND voided_at IS NOT NULL', [x.f.id]),
+    pool.query('SELECT status FROM score_sheets WHERE fixture_id=$1 ORDER BY created_at DESC LIMIT 1', [x.f.id]),
+    pool.query('SELECT max(recorded_at) AS at, bool_or(source_authority IN (\'organiser\',\'official\',\'admin\')) AS official FROM match_events WHERE fixture_id=$1 AND voided_at IS NULL', [x.f.id]),
+    pool.query('SELECT public_visibility, public_modules FROM events WHERE id=$1', [x.f.event_id]),
+  ]);
+  const lr = lease.rows[0];
+  return {
+    scorer: lr ? { name: lr.display_name, since: lr.claimed_at, expires_at: lr.expires_at } : null,
+    voided_events: voided.rows[0].n, corrections: Math.max(0, state.version - state.last_seq),
+    sheet_status: sheet.rows[0]?.status ?? null, clock_official: !!last.rows[0].official, last_event_at: last.rows[0].at,
+    fan_view: { visibility: pub.rows[0]?.public_visibility ?? 'public', modules: pub.rows[0]?.public_modules ?? null },
+  };
+}
 cap({
   name: 'get_live_fixture', method: 'GET', path: '/fixtures/:id/live', tag: TAG, auth: 'public',
   summary: 'A game\'s live state: score (sets and periods where they apply), phase, rules and recent events. Poll with since_seq for new events, or stream /live/fixtures/:id (Server-Sent Events). Void events are only shown to officials.',
@@ -244,7 +262,7 @@ cap({
     await assertFixtureReadable(user, i.id);
     const x = user ? await fixtureContext(user, i.id) : null;
     const state = await liveState(i.id, null, { sinceSeq: i.since_seq, limit: i.limit, includeVoided: !!x?.canScore });
-    return { ...state, viewer: { can_score: !!x?.canScore, organiser: !!x?.organiser, manages: x?.side ?? null } };
+    return { ...state, viewer: { can_score: !!x?.canScore, organiser: !!x?.organiser, manages: x?.side ?? null }, ...(x?.canScore ? { ops: await opsOf(x, state) } : {}) };
   },
 });
 
