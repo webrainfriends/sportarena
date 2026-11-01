@@ -14,7 +14,13 @@ export function gstinCheckDigit(first14) {
   });
   return CHARS[(36 - (sum % 36)) % 36];
 }
-export const validGstin = (g) => { const s = String(g ?? '').toUpperCase(); return GSTIN.test(s) && gstinCheckDigit(s.slice(0, 14)) === s[14]; };
+/** Why a GSTIN is rejected: null (fine), 'format' (not 15 characters in the GSTIN pattern) or 'checksum' (right pattern, wrong check character). */
+export function gstinProblem(g) {
+  const s = String(g ?? '').toUpperCase();
+  if (!GSTIN.test(s)) return 'format';
+  return gstinCheckDigit(s.slice(0, 14)) === s[14] ? null : 'checksum';
+}
+export const validGstin = (g) => gstinProblem(g) === null;
 export const stateOfGstin = (g) => String(g ?? '').slice(0, 2);
 
 /**

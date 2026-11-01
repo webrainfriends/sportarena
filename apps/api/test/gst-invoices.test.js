@@ -36,7 +36,12 @@ test('profile: only the venue team sets it, a bad GSTIN is refused, replacing ar
   const path = `/gst-profiles/venue/${v.id}`;
   assert.equal((await api('POST', path, { token: other.token, body: { gstin: gstin('27') } })).status, 404, 'outsiders learn nothing');
   assert.equal((await api('GET', path, { token: other.token })).status, 404);
-  assert.equal((await api('POST', path, { token: mgr.token, body: { gstin: '27AAPFU0939F1Z0' } })).status, 400);
+  const wrongCheck = await api('POST', path, { token: mgr.token, body: { gstin: '27AAPFU0939F1Z0' } });
+  assert.equal(wrongCheck.status, 400);
+  assert.match(JSON.stringify(wrongCheck.body), /check\) character/, 'right format, wrong check digit says so');
+  const badFormat = await api('POST', path, { token: mgr.token, body: { gstin: '27AAPFU0939' } });
+  assert.equal(badFormat.status, 400);
+  assert.match(JSON.stringify(badFormat.body), /15 characters/, 'wrong format says so');
   const p = must(await api('POST', path, { token: mgr.token, body: { gstin: gstin('27'), default_sac: '9993' } })).profile;
   assert.equal(p.state_code, '27'); assert.equal(p.rate_bp, 1800);
   must(await api('POST', path, { token: mgr.token, body: { gstin: gstin('29'), tax_inclusive: true } }));

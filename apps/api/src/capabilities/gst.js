@@ -7,7 +7,7 @@ import { badRequest, notFound } from '../errors.js';
 import { audit } from '../helpers.js';
 import { canManage } from '../booking/engine.js';
 import { orgFor } from '../org-access.js';
-import { validGstin, stateOfGstin } from '../gst.js';
+import { gstinProblem, stateOfGstin } from '../gst.js';
 
 const TAG = 'GST billing';
 const OWNER = z.enum(['organisation', 'venue', 'user']);
@@ -39,7 +39,9 @@ cap({
     rate_bp: z.number().int().min(0).max(4000).default(1800).describe('basis points: 1800 = 18%'),
   }),
   async handler({ user }, i) {
-    if (!validGstin(i.gstin)) throw badRequest('That GSTIN is not valid (check the 15 characters)');
+    const problem = gstinProblem(i.gstin);
+    if (problem === 'format') throw badRequest('That GSTIN is not valid: it has 15 characters (2 state digits, 10 PAN characters, an entity number, Z and a check character)');
+    if (problem === 'checksum') throw badRequest('That GSTIN has the right format but its last (check) character does not match. Re-check the number against your GST certificate');
     return tx(async (c) => {
       await authorise(user, i.owner_kind, i.owner_id, c);
       await c.query('UPDATE gst_profiles SET archived_at=now(), updated_at=now() WHERE owner_kind=$1 AND owner_id=$2 AND archived_at IS NULL', [i.owner_kind, i.owner_id]);
