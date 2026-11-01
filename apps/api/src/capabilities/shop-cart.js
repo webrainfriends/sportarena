@@ -9,7 +9,7 @@ import { encrypt } from '../crypto.js';
 import { paymentsEnabled } from '../payments/service.js';
 import { MAX_QTY } from './shop.js';
 
-const LINE = `ci.product_id, ci.quantity, ci.saved_for_later, p.name, p.emoji, p.brand, p.price_cents, p.compare_at_cents, p.stock, p.seller_id, p.archived_at, u.display_name AS seller_name,
+const LINE = `ci.product_id, ci.quantity, ci.saved_for_later, p.name, p.emoji, p.brand, p.price_cents, p.currency, p.compare_at_cents, p.stock, p.seller_id, p.archived_at, u.display_name AS seller_name,
   (SELECT '/api/v1/market/media/' || m.id FROM market_media m WHERE m.product_id = p.id AND m.removed_at IS NULL ORDER BY m.position, m.created_at LIMIT 1) AS image`;
 
 /** The cart as the screen shows it: live prices, what is still available, savings, and the lines parked for later. */
@@ -26,9 +26,11 @@ async function cartFor(userId) {
   const buying = items.filter((r) => r.available);
   const subtotal = buying.reduce((t, r) => t + r.price_cents * r.quantity, 0);
   const savings = buying.reduce((t, r) => t + (r.compare_at_cents > r.price_cents ? (r.compare_at_cents - r.price_cents) * r.quantity : 0), 0);
+  // one cart, one currency: set_cart_item refuses a product in another currency, so the first live line names it
+  const currency = items[0]?.currency ?? null;
   return {
-    items, saved: all.filter((r) => r.saved_for_later),
-    summary: { lines: buying.length, units: buying.reduce((t, r) => t + r.quantity, 0), subtotal_cents: subtotal, savings_cents: savings, total_cents: subtotal, unavailable: items.length - buying.length },
+    items, saved: all.filter((r) => r.saved_for_later), currency,
+    summary: { currency, lines: buying.length, units: buying.reduce((t, r) => t + r.quantity, 0), subtotal_cents: subtotal, savings_cents: savings, total_cents: subtotal, unavailable: items.length - buying.length },
   };
 }
 
@@ -39,9 +41,14 @@ cap({
   summary: 'Add a product to the cart, change its quantity (quantity 0 removes it) or move it to / from "saved for later". Quantity is capped by stock. Returns the updated cart.',
   input: z.object({ product_id: id, quantity: z.number().int().min(0).max(MAX_QTY).optional().describe('absolute quantity; omit to keep it (1 for a new line)'), saved_for_later: z.boolean().optional(), add: z.number().int().min(1).max(MAX_QTY).optional().describe('add this many to what is already in the cart') }),
   async handler({ user }, i) {
-    const p = await one('SELECT id, seller_id, stock, archived_at FROM shop_products WHERE id=$1', [i.product_id]);
+    const p = await one('SELECT id, seller_id, stock, archived_at, currency FROM shop_products WHERE id=$1', [i.product_id]);
     if (!p || p.archived_at) throw notFound('Product');
     if (p.seller_id === user.id) throw badRequest('You cannot buy your own product');
+    if (i.quantity !== 0) {
+      // amounts in different currencies are never added together: a cart holds one currency, others are bought separately
+      const other = await one('SELECT p2.currency FROM shop_cart_items ci JOIN shop_products p2 ON p2.id=ci.product_id WHERE ci.user_id=$1 AND ci.removed_at IS NULL AND NOT ci.saved_for_later AND ci.product_id<>$2 AND p2.currency<>$3 LIMIT 1', [user.id, p.id, p.currency]);
+      if (other && i.saved_for_later !== true) throw conflict(`Your cart is in ${other.currency}. This product is priced in ${p.currency}, which can't be added to the same cart. Check out your cart first or save this item for later.`, { code: 'currency_mismatch', cart_currency: other.currency, product_currency: p.currency });
+    }
     const cur = await one('SELECT quantity FROM shop_cart_items WHERE user_id=$1 AND product_id=$2 AND removed_at IS NULL', [user.id, p.id]);
     const qty = i.quantity ?? (i.add != null ? (cur?.quantity ?? 0) + i.add : cur?.quantity ?? 1);
     if (qty === 0) {
@@ -66,11 +73,13 @@ cap({
       const { rows: lines } = await c.query(
         `SELECT ci.product_id, ci.quantity FROM shop_cart_items ci WHERE ci.user_id=$1 AND ci.removed_at IS NULL AND NOT ci.saved_for_later ORDER BY ci.product_id FOR UPDATE`, [user.id]);
       if (!lines.length) throw badRequest('Your cart is empty');
+      const cur = await c.query('SELECT DISTINCT p.currency FROM shop_cart_items ci JOIN shop_products p ON p.id=ci.product_id WHERE ci.user_id=$1 AND ci.removed_at IS NULL AND NOT ci.saved_for_later', [user.id]);
+      if (cur.rowCount > 1) throw conflict(`Your cart mixes ${cur.rows.map((r) => r.currency).sort().join(' and ')}. Remove or save for later the items in one currency, then check out.`, { code: 'currency_mismatch' });
       const checkoutId = randomUUID();
       const shipTo = encrypt(i.ship_to, 'shop_orders.ship_to');
       const orders = [];
       for (const l of lines) {
-        const { rows: [p] } = await c.query('UPDATE shop_products SET stock = stock - $2 WHERE id=$1 AND stock >= $2 AND archived_at IS NULL RETURNING id, name, seller_id, price_cents', [l.product_id, l.quantity]);
+        const { rows: [p] } = await c.query('UPDATE shop_products SET stock = stock - $2 WHERE id=$1 AND stock >= $2 AND archived_at IS NULL RETURNING id, name, seller_id, price_cents, currency', [l.product_id, l.quantity]);
         if (!p) {
           const n = (await c.query('SELECT name FROM shop_products WHERE id=$1', [l.product_id])).rows[0]?.name ?? 'An item';
           throw conflict(`${n} is no longer available in that quantity — update your cart`);
@@ -78,8 +87,8 @@ cap({
         if (p.seller_id === user.id) throw badRequest('You cannot buy your own product');
         const status = paymentsEnabled() && Number(p.price_cents) > 0 ? 'awaiting_payment' : 'placed';
         const { rows: [o] } = await c.query(
-          'INSERT INTO shop_orders(buyer_id, seller_id, product_id, quantity, unit_price_cents, total_cents, status, ship_to_enc, checkout_id) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING id, product_id, quantity, unit_price_cents, total_cents, status',
-          [user.id, p.seller_id, p.id, l.quantity, p.price_cents, Number(p.price_cents) * l.quantity, status, shipTo, checkoutId]);
+          'INSERT INTO shop_orders(buyer_id, seller_id, product_id, quantity, unit_price_cents, total_cents, status, ship_to_enc, checkout_id, currency) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING id, product_id, quantity, unit_price_cents, total_cents, currency, status',
+          [user.id, p.seller_id, p.id, l.quantity, p.price_cents, Number(p.price_cents) * l.quantity, status, shipTo, checkoutId, p.currency]);
         orders.push({ ...o, name: p.name });
       }
       await c.query('UPDATE shop_cart_items SET removed_at=now(), updated_at=now() WHERE user_id=$1 AND removed_at IS NULL AND NOT saved_for_later', [user.id]);
@@ -87,7 +96,7 @@ cap({
     });
     const total = out.orders.reduce((t, o) => t + Number(o.total_cents), 0);
     const owing = out.orders.filter((o) => o.status === 'awaiting_payment').reduce((t, o) => t + Number(o.total_cents), 0);
-    return { ...out, total_cents: total, amount_due_cents: owing, status: owing > 0 ? 'awaiting_payment' : 'placed' };
+    return { ...out, currency: out.orders[0]?.currency ?? null, total_cents: total, amount_due_cents: owing, status: owing > 0 ? 'awaiting_payment' : 'placed' };
   },
 });
 

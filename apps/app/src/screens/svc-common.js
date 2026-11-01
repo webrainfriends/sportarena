@@ -12,7 +12,7 @@ import { openPdf } from '../open-file';
 import { useSession } from '../session';
 import { moneyIn, localToIso } from '../vtime';
 
-export const money = (minor, cur) => moneyIn(Number(minor ?? 0), cur ?? 'INR');
+export const money = (minor, cur) => moneyIn(minor, cur);
 export const label = (s) => String(s ?? '').replace(/_/g, ' ');
 export const day = (iso) => (iso ? new Date(iso).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC' }) : '');
 export const when = (iso) => (iso ? `${new Date(iso).toLocaleString(undefined, { weekday: 'short', day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit', timeZone: 'UTC' })} UTC` : '');

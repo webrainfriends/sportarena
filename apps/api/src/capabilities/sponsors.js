@@ -234,7 +234,7 @@ cap({
   summary: 'Sponsor profile and active sponsorships. Contact details are returned only to the brand\'s managers (the owners, admins and managers on its sponsor team); legal and billing identity is never returned here.', input: z.object({ id }),
   async handler({ user }, i) {
     const s = await mustFind('sponsors', i.id);
-    const deals = await many("SELECT id, target_type, target_id, amount_cents, in_kind, starts_on, ends_on FROM sponsorships WHERE sponsor_id=$1 AND status='active' AND visibility='public'", [i.id]);
+    const deals = await many("SELECT id, target_type, target_id, amount_cents, currency, in_kind, starts_on, ends_on FROM sponsorships WHERE sponsor_id=$1 AND status='active' AND visibility='public'", [i.id]);
     const type = s.entity_id ? (await one('SELECT sponsor_type FROM sponsor_entities WHERE id=$1', [s.entity_id])).sponsor_type : null;
     const out = { id: s.id, name: s.name, industry: s.industry, website: s.website, emoji: s.emoji, sponsor_type: type, tagline: s.tagline, about: s.about, brand_color: s.brand_color, founded_year: s.founded_year, country: s.country, sports: s.sports, regions: s.regions, offers: s.offers, backs: s.backs, links: s.links, verified: (await badgesFor('sponsor', [s.id])).get(s.id) ?? [], active_sponsorships: deals };
     const access = user ? await sponsorAccess(user, s) : null;

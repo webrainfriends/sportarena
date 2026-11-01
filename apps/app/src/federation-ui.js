@@ -1,6 +1,7 @@
 // Federation & Governing Body OS (#475): the pieces every federation screen shares, so the workspace, the club, the licence holder and the organiser all
 // read the same way: status vocabulary and tones, requirement checks, the decision history, the evidence list, the body picker and the decision sheet.
 // The server is the authority on every rule; this only shows what it returns and hides what a role cannot use.
+import { formatMoney } from './money';
 import React, { useEffect, useState } from 'react';
 import { Pressable, View } from 'react-native';
 import { api } from './api';
@@ -38,7 +39,7 @@ export const fmtDate = (iso) => (iso ? new Date(`${String(iso).slice(0, 10)}T00:
 export const fmtRange = (a, b) => (a && b && a !== b ? `${fmtDate(a)} to ${fmtDate(b)}` : fmtDate(a ?? b));
 export const todayIso = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; };
 export const addDaysIso = (iso, n) => { const d = new Date(`${iso}T00:00:00`); d.setDate(d.getDate() + n); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; };
-export const money = (minor, cur) => { try { const f = new Intl.NumberFormat(undefined, { style: 'currency', currency: cur }); return f.format(minor / 10 ** f.resolvedOptions().maximumFractionDigits); } catch { return `${minor} ${cur ?? ''}`; } };
+export const money = (minor, cur) => formatMoney(minor, cur);
 export const jurisdiction = (b) => [b.district, b.state, b.region, b.country].filter(Boolean).join(', ');
 export const ago = (iso) => { const d = Math.round((Date.now() - new Date(iso).getTime()) / 864e5); return d <= 0 ? 'today' : d === 1 ? 'yesterday' : `${d} days ago`; };
 /** The error body of a refused decision carries the failed checks; show them, not just the sentence. */

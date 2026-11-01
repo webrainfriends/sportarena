@@ -113,7 +113,7 @@ cap({
     }
     const applicant = await one('SELECT id, handle, display_name, avatar_emoji, avatar_color FROM users WHERE id=$1', [r.responder_id]);
     const events = await many(`SELECT kind, from_stage, to_stage, actor_id, ${staff ? 'note,' : ''} created_at FROM recruitment_events WHERE response_id=$1 ORDER BY created_at, id`, [i.id]);
-    const offers = await many('SELECT version, role, rate_cents, rate_unit, starts_on, note, deadline_at, status, created_at, decided_at FROM recruitment_offers WHERE response_id=$1 ORDER BY version', [i.id]);
+    const offers = (await many('SELECT version, role, rate_cents, rate_unit, starts_on, note, deadline_at, status, created_at, decided_at FROM recruitment_offers WHERE response_id=$1 ORDER BY version', [i.id])).map((o) => ({ ...o, currency: post.currency }));
     const out = { application: await view(pool, i.id), post: { id: post.id, title: post.title, kind: post.kind, status: post.status, team_id: post.team_id, opportunity_type: post.opportunity_type, compensation: post.compensation, budget_cents: post.budget_cents, currency: post.currency, rate_unit: post.rate_unit, required_sections: post.required_sections, target_type: post.target_type, target_role: post.target_role }, applicant, viewer: staff ? 'staff' : 'applicant', events, offers };
     if (staff) {
       const evals = await many('SELECT id, rating, notes_enc, trial_at, author_id, created_at FROM recruitment_evaluations WHERE response_id=$1 ORDER BY created_at, id', [i.id]);

@@ -28,17 +28,17 @@ export { paymentsEnabled, enabledProviders };
 export async function describePurpose(c, type, id) {
   const q = async (sql) => (await c.query(sql, [id])).rows[0];
   if (type === 'shop_order') {
-    const o = await q('SELECT o.id, o.buyer_id AS payer_id, o.total_cents AS amount, o.status, p.name FROM shop_orders o JOIN shop_products p ON p.id=o.product_id WHERE o.id=$1 FOR UPDATE OF o');
-    return o && { payerId: o.payer_id, amount: Number(o.amount), name: o.name, payable: o.status === 'awaiting_payment' };
+    const o = await q('SELECT o.id, o.buyer_id AS payer_id, o.total_cents AS amount, o.currency, o.status, p.name FROM shop_orders o JOIN shop_products p ON p.id=o.product_id WHERE o.id=$1 FOR UPDATE OF o');
+    return o && { payerId: o.payer_id, amount: Number(o.amount), currency: o.currency, name: o.name, payable: o.status === 'awaiting_payment' };
   }
   if (type === 'shop_checkout') {
     // everything bought together in one cart: pay what is still awaiting payment (lines cancelled meanwhile drop out)
-    const o = (await c.query("SELECT min(buyer_id::text)::uuid AS payer_id, coalesce(sum(total_cents) FILTER (WHERE status='awaiting_payment'), 0) AS amount, count(*) FILTER (WHERE status='awaiting_payment')::int AS due FROM shop_orders WHERE checkout_id=$1", [id])).rows[0];
-    return o?.payer_id && { payerId: o.payer_id, amount: Number(o.amount), name: `Gotmygame Shop order (${o.due} item${o.due === 1 ? '' : 's'})`, payable: o.due > 0 };
+    const o = (await c.query("SELECT min(buyer_id::text)::uuid AS payer_id, min(currency) AS currency, count(DISTINCT currency)::int AS currencies, coalesce(sum(total_cents) FILTER (WHERE status='awaiting_payment'), 0) AS amount, count(*) FILTER (WHERE status='awaiting_payment')::int AS due FROM shop_orders WHERE checkout_id=$1", [id])).rows[0];
+    return o?.payer_id && o.currencies === 1 && { payerId: o.payer_id, amount: Number(o.amount), currency: o.currency, name: `Gotmygame Shop order (${o.due} item${o.due === 1 ? '' : 's'})`, payable: o.due > 0 };
   }
   if (type === 'coach_hire') {
-    const h = await q("SELECT h.hirer_id AS payer_id, h.total_cents - h.loyalty_credit_cents AS amount, h.status, h.payment_status, u.display_name FROM coach_hires h JOIN users u ON u.id=h.coach_id WHERE h.id=$1 FOR UPDATE OF h");
-    return h && { payerId: h.payer_id, amount: Number(h.amount), name: `Coaching session with ${h.display_name}`, payable: h.payment_status === 'unpaid' && h.status !== 'cancelled' && Number(h.amount) > 0 };
+    const h = await q("SELECT h.hirer_id AS payer_id, h.total_cents - h.loyalty_credit_cents AS amount, h.currency, h.status, h.payment_status, u.display_name FROM coach_hires h JOIN users u ON u.id=h.coach_id WHERE h.id=$1 FOR UPDATE OF h");
+    return h && { payerId: h.payer_id, amount: Number(h.amount), currency: h.currency, name: `Coaching session with ${h.display_name}`, payable: h.payment_status === 'unpaid' && h.status !== 'cancelled' && Number(h.amount) > 0 };
   }
   if (type === 'coach_class_seat') {
     // a seat is payable only while it is held (reserved for the payer) and the class is still open

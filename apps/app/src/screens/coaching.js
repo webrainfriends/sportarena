@@ -24,7 +24,7 @@ import { c, grad, toneFor } from '../theme';
 import { dateTimeIn, localDate, localToIso, moneyIn, timeIn, todayIn, WEEKDAYS } from '../vtime';
 
 const deviceTz = (() => { try { return Intl.DateTimeFormat().resolvedOptions().timeZone; } catch { return 'UTC'; } })();
-export const price = (cents, currency = 'INR') => moneyIn(Number(cents ?? 0), currency);
+export const price = (cents, currency) => moneyIn(cents, currency);
 const rateOf = (x, currency) => (x.hourly_rate_cents ? `${price(x.hourly_rate_cents, currency)}/hr` : 'Rate on request');
 export const AUDIENCES = [['individual', 'Individual'], ['group', 'Group'], ['team', 'Team'], ['event', 'Event']];
 export const UNIT = { hour: '/hr', session: '/session', day: '/day', month: '/month', package: ' package' };
