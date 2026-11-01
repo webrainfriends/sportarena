@@ -77,6 +77,8 @@ const cardInput = {
   unit: z.enum(['hour', 'session', 'day', 'month', 'package']).default('hour'), price_cents: money, per_person: z.boolean().default(false),
   duration_min: z.number().int().min(15).max(1440).nullable().optional(), min_participants: z.number().int().min(1).max(500).default(1), max_participants: z.number().int().min(1).max(500).nullable().optional(),
   sessions_included: z.number().int().min(1).max(500).nullable().optional(), is_intro: z.boolean().default(false), intro_scope: z.enum(['coach', 'sport']).default('coach').describe('an intro offer is usable once per athlete per coach, or once per sport'), description: z.string().max(600).nullable().optional(), active: z.boolean().default(true),
+  rollover_max: z.number().int().min(0).max(100).default(0).describe('monthly card: unused sessions carried into the next month (0 = none)'),
+  grace_days: z.number().int().min(0).max(30).default(3).describe('monthly card: days after a missed payment before the subscription lapses'),
 };
 
 async function checkCard(user, v) {
@@ -86,6 +88,9 @@ async function checkCard(user, v) {
   if (v.max_participants && v.max_participants < v.min_participants) throw badRequest('Maximum participants is below the minimum');
   if (v.audience === 'individual' && (v.max_participants ?? 1) > 1) throw badRequest('An individual card is for one person — use a group card for more');
   if (v.unit !== 'hour' && !v.duration_min && v.unit !== 'month' && v.unit !== 'package') throw badRequest('Say how long a session or day is');
+  if (v.unit === 'month' && (v.audience !== 'individual' || v.per_person)) throw badRequest('A monthly subscription is for one athlete: use an individual card that is not per person');
+  if (v.unit === 'month' && !(v.price_cents > 0)) throw badRequest('A monthly subscription needs a price');
+  if (v.unit === 'month' && (v.rollover_max ?? 0) > 0 && !v.sessions_included) throw badRequest('Rollover needs included sessions per month');
   if (v.unit === 'package' && !v.sessions_included) throw badRequest('A package needs the number of sessions it includes');
   return sportId;
 }
@@ -97,9 +102,9 @@ cap({
   async handler({ user }, i) {
     const sportId = await checkCard(user, i);
     return one(
-      `INSERT INTO coach_rate_cards(coach_id, sport_id, specialisation_id, title, audience, delivery, unit, price_cents, per_person, duration_min, min_participants, max_participants, sessions_included, is_intro, intro_scope, description, active)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17) RETURNING *`,
-      [user.id, sportId, i.specialisation_id ?? null, i.title, i.audience, i.delivery, i.unit, i.price_cents, i.per_person, i.duration_min ?? null, i.min_participants, i.max_participants ?? null, i.sessions_included ?? null, i.is_intro, i.intro_scope, i.description ?? null, i.active]);
+      `INSERT INTO coach_rate_cards(coach_id, sport_id, specialisation_id, title, audience, delivery, unit, price_cents, per_person, duration_min, min_participants, max_participants, sessions_included, is_intro, intro_scope, description, active, rollover_max, grace_days)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19) RETURNING *`,
+      [user.id, sportId, i.specialisation_id ?? null, i.title, i.audience, i.delivery, i.unit, i.price_cents, i.per_person, i.duration_min ?? null, i.min_participants, i.max_participants ?? null, i.sessions_included ?? null, i.is_intro, i.intro_scope, i.description ?? null, i.active, i.rollover_max, i.grace_days]);
   },
 });
 
@@ -115,8 +120,8 @@ cap({
     if (i.sport === undefined && cur.sport_id) v.sport = cur.sport_id;
     const sportId = await checkCard(user, { ...v, sport: v.sport ?? null });
     return one(
-      `UPDATE coach_rate_cards SET sport_id=$2, specialisation_id=$3, title=$4, audience=$5, delivery=$6, unit=$7, price_cents=$8, per_person=$9, duration_min=$10, min_participants=$11, max_participants=$12, sessions_included=$13, is_intro=$14, intro_scope=$17, description=$15, active=$16 WHERE id=$1 RETURNING *`,
-      [cur.id, sportId, v.specialisation_id ?? null, v.title, v.audience, v.delivery, v.unit, v.price_cents, v.per_person, v.duration_min ?? null, v.min_participants, v.max_participants ?? null, v.sessions_included ?? null, v.is_intro, v.description ?? null, v.active, v.intro_scope]);
+      `UPDATE coach_rate_cards SET sport_id=$2, specialisation_id=$3, title=$4, audience=$5, delivery=$6, unit=$7, price_cents=$8, per_person=$9, duration_min=$10, min_participants=$11, max_participants=$12, sessions_included=$13, is_intro=$14, intro_scope=$17, description=$15, active=$16, rollover_max=$18, grace_days=$19 WHERE id=$1 RETURNING *`,
+      [cur.id, sportId, v.specialisation_id ?? null, v.title, v.audience, v.delivery, v.unit, v.price_cents, v.per_person, v.duration_min ?? null, v.min_participants, v.max_participants ?? null, v.sessions_included ?? null, v.is_intro, v.description ?? null, v.active, v.intro_scope, v.rollover_max ?? 0, v.grace_days ?? 3]);
   },
 });
 
@@ -127,7 +132,8 @@ cap({
     const rows = await many(
       `SELECT k.*, s.slug AS sport_slug, s.name AS sport, z.name AS specialisation,
               (SELECT count(*)::int FROM coach_hires h WHERE h.rate_card_id=k.id AND h.status IN ('confirmed','completed')) AS bookings,
-              coalesce((SELECT sum(h.total_cents) FROM coach_hires h WHERE h.rate_card_id=k.id AND h.status IN ('confirmed','completed') AND h.payment_status IN ('paid','not_required')), 0)::bigint AS income_cents
+              coalesce((SELECT sum(h.total_cents) FROM coach_hires h WHERE h.rate_card_id=k.id AND h.status IN ('confirmed','completed') AND h.payment_status IN ('paid','not_required')), 0)::bigint AS income_cents,
+              (SELECT count(*)::int FROM coach_subscriptions z WHERE z.rate_card_id=k.id AND z.status IN ('active','past_due','paused')) AS subscribers
          FROM coach_rate_cards k LEFT JOIN sports s ON s.id=k.sport_id LEFT JOIN coach_specialisations z ON z.id=k.specialisation_id
         WHERE k.coach_id=$1 AND k.archived_at IS NULL ORDER BY k.active DESC, k.audience, k.price_cents`, [user.id]);
     return rows.map((r) => ({ ...r, currency: config.payments.currency }));

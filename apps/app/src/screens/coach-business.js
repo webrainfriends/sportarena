@@ -15,6 +15,7 @@ import { c } from '../theme';
 import { t } from '../i18n';
 import { addDays, moneyIn, todayIn, WEEKDAYS } from '../vtime';
 import { LoyaltyConsole } from './rewards';
+import { CoachSubscribers } from './coach-subscriptions';
 
 const deviceTz = (() => { try { return Intl.DateTimeFormat().resolvedOptions().timeZone; } catch { return 'UTC'; } })();
 const LEVELS = ['beginner', 'amateur', 'semi_pro', 'pro'].map((value) => ({ value, label: nice(value).replace(/^./, (x) => x.toUpperCase()) }));
@@ -31,7 +32,7 @@ function CardSheet({ card, specs, currency, onClose, onDone }) {
       initial={edit ? { ...card, sport: card.sport_slug ?? undefined, specialisation_id: card.specialisation_id ?? undefined, description: card.description ?? undefined } : { audience: 'individual', delivery: 'in_person', unit: 'hour', duration_min: 60, min_participants: 1, max_participants: 20, sessions_included: 5, active: true }}
       fields={[
         { key: 'title', label: 'Name of this service' },
-        { key: 'audience', label: 'Who it is for', type: 'chips', options: AUDIENCES.map(([value, label]) => ({ value, label })) },
+        { key: 'audience', label: 'Who it is for', type: 'chips', hint: undefined, options: AUDIENCES.map(([value, label]) => ({ value, label })) },
         { key: 'sport', label: 'Sport', type: 'sport', optional: true, hint: 'Leave empty for any sport you coach.' },
         ...(specs.length ? [{ key: 'specialisation_id', label: 'Specialisation', type: 'chips', optional: true, options: specs.map((z) => ({ value: z.id, label: z.name })) }] : []),
         { key: 'delivery', label: 'Where', type: 'choice', options: [{ value: 'in_person', label: 'In person' }, { value: 'online', label: 'Online' }, { value: 'both', label: 'Both' }] },
@@ -42,15 +43,19 @@ function CardSheet({ card, specs, currency, onClose, onDone }) {
         { key: 'min_participants', label: 'Fewest people', type: 'stepper', min: 1, max: 500, default: 1, show: (v) => v.audience !== 'individual' },
         { key: 'max_participants', label: 'Most people', type: 'stepper', min: 1, max: 500, default: 20, show: (v) => v.audience !== 'individual' },
         { key: 'sessions_included', label: 'Sessions in the package', type: 'stepper', min: 1, max: 500, default: 5, show: (v) => v.unit === 'package' },
+        { key: 'sessions_included', label: t('coachSub.fieldSessions'), type: 'stepper', min: 1, max: 100, default: 4, show: (v) => v.unit === 'month' },
+        { key: 'rollover_max', label: t('coachSub.fieldRollover'), type: 'stepper', min: 0, max: 100, default: 0, hint: t('coachSub.fieldRolloverHint'), show: (v) => v.unit === 'month' },
+        { key: 'grace_days', label: t('coachSub.fieldGrace'), type: 'stepper', min: 0, max: 30, default: 3, suffix: ' d', hint: t('coachSub.fieldGraceHint'), show: (v) => v.unit === 'month' },
         { key: 'is_intro', label: 'This is a trial / introductory offer', type: 'switch' },
         { key: 'intro_scope', label: t('coaching.introScope'), type: 'choice', default: 'coach', options: [{ value: 'coach', label: t('coaching.introScopeCoach') }, { value: 'sport', label: t('coaching.introScopeSport') }], show: (v) => !!v.is_intro && v.audience === 'individual' },
         { key: 'description', label: 'What is included', type: 'multiline', optional: true },
         { key: 'active', label: 'Available to book', type: 'switch', default: true },
       ]}
       onSubmit={async (v) => {
-        const body = { title: v.title, audience: v.audience, delivery: v.delivery, unit: v.unit, price_cents: v.price_cents, per_person: !!v.per_person && (v.audience === 'group' || v.audience === 'event'), is_intro: !!v.is_intro, ...(v.is_intro ? { intro_scope: v.intro_scope ?? 'coach' } : {}), active: v.active !== false,
+        const body = { title: v.title, audience: v.audience, delivery: v.delivery, unit: v.unit, price_cents: v.price_cents, per_person: v.unit !== 'month' && !!v.per_person && (v.audience === 'group' || v.audience === 'event'), is_intro: !!v.is_intro, ...(v.is_intro ? { intro_scope: v.intro_scope ?? 'coach' } : {}), active: v.active !== false,
           ...(v.sport ? { sport: v.sport } : {}), ...(v.specialisation_id ? { specialisation_id: v.specialisation_id } : {}), ...(v.description ? { description: v.description } : {}),
           ...(v.unit === 'session' || v.unit === 'day' ? { duration_min: v.duration_min } : {}), ...(v.unit === 'package' ? { sessions_included: v.sessions_included } : {}),
+          ...(v.unit === 'month' ? { sessions_included: v.sessions_included ?? 4, rollover_max: v.rollover_max ?? 0, grace_days: v.grace_days ?? 3 } : {}),
           ...(v.audience !== 'individual' ? { min_participants: v.min_participants, max_participants: v.max_participants } : { min_participants: 1 }) };
         if (edit) await api.patch(`/coach/rate-cards/${card.id}`, body); else await api.post('/coach/rate-cards', body);
         await onDone(); return edit ? 'Saved — applies to new bookings' : 'Rate card added';
@@ -92,6 +97,7 @@ export function CoachRates() {
                 <T weight="800" size={15}>{k.title}</T>
                 <View style={{ flexDirection: 'row', gap: 6, flexWrap: 'wrap' }}>
                   <Pill label={`FOR ${k.audience.toUpperCase()}`} />{k.is_intro ? <Pill label="🎁 TRIAL" fg={c.sun} bg={c.sunSoft} /> : null}{k.sport ? <Pill label={k.sport.toUpperCase()} /> : null}{k.specialisation ? <Pill label={k.specialisation.toUpperCase()} /> : null}
+                  {k.unit === 'month' && k.subscribers ? <Pill label={t('coachSub.nSubscribers', { n: k.subscribers })} fg={c.mint} bg={c.mintSoft} /> : null}
                   {!k.active ? <Pill label="OFF" fg={c.red} bg={c.redSoft} /> : null}
                 </View>
               </View>
@@ -106,6 +112,8 @@ export function CoachRates() {
           </Card>
         ))}
       </View>
+
+      {cards.data?.some((k) => k.unit === 'month') ? <CoachSubscribers /> : null}
 
       <Section title="Specialisations" action="+ Add" onAction={() => setSpec({})}>
         {specs.error ? <ErrorBox error={specs.error} onRetry={specs.reload} /> : !specs.data?.length ? <T size={13} color={c.mute}>Say what you are known for — it shows on your profile, helps search find you and groups your reports.</T> : specs.data.map((z) => (
