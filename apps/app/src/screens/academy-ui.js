@@ -3,6 +3,7 @@
 import React from 'react';
 import { Platform, Pressable, View } from 'react-native';
 import { api } from '../api';
+import { openProtected } from '../open-file';
 import { Avatar, Btn, Card, Empty, Loading, Row, Sheet, T, Tag } from '../ui';
 import { FormSheet } from '../FormSheet';
 import { useLoad } from '../hooks';
@@ -216,25 +217,19 @@ export async function saveCsv(filename, text) {
 }
 export const pct = (v) => (v == null ? 'missing' : `${v}%`);
 
-/** Render an academy invoice (a paid one is the receipt) as a branded PDF and open it. Web opens it in a tab; the phone apps point to the web version. */
+/** Render an academy invoice (a paid one is the receipt) as a branded PDF and open it. A tab on the web, the share / open sheet on a phone or tablet. */
 export async function openInvoicePdf(invoiceId, toast) {
   try {
-    if (Platform.OS !== 'web' || typeof window === 'undefined') return toast?.('Invoices and receipts open in the web app');
     const d = await api.post('/branded-documents/invoice', { invoice_id: invoiceId });
-    const url = URL.createObjectURL(await api.download(`/branded-documents/${d.id}/file`));
-    window.open(url, '_blank', 'noopener');
-    setTimeout(() => URL.revokeObjectURL(url), 120000);
+    await openProtected(`/branded-documents/${d.id}/file`, `invoice-${invoiceId}`);
   } catch (e) { toast?.(e.message); }
 }
 
 /** The branded enrolment letter as a PDF: family members get the standard letter, staff may add a welcome note and pick a published template. */
 export async function openEnrolmentLetter(enrolmentId, toast, body = {}, { rethrow = false } = {}) {
   try {
-    if (Platform.OS !== 'web' || typeof window === 'undefined') return toast?.('Letters open in the web app');
     const d = await api.post(`/academy/enrolments/${enrolmentId}/letter`, body);
-    const url = URL.createObjectURL(await api.download(`/branded-documents/${d.id}/file`));
-    window.open(url, '_blank', 'noopener');
-    setTimeout(() => URL.revokeObjectURL(url), 120000);
+    await openProtected(`/branded-documents/${d.id}/file`, `letter-${enrolmentId}`);
   } catch (e) { if (rethrow) throw e; toast?.(e.message); }
 }
 

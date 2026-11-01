@@ -4,6 +4,7 @@
 import React, { useEffect, useState } from 'react';
 import { Linking, Platform, Pressable, Share, View } from 'react-native';
 import { api, API } from './api';
+import { openPdf } from './open-file';
 import { useLoad } from './hooks';
 import { useSession } from './session';
 import { A, ABtn, ACard, AChip, AEmpty, ASection, AT, ATag, ReasonSheet } from './arena';
@@ -112,8 +113,8 @@ function ShareSheet({ visible, onClose, eventId }) {
     <Sheet visible={visible} onClose={onClose} title="Share, print or embed">
       <T size={13} color="#475569">These show the published stages only and update as official results come in. Private events cannot be shared or embedded.</T>
       <ABtn title="Share the bracket link" onPress={() => (Platform.OS === 'web' ? open(page) : Share.share({ message: page, url: page }))} />
-      <ABtn tone="ghost" title="Print-ready page" onPress={() => open(page)} />
-      <ABtn tone="ghost" title="Download as PDF" onPress={() => open(`${page}/pdf`)} />
+      {Platform.OS === 'web' ? <ABtn tone="ghost" title="Print-ready page" onPress={() => open(page)} /> : null}
+      <ABtn tone="ghost" title={Platform.OS === 'web' ? 'Download as PDF' : 'Share or print the PDF'} onPress={() => (Platform.OS === 'web' ? open(`${page}/pdf`) : openPdf(`/share/bracket/${eventId}/pdf`, 'bracket').catch(() => {}))} />
       <T size={12.5} weight="800">Embed on your website</T>
       <T size={11.5} color="#475569" selectable>{snippet}</T>
       <T size={11.5} color="#64748B">Add ?theme=dark or ?theme=light to the embed address to match your site.</T>

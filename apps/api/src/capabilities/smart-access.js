@@ -11,14 +11,14 @@ import { audit, mustFind, isAdmin } from '../helpers.js';
 import { blindIndex, encrypt, decrypt } from '../crypto.js';
 import { requireGuardian } from '../youth.js';
 import { orgFor, hasOrgGrant } from '../org-access.js';
-import { mustManage, canManage } from '../booking/engine.js';
+import { mustManage, mustWork, canManage } from '../booking/engine.js';
 import { canManageTeam } from './teams.js';
 import { isOrganiser } from './event-departments.js';
 import { isGateOperator } from '../accreditation.js';
 import { settleRevocations } from '../access-grants.js';
 import { PROVIDERS, providerOf, checkEndpoint, verifyText, SECRET_CTX } from '../access-providers.js';
 import {
-  DOMAINS, METHODS, MANUAL_REASONS, MESSAGES, capture, reviewCapture, loadSubject, isOperator, viewOf, openReason, passFor, siteCodeFor, offlinePackFor, issueGrant, ADAPTERS,
+  DOMAINS, METHODS, MANUAL_REASONS, bookingPassFor, frontDeskPoint, MESSAGES, capture, reviewCapture, loadSubject, isOperator, viewOf, openReason, passFor, siteCodeFor, offlinePackFor, issueGrant, ADAPTERS,
 } from '../access-layer.js';
 
 const TAG = 'Smart attendance & access';
@@ -36,6 +36,8 @@ const captureInput = {
   provider: z.string().trim().min(2).max(40).default('generic').describe('reader/credential provider the id belongs to'),
   user_id: id.optional().describe('the person (manual only)'), athlete_id: id.optional().describe('a guardian checking a young person in themselves'),
   released_to_user_id: id.optional().describe('who is collecting a young person (check-out)'),
+  booking_id: id.optional().describe('venue doors: check in exactly this booking (a staff tap on a booking); a scanned booking QR carries it itself'),
+  guests: z.number().int().min(0).max(20).default(0).describe('guests arriving with the person (venue memberships have a guest quota)'),
   geo: geo.optional(), reason_code: z.enum(MANUAL_REASONS).optional(), note: z.string().trim().max(300).optional(),
   idempotency_key: key.optional(), device_id: z.string().max(80).optional(),
   captured_at: when.optional().describe('offline scans only: when the device saw it'), offline: z.boolean().default(false),
@@ -57,6 +59,26 @@ cap({
   summary: 'Your rotating QR pass for one session, team event, venue door or event gate (a guardian passes athlete_id for a young person). It changes every 30 seconds, only means something for that one subject and works once, so a screenshot or a shared code does not check anyone in twice. Re-request it when refresh_in_s runs out.',
   input: z.object({ domain, subject_ref: ref, athlete_id: id.optional() }),
   handler: ({ user }, i) => tx((c) => passFor(c, user, i.domain, i.subject_ref, i.athlete_id)),
+});
+cap({
+  name: 'get_booking_pass', method: 'GET', path: '/bookings/:id/pass', tag: TAG,
+  summary: 'The unique QR code of one confirmed booking (one reserved slot): the booker, or the venue team, shows it. It names that booking, never rotates (so it can be printed or sent), works once and only from shortly before the slot until 30 minutes after it ends, and stops working the moment the booking is cancelled. The venue team confirms the arrival by scanning it with record_access_capture (method qr) at any of the venue\'s doors. `token` is null for a booking that is not confirmed. Anyone else gets a 404.',
+  input: z.object({ id }),
+  async handler({ user }, i) {
+    const p = await tx((c) => bookingPassFor(c, user, i.id));
+    if (!p) throw notFound('Booking');
+    return p;
+  },
+});
+cap({
+  name: 'get_front_desk_access_point', method: 'GET', path: '/venues/:id/front-desk-access-point', tag: TAG,
+  summary: 'Venue team (incl. floor staff): the venue\'s front-desk door that "Confirm check-ins" scans at. It is created the first time it is needed (a manual door, no hardware). Returns its id for record_access_capture.',
+  input: z.object({ id }),
+  async handler({ user }, i) {
+    await mustWork(user, i.id);
+    const p = await tx((c) => frontDeskPoint(c, i.id, user.id));
+    return { id: p.id, name: p.name, venue_id: p.venue_id };
+  },
 });
 cap({
   name: 'get_access_site_code', method: 'GET', path: '/access/site-code', tag: TAG,
@@ -319,7 +341,7 @@ async function pointFor(user, pointId, c = pool) {
 cap({
   name: 'issue_access_grant', method: 'POST', path: '/access/points/:id/grants', tag: TAG, status: 201,
   summary: 'Give smart-lock or gate hardware a temporary credential for something that is valid right now: a booking at the venue, a locker assignment, or an event accreditation. The window comes from the source, the controller mints its own credential (the locker PIN is never sent), and the grant is revoked when the source is cancelled, released, revoked or ends. If the controller does not confirm, nothing is recorded as issued (502).',
-  input: z.object({ id, source_type: z.enum(['booking', 'locker_assignment', 'accreditation']), source_id: id }),
+  input: z.object({ id, source_type: z.enum(['booking', 'locker_assignment', 'accreditation', 'membership']), source_id: id }),
   handler: ({ user }, i) => tx(async (c) => {
     const p = await pointFor(user, i.id, c);
     if ((i.source_type === 'accreditation') !== !!p.event_id) throw badRequest(i.source_type === 'accreditation' ? 'Accreditation grants belong to event access points' : 'Venue access points take booking or locker grants');

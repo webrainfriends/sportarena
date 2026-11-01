@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { t } from '../i18n';
 import { Linking, Platform, View } from 'react-native';
 import { api } from '../api';
 import { useLoad } from '../hooks';
@@ -183,9 +184,10 @@ export function SponsorDeal({ id }) {
 }
 
 /** Pay a due online (Stripe / PayPal), in full or in part. The amount is checked again on the server; nothing counts until the provider verifies it. */
+const PROVIDER_OF = { card: ['stripe', 'razorpay'], paypal: ['paypal'], upi: ['razorpay'], netbanking: ['razorpay'], wallet: ['razorpay'] };
 function CheckoutSheet({ o, onClose, onChanged }) {
   const { toast } = useSession();
-  const methods = useLoad(() => api.get('/payments/methods'), []);
+  const methods = useLoad(() => api.get('/payments/methods', o.currency ? { currency: o.currency } : undefined), [o.currency]);
   const due = left(o);
   const [pick, setPick] = useState('full');
   const [other, setOther] = useState('');
@@ -194,10 +196,11 @@ function CheckoutSheet({ o, onClose, onChanged }) {
   const half = Math.floor(due / 2);
   const cents = pick === 'full' ? due : pick === 'half' ? half : Math.round(Number(String(other).replace(/,/g, '')) * 10 ** digits(o.currency));
   const bad = !(cents > 0) || cents > due;
-  const go = async (provider) => {
+  const go = async (method) => {
+    const provider = PROVIDER_OF[method].find((p) => (methods.data?.providers ?? []).includes(p));
     setBusy(true); setErr(null);
     try {
-      const r = await api.post(`/sponsorship-obligations/${o.id}/checkout`, { provider, amount_cents: cents, return_url: Platform.OS === 'web' ? `${window.location.origin}${window.location.pathname}` : undefined });
+      const r = await api.post(`/sponsorship-obligations/${o.id}/checkout`, { provider, method, amount_cents: cents, return_url: Platform.OS === 'web' ? `${window.location.origin}${window.location.pathname}` : undefined });
       onChanged();
       if (Platform.OS === 'web') window.location.assign(r.checkout_url); else { await Linking.openURL(r.checkout_url); onClose(); toast('Finish the checkout, then come back — the payment shows here once verified'); }
     } catch (e) { setErr(e.status === 409 ? e.message : explain(e)); if (e.status === 409) onChanged(); } finally { setBusy(false); }
@@ -217,8 +220,7 @@ function CheckoutSheet({ o, onClose, onChanged }) {
             <Chip label="Other amount" active={pick === 'other'} onPress={() => setPick('other')} />
           </View>
           {pick === 'other' ? <Field label={`Amount in ${o.currency}`} value={other} onChangeText={(x) => setOther(x.replace(/[^0-9.,]/g, ''))} keyboardType="decimal-pad" hint={cents > due ? `At most ${fmt(due, o.currency)}` : undefined} /> : null}
-          {m.providers.includes('stripe') ? <Btn title={`Pay ${bad ? '' : fmt(cents, o.currency)} with card (Stripe)`} onPress={() => go('stripe')} loading={busy} disabled={bad} /> : null}
-          {m.providers.includes('paypal') ? <Btn title="Pay with PayPal" color={c.paper} ink={c.ink} onPress={() => go('paypal')} loading={busy} disabled={bad} /> : null}
+          {['upi', 'card', 'netbanking', 'wallet', 'paypal'].filter((x) => (m.methods ?? []).includes(x)).map((x, i) => <Btn key={x} title={`${t(`pay.method.${x}`)}${bad ? '' : ` · ${fmt(cents, o.currency)}`}`} color={i === 0 ? undefined : c.paper} ink={i === 0 ? undefined : c.ink} onPress={() => go(x)} loading={busy} disabled={bad} />)}
           <T size={12} color={c.mute}>You are charged in {o.currency} on the provider's secure page; card details never reach Gotmygame. The payment counts only after the provider confirms it.</T>
         </View>)}
       {err ? <T color={c.red} weight="700" accessibilityRole="alert">{err}</T> : null}

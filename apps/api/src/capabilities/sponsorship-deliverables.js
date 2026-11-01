@@ -2,6 +2,7 @@
 // Each has an owner side, a due date, an evidence requirement and a reviewer: the OTHER side. It is accepted only by that reviewer's decision after evidence
 // exists; the end of an event, a due date or a term never completes anything. Exceptions (postpone / waive) are requests the other side decides.
 // Dated endorsements, goods and money stay in the canonical dues of sponsorship-agreements.js; this does not duplicate them.
+import { B64_MAX_CHARS, documentMaxBytes } from '../platform-settings.js';
 import { z } from 'zod';
 import { cap, id } from '../registry.js';
 import { tx, many } from '../db.js';
@@ -17,7 +18,7 @@ import { DELIVERABLE_KINDS, RUNNING, deliverableState, today } from '../sponsor-
 const TAG = 'Sponsors';
 const date = z.string().date();
 const https = z.string().url().max(500).refine((u) => /^https:\/\//i.test(u), 'evidence must be an https link');
-const fileIn = z.object({ label: z.string().max(120).optional(), file_name: z.string().max(120).optional(), data: z.string().min(16).max(7_200_000).describe('base64 file: PDF, JPEG, PNG or WebP, up to 5 MB') });
+const fileIn = z.object({ label: z.string().max(120).optional(), file_name: z.string().max(120).optional(), data: z.string().min(16).max(B64_MAX_CHARS).describe('base64 file: PDF, JPEG, PNG or WebP, up to the platform document limit') });
 const stale = () => conflict('This changed while you were looking; reload it and try again', { code: 'stale_version' });
 const log = (c, id, actor, action, note) => c.query('INSERT INTO sponsorship_deliverable_log(deliverable_id, actor_id, action, note) VALUES ($1,$2,$3,$4)', [id, actor, action, note ?? null]);
 const COLS = "d.id, d.sponsorship_id, d.booking_id, d.kind, d.title, d.brief, d.owed_by, d.owner_user_id, d.due_on::text AS due_on, d.evidence_required, d.status, d.rev, d.reviewed_at, d.review_note, d.created_at";

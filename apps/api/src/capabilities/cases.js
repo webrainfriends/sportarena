@@ -2,6 +2,7 @@
 // and never copies them. The requester sees the public thread and timeline; internal notes and staff-only events stay with the
 // platform team. Every action lands in the append-only case_events timeline. Domain changes (refunds, corrections) are made by
 // the owning capability, never from here.
+import { B64_MAX_CHARS, documentMaxBytes } from '../platform-settings.js';
 import { z } from 'zod';
 import { cap, id, page } from '../registry.js';
 import { one, many, tx, pool } from '../db.js';
@@ -19,7 +20,7 @@ const ALL_CATEGORIES = [...new Set(Object.values(CATEGORIES).flat())];
 const evidenceIn = z.object({
   label: z.string().max(120).optional(),
   reference: z.string().min(2).max(500).optional().describe('https link or reference number'),
-  file_name: z.string().max(120).optional(), data: z.string().max(7_200_000).optional().describe('base64 file: PDF, JPEG, PNG or WebP, up to 5 MB'),
+  file_name: z.string().max(120).optional(), data: z.string().max(B64_MAX_CHARS).optional().describe('base64 file: PDF, JPEG, PNG or WebP, up to the platform document limit'),
 }).refine((e) => e.reference || e.data, 'Give a reference or attach a file');
 const linkIn = z.object({ type: z.enum(LINK_TYPES), id });
 const details = z.object({

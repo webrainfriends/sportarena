@@ -10,6 +10,7 @@ import { moneyIn } from '../vtime';
 import { c } from '../theme';
 import { explain } from '../access';
 import { pickDocument } from './insurance';
+import { docMaxBytes, docMaxMb } from '../upload-limits';
 
 // Guided flow to authorize a budget: what it is for -> how much (with what earlier budgets really used) -> controls -> supporting
 // references and files -> review. The server still decides everything (limits, currency, parents); this only gathers and explains.
@@ -23,7 +24,7 @@ const KIND_NAME = { annual: 'annual', program: 'program', department: 'departmen
 const REF_KINDS = [['approval', 'Approval'], ['board_minutes', 'Board minutes'], ['forecast', 'Forecast'], ['purchase_order', 'Purchase order'], ['contract', 'Contract'], ['policy', 'Policy'], ['other', 'Other']];
 const FILE_KINDS = [['approval', 'Approval'], ['forecast', 'Forecast'], ['contract', 'Contract'], ['invoice', 'Invoice'], ['report', 'Report'], ['other', 'Other']];
 const STEPS = ['Scope', 'Amount', 'Controls', 'Support', 'Review'];
-const MAX_FILES = 10, MAX_BYTES = 10 * 2 ** 20;
+const MAX_FILES = 10;
 
 const digits = (cur) => { try { return new Intl.NumberFormat('en', { style: 'currency', currency: cur }).resolvedOptions().maximumFractionDigits; } catch { return 2; } };
 /** Whole currency units typed by a person -> minor units, or null when it is not an amount. */
@@ -162,7 +163,7 @@ export function BudgetWizard({ visible, onClose, brands, brand, events, onCreate
     if (files.length >= MAX_FILES) { setErr(`Attach up to ${MAX_FILES} files now; more can be added once the budget exists.`); return; }
     const f = await pickDocument();
     if (!f) return;
-    if (f.blob.size > MAX_BYTES) { setErr('Files can be up to 10 MB.'); return; }
+    if (f.blob.size > docMaxBytes()) { setErr(`Files can be up to ${docMaxMb()} MB.`); return; }
     setErr(null); setFiles((x) => [...x, { blob: f.blob, name: (f.name ?? 'Document').slice(0, 120), size: f.blob.size, kind: fileKind }]);
   };
 
@@ -293,7 +294,7 @@ export function BudgetWizard({ visible, onClose, brands, brand, events, onCreate
             <Field value={draft.ref_no} onChangeText={(x) => setDraft({ ...draft, ref_no: x })} placeholder="Reference number" maxLength={80} accessibilityLabel="Reference number" />
             <Btn small title="Add reference" color={c.violet} onPress={addRef} style={{ alignSelf: 'flex-start' }} />
           </Block>
-          <Block title="Files" hint="PDF or photo, up to 10 MB each. Files are encrypted on the server and open only to people who can see this budget.">
+          <Block title="Files" hint={`PDF or photo, up to ${docMaxMb()} MB each. Files are encrypted on the server and open only to people who can see this budget.`}>
             {files.map((f, i) => (
               <View key={`${f.name}-${i}`} style={{ flexDirection: 'row', gap: 8, alignItems: 'center', padding: 10, borderRadius: 12, backgroundColor: c.violetSoft }}>
                 <T size={20}>📎</T>

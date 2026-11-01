@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { Linking, Platform, View } from 'react-native';
 import { api } from '../api';
+import { openProtected } from '../open-file';
 import { useLoad } from '../hooks';
 import { useSession } from '../session';
 import { Btn, Card, Empty, ErrorBox, H2, Loading, T, Tag } from '../ui';
@@ -17,10 +18,7 @@ const STATUS = { pending: ['Waiting for a coach', c.sunSoft], approved: ['Approv
 
 /** Files sit behind the same live checks as the passport, so they are fetched with the sign-in header and shown from a local blob. */
 export async function openFile(url) {
-  const blob = await api.download(String(url).replace(/^\/api\/v1/, ''));
-  if (Platform.OS !== 'web') throw new Error('Open this document on the web version');
-  const a = document.createElement('a');
-  a.href = URL.createObjectURL(blob); a.target = '_blank'; a.rel = 'noopener'; a.click();
+  await openProtected(String(url).replace(/^\/api\/v1/, ''), 'passport-document');
 }
 
 /** Plays a video inside the app: a YouTube/Vimeo link in an embedded player, an uploaded clip from a blob fetched with the viewer's own sign-in. */
