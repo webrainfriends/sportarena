@@ -39,7 +39,12 @@ export async function describePurpose(c, type, id) {
     return o?.payer_id && o.currencies === 1 && { payerId: o.payer_id, amount: Number(o.amount), currency: o.currency, name: `Gotmygame Shop order (${o.due} item${o.due === 1 ? '' : 's'})`, payable: o.due > 0 };
   }
   if (type === 'coach_hire') {
-    const h = await q("SELECT h.hirer_id AS payer_id, h.total_cents - h.loyalty_credit_cents AS amount, h.currency, h.status, h.payment_status, u.display_name FROM coach_hires h JOIN users u ON u.id=h.coach_id WHERE h.id=$1 FOR UPDATE OF h");
+    const h = await q("SELECT h.hirer_id AS payer_id, h.total_cents - h.loyalty_credit_cents AS amount, h.currency, h.status, h.payment_status, h.series_id, u.display_name, s.pay_mode, s.payment_id, s.anchor_hire_id FROM coach_hires h JOIN users u ON u.id=h.coach_id LEFT JOIN coach_series s ON s.id=h.series_id WHERE h.id=$1 FOR UPDATE OF h");
+    if (h?.series_id && h.pay_mode === 'once') {
+      // a pay-once block is paid in one go, raised on its anchor date: the amount is everything still unpaid in the block
+      const due = (await c.query("SELECT coalesce(sum(total_cents - loyalty_credit_cents), 0)::bigint AS amount, count(*)::int AS n FROM coach_hires WHERE series_id=$1 AND payment_status='unpaid' AND status IN ('requested','confirmed') AND series_state IS DISTINCT FROM 'paused'", [h.series_id])).rows[0];
+      return { payerId: h.payer_id, amount: Number(due.amount), currency: h.currency, name: `Coaching block with ${h.display_name} (${due.n} session${due.n === 1 ? '' : 's'})`, payable: !h.payment_id && h.anchor_hire_id === id && h.payment_status === 'unpaid' && h.status !== 'cancelled' && Number(due.amount) > 0 };
+    }
     return h && { payerId: h.payer_id, amount: Number(h.amount), currency: h.currency, name: `Coaching session with ${h.display_name}`, payable: h.payment_status === 'unpaid' && h.status !== 'cancelled' && Number(h.amount) > 0 };
   }
   if (type === 'coach_subscription_period') {
@@ -159,6 +164,19 @@ async function fulfil(c, type, id, payment) {
   if (type === 'registration_instalment') return fulfilInstalmentPaid(c, id, payment);
   if (type === 'team_charge') return fulfilTeamChargePaid(c, id, payment);
   if (type === 'team_contribution') return fulfilContributionPaid(c, id, payment);
+  if (type === 'coach_hire') {
+    const s = (await c.query("SELECT s.id, s.pay_mode FROM coach_hires h JOIN coach_series s ON s.id=h.series_id WHERE h.id=$1", [id])).rows[0];
+    if (s?.pay_mode === 'once') {
+      // one payment covers every unpaid date still to come in the block; remember it so a later cancel refunds each date's share
+      const owed = (await c.query("SELECT coalesce(sum(total_cents - loyalty_credit_cents), 0)::bigint AS n FROM coach_hires WHERE series_id=$1 AND payment_status='unpaid' AND status IN ('requested','confirmed') AND series_state IS DISTINCT FROM 'paused'", [s.id])).rows[0].n;
+      if (Number(owed) !== Number(payment.amount_cents)) return false;   // the block changed after checkout began: refund rather than mis-allocate
+      const paid = (await c.query("UPDATE coach_hires SET payment_status='paid', status=CASE WHEN request_response_id IS NOT NULL AND status='requested' THEN 'confirmed' ELSE status END WHERE series_id=$1 AND payment_status='unpaid' AND status IN ('requested','confirmed') AND series_state IS DISTINCT FROM 'paused' RETURNING id", [s.id])).rows;
+      if (!paid.length) return false;
+      await c.query('UPDATE coach_series SET payment_id=$2, anchor_hire_id=$3, updated_at=now() WHERE id=$1', [s.id, payment.id, id]);
+      for (const r of paid) await coachSessionDone(c, r.id);
+      return true;
+    }
+  }
   const done = (await c.query(sql, [id])).rowCount > 0;
   if (done && type === 'coach_hire') await coachSessionDone(c, id);   // a session completed before it was paid earns once the payment lands
   return done;
