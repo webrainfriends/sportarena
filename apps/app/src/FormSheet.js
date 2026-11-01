@@ -13,13 +13,17 @@ import { CurrencyDropdown } from './currency-dropdown';
 import { parseAmount, toMajorText } from './money';
 import { EvidenceField } from './evidence';
 import { MultiMenuField } from './menu-field';
+import { t } from './i18n';
+import { locale } from './locale';
 
-const DAYS = [[1, 'Mon'], [2, 'Tue'], [3, 'Wed'], [4, 'Thu'], [5, 'Fri'], [6, 'Sat'], [0, 'Sun']];
+// Short weekday names in the chosen locale (2024-01-01 was a Monday; day numbers follow Date#getDay, Sunday = 0).
+const dayName = (d) => { try { return new Intl.DateTimeFormat(locale, { weekday: 'short', timeZone: 'UTC' }).format(new Date(Date.UTC(2024, 0, 1 + ((d + 6) % 7)))); } catch { return String(d); } };
+const DAYS = [1, 2, 3, 4, 5, 6, 0].map((d) => [d, dayName(d)]);
 const ZONES = ['Asia/Kolkata', 'Asia/Dubai', 'Asia/Singapore', 'Asia/Colombo', 'Asia/Dhaka', 'Asia/Karachi', 'Asia/Kathmandu', 'Europe/London', 'Europe/Paris', 'America/New_York', 'America/Los_Angeles', 'Australia/Sydney', 'UTC'];
 const deviceZone = () => { try { return Intl.DateTimeFormat().resolvedOptions().timeZone; } catch { return null; } };
 const allZones = () => { try { return Intl.supportedValuesOf('timeZone'); } catch { return ZONES; } };
 const KEYBOARD = { phone: 'phone-pad', email: 'email-address', url: 'url', decimal: 'decimal-pad' };
-const plain = (m) => (/expected (number|int)/i.test(m) ? 'Enter a number' : /received undefined|required/i.test(m) ? 'This is required' : /^invalid input$/i.test(m) ? 'This value is not valid' : /too small|>=/.test(m) ? `Too low — ${m}` : /too big|<=/.test(m) ? `Too high — ${m}` : m);
+const plain = (m) => (/expected (number|int)/i.test(m) ? t('form.enter_number') : /received undefined|required/i.test(m) ? t('form.this_required') : /^invalid input$/i.test(m) ? t('form.invalid') : /too small|>=/.test(m) ? t('form.too_low', { detail: m }) : /too big|<=/.test(m) ? t('form.too_high', { detail: m }) : m);
 const same = (a, b) => a === b || a?.replace(/_(cents|bp|minutes|days|months)$/, '') === b?.replace(/_(cents|bp|minutes|days|months)$/, '');
 /** A money field's currency may follow another field in the same form: currency: (values) => 'INR'. */
 const curOf = (f, v) => (typeof f.currency === 'function' ? f.currency(v) : f.currency);
@@ -58,8 +62,8 @@ function ZonePicker({ label, value, onChange }) {
     <View style={{ gap: 6 }}>
       <T weight="800" size={13}>{label}</T>
       <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>{list.map((z) => <Chip key={z} label={z.replace(/_/g, ' ')} active={z === value} onPress={() => onChange(z)} />)}</View>
-      <Field value={q} onChangeText={setQ} placeholder="Search a city or region…" />
-      {value && !list.includes(value) ? <T size={12} color={c.mute}>Selected: {value}</T> : null}
+      <Field value={q} onChangeText={setQ} placeholder={t('form.search_region')} />
+      {value && !list.includes(value) ? <T size={12} color={c.mute}>{t('form.selected', { value })}</T> : null}
     </View>
   );
 }
@@ -67,25 +71,25 @@ function ZonePicker({ label, value, onChange }) {
 function LocationPicker({ f, v, set }) {
   const [msg, setMsg] = useState(null);
   const here = () => {
-    if (typeof navigator === 'undefined' || !navigator.geolocation) { setMsg('Location is not available here — type the numbers instead.'); return; }
-    setMsg('Finding you…');
-    navigator.geolocation.getCurrentPosition((p) => { set(f.key, String(Math.round(p.coords.latitude * 1e6) / 1e6)); set(f.lngKey, String(Math.round(p.coords.longitude * 1e6) / 1e6)); setMsg('Location set ✓'); }, () => setMsg('Could not get your location — type the numbers instead.'), { enableHighAccuracy: true, timeout: 10000 });
+    if (typeof navigator === 'undefined' || !navigator.geolocation) { setMsg(t('form.loc_na')); return; }
+    setMsg(t('form.loc_finding'));
+    navigator.geolocation.getCurrentPosition((p) => { set(f.key, String(Math.round(p.coords.latitude * 1e6) / 1e6)); set(f.lngKey, String(Math.round(p.coords.longitude * 1e6) / 1e6)); setMsg(t('form.loc_set')); }, () => setMsg(t('form.loc_fail')), { enableHighAccuracy: true, timeout: 10000 });
   };
   return (
     <View style={{ gap: 6 }}>
-      <T weight="800" size={13}>{f.label}{f.optional ? ' (optional)' : ''}</T>
-      <Btn small title="📍 Use my current location" color={c.violet} onPress={here} style={{ alignSelf: 'flex-start' }} />
+      <T weight="800" size={13}>{f.label}{f.optional ? ` (${t('form.optional')})` : ''}</T>
+      <Btn small title={t('form.use_location')} color={c.violet} onPress={here} style={{ alignSelf: 'flex-start' }} />
       {msg ? <T size={12} color={c.mute}>{msg}</T> : null}
       <View style={{ flexDirection: 'row', gap: 10 }}>
-        <View style={{ flex: 1 }}><Field label="Latitude" value={String(v[f.key] ?? '')} onChangeText={(x) => set(f.key, x.replace(/[^0-9.\-]/g, ''))} keyboardType="decimal-pad" /></View>
-        <View style={{ flex: 1 }}><Field label="Longitude" value={String(v[f.lngKey] ?? '')} onChangeText={(x) => set(f.lngKey, x.replace(/[^0-9.\-]/g, ''))} keyboardType="decimal-pad" /></View>
+        <View style={{ flex: 1 }}><Field label={t('form.lat')} value={String(v[f.key] ?? '')} onChangeText={(x) => set(f.key, x.replace(/[^0-9.\-]/g, ''))} keyboardType="decimal-pad" /></View>
+        <View style={{ flex: 1 }}><Field label={t('form.lng')} value={String(v[f.lngKey] ?? '')} onChangeText={(x) => set(f.lngKey, x.replace(/[^0-9.\-]/g, ''))} keyboardType="decimal-pad" /></View>
       </View>
-      <T size={12} color={c.mute}>Standing at the venue? Use the button. Otherwise copy the numbers from Google Maps (long-press the spot).</T>
+      <T size={12} color={c.mute}>{t('form.loc_help')}</T>
     </View>
   );
 }
 
-export function FormSheet({ visible, onClose, title, fields, initial = {}, submitLabel = 'Save', onSubmit, color = c.pink, inline, onBack, notice, extra }) {
+export function FormSheet({ visible, onClose, title, fields, initial = {}, submitLabel = t('common.save'), onSubmit, color = c.pink, inline, onBack, notice, extra }) {
   const start = () => {
     const o = {};
     for (const f of fields) {
@@ -118,15 +122,15 @@ export function FormSheet({ visible, onClose, title, fields, initial = {}, submi
       const out = {};
       for (const f of fields) {
         if (f.type === 'section' || (f.show && !f.show(v))) continue;
-        if (f.type === 'location') { const la = v[f.key], lo = v[f.lngKey]; if (la === '' || la === undefined || lo === '' || lo === undefined) { if (!f.optional) throw new Error('Set the location'); continue; } out[f.key] = Number(la); out[f.lngKey] = Number(lo); continue; }
+        if (f.type === 'location') { const la = v[f.key], lo = v[f.lngKey]; if (la === '' || la === undefined || lo === '' || lo === undefined) { if (!f.optional) throw new Error(t('form.set_location')); continue; } out[f.key] = Number(la); out[f.lngKey] = Number(lo); continue; }
         const x = v[f.key];
         if (f.blank && (x === '' || x === undefined)) continue;
         if (f.type === 'switch' || f.type === 'stepper') { out[f.key] = x; continue; }
         if (f.type === 'custom') { if (x?.length) out[f.key] = x; continue; }
-        if (f.type === 'daterange') { const a = v[f.key], b = v[f.toKey]; if (!a) { if (!f.optional) throw new Error(`${f.label}: pick the dates`); continue; } out[f.key] = a; out[f.toKey] = b ?? a; continue; }
-        if (f.type === 'multi' || f.type === 'multimenu' || f.type === 'weekdays' || f.type === 'sports' || f.type === 'regions' || f.type === 'countries' || f.type === 'files') { if (!x?.length) { if (!f.optional) throw new Error(`${f.label}: choose at least one`); continue; } out[f.key] = x; continue; }
-        if (x === '' || x === undefined || x === null) { if (!f.optional) throw new Error(`${f.label} is required`); continue; }
-        if (f.type === 'money') { const m = parseAmount(x, curOf(f, v)); if (m === null) throw new Error(`${f.label}: enter an amount${curOf(f, v) ? ` in ${curOf(f, v)}` : ''} with no more decimals than the currency has`); out[f.key] = m; }
+        if (f.type === 'daterange') { const a = v[f.key], b = v[f.toKey]; if (!a) { if (!f.optional) throw new Error(t('form.pick_dates', { label: f.label })); continue; } out[f.key] = a; out[f.toKey] = b ?? a; continue; }
+        if (f.type === 'multi' || f.type === 'multimenu' || f.type === 'weekdays' || f.type === 'sports' || f.type === 'regions' || f.type === 'countries' || f.type === 'files') { if (!x?.length) { if (!f.optional) throw new Error(t('form.choose_one', { label: f.label })); continue; } out[f.key] = x; continue; }
+        if (x === '' || x === undefined || x === null) { if (!f.optional) throw new Error(t('form.required', { label: f.label })); continue; }
+        if (f.type === 'money') { const m = parseAmount(x, curOf(f, v)); if (m === null) throw new Error(curOf(f, v) ? t('form.money_err_cur', { label: f.label, currency: curOf(f, v) }) : t('form.money_err', { label: f.label })); out[f.key] = m; }
         else out[f.key] = f.type === 'number' ? Number(x) : x;
       }
       const msg = await onSubmit(out);
@@ -146,7 +150,7 @@ export function FormSheet({ visible, onClose, title, fields, initial = {}, submi
     } finally { setBusy(false); }
   };
 
-  const lab = (f) => <T weight="800" size={13}>{f.label}{f.optional ? ' (optional)' : ''}</T>;
+  const lab = (f) => <T weight="800" size={13}>{f.label}{f.optional ? ` (${t('form.optional')})` : ''}</T>;
   const hint = (f) => { const h = typeof f.hint === 'function' ? f.hint(v) : f.hint; return h ? <T size={12} color={c.mute}>{h}</T> : null; };
   const control = (f) => {
     switch (f.type) {
@@ -161,7 +165,7 @@ export function FormSheet({ visible, onClose, title, fields, initial = {}, submi
       case 'countries': return <CountriesMulti label={f.label} value={v[f.key] ?? []} onChange={(x) => set(f.key, x)} optional={f.optional} hint={typeof f.hint === 'function' ? f.hint(v) : f.hint} />;
       case 'place': return <PlacePicker label={f.label} value={v[f.key]} onChange={(x) => set(f.key, x)} optional={f.optional} hint={typeof f.hint === 'function' ? f.hint(v) : f.hint} />;
       case 'country': return <CountryPicker label={f.label} value={v[f.key]} onChange={(x) => set(f.key, x)} optional={f.optional} hint={typeof f.hint === 'function' ? f.hint(v) : f.hint} />;
-      case 'files': return <EvidenceField label={f.label + (f.optional ? ' (optional)' : '')} value={v[f.key] ?? []} onChange={(x) => set(f.key, x)} max={f.max} documents={f.documents} />;
+      case 'files': return <EvidenceField label={f.label + (f.optional ? ` (${t('form.optional')})` : '')} value={v[f.key] ?? []} onChange={(x) => set(f.key, x)} max={f.max} documents={f.documents} />;
       case 'sports': return <SportsMulti label={f.label} value={v[f.key] ?? []} onChange={(x) => set(f.key, x)} optional={f.optional} />;
       case 'regions': return (
         <View style={{ gap: 8 }}>
@@ -176,13 +180,13 @@ export function FormSheet({ visible, onClose, title, fields, initial = {}, submi
       case 'switch': return (
         <View style={{ gap: 4 }}><View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}><View style={{ flex: 1 }}>{lab(f)}</View><Switch accessibilityLabel={f.label} value={!!v[f.key]} onValueChange={(x) => set(f.key, x)} trackColor={{ true: c.pink }} /></View>{hint(f)}</View>);
       case 'money': return (
-        <View style={{ gap: 6 }}><Field label={`${f.label}${f.optional ? ' (optional)' : ''}`} value={String(v[f.key] ?? '')} onChangeText={(x) => set(f.key, x.replace(/[^0-9.,]/g, ''))} keyboardType="decimal-pad" placeholder={`${curOf(f, v) ?? ''} ${f.placeholder ?? '0'}`.trim()} hint={f.hint} /></View>);
+        <View style={{ gap: 6 }}><Field label={`${f.label}${f.optional ? ` (${t('form.optional')})` : ''}`} value={String(v[f.key] ?? '')} onChangeText={(x) => set(f.key, x.replace(/[^0-9.,]/g, ''))} keyboardType="decimal-pad" placeholder={`${curOf(f, v) ?? ''} ${f.placeholder ?? '0'}`.trim()} hint={f.hint} /></View>);
       case 'weekdays': return (
         <View style={{ gap: 6 }}>{lab(f)}
-          <View style={{ flexDirection: 'row', gap: 6, flexWrap: 'wrap' }}><Chip label="Weekdays" onPress={() => set(f.key, [1, 2, 3, 4, 5])} /><Chip label="Weekend" onPress={() => set(f.key, [6, 0])} /><Chip label="Every day" onPress={() => set(f.key, [0, 1, 2, 3, 4, 5, 6])} /></View>
+          <View style={{ flexDirection: 'row', gap: 6, flexWrap: 'wrap' }}><Chip label={t('form.weekdays')} onPress={() => set(f.key, [1, 2, 3, 4, 5])} /><Chip label={t('form.weekend')} onPress={() => set(f.key, [6, 0])} /><Chip label={t('form.every_day')} onPress={() => set(f.key, [0, 1, 2, 3, 4, 5, 6])} /></View>
           <View style={{ flexDirection: 'row', gap: 6, flexWrap: 'wrap' }}>{DAYS.map(([d, n]) => <Chip key={d} label={n} active={v[f.key]?.includes(d)} onPress={() => set(f.key, v[f.key]?.includes(d) ? v[f.key].filter((x) => x !== d) : [...(v[f.key] ?? []), d])} />)}</View>{hint(f)}</View>);
       case 'custom': return f.render({ v, set });
-      case 'multimenu': return <MultiMenuField label={f.label + (f.optional ? ' (optional)' : '')} value={v[f.key] ?? []} onChange={(x) => set(f.key, x)} options={typeof f.options === 'function' ? f.options(v) : f.options} load={f.load} max={f.max} placeholder={f.placeholder ?? (f.optional ? 'None' : 'Choose')} hint={typeof f.hint === 'function' ? f.hint(v) : f.hint} />;
+      case 'multimenu': return <MultiMenuField label={f.label + (f.optional ? ` (${t('form.optional')})` : '')} value={v[f.key] ?? []} onChange={(x) => set(f.key, x)} options={typeof f.options === 'function' ? f.options(v) : f.options} load={f.load} max={f.max} placeholder={f.placeholder ?? (f.optional ? 'None' : 'Choose')} hint={typeof f.hint === 'function' ? f.hint(v) : f.hint} />;
       case 'multi': return (
         <View style={{ gap: 6 }}>{lab(f)}<View style={{ flexDirection: 'row', gap: 6, flexWrap: 'wrap' }}>{(typeof f.options === 'function' ? f.options(v) : f.options).map(opt).map((o) => <Chip key={String(o.value)} label={o.label} active={v[f.key]?.includes(o.value)} onPress={() => set(f.key, v[f.key]?.includes(o.value) ? v[f.key].filter((x) => x !== o.value) : [...(v[f.key] ?? []), o.value])} />)}</View>{hint(f)}</View>);
       case 'chips': return (
@@ -192,7 +196,7 @@ export function FormSheet({ visible, onClose, title, fields, initial = {}, submi
         if (os.length > 4) return control({ ...f, type: 'chips' });
         return <View style={{ gap: 6 }}>{lab(f)}<Seg options={os} value={v[f.key] ?? os[0]?.value} onChange={(x) => set(f.key, x)} color={color} />{hint(f)}</View>;
       }
-      default: return <Field label={f.label + (f.optional ? ' (optional)' : '')} value={String(v[f.key] ?? '')} onChangeText={(x) => set(f.key, x)} secure={f.type === 'secret'} multiline={f.type === 'multiline'} keyboardType={f.type === 'number' ? 'numeric' : KEYBOARD[f.input]} placeholder={f.placeholder} hint={f.hint} />;
+      default: return <Field label={f.label + (f.optional ? ` (${t('form.optional')})` : '')} value={String(v[f.key] ?? '')} onChangeText={(x) => set(f.key, x)} secure={f.type === 'secret'} multiline={f.type === 'multiline'} keyboardType={f.type === 'number' ? 'numeric' : KEYBOARD[f.input]} placeholder={f.placeholder} hint={f.hint} />;
     }
   };
 
@@ -203,7 +207,7 @@ export function FormSheet({ visible, onClose, title, fields, initial = {}, submi
       {err ? <T color={c.red} weight="800">{err}</T> : null}
       {onBack ? (
         <View style={{ flexDirection: 'row', gap: 8 }}>
-          <Btn title="Back" color={c.paper} ink={c.ink} onPress={onBack} style={{ flex: 1 }} />
+          <Btn title={t('common.back')} color={c.paper} ink={c.ink} onPress={onBack} style={{ flex: 1 }} />
           <Btn title={submitLabel} onPress={submit} loading={busy} color={color} style={{ flex: 2 }} />
         </View>
       ) : <Btn title={submitLabel} onPress={submit} loading={busy} color={color} />}

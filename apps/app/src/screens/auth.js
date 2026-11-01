@@ -11,6 +11,7 @@ import GoogleButton from '../google-button';
 import AppleButton from '../apple-button';
 import { OrgSsoButton, SsoFinish } from '../sso';
 import { Logo } from '../logo';
+import { t } from '../i18n';
 
 
 const DEMOS = [['aarav', 'Aarav · Athlete'], ['kavya_events', 'Kavya · Organizer'], ['arena_one', 'Arena One · Venue'], ['volt_drink', 'Volt · Sponsor'], ['dr_rhea', 'Dr Rhea · Doctor']];
@@ -38,7 +39,7 @@ export default function Auth({ intent, initialMode, onClose } = {}) {
     else if (q.get('apple_error')) { setErr(q.get('apple_error')); clean(); }
     else if (q.get('apple_mfa')) { setMfaToken(q.get('apple_mfa')); setF((p) => ({ ...p, mfa: '' })); setMode('mfa'); clean(); }
     else if (q.get('verify_email')) {
-      api.post('/auth/verify-email', { token: q.get('verify_email') }).then(() => setInfo('Your email is confirmed. You can log in.'), (e) => setErr(e.message));
+      api.post('/auth/verify-email', { token: q.get('verify_email') }).then(() => setInfo(t('auth.email_confirmed')), (e) => setErr(e.message));
       clean();
     }
   }, []);
@@ -72,7 +73,7 @@ export default function Auth({ intent, initialMode, onClose } = {}) {
       }
       if (mode === 'reset') {
         await api.post('/auth/password-reset/confirm', { token: (f.code ?? '').trim(), new_password: f.password });
-        setF((p) => ({ ...p, password: '', code: '' })); setMode('login'); setInfo('Password changed. Log in with your new password.'); return;
+        setF((p) => ({ ...p, password: '', code: '' })); setMode('login'); setInfo(t('auth.password_changed')); return;
       }
       if (mode === 'mfa') {
         await signIn(await api.post('/auth/login/mfa', { mfa_token: mfaToken, code: (f.mfa ?? '').trim() }));
@@ -91,7 +92,7 @@ export default function Auth({ intent, initialMode, onClose } = {}) {
 
   return (
     <Screen>
-      {onClose ? <Pressable onPress={onClose} style={{ paddingTop: 14, paddingBottom: 2, alignSelf: 'flex-start' }}><T color={c.pink} weight="700">‹ Back to the arena</T></Pressable> : null}
+      {onClose ? <Pressable onPress={onClose} style={{ paddingTop: 14, paddingBottom: 2, alignSelf: 'flex-start' }}><T color={c.pink} weight="700">{t('auth.back_arena')}</T></Pressable> : null}
       {copy ? (
         <View style={{ backgroundColor: c.pinkSoft, borderRadius: 18, padding: 16, marginTop: 8, gap: 4 }}>
           <T weight="800" size={16} color={c.pink}>{copy[0]}</T>
@@ -103,13 +104,13 @@ export default function Auth({ intent, initialMode, onClose } = {}) {
         <View style={{ position: 'absolute', right: -40, top: -60, width: 200, height: 200, borderRadius: 100, backgroundColor: '#fff', opacity: 0.12 }} />
         <View style={{ position: 'absolute', right: 80, bottom: -60, width: 120, height: 120, borderRadius: 60, backgroundColor: '#fff', opacity: 0.08 }} />
         <Logo size={96} style={{ marginBottom: 14 }} />
-        <Text style={[fam, { color: '#fff', opacity: 0.65, fontWeight: '700', fontSize: 12, letterSpacing: 2.5 }]}>THE HOME OF SPORT</Text>
+        <Text style={[fam, { color: '#fff', opacity: 0.65, fontWeight: '700', fontSize: 12, letterSpacing: 2.5 }]}>{t('auth.home_of_sport')}</Text>
         <Text style={[fam, { color: '#fff', fontWeight: '800', fontSize: 44, letterSpacing: -1.8, marginTop: 10 }]}>Gotmygame</Text>
-        <T color="#E5EAF5" weight="500" size={15} style={{ marginTop: 8, lineHeight: 22 }}>Teams. Fixtures. Venues. Performance. Everything your game runs on, in one place.</T>
+        <T color="#E5EAF5" weight="500" size={15} style={{ marginTop: 8, lineHeight: 22 }}>{t('auth.tagline')}</T>
       </LinearGradient>
 
       {['login', 'register'].includes(mode) ? <View style={{ flexDirection: 'row', backgroundColor: c.line, borderRadius: 999, padding: 4, marginTop: 20 }}>
-        {[['login', 'Log in'], ['register', 'Create account']].map(([k, l]) => (
+        {[['login', t('auth.login')], ['register', t('auth.register')]].map(([k, l]) => (
           <Pressable key={k} onPress={() => setMode(k)} style={{ flex: 1, paddingVertical: 11, borderRadius: 999, alignItems: 'center', backgroundColor: mode === k ? c.paper : 'transparent' }}>
             <T weight="700" size={14} color={mode === k ? c.ink : c.mute}>{l}</T>
           </Pressable>
@@ -118,62 +119,62 @@ export default function Auth({ intent, initialMode, onClose } = {}) {
       <Card style={{ marginTop: 12 }} pad={20}>
         <View style={{ gap: 16 }}>
           {mode === 'register' && <>
-            <Field label="Handle" value={f.handle} onChangeText={set('handle')} placeholder="goal_machine" hint="Letters, numbers and _ · shown publicly" />
-            <Field label="Display name" value={f.display_name} onChangeText={set('display_name')} placeholder="Priya Sharma" />
+            <Field label={t('auth.handle')} value={f.handle} onChangeText={set('handle')} placeholder="goal_machine" hint={t('auth.handle_hint')} />
+            <Field label={t('auth.display_name')} value={f.display_name} onChangeText={set('display_name')} placeholder="Priya Sharma" />
           </>}
           {info ? <T color={c.mint} weight="700" size={13} accessibilityRole="alert">{info}</T> : null}
           {mode === 'mfa' ? <>
-            <T weight="800" size={16}>Two-step verification</T>
-            <T size={13} color={c.mute}>Enter the 6-digit code from your authenticator app, or one of your recovery codes.</T>
-            <Field label="Code" value={f.mfa} onChangeText={set('mfa')} placeholder="123456" keyboardType="number-pad" />
+            <T weight="800" size={16}>{t('auth.mfa_title')}</T>
+            <T size={13} color={c.mute}>{t('auth.mfa_help')}</T>
+            <Field label={t('auth.code')} value={f.mfa} onChangeText={set('mfa')} placeholder="123456" keyboardType="number-pad" />
           </> : null}
           {mode === 'forgot' ? <>
-            <T weight="800" size={16}>Reset your password</T>
-            <T size={13} color={c.mute}>Enter your account email. If it has an account, we send a reset code that works once for 30 minutes.</T>
-            <Field label="Email" value={f.email} onChangeText={set('email')} keyboardType="email-address" placeholder="you@example.com" />
+            <T weight="800" size={16}>{t('auth.forgot_title')}</T>
+            <T size={13} color={c.mute}>{t('auth.forgot_help')}</T>
+            <Field label={t('auth.email')} value={f.email} onChangeText={set('email')} keyboardType="email-address" placeholder="you@example.com" />
           </> : null}
           {mode === 'reset' ? <>
-            <T weight="800" size={16}>Choose a new password</T>
-            <T size={13} color={c.mute}>Paste the code from the email. You will be signed out on all your devices.</T>
-            <Field label="Reset code" value={f.code} onChangeText={set('code')} placeholder="sp_..." />
-            <Field label="New password" value={f.password} onChangeText={set('password')} secure placeholder="10+ characters" />
+            <T weight="800" size={16}>{t('auth.reset_title')}</T>
+            <T size={13} color={c.mute}>{t('auth.reset_help')}</T>
+            <Field label={t('auth.reset_code')} value={f.code} onChangeText={set('code')} placeholder="sp_..." />
+            <Field label={t('auth.new_password')} value={f.password} onChangeText={set('password')} secure placeholder={t('auth.password_ph')} />
           </> : null}
           {['login', 'register'].includes(mode) ? <>
-            <Field label="Email" value={f.email} onChangeText={set('email')} keyboardType="email-address" placeholder="you@example.com" />
-            <Field label="Password" value={f.password} onChangeText={set('password')} secure placeholder="10+ characters" />
+            <Field label={t('auth.email')} value={f.email} onChangeText={set('email')} keyboardType="email-address" placeholder="you@example.com" />
+            <Field label={t('auth.password')} value={f.password} onChangeText={set('password')} secure placeholder={t('auth.password_ph')} />
           </> : null}
           {mode === 'register' && <>
             <View style={{ gap: 8 }}>
-              <T weight="600" size={12} color={c.mute} style={{ letterSpacing: 0.4 }}>I AM A…</T>
+              <T weight="600" size={12} color={c.mute} style={{ letterSpacing: 0.4 }}>{t('auth.i_am')}</T>
               <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
                 {ROLES.map(([k, l]) => <Chip key={k} label={l} active={f.roles.includes(k)} onPress={() => toggle(k)} />)}
               </View>
             </View>
             <View style={{ backgroundColor: c.bg, borderRadius: 14, padding: 14, gap: 12 }}>
               <View>
-                <T weight="700" size={14}>Private by design</T>
-                <T size={12} color={c.mute} style={{ marginTop: 2, lineHeight: 18 }}>Your email, name, phone and ID are encrypted before they reach our database and are only decrypted for you.</T>
+                <T weight="700" size={14}>{t('auth.private_title')}</T>
+                <T size={12} color={c.mute} style={{ marginTop: 2, lineHeight: 18 }}>{t('auth.private_body')}</T>
               </View>
-              <Field label="Full name (optional)" value={f.full_name} onChangeText={set('full_name')} />
-              <Field label="Phone (optional)" value={f.phone} onChangeText={set('phone')} keyboardType="phone-pad" />
+              <Field label={t('auth.full_name')} value={f.full_name} onChangeText={set('full_name')} />
+              <Field label={t('auth.phone')} value={f.phone} onChangeText={set('phone')} keyboardType="phone-pad" />
             </View>
           </>}
           {err ? <T color={c.red} weight="600" size={13}>{err}</T> : null}
-          <Btn title={{ login: 'Log in', register: 'Create my account', mfa: 'Verify and log in', forgot: 'Send reset code', reset: 'Change password' }[mode]} onPress={submit} loading={busy} />
+          <Btn title={{ login: t('auth.login'), register: t('auth.btn_register'), mfa: t('auth.btn_mfa'), forgot: t('auth.btn_forgot'), reset: t('auth.btn_reset') }[mode]} onPress={submit} loading={busy} />
           {['login', 'register'].includes(mode) ? <>
-            <T size={12} color={c.mute} style={{ textAlign: 'center' }}>or</T>
+            <T size={12} color={c.mute} style={{ textAlign: 'center' }}>{t('auth.or')}</T>
             <GoogleButton onCredential={withGoogle} onError={setErr} />
             <AppleButton onCredential={withApple} onError={setErr} />
             {mode === 'login' ? <OrgSsoButton email={f.email} onResult={setSsoParams} onError={setErr} /> : null}
-            <T size={11} color={c.mute} style={{ textAlign: 'center', lineHeight: 16 }}>New Google or Apple accounts are checked by the administrator before they can add or change anything. Until then you can look around read-only.</T>
+            <T size={11} color={c.mute} style={{ textAlign: 'center', lineHeight: 16 }}>{t('auth.review_note')}</T>
           </> : null}
-          {mode === 'login' ? <Pressable onPress={() => { setErr(null); setInfo(null); setMode('forgot'); }} accessibilityRole="button" style={{ alignSelf: 'center', paddingVertical: 8 }}><T color={c.pink} weight="700" size={13}>Forgot your password?</T></Pressable> : null}
-          {mode === 'forgot' ? <Pressable onPress={() => { setErr(null); setMode('reset'); }} accessibilityRole="button" style={{ alignSelf: 'center', paddingVertical: 8 }}><T color={c.pink} weight="700" size={13}>I already have a code</T></Pressable> : null}
-          {['forgot', 'reset', 'mfa'].includes(mode) ? <Pressable onPress={() => { setErr(null); setInfo(null); setMfaToken(null); setMode('login'); }} accessibilityRole="button" style={{ alignSelf: 'center', paddingVertical: 8 }}><T color={c.mute} weight="700" size={13}>Back to log in</T></Pressable> : null}
+          {mode === 'login' ? <Pressable onPress={() => { setErr(null); setInfo(null); setMode('forgot'); }} accessibilityRole="button" style={{ alignSelf: 'center', paddingVertical: 8 }}><T color={c.pink} weight="700" size={13}>{t('auth.forgot_link')}</T></Pressable> : null}
+          {mode === 'forgot' ? <Pressable onPress={() => { setErr(null); setMode('reset'); }} accessibilityRole="button" style={{ alignSelf: 'center', paddingVertical: 8 }}><T color={c.pink} weight="700" size={13}>{t('auth.have_code')}</T></Pressable> : null}
+          {['forgot', 'reset', 'mfa'].includes(mode) ? <Pressable onPress={() => { setErr(null); setInfo(null); setMfaToken(null); setMode('login'); }} accessibilityRole="button" style={{ alignSelf: 'center', paddingVertical: 8 }}><T color={c.mute} weight="700" size={13}>{t('auth.back_login')}</T></Pressable> : null}
         </View>
       </Card>
 
-      <Sheet visible={!!ssoParams} onClose={() => setSsoParams(null)} title="Organisation sign-in">
+      <Sheet visible={!!ssoParams} onClose={() => setSsoParams(null)} title={t('auth.org_signin')}>
         {ssoParams ? <SsoFinish params={ssoParams} onDone={() => setSsoParams(null)} onCancel={() => setSsoParams(null)} /> : null}
       </Sheet>
 
