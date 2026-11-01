@@ -315,7 +315,7 @@ cap({
     let user = actor;
     if (i.for_user_id && i.for_user_id !== actor.id) {
       if (!(await isActive(team.id, i.for_user_id))) throw notFound('Team member');
-      await requireGuardian(actor, i.for_user_id);
+      await requireGuardian(actor, i.for_user_id, undefined, 'rsvp');
       user = { ...(await one('SELECT id, display_name FROM users WHERE id=$1', [i.for_user_id])) };
     }
     if (!(await isActive(team.id, user.id))) throw forbidden('Only active team members can RSVP');

@@ -5,6 +5,7 @@ import { provider, paymentsEnabled, enabledProviders } from './providers.js';
 import { markInvoicePaid } from '../booking/invoices.js';
 import { completeTopup, activateGiftCard } from '../wallet.js';
 import { activateUserPlan } from '../booking/plans.js';
+import { activateCoachPeriod } from '../coach-subscriptions.js';
 import { activatePhysioPackage } from '../capabilities/provider-packages.js';
 import { fulfilSponsorshipPayment } from '../sponsor-agreements.js';
 import { fulfilChargePaid } from '../academy-invoices.js';
@@ -13,6 +14,7 @@ import { fulfilMarketplacePaid } from '../marketplace/engine.js';
 import { fulfilMediaFeePaid } from '../media-fees.js';
 import { fulfilContributionPaid, fulfilTeamChargePaid } from '../team-money.js';
 import { fulfilInstalmentPaid } from '../registration-money.js';
+import { checkGuardianScope } from '../youth.js';
 import { raiseException, recordSale, syncRefunds } from '../settlement.js';
 import { coachSessionDone } from '../rewards/activity.js';
 import { saleDue, confirmOnlineSalePayment } from '../pos/due.js';
@@ -44,6 +46,11 @@ export async function describePurpose(c, type, id) {
       return { payerId: h.payer_id, amount: Number(due.amount), currency: h.currency, name: `Coaching block with ${h.display_name} (${due.n} session${due.n === 1 ? '' : 's'})`, payable: !h.payment_id && h.anchor_hire_id === id && h.payment_status === 'unpaid' && h.status !== 'cancelled' && Number(due.amount) > 0 };
     }
     return h && { payerId: h.payer_id, amount: Number(h.amount), currency: h.currency, name: `Coaching session with ${h.display_name}`, payable: h.payment_status === 'unpaid' && h.status !== 'cancelled' && Number(h.amount) > 0 };
+  }
+  if (type === 'coach_subscription_period') {
+    // payable while the period waits for payment and the agreement is still alive (a paused or lapsed one cannot be paid into)
+    const u = await q("SELECT up.user_id AS payer_id, up.price_cents AS amount, up.currency, up.status, up.name, s.status AS sub_status, c.display_name FROM user_plans up JOIN coach_subscriptions s ON s.id=up.subscription_id JOIN users c ON c.id=up.coach_id WHERE up.id=$1 FOR UPDATE OF up");
+    return u && { payerId: u.payer_id, amount: Number(u.amount), currency: u.currency, name: `${u.name} · ${u.display_name}`, payable: u.status === 'awaiting_payment' && ['active', 'past_due'].includes(u.sub_status) };
   }
   if (type === 'coach_class_seat') {
     // a seat is payable only while it is held (reserved for the payer) and the class is still open
@@ -144,6 +151,7 @@ async function fulfil(c, type, id, payment) {
   if (type === 'wallet_topup') return completeTopup(c, id);
   if (type === 'gift_card') return activateGiftCard(c, id);
   if (type === 'venue_plan') return activateUserPlan(c, id);
+  if (type === 'coach_subscription_period') return activateCoachPeriod(c, id);
   if (type === 'physio_package') return activatePhysioPackage(c, id);
   if (type === 'sponsorship_payment') return fulfilSponsorshipPayment(c, id);
   if (type === 'academy_charge') return fulfilChargePaid(c, id, { method: 'online', payment });
@@ -253,6 +261,13 @@ export function safeReturnBase(requested) {
 }
 
 /** Start a hosted checkout for something `user` owes. The amount and currency are read from the record, never from the client. */
+/** A guardian paying a young person's team or academy fee needs the `pay` scope (and the academy's own policy, if it reserves payment for the primary guardian). */
+async function checkPayScope(c, userId, type, id) {
+  const r = type === 'team_charge' ? (await c.query('SELECT member_id AS child_id, NULL::uuid AS org_id FROM team_charges WHERE id=$1', [id])).rows[0]
+    : type === 'academy_charge' ? (await c.query('SELECT coalesce(e.user_id, a.athlete_id) AS child_id, ch.organisation_id AS org_id FROM academy_charges ch LEFT JOIN org_enrolments e ON e.id=ch.enrolment_id LEFT JOIN academy_applications a ON a.id=ch.application_id WHERE ch.id=$1', [id])).rows[0] : null;
+  if (r) await checkGuardianScope(userId, r.child_id, 'pay', r.org_id, c);
+}
+
 export async function startCheckout(user, i) {
   if (!enabledProviders().includes(i.provider)) throw badRequest(`${i.provider} is not enabled on this server`);
   const client = await pool.connect();
@@ -265,6 +280,7 @@ export async function startCheckout(user, i) {
     // someone else's bill: allowed only under a live cover agreement that both sides approved and that covers this bill
     const cover = d.payerId === user.id ? null : await coverFor(client, user, d, { purposeType: i.purpose_type, purposeId: i.purpose_id, currency });
     if (d.payerId !== user.id && !cover) throw forbidden('This is not yours to pay');
+    if (d.payerId === user.id) await checkPayScope(client, user.id, i.purpose_type, i.purpose_id);
     if (!d.payable) throw conflict('Nothing to pay: it is already paid, cancelled or free');
     if (d.amount <= 0) throw conflict('Nothing to pay');
     const row = (await client.query('INSERT INTO payments(payer_id, provider, purpose_type, purpose_id, amount_cents, currency, cover_mandate_id) VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING id', [user.id, i.provider, i.purpose_type, i.purpose_id, d.amount, currency, cover?.id ?? null])).rows[0];

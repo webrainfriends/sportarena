@@ -20,6 +20,7 @@ import { NewCaseSheet } from './cases';
 import { SeriesBookingSheet, VenueLine } from './training-venue';
 import { SeriesSheet } from './coach-series';
 import { CoachClassList } from './coach-classes';
+import { SubscribeSheet } from './coach-subscriptions';
 import { Grid, PaySheet, Pill, StatusPill, nice, useCols } from './marketplace';
 import { c, grad, toneFor } from '../theme';
 import { dateTimeIn, localDate, localToIso, moneyIn, timeIn, todayIn, WEEKDAYS } from '../vtime';
@@ -123,7 +124,7 @@ export function IconGrid({ items, value, onChange, cols = 4, tint = c.pinkSoft }
 export function CoachToolGrid({ push, counts = {} }) {
   const tools = [
     ['🗂️', 'Desk', 'CoachDesk'], ['📬', 'Request board', 'CoachBoard', counts.board], ['🏃', 'Athletes', 'CoachAthletes'], ['🤝', 'Shared wellness', 'SharedWellness'], ['📄', 'Shared reports', 'SharedSeasonReports'], ['🎬', 'Recruitment', 'PassportDesk'], ['🪪', 'Profile & hours', 'CoachSetup'],
-    ['📅', 'Schedule', 'CoachCalendar'], ['🏫', 'Academy week', 'AcademyAgenda'], ['🏷️', 'Rate cards', 'CoachRates'], ['🎽', 'My classes', 'CoachClasses'], ['📑', 'Commitments', 'CoachCommitments'], ['⭐', 'Reviews', 'CoachReviews', counts.reviews],
+    ['📅', 'Schedule', 'CoachCalendar'], ['🏫', 'Academy week', 'AcademyAgenda'], ['🏷️', 'Rate cards', 'CoachRates'], ['🎽', 'My classes', 'CoachClasses'], ['🏟️', t('vc.title'), 'CoachVenues'], ['📑', 'Commitments', 'CoachCommitments'], ['⭐', 'Reviews', 'CoachReviews', counts.reviews],
     ['🧠', 'Performance Studio', 'PerformanceStudio'], ['🧰', 'Drill library', 'CoachDrills'], ['👥', 'Saved groups', 'CoachGroups'], ['📏', 'Rubrics', 'CoachRubrics'], ['📈', 'Analytics', 'CoachAnalytics'], ['📝', 'Training plans', 'MyPlans', null, { as: 'coach' }], ['📍', 'Courts', 'TrainingVenue', counts.courts], ['🔁', 'Recurring booking', 'RecurringVenue'],
   ];
   return (
@@ -141,12 +142,16 @@ export function CoachToolGrid({ push, counts = {} }) {
 export function BookCoachSheet({ coach, onClose, onDone }) {
   const { toast, user } = useSession();
   const detail = useLoad(() => api.get(`/coaches/${coach.id}`), [coach.id]);
-  const cards = (detail.data?.rate_cards ?? []).filter((k) => !k.sport_slug || k.sport_slug === coach.sport_slug);
+  const cards = (detail.data?.rate_cards ?? []).filter((k) => k.unit !== 'month' && (!k.sport_slug || k.sport_slug === coach.sport_slug));   // a monthly card is subscribed to on the profile, not booked per session
   const [cardId, setCardId] = useState(null), [athleteId, setAthleteId] = useState(user.id);
   const kids = useLoad(() => api.get('/youth/guardian-links', { as: 'guardian', status: 'active', limit: 50 }).catch(() => []), []);
   const intro = useLoad(() => api.get(`/coaches/${coach.id}/intro-status`, athleteId !== user.id ? { athlete_id: athleteId } : {}).catch(() => ({ offers: [] })), [coach.id, athleteId]);
   const introUsed = (k) => k.is_intro && k.audience === 'individual' && (intro.data?.offers ?? []).some((o) => o.rate_card_id === k.id && !o.available);
   const card = cards.find((k) => k.id === cardId) ?? null;
+  // an included session of a monthly subscription with this coach covers the booking (individual sessions only)
+  const subs = useLoad(() => api.get('/me/coach-subscriptions', { limit: 50 }).catch(() => []), []);
+  const mySub = (subs.data ?? []).find((s) => s.coach_id === coach.id && s.athlete_id === athleteId && s.i_pay && s.sessions_left > 0 && ['active', 'past_due', 'paused'].includes(s.status));
+  const [useIncluded, setUseIncluded] = useState(true);
   const [hours, setHours] = useState(60), [people, setPeople] = useState(1), [teamId, setTeamId] = useState(null), [eventId, setEventId] = useState(null);
   const [day, setDay] = useState(null), [pick, setPick] = useState(null), [date, setDate] = useState(), [time, setTime] = useState(), [note, setNote] = useState('');
   const [busy, setBusy] = useState(false), [err, setErr] = useState(null), [repeat, setRepeat] = useState(false);
@@ -170,6 +175,7 @@ export function BookCoachSheet({ coach, onClose, onDone }) {
     try {
       const hire = await api.post('/hires', { coach_id: coach.id, sport: coach.sport_slug, starts_at: startsAt, duration_min: mins, ...(note.trim() ? { note: note.trim() } : {}),
         ...(athleteId !== user.id ? { athlete_id: athleteId } : {}),
+        ...(mySub && useIncluded && (!card || card.audience === 'individual') ? { subscription_id: mySub.id } : {}),
         ...(card ? { rate_card_id: card.id, participants: people, ...(teamId ? { team_id: teamId } : {}), ...(eventId ? { event_id: eventId } : {}) } : {}) });
       toast(hire.payment_status === 'unpaid' ? 'Requested — pay to let the coach confirm' : 'Requested — the coach will confirm');
       await onDone(hire); onClose();
@@ -179,6 +185,11 @@ export function BookCoachSheet({ coach, onClose, onDone }) {
     <Sheet visible onClose={onClose} title={`Book ${coach.display_name}`}>
       <T size={13} color={c.mute}>{coach.sport_emoji} {coach.sport}</T>
       {kids.data?.length ? <MenuField label={t('coaching.bookingFor')} value={athleteId} onChange={(v) => { setAthleteId(v); setCardId(null); }} options={[{ value: user.id, label: user.display_name }, ...kids.data.map((l) => ({ value: l.child_id, label: l.child?.display_name ?? 'Child' }))]} /> : null}
+      {mySub && (!card || card.audience === 'individual') ? (
+        <Card pad={12} color={useIncluded ? c.mintSoft : c.paper} onPress={() => setUseIncluded(!useIncluded)} accessibilityLabel={`${t('coachSub.bookIncluded')}. ${t('coachSub.sessionsLeft', { n: mySub.sessions_left })}`}>
+          <T weight="800">{useIncluded ? '✓ ' : ''}{t('coachSub.bookIncluded')}</T><T size={12} color={c.mute}>{t('coachSub.sessionsLeft', { n: mySub.sessions_left })} · {mySub.title}</T>
+        </Card>
+      ) : null}
       {cards.length ? (
         <View style={{ gap: 8 }}>
           <T weight="800" size={13}>What do you need?</T>
@@ -228,7 +239,7 @@ export function BookCoachSheet({ coach, onClose, onDone }) {
       )}
       <Field label="What do you want to work on? (optional)" value={note} onChangeText={setNote} multiline />
       <Card color={c.pinkSoft} pad={12}>
-        <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}><T weight="700">Total</T><T weight="800">{rate ? price(cost, coach.currency) : 'Agreed with the coach'}</T></View>
+        <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}><T weight="700">Total</T><T weight="800">{mySub && useIncluded && (!card || card.audience === 'individual') ? t('coachSub.included') : rate ? price(cost, coach.currency) : 'Agreed with the coach'}</T></View>
         {card?.unit === 'package' && card.sessions_included ? <T size={12} color={c.mute}>Covers {card.sessions_included} sessions; the coach schedules the rest with you.</T> : null}
         <T size={12} color={c.mute}>You pay after the request; the coach confirms once it is paid. Cancel any time and a paid session is refunded.</T>
       </Card>
@@ -522,7 +533,7 @@ export function CoachProfile({ id }) {
   const { user } = useSession();
   const { push } = useNav();
   const d = useLoad(() => api.get(`/coaches/${id}`), [id]);
-  const [sport, setSport] = useState(null), [book, setBook] = useState(false), [paying2, setPaying] = useState(null);
+  const [sport, setSport] = useState(null), [book, setBook] = useState(false), [paying2, setPaying] = useState(null), [subCard, setSubCard] = useState(null);
   const p = d.data;
   if (d.loading && !p) return <Screen><Loading /></Screen>;
   if (d.error) return <Screen><ErrorBox error={d.error} onRetry={d.reload} /></Screen>;
@@ -575,10 +586,12 @@ export function CoachProfile({ id }) {
               </View>
               <T size={12} color={c.mute} style={{ marginTop: 4 }}>{[k.duration_min && k.unit !== 'hour' ? `${k.duration_min} min` : null, k.audience !== 'individual' ? `${k.min_participants}${k.max_participants ? `–${k.max_participants}` : '+'} people` : null, k.sessions_included ? `${k.sessions_included} sessions` : null, DELIVERY[k.delivery]].filter(Boolean).join(' · ')}</T>
               {k.description ? <T size={13} style={{ marginTop: 4 }}>{k.description}</T> : null}
+              {k.unit === 'month' && !mine ? <Btn small title={t('coachSub.subscribe')} accessibilityLabel={`${t('coachSub.subscribe')} · ${k.title}`} style={{ alignSelf: 'flex-start', marginTop: 8 }} onPress={() => setSubCard(k)} /> : null}
             </Card>
           ))}
         </Section>
       ) : null}
+      {subCard ? <SubscribeSheet card={subCard} coach={p} currency={cur} onClose={() => setSubCard(null)} onDone={() => { setSubCard(null); d.reload(); }} /> : null}
       {p.specialisations.length ? (
         <Section title="Specialisations">
           {p.specialisations.map((z) => <Card key={z.id} pad={12}><T weight="800">{z.emoji} {z.name}</T><T size={12} color={c.mute}>{[z.sport, z.levels.length ? `for ${z.levels.map(nice).join(', ')}` : null, z.years != null ? `${z.years} yrs` : null, z.certification].filter(Boolean).join(' · ')}</T></Card>)}

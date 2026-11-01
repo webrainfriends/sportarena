@@ -9,6 +9,7 @@ export const MODULES = [
   ['Following', 'Following', 'Events, teams & games you follow', 'play'],
   ['RecruiterAccess', 'Recruiter access', 'Who may see your profile', 'play'],
   ['MyDevelopment', 'My development', 'Goals, plans, feedback & reports', 'play'], ['MyPlans', 'Training plans', 'Your plans & sessions', 'play'], ['ToolsHome', 'Tools', 'Scoring sheets & documents', 'play'], ['Pathways', 'Learn & study', 'Rules, courses & colleges', 'play'], ['OpportunityMatches', 'Opportunities for me', 'Teams, trials, study & sponsors that fit you', 'play'],
+  ['Copilots', 'Copilots', 'Role helpers that cite their sources', 'play'],
   ['MyCompliance', 'Compliance', 'Requirements, expiries & safeguarding', 'care'],
   ['Health', 'Health', 'Physio · doctors · fit to play', 'care'], ['Insure', 'My cover', 'What covers me today', 'care'],
   ['Insurance', 'Insurance', 'You · your team · your event', 'care'], ['Legal', 'Legal', 'Verified lawyers & matters', 'care'], ['Family', 'Family', 'Guardians & consents', 'care'],
@@ -50,7 +51,7 @@ export const workspaceOf = (role) => WORKSPACES.find(([r]) => r === role);
 export const PLATFORM_ROLES = ['admin', 'platform_admin'];
 /** The workspaces the swivel's Workspaces tile opens: [role, route, sub, tab?, title?], in catalogue order. */
 export const workspacesFor = (roles = [], desk = false) => WORKSPACES.filter(([r]) => roles.includes(r) || (desk && r === 'venue_manager'));
-/** The picker row title: an explicit title, else "<Role> workspace". */
+/** The picker row title: an explicit title, else the role name followed by "workspace". */
 export const workspaceTitle = (ws, roleLabel) => ws[4] ?? `${roleLabel(ws[0])} workspace`;
 
 // Modules lifted to the front of the wheel for people who hold these roles (first match wins; everyone else: player set).

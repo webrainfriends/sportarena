@@ -142,7 +142,7 @@ export async function exposureFor(c, d, { from, to }) {
   for (const b of bookings) for (const k of EXPECTS[b.kind] ?? []) if (!have.has(k) && !missing.some((m) => m.metric === k && m.inventory === b.name)) {
     missing.push({ metric: k, inventory: b.name, reason: METRIC[k].basis === 'platform_measured' ? 'No placement on the public pages is linked to this booking yet' : 'No figures have been supplied by the provider yet' });
   }
-  return { window: w, metrics: out.map((m) => ({ ...METRIC[m.key], ...m, definition: METRIC[m.key].definition })).map(({ key, label, unit, basis, period_bound, additive, definition, dedupe, value, days_with_data, sources }) => ({ key, label, unit, basis, period_bound, additive, definition, dedupe, value, days_with_data, sources })), missing, not_measured: NOT_MEASURED };
+  return { window: w, metrics: out.map((m) => ({ ...METRIC[m.key], ...m, definition: METRIC[m.key].definition })).map(({ key, label, unit, basis, period_bound, additive, definition, dedupe, value, days_with_data, sources }) => ({ key, label, unit, basis, provenance: provenanceOf(basis), period_bound, additive, definition, dedupe, value, days_with_data, sources })), missing, not_measured: NOT_MEASURED };
 }
 
 /** Derived state of a deliverable; "overdue" is the clock, "accepted" is only ever a reviewer's decision. */
@@ -164,17 +164,19 @@ export async function deliverableHealth(c, sponsorshipId, { to = today() } = {})
 }
 
 /** An assumption-based estimate: every line shows the measured figure, the customer's own rate and the version of the model. Never a fact, never without a model. */
+/** Where a figure comes from, in the words the issue uses: measured by Sportarena, imported from a named provider, or an assumption-based estimate. */
+export const provenanceOf = (basis) => (basis === 'platform_measured' ? 'measured' : basis === 'provider_reported' ? 'imported' : 'estimated');
 export function estimateFrom(version, exposure, spend) {
   const lines = [];
   for (const [key, a] of Object.entries(version.assumptions)) {
     const m = exposure.metrics.find((x) => x.key === key);
     if (!m || !m.value) continue;
-    lines.push({ metric: key, measured_value: m.value, measured_basis: m.basis, rate: `${a.value_cents} minor units per ${a.per === 1 ? 'unit' : `${a.per} units`}`, rate_cents: a.value_cents, rate_per: a.per, value_cents: Math.round((m.value / a.per) * a.value_cents) });
+    lines.push({ metric: key, provenance: 'estimated', measured_value: m.value, measured_basis: m.basis, measured_provenance: provenanceOf(m.basis), rate: `${a.value_cents} minor units per ${a.per === 1 ? 'unit' : `${a.per} units`}`, rate_cents: a.value_cents, rate_per: a.per, value_cents: Math.round((m.value / a.per) * a.value_cents) });
   }
   const total = lines.reduce((s, l) => s + l.value_cents, 0);
   const paid = (spend ?? []).find((t) => t.currency === version.currency);
   return {
-    label: 'ESTIMATE — assumption-based, not a measured fact', kind: 'assumption_based',
+    label: 'ESTIMATE — assumption-based, not a measured fact', kind: 'assumption_based', provenance: 'estimated',
     model: { id: version.model_id, name: version.name, version: version.version, version_id: version.id, currency: version.currency, basis_note: version.basis_note, assumptions: version.assumptions, configured_at: version.created_at },
     lines, estimated_value_cents: total, currency: version.currency,
     return_on_spend: paid && Number(paid.confirmed_cents) > 0 ? { confirmed_spend_cents: Number(paid.confirmed_cents), ratio: Number((total / Number(paid.confirmed_cents)).toFixed(4)), label: 'estimated value ÷ confirmed spend, both in ' + version.currency } : { note: 'No confirmed spend in this currency, so no ratio is shown.' },
