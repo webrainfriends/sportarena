@@ -109,6 +109,32 @@ cap({
 });
 
 cap({
+  name: 'appeal_moderation_decision', method: 'POST', path: '/social/reports/:report_id/appeal', tag: TAG, status: 201,
+  summary: 'Appeal a moderation decision that hid your content or silenced you. It opens a support case (category moderation_appeal) that the platform team answers in the usual way; one appeal per decision, within the reopen window. You will see the case in your cases list, and the content is restored if the appeal is upheld.',
+  input: z.object({ report_id: id, statement: z.string().min(10).max(2000) }),
+  async handler({ user }, i) {
+    return tx(async (c) => {
+      const r = (await c.query("SELECT id, actor_id, status, outcome, decided_at FROM social_reports WHERE id=$1 FOR UPDATE", [i.report_id])).rows[0];
+      if (!r || r.actor_id !== user.id) throw notFound('Decision');
+      if (r.status !== 'actioned') throw conflict('There is nothing to appeal on this report');
+      if (Date.now() - new Date(r.decided_at).getTime() > REOPEN_WINDOW_DAYS * 864e5) throw conflict(`Appeals must be made within ${REOPEN_WINDOW_DAYS} days of the decision`);
+      if ((await c.query('SELECT 1 FROM moderation_appeals WHERE report_id=$1 AND appellant_id=$2', [r.id, user.id])).rowCount) throw conflict('You have already appealed this decision');
+      const due = slaDue('normal');
+      const row = (await c.query(
+        `INSERT INTO cases(kind, category, priority, subject, requester_id, contact_channel, details, routed_to, first_response_due, resolution_due) VALUES ('support','moderation_appeal','normal',$1,$2,'in_app','{}','platform',$3,$4)
+         RETURNING id, case_no, kind, category, priority, status, subject, first_response_due, resolution_due, created_at`,
+        ['Appeal of a moderation decision', user.id, due.first, due.resolution])).rows[0];
+      await c.query('INSERT INTO moderation_appeals(report_id, appellant_id, case_id) VALUES ($1,$2,$3)', [r.id, user.id, row.id]);
+      await addMessage(c, row.id, user.id, 'public', i.statement);
+      await logEvent(c, row.id, user.id, 'open', null, 'open', null, { data: { report_id: r.id, outcome: r.outcome } });
+      for (const a of await adminIds(c)) if (a !== user.id) await tell(c, a, row, `New appeal #${row.case_no}`, 'Moderation decision · see /social/reports/' + r.id);
+      await audit(c, user.id, 'appeal_moderation_decision', 'social_reports', r.id);
+      return { ...row, report_id: r.id };
+    });
+  },
+});
+
+cap({
   name: 'list_my_cases', method: 'GET', path: '/me/cases', tag: TAG,
   summary: 'Your support tickets and disputes, newest first, with status and response targets.',
   input: z.object({ kind: z.enum(KINDS).optional(), status: z.enum(['open', 'in_progress', 'awaiting_user', 'escalated', 'resolved', 'withdrawn', 'active']).optional(), ...page }),

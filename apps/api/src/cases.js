@@ -8,7 +8,7 @@ import { encrypt } from './crypto.js';
 import { isAdmin } from './helpers.js';
 
 export const CATEGORIES = {
-  support: ['account', 'bookings', 'payments', 'events', 'health', 'insurance', 'sponsorship', 'marketplace_report', 'technical', 'other'],
+  support: ['account', 'bookings', 'payments', 'events', 'health', 'insurance', 'sponsorship', 'marketplace_report', 'moderation_appeal', 'technical', 'other'],
   dispute: ['booking_charge', 'refund', 'payment_transfer', 'provider_payment', 'game_data', 'sponsorship', 'service_delivery', 'other'],
 };
 export const PRIORITIES = ['low', 'normal', 'high', 'urgent'];
