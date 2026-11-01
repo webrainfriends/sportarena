@@ -7,7 +7,7 @@ import { useNav } from '../nav';
 import { Btn, Card, Empty, ErrorBox, Field, H1, Loading, Row, Screen, Seg, Section, Sheet, T, Tag } from '../ui';
 import { PaySheet } from '../PaySheet';
 import { MyPlans } from './plans';
-import { MyCoachSubscriptions } from './coach-subscriptions';
+import { MyCoachPackages, MyCoachSubscriptions } from './coach-subscriptions';
 import { c } from '../theme';
 import { moneyIn } from '../vtime';
 import { locale } from '../locale';
@@ -92,6 +92,7 @@ export function Wallet() {
 
       <MyPlans />
       <MyCoachSubscriptions />
+      <MyCoachPackages />
 
       <Section title="Rewards" color={c.sun} action={rewards.data?.length ? 'All rewards' : undefined} onAction={() => push('Rewards')}>
         {rewards.data?.length ? rewards.data.slice(0, 3).map((p) => (

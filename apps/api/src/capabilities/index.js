@@ -110,6 +110,7 @@ import './coach-market.js';
 import './coach-business.js';
 import './coach-classes.js';
 import './coach-subscriptions.js';
+import './coach-packages.js';
 import './venue-sessions.js';
 import './venue-facility.js';
 import './venue-coaches.js';

@@ -20,6 +20,7 @@ import { venueText } from '../session-links.js';
 import { coachSessionDone } from '../rewards/activity.js';
 import { restoreForPurpose } from '../rewards/redeem.js';
 import { redeemSubscriptionSession, restoreSubscriptionSession } from '../coach-subscriptions.js';
+import { redeemCoachPackage } from '../coach-packages.js';
 
 const esc = (x) => (x ? x.replace(/[%_\\]/g, '\\$&') : null);
 
@@ -123,6 +124,17 @@ export async function placeHire(user, i, opts = {}) {
           if (r.error === 'notFound') throw notFound('Subscription');
           if (r.error) throw conflict('No included sessions are left this month. Book and pay for this session instead.', { code: 'subscription_empty' });
           hire = h;
+        } else if (i.package_id) {
+          // a session of a prepaid package covers the booking: no payment now, and the session comes back if the hire is cancelled or expires (coach-packages.js)
+          if (audience !== 'individual') throw badRequest('Package sessions are for individual coaching');
+          const h = (await c.query(insertSql, args(true))).rows[0];
+          const r = await redeemCoachPackage(c, { packageId: i.package_id, hirerId: user.id, coachId: i.coach_id, athleteId, sportId: sport.id, startsAt: i.starts_at, hireId: h.id });
+          if (r.error === 'notFound') throw notFound('Package');
+          if (r.error === 'sport') throw badRequest('That package is for a different sport');
+          if (r.error === 'expired' || r.error === 'late') throw conflict(r.error === 'late' ? 'That time is after the package expires. Pick an earlier time.' : 'That package has expired', { code: 'package_expired' });
+          if (r.error === 'inactive') throw conflict('That package is not active', { code: 'package_inactive' });
+          if (r.error) throw conflict('No sessions are left in that package. Book and pay for this session instead.', { code: 'package_empty' });
+          hire = h;
         } else hire = await one(insertSql, args(false));
       } catch (e) { throw mapIntroViolation(e); }
       return { hire };
@@ -142,7 +154,8 @@ cap({
     rate_card_id: id.optional(), participants: z.number().int().min(1).max(500).default(1), team_id: id.optional(), event_id: id.optional(),
     athlete_id: id.optional().describe('book for a young person you are a verified guardian of; an intro offer counts against them, not you'),
     subscription_id: id.optional().describe('use one of the included sessions of your monthly subscription with this coach instead of paying'),
-  }),
+    package_id: id.optional().describe('spend one session of a prepaid package you bought from this coach (see my_coach_packages) instead of paying; cannot be combined with subscription_id'),
+  }).refine((v) => !(v.package_id && v.subscription_id), { message: 'Use either a package or a subscription, not both' }),
   handler: ({ user }, i) => placeHire(user, i),
 });
 
