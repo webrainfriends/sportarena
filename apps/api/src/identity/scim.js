@@ -73,7 +73,7 @@ async function syncMember(c, conn, su) {
   const mappings = (await c.query('SELECT group_value, effect, org_role FROM org_sso_group_mappings WHERE connection_id=$1 AND removed_at IS NULL', [conn.id])).rows;
   const res = resolveRole({ groups, mappings, ceiling: conn.allowed_roles, fallback: conn.default_role });
   const m = await applyMembership(c, conn, su.user_id, res, 'scim');
-  if (!m.role && !m.kept) await deprovisionMember(c, { orgId: conn.organisation_id, userId: su.user_id, connectionId: conn.id, reason: `scim_${res.reason}` });
+  if (!m.role && !m.kept) await deprovisionMember(c, { orgId: conn.organisation_id, userId: su.user_id, connectionId: conn.id, reason: `scim_${m.reason ?? res.reason}` });
 }
 
 async function setMembers(c, conn, group, ids) {

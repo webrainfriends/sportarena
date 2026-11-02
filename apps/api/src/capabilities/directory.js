@@ -8,7 +8,7 @@ import { notFound } from '../errors.js';
 
 const TAG = 'Academy';
 const LIVE = `FROM organisations o JOIN academy_profiles ap ON ap.organisation_id=o.id AND ap.listed
-  WHERE o.status='active' AND EXISTS (SELECT 1 FROM academy_programmes p WHERE p.organisation_id=o.id AND p.status='published' AND p.public)`;
+  WHERE o.status='active' AND o.approval_status='approved' AND EXISTS (SELECT 1 FROM academy_programmes p WHERE p.organisation_id=o.id AND p.status='published' AND p.public)`;
 
 cap({
   name: 'search_academies', method: 'GET', path: '/academies', tag: TAG, auth: 'public',

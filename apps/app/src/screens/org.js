@@ -29,6 +29,7 @@ import { FederationLinks } from './federation-club';
 import { OrgIdentity } from './org-identity';
 import { CommandCentre } from './org-command-centre';
 import { ComplianceWorkspace } from './compliance';
+import { PlanBanner, PlanCard } from './org-plan';
 
 const KINDS = ORG_KINDS;
 const ROLE_LABEL = { owner: 'Owner', admin: 'Admin', coach: 'Coach', staff: 'Staff', finance: 'Finance', manager: 'Sponsor manager', evaluator: 'Evaluator', legal: 'Legal', approver: 'Approver', auditor: 'Auditor' };
@@ -107,6 +108,7 @@ export function Org({ id, tab: first = 'overview', focus: firstFocus = null }) {
         <H1 color="#fff" style={{ fontSize: 28 }}>{o.name}</H1>
         <T color="#fff" weight="800">{KINDS.find(([k]) => k === o.kind)?.[1]}{o.city ? ` · ${o.city}` : ''} · you are {ROLE_LABEL[role].toLowerCase()}</T>
       </GradCard>
+      {STAFF.includes(role) || role === 'finance' ? <PlanBanner o={o} /> : null}
       {archived ? <View style={{ marginTop: 10 }}><Empty emoji="🗄️" title="This organisation is archived" sub="Everything is kept and readable. Ask an owner to restore it to make changes." /></View> : null}
       <View style={{ marginTop: 10 }}><Seg options={tabs.map(([value, label]) => ({ value, label }))} value={tab} onChange={setTab} color={c.violet} /></View>
       {tab === 'overview' ? <Overview {...P} /> : tab === 'cohorts' ? <Cohorts {...P} /> : tab === 'people' ? <People {...P} /> : tab === 'admissions' ? <Admissions {...P} /> : tab === 'academy' ? <AcademyDesk key={JSON.stringify(focus)} {...P} focus={focus} /> : tab === 'collections' ? <Collections target={{ organisation_id: o.id }} archived={archived} /> : tab === 'rewards' ? <LoyaltyConsole ownerKind="organisation" ownerId={o.id} /> : tab === 'sponsor' ? <SponsorTab {...P} /> : tab === 'agreements' ? <Agreements {...P} /> : tab === 'comms' ? <Communications organisationId={o.id} organisationName={o.name} archived={archived} /> : tab === 'compliance' ? <ComplianceWorkspace scope={{ kind: 'organisation', id: o.id }} own={{ subject: { kind: 'organisation', id: o.id }, title: `${o.name}: our own requirements` }} /> : tab === 'signin' ? <OrgIdentity {...P} /> : <Assets {...P} />}
@@ -130,6 +132,7 @@ function Overview({ o, d, role, archived, reload, toast, go }) {
   return (
     <>
       <View style={{ marginTop: 10, alignItems: 'flex-start' }}><Btn small title="360° view" color={c.paper} ink={c.ink} onPress={() => push('Organisation360', { id: o.id })} accessibilityLabel="Open the 360 view" /></View>
+      {STAFF.includes(role) || role === 'finance' ? <PlanCard o={o} archived={archived} /> : null}
       {['owner', 'admin', 'coach', 'finance'].includes(role) ? <CommandCentre o={o} role={role} archived={archived} go={go} toast={toast} reload={reload} /> : null}
       {STAFF.includes(role) && (o.legal_name || o.registration_no || o.tax_id || o.contact_email || o.contact_phone || o.website || o.description || o.founded_on) ? (
         <Section title="Profile" color={c.violet}>

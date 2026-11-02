@@ -3,6 +3,7 @@
 import { createHash, randomBytes } from 'node:crypto';
 import { one, many, query, tx } from '../db.js';
 import { AppError, badRequest, conflict, notFound } from '../errors.js';
+import { approvalsOn } from '../platform.js';
 
 export const SUBJECT_TYPES = ['user', 'organisation', 'team', 'venue', 'event'];
 const MAX_DEPTH = 5;
@@ -218,14 +219,18 @@ export async function requireEventTools(user, ev, opts = {}) {
 // ------------------------------------------------------------------ usage
 const GAUGES = {
   staff_seats: {
-    organisation: "SELECT count(*)::int AS n FROM organisation_members WHERE organisation_id = $1 AND status = 'active'",
+    // everyone tagged to the umbrella organisation or any of its academies, once each (an invitation reserves the seat)
+    organisation: `SELECT count(DISTINCT user_id)::int AS n FROM organisation_members WHERE status IN ('invited','active')
+                    AND organisation_id IN (SELECT id FROM organisations WHERE id = $1 OR parent_organisation_id = $1)`,
     venue: 'SELECT count(*)::int AS n FROM venue_staff WHERE venue_id = $1 AND removed_at IS NULL',
   },
-  teams: { organisation: 'SELECT count(*)::int AS n FROM teams WHERE organisation_id = $1', user: 'SELECT count(*)::int AS n FROM teams WHERE owner_id = $1' },
+  teams: { organisation: `SELECT count(*)::int AS n FROM teams WHERE archived_at IS NULL AND kind = 'master'
+                           AND organisation_id IN (SELECT id FROM organisations WHERE id = $1 OR parent_organisation_id = $1)`, user: 'SELECT count(*)::int AS n FROM teams WHERE owner_id = $1' },
   active_athletes: {
     organisation: "SELECT count(DISTINCT m.user_id)::int AS n FROM team_members m JOIN teams t ON t.id = m.team_id WHERE t.organisation_id = $1 AND m.status = 'active'",
     team: "SELECT count(DISTINCT user_id)::int AS n FROM team_members WHERE team_id = $1 AND status = 'active'",
   },
+  academies: { organisation: "SELECT count(*)::int AS n FROM organisations WHERE parent_organisation_id = $1 AND status = 'active' AND approval_status IN ('pending','approved')" },
   locations: { user: 'SELECT count(*)::int AS n FROM venues WHERE owner_id = $1' },
 };
 
@@ -290,6 +295,39 @@ export async function assertCapacity(subjectType, subjectId, key, { delta = 1, a
   const over = d.limit != null && used + delta > d.limit;
   if (over && d.behaviour === 'hard') throw limitError(key, used, d.limit);
   return { key, governed: true, allowed: true, used, limit: d.limit, over_limit: over, warning: d.limit != null && (over || used + delta >= (d.limit * d.warn_at_pct) / 100) };
+}
+
+const ORG_KEY_LABEL = { academies: 'academies', teams: 'teams', staff_seats: 'staff seats' };
+
+/** The umbrella organisation that holds the plan: a child academy is covered by its parent, anything else by itself. */
+export async function orgRoot(orgId, c) {
+  const r = await (c ?? { query }).query('SELECT coalesce(parent_organisation_id, id) AS root FROM organisations WHERE id = $1', [orgId]);
+  const root = r.rows[0]?.root;
+  if (!root) throw notFound('Organisation');
+  return root;
+}
+
+/**
+ * Plan check for what an organisation adds (an academy, a team, a person on its staff). It is resolved on the umbrella organisation and counted
+ * across it and all its academies. Where approvals are on (always in production) an organisation whose plan does not define the key is
+ * refused rather than treated as unlimited; in development and tests an undefined key stays open, as for every other module.
+ * Staff seats are per person: someone already tagged anywhere in the tree adds nothing (pass `userId`).
+ */
+export async function assertOrgCapacity(orgId, key, { delta = 1, userId = null, c } = {}) {
+  const root = await orgRoot(orgId, c);
+  if (!approvalsOn() && !(await isGoverned(key))) return { key, governed: false, allowed: true };
+  const label = ORG_KEY_LABEL[key] ?? key;
+  const d = decide(await resolveEntitlements('organisation', root), key);
+  if (!d.allowed) throw new AppError(402, 'not_entitled', `The plan of this organisation does not include ${label}. Choose a plan to add more.`, { key, organisation_id: root });
+  let add = delta;
+  if (key === 'staff_seats' && userId && add > 0) {
+    const held = await (c ?? { query }).query("SELECT 1 FROM organisation_members WHERE user_id = $2 AND status IN ('invited','active') AND organisation_id IN (SELECT id FROM organisations WHERE id = $1 OR parent_organisation_id = $1)", [root, userId]);
+    if (held.rowCount) add = 0;
+  }
+  const used = await liveCount('organisation', root, key);
+  const over = d.limit != null && used + add > d.limit;
+  if (over && d.behaviour === 'hard') throw new AppError(402, 'limit_reached', `Your plan allows ${d.limit} ${label} and ${used} are in use. Upgrade the plan to add more.`, { key, used, limit: d.limit, organisation_id: root });
+  return { key, governed: true, allowed: true, used, limit: d.limit, over_limit: over, warning: d.limit != null && (over || used + add >= (d.limit * d.warn_at_pct) / 100) };
 }
 
 /** Everything a subject has used: counters for the current period plus live gauges, next to the limits that apply. */

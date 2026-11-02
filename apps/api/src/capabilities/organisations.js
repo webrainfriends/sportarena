@@ -13,7 +13,10 @@ import { audit, isAdmin, PUBLIC_USER } from '../helpers.js';
 import { blindIndex } from '../crypto.js';
 import { csvToObjects, toCsv } from '../csv.js';
 import { notify } from '../notify.js';
-import { orgFor, orgRole, lockOrg } from '../org-access.js';
+import { orgFor, orgRole, lockOrg, requireApproved } from '../org-access.js';
+import { assertOrgCapacity } from '../commercial/engine.js';
+import { approvalsOn, isPlatform } from '../platform.js';
+import { isSupportedCurrency } from '../currency.js';
 import { endDependentAccess } from '../identity/offboard.js';
 import { SPONSOR_ROLES } from '../sponsor-access.js';
 import { syncOrgSponsorTeams } from '../sponsor-team-sync.js';
@@ -62,9 +65,14 @@ const ADDRESS = z.object({
   country: z.union([z.string().regex(/^[A-Z]{2}$/, 'two-letter country code'), z.literal('')]).optional(),
 }).describe('registered / main address; city or area is enough, the rest is optional');
 const PROFILE_KEYS = Object.keys(PROFILE);
+const ACADEMY_SETUP = z.object({
+  sports: z.array(z.string().min(2).max(40)).max(20).optional(), focus: z.enum(['recreational', 'development', 'elite', 'mixed']).optional(),
+  age_min: z.number().int().min(0).max(99).optional(), age_max: z.number().int().min(0).max(99).optional(), timezone: z.string().max(60).optional(),
+  currency: z.string().length(3).transform((v) => v.toUpperCase()).refine(isSupportedCurrency, 'Unsupported currency').optional(),
+});
 const blank = (v) => (v === '' || v === undefined ? null : v);
 const PUBLIC_ORG = 'id, name, kind, city, status';
-const PRIVATE_ORG = `${PUBLIC_ORG}, legal_name, registration_no, tax_id, website, contact_email, contact_phone, description, founded_on, open_to_sponsors`;
+const PRIVATE_ORG = `${PUBLIC_ORG}, legal_name, registration_no, tax_id, website, contact_email, contact_phone, description, founded_on, open_to_sponsors, parent_organisation_id, approval_status, approval_note`;
 
 cap({
   name: 'create_organisation', method: 'POST', path: '/organisations', tag: 'Organisations', status: 201,
@@ -72,17 +80,38 @@ cap({
   input: z.object({
     name: z.string().min(2).max(80), kind: z.enum(ORG_KINDS).default('club'), city: z.string().max(80).optional(), ...PROFILE,
     address: ADDRESS.optional(), team_ids: z.array(id).max(50).optional().describe('teams you own to bring into the organisation'),
+    parent_organisation_id: id.optional().describe('create this academy under an umbrella organisation you run (owner/admin); it then counts against that organisation\'s plan (academies, teams, staff seats)'),
+    academy: ACADEMY_SETUP.optional().describe('academy details collected at onboarding (sports, focus, ages, currency, timezone); saved as the academy profile'),
   }),
   handler: ({ user }, i) => tx(async (c) => {
     const a = i.address && Object.values(i.address).some(Boolean) ? i.address : null;
     const city = i.city ?? a?.locality ?? null;
+    if (i.parent_organisation_id) {
+      if (i.kind !== 'academy') throw badRequest('Only an academy can be created under an organisation');
+      const { org: parent } = await orgFor(user, i.parent_organisation_id, STAFF, { write: true, c });
+      if (parent.parent_organisation_id) throw badRequest('Academies are created under the umbrella organisation, not under another academy');
+      await lockOrg(c, parent.id);
+      await assertOrgCapacity(parent.id, 'academies', { c }); // the plan decides how many academies an organisation may run
+    }
+    if (i.academy && i.kind !== 'academy') throw badRequest('Academy details only apply to an academy');
+    // every new organisation or academy is reviewed by the platform team before it can operate (approvals are off only in development and tests)
+    const review = approvalsOn() && !isPlatform(user);
     const org = (await c.query(
-      `INSERT INTO organisations(name, kind, city, created_by, ${PROFILE_KEYS.join(', ')}) VALUES ($1,$2,$3,$4,${PROFILE_KEYS.map((_, n) => `$${n + 5}`).join(',')}) RETURNING *`,
-      [i.name, i.kind, city, user.id, ...PROFILE_KEYS.map((k) => blank(i[k]))])).rows[0];
+      `INSERT INTO organisations(name, kind, city, created_by, ${PROFILE_KEYS.join(', ')}, parent_organisation_id, approval_status, approval_requested_at)
+       VALUES ($1,$2,$3,$4,${PROFILE_KEYS.map((_, n) => `$${n + 5}`).join(',')},$${PROFILE_KEYS.length + 5},$${PROFILE_KEYS.length + 6},CASE WHEN $${PROFILE_KEYS.length + 6}='pending' THEN now() END) RETURNING *`,
+      [i.name, i.kind, city, user.id, ...PROFILE_KEYS.map((k) => blank(i[k])), i.parent_organisation_id ?? null, review ? 'pending' : 'approved'])).rows[0];
+    if (i.parent_organisation_id) await c.query("INSERT INTO commercial_subject_links(child_type, child_id, parent_type, parent_id, created_by) VALUES ('organisation',$1,'organisation',$2,$3) ON CONFLICT DO NOTHING", [org.id, i.parent_organisation_id, user.id]);
+    if (i.academy) { // collected at onboarding; without it the profile is created on its first save, as before
+      const ac = i.academy;
+      await c.query(`INSERT INTO academy_profiles(organisation_id, legal_name, sports, focus, age_min, age_max, timezone, currency) VALUES ($1,$2,$3,coalesce($4,'mixed'),$5,$6,$7,coalesce($8,'GBP')) ON CONFLICT (organisation_id) DO NOTHING`,
+        [org.id, blank(i.legal_name), ac.sports ?? [], ac.focus ?? null, ac.age_min ?? null, ac.age_max ?? null, ac.timezone ?? null, ac.currency ?? null]);
+    }
     await c.query("INSERT INTO organisation_members(organisation_id, user_id, role, status, joined_at, invited_by) VALUES ($1,$2,'owner','active',now(),$2)", [org.id, user.id]);
     if (a) await c.query("INSERT INTO addresses(owner_kind, owner_id, kind, label, line1, line2, locality, area, region, postal_code, country, is_default, context_kind, context_id, created_by) VALUES ('organisation',$1,'billing','Registered address',$2,$3,$4,$5,$6,$7,$8,true,'organisation',$1,$9)",
       [org.id, blank(a.line1), blank(a.line2), blank(a.locality), blank(a.area), blank(a.region), blank(a.postal_code), blank(a.country), user.id]);
-    for (const tid of new Set(i.team_ids ?? [])) {
+    const teamIds = new Set(i.team_ids ?? []);
+    if (teamIds.size) await assertOrgCapacity(org.id, 'teams', { delta: teamIds.size, c });
+    for (const tid of teamIds) {
       const t = (await c.query('SELECT owner_id, organisation_id FROM teams WHERE id=$1 FOR UPDATE', [tid])).rows[0];
       if (!t) throw notFound('Team');
       if (!isAdmin(user) && t.owner_id !== user.id) throw forbidden('Only the team owner can bring it into an organisation');
@@ -91,6 +120,9 @@ cap({
       await audit(c, user.id, 'link_org_asset', 'teams', tid);
     }
     await audit(c, user.id, 'create_organisation', 'organisations', org.id);
+    if (org.approval_status === 'pending') {
+      for (const a of (await c.query("SELECT id FROM users WHERE 'platform_admin' = ANY(roles)")).rows) await notify(c, a.id, { kind: 'org_review', title: 'Organisation waiting for review', body: `${org.name} (${org.kind}) needs approval.`, data: { organisation_id: org.id } });
+    }
     return { ...org, my_role: 'owner' };
   }),
 });
@@ -100,7 +132,7 @@ cap({
   summary: 'Workspaces you belong to, including pending invitations and archived ones (kept for history).',
   input: z.object({ ...page }),
   handler: ({ user }, i) => many(
-    `SELECT o.id, o.name, o.kind, o.city, o.status, m.role AS my_role, m.status AS my_status
+    `SELECT o.id, o.name, o.kind, o.city, o.status, o.parent_organisation_id, o.approval_status, m.role AS my_role, m.status AS my_status
        FROM organisation_members m JOIN organisations o ON o.id=m.organisation_id
       WHERE m.user_id=$1 AND m.status IN ('active','invited') ORDER BY (m.status='invited') DESC, o.name, o.id LIMIT $2 OFFSET $3`,
     [user.id, i.limit, i.offset],
@@ -116,7 +148,7 @@ cap({
     if (!o) throw notFound('Organisation');
     const my_role = user ? await orgRole(user, i.id) : null;
     if (STAFF.includes(my_role)) return { ...o, my_role };
-    const { legal_name, registration_no, tax_id, website, contact_email, contact_phone, description, founded_on, open_to_sponsors, ...pub } = o;
+    const { legal_name, registration_no, tax_id, website, contact_email, contact_phone, description, founded_on, open_to_sponsors, parent_organisation_id, approval_status, approval_note, ...pub } = o;
     return { ...pub, my_role, ...(my_role ? { description, website } : {}) };
   },
 });
@@ -125,10 +157,14 @@ cap({
   name: 'update_organisation', method: 'PATCH', path: '/organisations/:id', tag: 'Organisations', summary: 'Edit the organisation (owner/admin): name, type, city, legal identity, contact details, and whether sponsors may find it. Send an empty string to clear a detail.',
   input: z.object({ id, name: z.string().min(2).max(80).optional(), kind: z.enum(ORG_KINDS).optional(), city: z.string().max(80).optional(), ...PROFILE, open_to_sponsors: z.boolean().optional().describe('let sponsors find this organisation and its groups by name and send offers (default off); no roster or member data is ever shown') }),
   async handler({ user }, i) {
-    await orgFor(user, i.id, STAFF, { write: true });
+    const { org } = await orgFor(user, i.id, STAFF, { write: true, allowPending: true }); // the profile can be completed while the platform reviews it
     const keys = ['name', 'kind', 'city', ...PROFILE_KEYS, 'open_to_sponsors'].filter((k) => i[k] !== undefined);
     if (!keys.length) throw badRequest('Nothing to update');
-    return one(`UPDATE organisations SET ${keys.map((k, n) => `${k}=$${n + 2}`).join(', ')} WHERE id=$1 RETURNING *`, [i.id, ...keys.map((k) => (PROFILE_KEYS.includes(k) || k === 'city' ? blank(i[k]) : i[k]))]);
+    if (i.kind && i.kind !== org.kind && (org.parent_organisation_id || org.kind === 'academy')) throw conflict('An academy cannot change its type');
+    if (i.open_to_sponsors) await requireApproved(org);
+    const row = await one(`UPDATE organisations SET ${keys.map((k, n) => `${k}=$${n + 2}`).join(', ')} WHERE id=$1 RETURNING *`, [i.id, ...keys.map((k) => (PROFILE_KEYS.includes(k) || k === 'city' ? blank(i[k]) : i[k]))]);
+    await audit(null, user.id, 'update_organisation', 'organisations', i.id);
+    return row;
   },
 });
 
@@ -149,7 +185,8 @@ cap({
   name: 'restore_organisation', method: 'POST', path: '/organisations/:id/restore', tag: 'Organisations', summary: 'Re-open an archived workspace (owner).',
   input: z.object({ id }),
   handler: ({ user }, i) => tx(async (c) => {
-    await orgFor(user, i.id, ['owner'], { c });
+    const { org: before } = await orgFor(user, i.id, ['owner'], { c });
+    if (before.status === 'archived' && before.parent_organisation_id) await assertOrgCapacity(before.parent_organisation_id, 'academies', { c });
     const o = (await c.query("UPDATE organisations SET status='active', archived_at=NULL WHERE id=$1 AND status='archived' RETURNING *", [i.id])).rows[0];
     if (!o) throw conflict('This organisation is not archived');
     await audit(c, user.id, 'restore_organisation', 'organisations', i.id);
@@ -168,6 +205,7 @@ cap({
     if (i.role === 'owner' && mine !== 'owner') throw forbidden('Only an owner can invite another owner');
     const u = await person(i.person);
     if (!u) throw notFound('Person (they need a Gotmygame account first)');
+    await assertOrgCapacity(i.id, 'staff_seats', { userId: u.id }); // everyone tagged to the organisation (any role) is covered by its plan
     const m = await one("INSERT INTO organisation_members(organisation_id, user_id, role, invited_by, department_id) VALUES ($1,$2,$3,$4,$5) RETURNING id, organisation_id, user_id, role, status, invited_at, department_id", [i.id, u.id, i.role, user.id, i.department_id ?? null]); // live-membership unique index -> 409 on repeat
     await notify(null, u.id, { kind: 'org_invite', title: `Invitation to ${org.name}`, body: `You have been invited to join ${org.name} as ${i.role}.`, data: { organisation_id: i.id } });
     await audit(null, user.id, 'invite_org_member', 'organisations', i.id);
@@ -182,11 +220,13 @@ cap({
     await lockOrg(c, i.id);
     const org = (await c.query('SELECT status FROM organisations WHERE id=$1', [i.id])).rows[0];
     if (org?.status === 'archived') throw conflict('This organisation is archived');
+    if (i.accept) await assertOrgCapacity(i.id, 'staff_seats', { delta: 0, c }); // the invitation held the seat; refuse only if the plan has since shrunk below usage
     const m = (await c.query(
       "UPDATE organisation_members SET status=$3, joined_at=CASE WHEN $3='active' THEN now() END, left_at=CASE WHEN $3='declined' THEN now() END WHERE organisation_id=$1 AND user_id=$2 AND status='invited' RETURNING id, organisation_id, role, status",
       [i.id, user.id, i.accept ? 'active' : 'declined'],
     )).rows[0];
     if (!m) throw notFound('Invitation');
+    await audit(c, user.id, i.accept ? 'accept_org_invite' : 'decline_org_invite', 'organisations', i.id);
     await syncOrgSponsorTeams(c, i.id); // sponsor staff join the linked sponsor team the moment they accept
     return m;
   }),
@@ -288,6 +328,7 @@ cap({
     if (!row) throw notFound(i.kind);
     if (!isAdmin(user) && row.owner_id !== user.id) throw forbidden(`Only the ${i.kind} owner can bring it into a workspace`);
     if (row.organisation_id && row.organisation_id !== i.id) throw conflict(`This ${i.kind} already belongs to another organisation`);
+    if (i.kind === 'team' && row.organisation_id !== i.id) await assertOrgCapacity(i.id, 'teams', { c });
     await c.query(`UPDATE ${a.table} SET organisation_id=$2 WHERE id=$1`, [i.asset_id, i.id]);
     await audit(c, user.id, 'link_org_asset', a.table, i.asset_id);
     return { ok: true, kind: i.kind, asset_id: i.asset_id, organisation_id: i.id };

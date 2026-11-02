@@ -10,13 +10,15 @@ import { cap, id, page } from '../registry.js';
 import { one, many, tx } from '../db.js';
 import { badRequest, conflict, notFound } from '../errors.js';
 import { mustBePlatformAdmin } from '../platform.js';
-import { hasOrgGrant } from '../org-access.js';
+import { hasOrgGrant, orgFor } from '../org-access.js';
+import { notify } from '../notify.js';
+import { audit } from '../helpers.js';
 import { canManage } from '../booking/engine.js';
 import { canManageTeam } from './teams.js';
 import { isOrganiserOf } from '../media-rights.js';
 import {
   SUBJECT_TYPES, resolveEntitlements, decide, consume, usageSummary, createQuote, subscribe, activateSubscription, cancelSubscription,
-  scheduleChange, applyDueChanges, isGoverned, applyPromotion, offerAppliesTo, versionCode, subscribeBundle, priceVersion, selectVersion, commercialAudit,
+  scheduleChange, applyDueChanges, orgRoot, isGoverned, applyPromotion, offerAppliesTo, versionCode, subscribeBundle, priceVersion, selectVersion, commercialAudit,
 } from '../commercial/engine.js';
 import {
   catalogueTree, createProduct, createPlan, setPromotionPricePoints, createBundle, createBundleVersion, publishBundleVersion, retireBundleVersion, bundleTree, bundleInput, bundleVersionInput, createVersionDraft, updateVersionDraft, publishVersion, retireVersion, createPromotion, importCatalogue,
@@ -33,7 +35,7 @@ const adminOnly = (user) => mustBePlatformAdmin(user);
 async function mustManageSubject(user, type, subjectId) {
   let ok = false;
   if (type === 'user') ok = subjectId === user.id;
-  else if (type === 'organisation') ok = !!(await one('SELECT 1 AS x FROM organisations WHERE id=$1', [subjectId])) && await hasOrgGrant(user, subjectId, ['owner', 'admin', 'finance']);
+  else if (type === 'organisation') ok = !!(await one('SELECT 1 AS x FROM organisations WHERE id=$1', [subjectId])) && await hasOrgGrant(user, subjectId, ['owner', 'admin', 'finance'], undefined, { allowPending: true }); // a plan can be chosen while the platform reviews the organisation
   else if (type === 'team') { const t = await one('SELECT * FROM teams WHERE id=$1', [subjectId]); ok = !!t && await canManageTeam(user, t); }
   else if (type === 'venue') ok = await canManage(user, subjectId);
   else if (type === 'event') { const ev = await one('SELECT * FROM events WHERE id=$1', [subjectId]); ok = !!ev && await isOrganiserOf(user, ev); }
@@ -510,5 +512,78 @@ cap({
   async handler({ user }, i) {
     await adminOnly(user);
     return many('SELECT a.*, u.handle AS actor_handle FROM commercial_audit a LEFT JOIN users u ON u.id = a.actor_id ORDER BY a.at DESC, a.id DESC LIMIT $1 OFFSET $2', [i.limit, i.offset]);
+  },
+});
+
+// ------------------------------------------------------------------ organisation plan + platform review
+const ORG_KEYS = ['academies', 'teams', 'staff_seats'];
+
+cap({
+  name: 'get_organisation_plan', method: 'GET', path: '/organisations/:id/plan', tag: TAG,
+  summary: 'The plan that covers this organisation (the umbrella organisation holds it for its academies): approval status, what is used against each limit (academies, teams, staff seats) and the academies under it. Owner, admin or finance.',
+  input: z.object({ id }),
+  async handler({ user }, i) {
+    const { org } = await orgFor(user, i.id, ['owner', 'admin', 'finance']);
+    const root = await orgRoot(org.id);
+    const [usage, resolved, plan, academies] = await Promise.all([
+      usageSummary('organisation', root), resolveEntitlements('organisation', root),
+      one(`SELECT p.key AS plan_key, s.status, s.current_period_end FROM commercial_subscriptions s JOIN commercial_plans p ON p.id=s.plan_id WHERE s.subject_type='organisation' AND s.subject_id=$1 AND s.kind='base' AND s.status IN ('trial','active') ORDER BY s.created_at DESC LIMIT 1`, [root]),
+      many("SELECT id, name, approval_status, status FROM organisations WHERE parent_organisation_id=$1 ORDER BY name, id", [root]),
+    ]);
+    return {
+      organisation_id: org.id, umbrella_organisation_id: root, is_umbrella: root === org.id,
+      approval_status: org.approval_status, approval_note: org.approval_note,
+      plan: plan ?? null, sources: resolved.sources,
+      limits: ORG_KEYS.map((k) => usage.find((u) => u.key === k) ?? { key: k, used: null, limit: null, governed: false }),
+      academies,
+    };
+  },
+});
+
+cap({
+  name: 'commercial_admin_list_org_reviews', method: 'GET', path: '/admin/commercial/organisation-reviews', tag: TAG,
+  summary: 'Platform admin: the review queue of new organisations and academies (pending first), with their kind, umbrella organisation and owner.',
+  input: z.object({ status: z.enum(['pending', 'approved', 'rejected', 'suspended']).default('pending'), ...page }),
+  async handler({ user }, i) {
+    await adminOnly(user);
+    return many(
+      `SELECT o.id, o.name, o.kind, o.city, o.status, o.approval_status, o.approval_note, o.approval_requested_at, o.approval_decided_at, o.created_at,
+              o.legal_name, o.registration_no, o.parent_organisation_id, po.name AS parent_name,
+              (SELECT u.display_name FROM organisation_members m JOIN users u ON u.id=m.user_id WHERE m.organisation_id=o.id AND m.role='owner' AND m.status='active' ORDER BY m.invited_at LIMIT 1) AS owner_name
+         FROM organisations o LEFT JOIN organisations po ON po.id=o.parent_organisation_id
+        WHERE o.approval_status=$1 ORDER BY coalesce(o.approval_requested_at, o.created_at), o.id LIMIT $2 OFFSET $3`, [i.status, i.limit, i.offset]);
+  },
+});
+
+cap({
+  name: 'commercial_admin_decide_org', method: 'POST', path: '/admin/commercial/organisations/:id/decision', tag: TAG,
+  summary: 'Platform admin: approve, reject or suspend an organisation or academy. Nothing is deleted: a rejected or suspended organisation is read-only and leaves public search; approving restores it. The owners are told.',
+  input: z.object({ id, decision: z.enum(['approve', 'reject', 'suspend']), note: z.string().trim().max(500).optional() }),
+  async handler({ user }, i) {
+    await adminOnly(user);
+    if (i.decision !== 'approve' && !i.note) throw badRequest('Say why, so the owner knows what to fix');
+    const status = { approve: 'approved', reject: 'rejected', suspend: 'suspended' }[i.decision];
+    return tx(async (c) => {
+      const o = (await c.query('UPDATE organisations SET approval_status=$2, approval_decided_by=$3, approval_decided_at=now(), approval_note=$4 WHERE id=$1 RETURNING id, name, kind, approval_status, approval_note', [i.id, status, user.id, i.note ?? null])).rows[0];
+      if (!o) throw notFound('Organisation');
+      await audit(c, user.id, `org_${i.decision}`, 'organisations', i.id);
+      await commercialAudit(c, user.id, `org_${i.decision}`, 'organisations', i.id, { note: i.note ?? null });
+      for (const m of (await c.query("SELECT user_id FROM organisation_members WHERE organisation_id=$1 AND role='owner' AND status='active'", [i.id])).rows) {
+        await notify(c, m.user_id, { kind: 'org_review_decision', title: `${o.name}: ${status}`, body: i.note ?? (status === 'approved' ? 'Your organisation is approved. You can now invite people and set up teams and programmes.' : `Your organisation is ${status}.`), data: { organisation_id: i.id, approval_status: status } });
+      }
+      return o;
+    });
+  },
+});
+
+cap({
+  name: 'commercial_admin_enforcement_readiness', method: 'GET', path: '/admin/commercial/enforcement-readiness', tag: TAG,
+  summary: 'Platform admin: which organisation limits (academies, teams, staff seats) are defined in a published plan. An organisation whose plan does not define one is refused when it tries to add more, so an undefined key means creation is blocked.',
+  async handler({ user }) {
+    await adminOnly(user);
+    const rows = await many("SELECT DISTINCT v.key FROM commercial_version_entitlements v JOIN commercial_price_versions pv ON pv.id=v.version_id WHERE pv.status='published' AND v.key = ANY($1)", [ORG_KEYS]);
+    const have = new Set(rows.map((r) => r.key));
+    const def = await one("SELECT key FROM commercial_plans WHERE is_default AND status='active' AND 'organisation' = ANY(eligible_actors) LIMIT 1");
+    return { keys: ORG_KEYS.map((k) => ({ key: k, defined: have.has(k) })), default_organisation_plan: def?.key ?? null };
   },
 });

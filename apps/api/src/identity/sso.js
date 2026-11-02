@@ -7,6 +7,7 @@
 //  * the connection can only create / change / end *its own organisation's* membership, never users.roles or another organisation's rows;
 //  * roles come from explicit group mappings inside the connection's role ceiling; owner, legal and platform roles are never granted;
 //  * a deprovisioned (SCIM-inactive) person is refused here, and nothing about guardians / youth consent is created or changed.
+import { assertOrgCapacity } from '../commercial/engine.js';
 import { randomBytes } from 'node:crypto';
 import { many, one, query, tx } from '../db.js';
 import { blindIndex, decrypt, encrypt, hashPassword, sha256 } from '../crypto.js';
@@ -87,6 +88,8 @@ export async function applyMembership(c, conn, userId, res, source) {
   }
   const last = (await c.query('SELECT status, source FROM organisation_members WHERE organisation_id=$1 AND user_id=$2 ORDER BY invited_at DESC LIMIT 1', [conn.organisation_id, userId])).rows[0];
   if (last?.status === 'left' && last.source === 'manual') return { role: null, reason: 'removed_by_admin' }; // an admin's removal is not undone by a directory
+  try { await assertOrgCapacity(conn.organisation_id, 'staff_seats', { userId, c }); } // a directory cannot seat people beyond the organisation's plan
+  catch (e) { if (e.status !== 402) throw e; return { role: null, reason: 'plan_limit_reached' }; }
   await c.query("INSERT INTO organisation_members(organisation_id, user_id, role, status, joined_at, source, provisioned_connection_id) VALUES ($1,$2,$3,'active', now(), $4, $5)", [conn.organisation_id, userId, res.role, source, conn.id]);
   await logEvent(c, { orgId: conn.organisation_id, connId: conn.id, userId, event: 'membership_granted', detail: { role: res.role, via: source } });
   return { role: res.role };
