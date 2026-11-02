@@ -10,6 +10,7 @@ import { FormSheet } from '../FormSheet';
 import { c } from '../theme';
 import { moneyIn } from '../vtime';
 import { Block, Fact, when } from './academy-ui';
+import { Suppliers } from './academy-suppliers';
 
 const Panel = ({ children }) => <View style={{ backgroundColor: c.paper, borderRadius: 20, padding: 16, gap: 10, borderWidth: 1, borderColor: c.line }}>{children}</View>;
 const REL = [['preferred', 'Preferred'], ['retained', 'Retained'], ['on_call', 'On call'], ['programme_cover', 'Programme cover'], ['event_cover', 'Event cover'], ['referral_partner', 'Referral partner']];
@@ -39,6 +40,7 @@ export function Partners({ o, role, archived, toast }) {
           )) : <Empty emoji="🤝" title="No sponsor agreements" sub="Agreements that target your academy or one of its groups appear here." />}
         </Block>
       </Panel>
+      {role === 'finance' ? null : <Panel><Suppliers o={o} archived={archived} toast={toast} /></Panel>}
       {role === 'finance' ? null : (
         <Panel>
           <Block title="Health network" right={staff && !archived ? <View style={{ flexDirection: 'row', gap: 6 }}><Btn small title="＋ Physio" onPress={() => setAdd('physio')} /><Btn small title="＋ Doctor" color={c.paper} ink={c.ink} onPress={() => setAdd('doctor')} /></View> : null}>
