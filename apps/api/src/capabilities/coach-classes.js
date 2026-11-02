@@ -79,11 +79,11 @@ async function getDetail(classId, user) {
 
 cap({
   name: 'publish_coach_class', method: 'POST', path: '/coach/classes', tag: TAG, auth: COACH, status: 201,
-  summary: 'Coach: publish a dated class from one of your group rate cards with a seat count. Headcount defaults come from the card; the seat price is fixed now from the card (per-person cards charge their price per seat, a flat group price is split across the seats). Needs a venue or an https online link. min_participants is the run/cancel threshold: under it min_cutoff_hours before the start, the class is cancelled and everyone refunded. Your calendar is checked against hires, commitments and other classes. Link a confirmed venue booking with booking_id (book it first); a class never holds a court by itself.',
+  summary: 'Coach: publish a dated class from one of your group rate cards with a seat count. Headcount defaults come from the card; the seat price is fixed now from the card (per-person cards charge their price per seat, a flat group price is split across the seats). Needs a confirmed court booking (booking_id: book the court first, so the slot, price and payment go through venue booking) or an https online link; a venue alone is refused. min_participants is the run/cancel threshold: under it min_cutoff_hours before the start, the class is cancelled and everyone refunded. Your calendar is checked against hires, commitments and other classes. A class never holds a court by itself: if the court booking is cancelled, the class is cancelled with it.',
   input: z.object({
     rate_card_id: id, title: z.string().trim().min(2).max(120).optional(), starts_at: dt, duration_minutes: z.number().int().min(15).max(720).optional(),
     sport: z.string().optional().describe('slug or id; only needed when the rate card has no sport'),
-    venue_id: id.optional(), booking_id: id.optional().describe('your confirmed booking that covers the class; linked, not copied'), online_url: z.string().url().max(500).startsWith('https://').optional(),
+    venue_id: id.optional().describe('optional; taken from the booking, and must match it'), booking_id: id.optional().describe('your confirmed court booking that covers the class; linked, not copied'), online_url: z.string().url().max(500).startsWith('https://').optional(),
     min_participants: z.number().int().min(1).max(500).optional(), max_participants: z.number().int().min(1).max(500).optional(),
     skill_min: level.nullable().optional(), skill_max: level.nullable().optional(),
     audience: z.enum(['adults', 'all_ages', 'youth']).default('adults'), min_age: z.number().int().min(0).max(120).nullable().optional(), max_age: z.number().int().min(0).max(120).nullable().optional(),
@@ -92,12 +92,12 @@ cap({
   }),
   async handler({ user }, i) {
     if (Date.parse(i.starts_at) <= Date.now()) throw badRequest('The class must start in the future');
-    if (!i.venue_id && !i.online_url) throw badRequest('Say where: pick a venue or give an online link', { code: 'place_required' });
+    if (!i.booking_id && !i.online_url) throw badRequest(i.venue_id ? 'A class at a venue needs a confirmed court booking: book the court first, then link it' : 'Say where: link a confirmed court booking or give an online link', { code: i.venue_id ? 'booking_required' : 'place_required' });
     const card = await cardFor(user.id, i.rate_card_id, { audience: 'group' });
     const sport = card.sport_id ? { id: card.sport_id } : i.sport ? await sportBySlugOrId(i.sport) : null;
     if (!sport) throw badRequest('Choose the sport: this rate card has none', { code: 'sport_required' });
     if (i.online_url && card.delivery === 'in_person') throw badRequest('This rate card is for in-person delivery');
-    if (i.venue_id && card.delivery === 'online') throw badRequest('This rate card is for online delivery');
+    if ((i.venue_id || i.booking_id) && card.delivery === 'online') throw badRequest('This rate card is for online delivery');
     const mins = i.duration_minutes ?? card.duration_min ?? 60;
     const max = i.max_participants ?? card.max_participants;
     if (!max) throw badRequest('Give max_participants: the rate card has no limit');
@@ -109,7 +109,8 @@ cap({
     if (!Object.hasOwn(CURRENCIES, currency)) throw badRequest('Unsupported currency');
     const price = seatPrice(card, mins, max);
     return tx(async (c) => {
-      if (i.venue_id && !(await c.query('SELECT 1 FROM venues WHERE id=$1 AND active', [i.venue_id])).rows[0]) throw notFound('Venue');
+      const booking = i.booking_id ? await loadBooking(c, user, i.booking_id) : null;   // the court booked through the normal venue flow is the only way a class gets a venue
+      if (booking && i.venue_id && i.venue_id !== booking.r_venue) throw badRequest('The booking is at a different venue');
       await c.query('SELECT pg_advisory_xact_lock(hashtext($1))', [`coach_calendar:${user.id}`]); // serialise this coach's calendar so two publishes cannot both pass the clash check
       await assertCoachFree(c, user.id, i.starts_at, mins);
       const sportName = (await c.query('SELECT name FROM sports WHERE id=$1', [sport.id])).rows[0].name;
@@ -117,26 +118,43 @@ cap({
         `INSERT INTO coach_classes(coach_id, rate_card_id, sport_id, title, starts_at, duration_min, venue_id, online_url, min_participants, max_participants, price_cents, currency, skill_min, skill_max,
             audience, min_age, max_age, visibility, cancel_before_hours, min_cutoff_hours, payment_window_min, notes)
          VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22) RETURNING *`,
-        [user.id, card.id, sport.id, i.title ?? (card.title.toLowerCase().includes(sportName.toLowerCase()) ? card.title : `${sportName}: ${card.title}`), i.starts_at, mins, i.venue_id ?? null, i.online_url ?? null, min, max, price, currency, i.skill_min ?? null, i.skill_max ?? null,
+        [user.id, card.id, sport.id, i.title ?? (card.title.toLowerCase().includes(sportName.toLowerCase()) ? card.title : `${sportName}: ${card.title}`), i.starts_at, mins, booking?.r_venue ?? null, i.online_url ?? null, min, max, price, currency, i.skill_min ?? null, i.skill_max ?? null,
           i.audience, i.min_age ?? null, i.max_age ?? null, i.visibility, i.cancel_before_hours, i.min_cutoff_hours, i.payment_window_minutes, i.notes ?? null])).rows[0];
-      if (i.booking_id) await linkBooking(c, user, k, i.booking_id);
+      if (booking) await linkBooking(c, user, k, booking);
       return k;
     }).then((k) => getDetail(k.id, user));
   },
 });
 
-/** A venue booking can host a class when it is the coach's own, confirmed, and covers the class time. Many classes may share one line (a group at one court). */
-async function linkBooking(c, user, k, bookingId) {
-  const b = (await c.query('SELECT b.*, rs.id AS reservation_id, r.venue_id AS r_venue FROM bookings b JOIN resources r ON r.id=b.resource_id LEFT JOIN reservations rs ON rs.id=b.reservation_id WHERE b.id=$1', [bookingId])).rows[0];
+/** A court booking can host a class when it is the coach's own, confirmed, at an active venue and has a reservation. Returns it with its venue. */
+async function loadBooking(c, user, bookingId) {
+  const b = (await c.query('SELECT b.*, rs.id AS reservation_id, r.venue_id AS r_venue, v.active AS venue_active FROM bookings b JOIN resources r ON r.id=b.resource_id JOIN venues v ON v.id=r.venue_id LEFT JOIN reservations rs ON rs.id=b.reservation_id WHERE b.id=$1', [bookingId])).rows[0];
   if (!b) throw notFound('Booking');
   if (b.user_id !== user.id && !isAdmin(user)) throw forbidden('That booking is not yours');
   if (b.status !== 'confirmed') throw conflict('That booking is not confirmed', { code: 'booking_not_confirmed' });
-  if (new Date(b.starts_at) > new Date(k.starts_at) || new Date(b.ends_at) < endOf(k)) throw conflict('The booking does not cover the whole class', { code: 'booking_window' });
   if (!b.reservation_id) throw badRequest('That booking has no reservation to link');
-  if (k.venue_id && k.venue_id !== b.r_venue) throw badRequest('The booking is at a different venue');
-  if (!k.venue_id) await c.query('UPDATE coach_classes SET venue_id=$2 WHERE id=$1', [k.id, b.r_venue]);
+  if (!b.venue_active) throw notFound('Venue');
+  return b;
+}
+
+/** The booking must cover the whole class. Many classes may share one line (a group at one court). */
+async function linkBooking(c, user, k, b) {
+  if (new Date(b.starts_at) > new Date(k.starts_at) || new Date(b.ends_at) < endOf(k)) throw conflict('The booking does not cover the whole class', { code: 'booking_window' });
   await c.query('INSERT INTO session_venue_links(reservation_id, booking_id, session_type, session_id, linked_by) VALUES ($1,$2,$3,$4,$5)', [b.reservation_id, b.id, 'coach_class', k.id, user.id]);
 }
+
+cap({
+  name: 'list_coach_class_bookings', method: 'GET', path: '/coach/class-bookings', tag: TAG, auth: COACH,
+  summary: 'Coach: your confirmed, upcoming court bookings that can host a class, with the venue, court and window. Pass starts_at and duration_minutes to see which of them cover that class (covers=true). Book a court through the normal venue booking flow first; only a booking appears here.',
+  input: z.object({ starts_at: dt.optional(), duration_minutes: z.coerce.number().int().min(15).max(720).optional(), ...page }),
+  handler: ({ user }, i) => many(
+    `SELECT b.id AS booking_id, v.id AS venue_id, v.name AS venue_name, v.city AS venue_city, r.name AS court, b.starts_at, b.ends_at,
+            ($3::timestamptz IS NOT NULL AND b.starts_at <= $3 AND b.ends_at >= $3 + make_interval(mins => coalesce($4, 60))) AS covers,
+            (SELECT count(*)::int FROM session_venue_links l JOIN coach_classes k ON k.id=l.session_id AND k.status='open' WHERE l.session_type='coach_class' AND l.booking_id=b.id AND l.released_at IS NULL) AS classes_held
+       FROM bookings b JOIN resources r ON r.id=b.resource_id JOIN venues v ON v.id=r.venue_id
+      WHERE b.user_id=$1 AND b.status='confirmed' AND b.reservation_id IS NOT NULL AND b.ends_at > now() AND v.active
+      ORDER BY covers DESC, b.starts_at, b.id LIMIT $2 OFFSET $5`, [user.id, i.limit, i.starts_at ?? null, i.duration_minutes ?? null, i.offset]),
+});
 
 cap({
   name: 'get_coach_class', method: 'GET', path: '/coach/classes/:id', tag: TAG, auth: 'public',

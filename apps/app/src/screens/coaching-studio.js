@@ -869,55 +869,8 @@ export function CoachProgrammes({ athlete_id, team_id, name }) {
   );
 }
 
-// Rubrics: the coach's own scales. The standard ones for the sports they coach arrive on their own; each can be edited
-// (dimensions added or removed, sports and positions changed) or archived, and one rubric can serve several sports.
-export function CoachRubrics() {
-  const { toast } = useSession();
-  const list = useLoad(() => api.get('/coaching/rubrics'), []);
-  const positions = useLoad(() => api.get('/coaching/positions'), []);
-  const sports = useLoad(() => api.get('/sports'), []);
-  const [form, setForm] = useState(null);   // null | 'new' | a rubric being edited
-  const edit = form && form !== 'new' ? form : null;
-  const slugOf = (sid) => sports.data?.find((x) => x.id === sid)?.slug;
-  const sportNames = (r) => (r.sport_ids?.length ? r.sport_ids.map((sid) => sports.data?.find((x) => x.id === sid)?.name).filter(Boolean).join(', ') : t('cs.all_sports_lc'));
-  const dimFields = (k) => [
-    { key: `n${k}`, label: t('cs.new_dim', { k }), optional: true, placeholder: k === 1 ? t('cs.dim_ph') : undefined },
-    { key: `max${k}`, label: t('cs.scale_to'), type: 'stepper', min: 3, max: 10, step: 1, default: 5, show: (v) => !!v[`n${k}`] },
-    { key: `dir${k}`, label: t('cs.better_when'), type: 'chips', options: [{ value: 'higher_is_better', label: t('cs.dir_higher') }, { value: 'lower_is_better', label: t('cs.dir_lower') }, { value: 'target_range', label: t('cs.dir_target') }], default: 'higher_is_better', show: (v) => !!v[`n${k}`] },
-  ];
-  const fields = [
-    { key: 'name', label: t('cs.rubric_name') },
-    { key: 'sports', label: t('cs.rubric_sports'), type: 'sports', optional: true },
-    ...(positions.data?.length ? [{ key: 'positions', label: t('cs.rubric_positions'), type: 'multi', optional: true, options: positions.data.map((p) => ({ value: p, label: p })) }] : []),
-    ...(edit ? [{ key: 'keep', label: t('cs.rubric_keep'), type: 'multi', options: edit.dimensions.map((d) => ({ value: d.key, label: `${d.name} 1–${d.scale_max}` })) }] : []),
-    ...[1, 2, 3].flatMap(dimFields),
-    ...(edit ? [{ key: 'archive', label: t('cs.rubric_archive'), type: 'switch', default: false }] : []),
-  ];
-  const initial = edit
-    ? { name: edit.name, sports: (edit.sport_ids ?? []).map(slugOf).filter(Boolean), positions: edit.positions ?? [], keep: edit.dimensions.map((d) => d.key) }
-    : {};
-  const save = async (v) => {
-    if (edit && v.archive) { await api.del(`/coaching/rubrics/${edit.id}`); toast(t('cs.rubric_archived')); list.reload(); return; }
-    const kept = edit ? edit.dimensions.filter((d) => v.keep?.includes(d.key)) : [];
-    const added = [1, 2, 3].filter((k) => v[`n${k}`]).map((k) => ({ key: v[`n${k}`].toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '').slice(0, 40) || `d${k}`, name: v[`n${k}`], scale_min: 1, scale_max: v[`max${k}`] ?? 5, direction: v[`dir${k}`] ?? 'higher_is_better' }));
-    const dimensions = [...kept, ...added.filter((d) => !kept.some((x) => x.key === d.key))];
-    if (!dimensions.length) throw new Error(t('cs.rubric_need_dim'));
-    await api.post('/coaching/rubrics', { rubric_id: edit?.id, name: v.name, sports: v.sports ?? [], positions: v.positions ?? [], dimensions });
-    toast(edit ? t('cs.rubric_saved') : t('cs.rubric_created')); list.reload();
-  };
-  return (
-    <Screen onRefresh={list.reload}>
-      <H1>{t('nav.title.CoachRubrics')}</H1>
-      <T size={13} color={c.mute}>{t('cs.rubrics_help')}</T>
-      <View style={{ marginTop: 10 }}><Btn small title={t('cs.new_rubric')} onPress={() => setForm('new')} /></View>
-      {list.loading && !list.data ? <Loading /> : list.error ? <ErrorBox error={list.error} onRetry={list.reload} /> : !list.data.length ? <Empty emoji="📏" title={t('cs.no_rubrics')} sub={t('cs.no_rubrics_sub')} /> :
-        list.data.map((r) => (
-          <Row key={r.id} title={r.name} onPress={() => setForm(r)}
-            sub={`${r.standard_source ? `${t('cs.std_source', { src: r.standard_source })} · ` : ''}v${r.version} · ${sportNames(r)} · ${r.dimensions.map((d) => `${d.name} 1–${d.scale_max}`).join(', ')} · ${r.positions.length ? r.positions.join(', ') : t('cs.all_positions')}`} />))}
-      <FormSheet visible={!!form} onClose={() => setForm(null)} title={edit ? t('cs.edit_rubric') : t('cs.new_rubric')} submitLabel={edit ? t('common.save') : t('cs.create')} fields={fields} initial={initial} onSubmit={save} />
-    </Screen>
-  );
-}
+// Rubrics are the coach's evaluation sheets: the editor (pillars, weights, anchors, targets) lives in evaluation-sheets.js, one place for sheets.
+export { CoachRubrics } from './evaluation-sheets';
 
 // Saved player groups (issue #580): reusable, named sets of people you already coach. Putting one on a session fills the roster and creates the
 // session's named group in one tap; the server re-checks every person's current relationship each time.

@@ -127,7 +127,7 @@ export function CoachToolGrid({ push, counts = {} }) {
   const tools = [
     ['🗂️', 'Desk', 'CoachDesk'], ['📬', 'Request board', 'CoachBoard', counts.board], ['🏃', 'Athletes', 'CoachAthletes'], ['🤝', 'Shared wellness', 'SharedWellness'], ['📄', 'Shared reports', 'SharedSeasonReports'], ['🎬', 'Recruitment', 'PassportDesk'], ['🪪', 'Profile & hours', 'CoachSetup'],
     ['📅', 'Schedule', 'CoachCalendar'], ['🏫', 'Academy week', 'AcademyAgenda'], ['🏷️', 'Rate cards', 'CoachRates'], ['🎽', 'My classes', 'CoachClasses'], ['🏟️', t('vc.title'), 'CoachVenues'], ['📑', 'Commitments', 'CoachCommitments'], ['⭐', 'Reviews', 'CoachReviews', counts.reviews],
-    ['🧠', 'Performance Studio', 'PerformanceStudio'], ['🧰', 'Drill library', 'CoachDrills'], ['👥', 'Saved groups', 'CoachGroups'], ['📏', 'Rubrics', 'CoachRubrics'], ['📈', 'Analytics', 'CoachAnalytics'], ['📝', 'Training plans', 'MyPlans', null, { as: 'coach' }], ['📍', 'Courts', 'TrainingVenue', counts.courts], ['🔁', 'Recurring booking', 'RecurringVenue'],
+    ['🧠', 'Performance Studio', 'PerformanceStudio'], ['🧰', 'Drill library', 'CoachDrills'], ['👥', 'Saved groups', 'CoachGroups'], ['📋', t('nav.title.Evaluations'), 'Evaluations'], ['📏', t('es.sheets_title'), 'CoachRubrics'], ['📈', 'Analytics', 'CoachAnalytics'], ['📝', 'Training plans', 'MyPlans', null, { as: 'coach' }], ['📍', 'Courts', 'TrainingVenue', counts.courts], ['🔁', 'Recurring booking', 'RecurringVenue'],
   ];
   return (
     <Card pad={16} color={c.violetSoft}>
