@@ -1,11 +1,11 @@
 import { many } from './db.js';
 import { forbidden } from './errors.js';
-import { canSeeYouth, hiddenYouth, isYouth, requireConsent } from './youth.js';
+import { canSeeYouth, hasConsent, hiddenYouth, isYouth, requireConsent } from './youth.js';
 
 /**
  * Explicit, current coaching relationships (never public search or an unaccepted request).
  * Each entry says why the coach may work with the athlete: a confirmed/completed hire, a shared team where the coach
- * is an active coach member, an enrolled cohort the coach leads, or a plan the athlete has accepted and not closed.
+ * is an active coach member, an enrolled cohort the coach leads, a confirmed seat in one of the coach's classes, or a plan the athlete has accepted and not closed.
  */
 export const RELATIONSHIP_SQL = `
   SELECT h.hirer_id AS athlete_id, h.coach_id, 'hire' AS source, h.sport_id, h.id::text AS source_id
@@ -19,6 +19,9 @@ export const RELATIONSHIP_SQL = `
     FROM org_cohorts k JOIN org_enrolments e ON e.cohort_id=k.id AND e.status='enrolled' LEFT JOIN teams t ON t.id=k.team_id
    WHERE k.status='active' AND k.coach_id IS NOT NULL
   UNION ALL
+  SELECT z.user_id, k.coach_id, 'coach_class', k.sport_id, k.id::text
+    FROM coach_class_seats z JOIN coach_classes k ON k.id=z.class_id WHERE z.status='confirmed' AND k.status IN ('open','completed')
+  UNION ALL
   SELECT p.athlete_id, p.coach_id, 'plan', p.sport_id, p.id::text
     FROM training_plans p WHERE p.status='active' AND p.accepted_rev IS NOT NULL`;
 
@@ -29,7 +32,11 @@ export const relationships = (coachId, athleteId) => many(
 export async function requireRelationship(coach, athleteId, sourceTypes) {
   const rels = (await relationships(coach.id, athleteId)).filter((r) => !sourceTypes || sourceTypes.includes(r.source));
   if (!rels.length) throw forbidden('You have no active coaching relationship with this athlete');
-  if ((await isYouth(athleteId)) && !(await canSeeYouth(coach, athleteId))) throw forbidden('A guardian has not allowed this');
+  if (await isYouth(athleteId)) {
+    // a young person with a confirmed class seat is there with a guardian's participation consent (checked when the seat was granted); read live, so withdrawing it ends the access
+    const viaClass = rels.some((r) => r.source === 'coach_class') && (await hasConsent(athleteId, 'participation'));
+    if (!viaClass && !(await canSeeYouth(coach, athleteId))) throw forbidden('A guardian has not allowed this');
+  }
   return rels;
 }
 

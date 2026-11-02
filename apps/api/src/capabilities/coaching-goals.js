@@ -169,6 +169,15 @@ const dimension = z.object({
   scale_min: z.number().default(1), scale_max: z.number().default(5), labels: z.record(z.string(), text(80)).optional(),
   direction: z.enum(['higher_is_better', 'lower_is_better', 'target_range']).default('higher_is_better'),
   unit: text(20).optional().describe('the unit when the scale is a measurement rather than a rating'),
+  // evaluation-sheet detail: how a criterion is grouped, weighted, anchored and what the athlete is aiming for (all optional; plain rubrics keep working)
+  pillar: z.string().regex(/^[a-z0-9_]{2,40}$/).optional().describe('the group this criterion belongs to. technical, tactical, physical, mental, behaviour, lifestyle and other are the usual ones; any other key makes a group of the coach\'s own, named by pillar_label, so a sport is never forced into groups that do not fit it'),
+  pillar_label: text(40).optional().describe('the coach\'s own name for a custom group'),
+  input: z.enum(['levels', 'number']).optional().describe('levels: tap a level on the scale; number: type a value (a time, a distance, a judge\'s score, a count)'),
+  step: z.number().positive().optional().describe('the smallest difference between two scores (0.1 for a judged score or a time, 1 for whole levels)'),
+  weight: z.number().min(0).max(10).optional().describe('how much it counts in the overall score (default 1; 0 shows it without counting it)'),
+  anchors: z.record(z.string(), text(400)).optional().describe('what each level looks like in behaviour, so two coaches score the same thing the same way'),
+  target: z.number().optional().describe('the level the athlete is working towards'),
+  evidence_hint: text(300).optional().describe('what the coach should look for or record as evidence'),
 }).refine((d) => d.scale_max > d.scale_min, 'scale_max must be above scale_min');
 
 /** Slugs or ids -> sport ids (unknown sports are a 400, never silently dropped). */

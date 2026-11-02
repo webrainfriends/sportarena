@@ -75,8 +75,8 @@ async function resolveSource(user, i) {
     const k = await one("SELECT id, title, starts_at, sport_id FROM coach_classes WHERE id::text=$1 AND coach_id=$2 AND status IN ('open','completed')", [i.source_id, user.id]);
     if (!k) throw notFound('Coach class');
     const athletes = (await many("SELECT user_id FROM coach_class_seats WHERE class_id=$1 AND status='confirmed' ORDER BY created_at, id", [k.id])).map((r) => r.user_id);
-    const hidden = isAdmin(user) ? new Set() : await hiddenYouth(user, athletes);
-    return { title: i.title ?? k.title, scheduled_at: k.starts_at, sport_id: k.sport_id, team_id: null, athletes: athletes.filter((a) => !hidden.has(a)) };
+    // a confirmed seat means the guardian's participation consent was checked at join, so the roster is the seat holders; sharing with a young person still needs coaching consent
+    return { title: i.title ?? k.title, scheduled_at: k.starts_at, sport_id: k.sport_id, team_id: null, athletes };
   }
   if (i.source_type === 'coach_hire') {
     const h = await one("SELECT * FROM coach_hires WHERE id=$1 AND coach_id=$2 AND status IN ('confirmed','completed')", [i.source_id, user.id]);

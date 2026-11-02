@@ -32,6 +32,15 @@ const wait = (p, ms = 1200) => p.waitForTimeout(ms);
 
 const R = Date.now().toString(36);
 const inH = (h) => new Date(Date.now() + h * 36e5).toISOString();
+// a class at a venue runs on a court booked through the normal booking flow: open the venue, add a court, book it as the coach, return the booking
+const courtBooking = async (mgr, venue, coach, startsAt, hours = 2) => {
+  await call('POST', `/venues/${venue.id}/hours`, { token: mgr.token, body: { hours: [0, 1, 2, 3, 4, 5, 6].map((weekday) => ({ weekday, opens: '06:00', closes: '22:00' })) } });
+  const court = await call('POST', `/venues/${venue.id}/resources`, { token: mgr.token, body: { kind: 'court', name: 'Court 1', hourly_rate_cents: 50000, max_players: 10 } });
+  const res = await call('POST', '/reservations', { token: coach.token, body: { items: [{ resource_id: court.id, starts_at: startsAt, ends_at: new Date(+new Date(startsAt) + hours * 36e5).toISOString() }] } });
+  return (await call('GET', `/reservations/${res.id}`, { token: coach.token })).bookings[0].id;
+};
+const at10 = (days) => { const d = new Date(); d.setUTCDate(d.getUTCDate() + days); d.setUTCHours(10, 0, 0, 0); return d.toISOString(); };
+
 const yearsAgo = (y) => { const d = new Date(); d.setUTCFullYear(d.getUTCFullYear() - y); d.setUTCDate(d.getUTCDate() - 3); return d.toISOString().slice(0, 10); };
 try {
   const coach = await reg(`cg_c${R}`, 'Coach Meera', ['coach']);
@@ -41,9 +50,11 @@ try {
   await db.query("INSERT INTO guardian_links(guardian_id, child_id, relationship, status, requested_by, decided_at) VALUES ($1,$2,'parent','active',$1,now())", [parent.id, child.id]);
   await db.query("INSERT INTO youth_consents(child_id, purpose, granted_by, policy_version, expires_at) VALUES ($1,'participation',$2,1, now() + interval '90 days')", [child.id, parent.id]);
   await call('POST', '/me/sport-profiles', { token: coach.token, body: { sport: 'badminton', role: 'coach', level: 'pro', hourly_rate_cents: 80000 } });
-  const venue = await call('POST', '/venues', { token: (await reg(`cg_m${R}`, 'Venue Admin', ['venue_manager'])).token, body: { name: `Smash Arena ${R}`, city: 'Pune', timezone: 'Asia/Kolkata' } });
+  const mgr = await reg(`cg_m${R}`, 'Venue Admin', ['venue_manager']);
+  const venue = await call('POST', '/venues', { token: mgr.token, body: { name: `Smash Arena ${R}`, city: 'Pune', timezone: 'UTC' } });
   const card = await call('POST', '/coach/rate-cards', { token: coach.token, body: { audience: 'group', unit: 'session', duration_min: 60, per_person: true, min_participants: 2, max_participants: 8, delivery: 'both', title: 'Junior badminton basics', sport: 'badminton', price_cents: 30000 } });
-  const k = await call('POST', '/coach/classes', { token: coach.token, body: { rate_card_id: card.id, starts_at: inH(52), venue_id: venue.id, audience: 'youth', min_age: 8, max_age: 14, max_participants: 8 } });
+  const booking = await courtBooking(mgr, venue, coach, at10(3));
+  const k = await call('POST', '/coach/classes', { token: coach.token, body: { rate_card_id: card.id, starts_at: at10(3), booking_id: booking, audience: 'youth', min_age: 8, max_age: 14, max_participants: 8 } });
   const ask = await call('POST', `/coach/classes/${k.id}/join`, { token: child.token, body: {} });
   check(ask.status === 'guardian_pending', 'a young person asking for a class waits for their guardian (API)');
 

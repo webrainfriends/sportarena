@@ -123,3 +123,20 @@ export function checkTerms(i) {
   if (i.skill_min && i.skill_max && LEVELS.indexOf(i.skill_min) > LEVELS.indexOf(i.skill_max)) throw badRequest('skill_min is above skill_max');
   if (i.min_age != null && i.max_age != null && i.min_age > i.max_age) throw badRequest('min_age is above max_age');
 }
+
+/**
+ * A court booking was cancelled (by the venue or by the booker): every open class held on it is cancelled with it, seats are released, paid seats refunded
+ * and the coach and seat holders are told. Nothing is deleted; the venue link is released. Called from the booking engine inside its transaction.
+ */
+export async function cancelClassesForBooking(c, bookingId, { reason }) {
+  const rows = (await c.query("SELECT DISTINCT session_id FROM session_venue_links WHERE session_type='coach_class' AND booking_id=$1 AND released_at IS NULL", [bookingId])).rows;
+  for (const { session_id } of rows) {
+    const k = await lockClass(c, session_id);
+    if (k && k.status === 'open') {
+      await cancelClass(c, k, { reason, by: 'system' });
+      await notify(c, k.coach_id, { kind: 'coach_class_venue_cancelled', title: 'Class cancelled with its court', body: `"${k.title}" was cancelled because its court booking was cancelled. Seat holders were told and paid seats are refunded.`, data: { class_id: k.id } });
+    }
+    await c.query("UPDATE session_venue_links SET released_at=now(), release_reason='venue booking cancelled' WHERE session_type='coach_class' AND session_id=$1 AND booking_id=$2 AND released_at IS NULL", [session_id, bookingId]);
+  }
+  return rows.length;
+}

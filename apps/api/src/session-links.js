@@ -46,7 +46,13 @@ export async function linkedForReservation(reservationId, db = pool) {
        FROM session_venue_links l JOIN (${SESSION_SQL}) s ON s.type = l.session_type AND s.id = l.session_id
        JOIN users uc ON uc.id = s.coach_id JOIN users ua ON ua.id = s.athlete_id LEFT JOIN sports sp ON sp.id = s.sport_id LEFT JOIN teams tm ON tm.id = s.team_id
       WHERE l.reservation_id = $1 AND l.released_at IS NULL ORDER BY s.starts_at`, [reservationId]);
-  return rows;
+  // a coach class held on the court: the venue team sees who runs it and how many seats, never who holds them
+  const classes = await db.query(
+    `SELECT l.id AS link_id, l.booking_id, 'coach_class' AS type, k.id AS session_id, k.starts_at, k.starts_at + k.duration_min * interval '1 minute' AS ends_at, k.status, k.audience, k.max_participants AS participants, k.title,
+            uc.display_name AS coach_name, NULL::text AS athlete_name, sp.name AS sport, NULL::text AS team_name
+       FROM session_venue_links l JOIN coach_classes k ON k.id = l.session_id JOIN users uc ON uc.id = k.coach_id JOIN sports sp ON sp.id = k.sport_id
+      WHERE l.session_type = 'coach_class' AND l.reservation_id = $1 AND l.released_at IS NULL ORDER BY k.starts_at`, [reservationId]);
+  return [...rows, ...classes.rows].sort((a, b) => new Date(a.starts_at) - new Date(b.starts_at));
 }
 
 export const isParty = (userId, s) => s.coach_id === userId || s.athlete_id === userId;
