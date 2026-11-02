@@ -14,7 +14,7 @@ import { notify } from '../notify.js';
 import { requireConsent, requireGuardian } from '../youth.js';
 import { cardFor } from '../coach-pricing.js';
 import { CURRENCIES } from '../currency.js';
-import { config } from '../config.js';
+import { effective } from '../coach-currency.js';
 import {
   LEVELS, LIVE, TAKES_SEAT, assertCanAttend, assertCoachFree, cancelClass, checkTerms, endOf, grantSeat, lockClass,
   notifySeat, promoteWaitlist, refundSeat, seatPrice,
@@ -105,7 +105,7 @@ cap({
     if (card.max_participants && max > card.max_participants) throw badRequest(`This rate card covers up to ${card.max_participants} participants`);
     if (min < card.min_participants) throw badRequest(`This rate card needs at least ${card.min_participants} participants`);
     checkTerms({ ...i, min_participants: min, max_participants: max });
-    const currency = config.payments.currency;
+    const currency = effective(card.currency);   // the card's own (coach-country) currency; older cards were priced in the platform currency
     if (!Object.hasOwn(CURRENCIES, currency)) throw badRequest('Unsupported currency');
     const price = seatPrice(card, mins, max);
     return tx(async (c) => {

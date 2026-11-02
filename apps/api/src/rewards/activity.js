@@ -1,7 +1,6 @@
 // Canonical completed business events -> loyalty points. Each business fact calls `recordActivity` once, from the place it becomes true
 // (an invoice marked paid, a coaching session completed, an event ended). Rules match on the event type, the key includes the source,
 // so replaying an event never pays twice. Nothing here is reachable from "opened the app" or "created a fixture".
-import { config } from '../config.js';
 import { notify } from '../notify.js';
 import { toMajor } from '../currency.js';
 import { award, loadProgramme, earningLive, clawBack } from './ledger.js';
@@ -73,7 +72,7 @@ export async function academyChargePaid(c, ch) {
 export async function coachSessionDone(c, hireId) {
   const h = (await c.query("SELECT * FROM coach_hires WHERE id=$1 AND status='completed' AND payment_status='paid'", [hireId])).rows[0];
   if (!h) return { awarded: [] };
-  return recordActivity(c, { type: 'coach_session_completed', userId: h.hirer_id, amountMinor: Math.max(0, Number(h.total_cents) - Number(h.loyalty_credit_cents)), currency: config.payments.currency, sourceType: 'coach_hire', sourceId: h.id, coachId: h.coach_id, eventId: h.event_id ?? null, label: 'Coaching session' });
+  return recordActivity(c, { type: 'coach_session_completed', userId: h.hirer_id, amountMinor: Math.max(0, Number(h.total_cents) - Number(h.loyalty_credit_cents)), currency: h.currency, sourceType: 'coach_hire', sourceId: h.id, coachId: h.coach_id, eventId: h.event_id ?? null, label: 'Coaching session' });
 }
 
 /** Events that have finished: every accepted individual, and every active member of an accepted team, took part. Idempotent per person and event. */

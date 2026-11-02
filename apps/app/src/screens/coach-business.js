@@ -5,7 +5,7 @@ import React, { useState } from 'react';
 import { Platform, Pressable, View } from 'react-native';
 import { api } from '../api';
 import { useLoad } from '../hooks';
-import { usePlatformCurrency } from '../platform-currency';
+import { useMyCurrency } from '../my-currency';
 import { useSession } from '../session';
 import { useNav } from '../nav';
 import { Avatar, Btn, Card, Chip, Empty, ErrorBox, Loading, Screen, Section, Seg, T } from '../ui';
@@ -90,8 +90,8 @@ export function CoachRates() {
   const specs = useLoad(() => api.get('/coach/specialisations'), []);
   const [sheet, setSheet] = useState(null), [spec, setSpec] = useState(null), [retire, setRetire] = useState(null);
   const reload = () => Promise.all([cards.reload(), specs.reload()]);
-  const platformCur = usePlatformCurrency();
-  const cur = cards.data?.[0]?.currency ?? platformCur;
+  const myCur = useMyCurrency();
+  const cur = myCur;   // new cards are priced in the coach's country currency; each existing card shows its own
   const toggle = async (k) => { try { await api.patch(`/coach/rate-cards/${k.id}`, { active: !k.active }); await reload(); toast(k.active ? 'Switched off — hidden from booking' : 'Live again'); } catch (e) { toast(e.message); } };
   return (
     <Screen onRefresh={reload}>
@@ -140,7 +140,7 @@ export function CoachRates() {
           </Card>
         ))}
       </Section>
-      {sheet ? <CardSheet card={sheet.id ? sheet : null} specs={specs.data ?? []} currency={cur} onClose={() => setSheet(null)} onDone={reload} /> : null}
+      {sheet ? <CardSheet card={sheet.id ? sheet : null} specs={specs.data ?? []} currency={sheet.id ? sheet.currency : myCur} onClose={() => setSheet(null)} onDone={reload} /> : null}
       {spec ? <SpecSheet spec={spec.id ? spec : null} onClose={() => setSpec(null)} onDone={reload} /> : null}
       <Confirm visible={!!retire} title="Retire this rate card?" yes="Retire" danger onClose={() => setRetire(null)} body="It disappears from your profile and from booking. Sessions already booked on it stay on record."
         onYes={async () => { try { await api.patch(`/coach/rate-cards/${retire.id}`, { archive: true }); setRetire(null); await reload(); toast('Retired'); } catch (e) { toast(e.message); } }} />
@@ -185,8 +185,8 @@ export function CoachCommitments() {
   const when = (x) => `${x.weekdays.length ? x.weekdays.map((d) => WEEKDAYS[d]).join(', ') : dayText(x.starts_on)} · ${x.timezone === 'UTC' ? '' : ''}${String(Math.floor(x.start_min / 60)).padStart(2, '0')}:${String(x.start_min % 60).padStart(2, '0')} · ${x.duration_min} min`;
   const log = async (x, on_date, status) => { try { await api.post(`/coach/commitments/${x.id}/log`, { on_date, status }); await list.reload(); toast(status === 'delivered' ? 'Logged as delivered' : 'Marked as not held'); } catch (e) { toast(e.message); } };
   const move = async () => { try { await api.patch(`/coach/commitments/${act.x.id}`, { status: act.status }); setAct(null); await list.reload(); toast('Updated'); } catch (e) { toast(e.message); setAct(null); } };
-  const platformCur = usePlatformCurrency();
-  const cur = list.data?.[0]?.currency ?? platformCur;
+  const myCur = useMyCurrency();
+  const cur = myCur;   // a new commitment is priced in the coach's country currency; each existing one shows its own
   return (
     <Screen onRefresh={list.reload}>
       <Head eyebrow="COACH" title="Contracts & commitments" sub="Seasons, retainers, events and blocked time. They fill your schedule and keep athletes from booking over them." right={<Btn small title="+ New" onPress={() => setAdd(true)} />} />
@@ -329,8 +329,8 @@ export function CoachAnalytics() {
   const [days, setDays] = useState(90);
   const to = todayIn(deviceTz), from = addDays(to, -(days - 1));
   const a = useLoad(() => api.get('/coach/analytics', { from, to }), [days]);
-  const platformCur = usePlatformCurrency();
-  const d = a.data, cur = d?.currency ?? platformCur;
+  const myCur = useMyCurrency();
+  const d = a.data, cur = d?.currency ?? myCur;
   const money = (x) => moneyIn(Number(x ?? 0), cur);
   const download = async () => {
     try {

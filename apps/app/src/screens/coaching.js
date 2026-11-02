@@ -7,7 +7,7 @@ import { Pressable, View } from 'react-native';
 import { openPage } from '../video-player';
 import { api } from '../api';
 import { useLoad } from '../hooks';
-import { usePlatformCurrency } from '../platform-currency';
+import { useMyCurrency } from '../my-currency';
 import { useSession } from '../session';
 import { useNav } from '../nav';
 import { Avatar, Btn, Card, Chip, Empty, ErrorBox, Field, GradCard, H1, H2, Loading, Screen, Section, Seg, Sheet, StatPill, T } from '../ui';
@@ -217,7 +217,7 @@ export function BookCoachSheet({ coach, onClose, onDone }) {
             {coach.hourly_rate_cents ? <Card pad={12} color={!card ? c.pinkSoft : c.paper} onPress={() => choose(null)}><View style={{ flexDirection: 'row', justifyContent: 'space-between' }}><T weight="700">Standard hourly rate</T><T weight="800">{rateOf(coach, coach.currency)}</T></View><T size={12} color={c.mute}>One person</T></Card> : null}
             {cards.map((k) => (
               <Card key={k.id} pad={12} color={card?.id === k.id ? c.pinkSoft : c.paper} onPress={() => choose(k)} accessibilityLabel={introUsed(k) ? `${k.title}. ${t('coaching.introUsed')}` : k.title} style={introUsed(k) ? { opacity: 0.6 } : undefined}>
-                <View style={{ flexDirection: 'row', justifyContent: 'space-between', gap: 8 }}><View style={{ flex: 1 }}><T weight="700">{k.title}{k.is_intro ? ' · trial' : ''}</T></View><T weight="800">{cardPrice(k, coach.currency)}</T></View>
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between', gap: 8 }}><View style={{ flex: 1 }}><T weight="700">{k.title}{k.is_intro ? ' · trial' : ''}</T></View><T weight="800">{cardPrice(k, k.currency ?? coach.currency)}</T></View>
                 {introUsed(k) ? <T size={12} weight="700" color={c.sun}>{t('coaching.introUsed')}</T> : null}
                 <T size={12} color={c.mute}>{[nice(k.audience), k.duration_min && k.unit !== 'hour' ? `${k.duration_min} min` : null, k.audience !== 'individual' ? `${k.min_participants}${k.max_participants ? `–${k.max_participants}` : '+'} people` : null, k.sessions_included ? `${k.sessions_included} sessions` : null].filter(Boolean).join(' · ')}</T>
                 {k.description ? <T size={12} color={c.mute}>{k.description}</T> : null}
@@ -273,8 +273,8 @@ export function BookCoachSheet({ coach, onClose, onDone }) {
 
 // ================================================================================== POST A REQUEST
 export function PostRequestSheet({ visible, onClose, onDone, currency: given }) {
-  const platformCur = usePlatformCurrency();
-  const currency = given ?? platformCur;
+  const myCur = useMyCurrency();
+  const currency = given ?? myCur;
   const today = todayIn(deviceTz);
   const { user } = useSession();
   const teams = useLoad(() => (visible ? api.get('/teams', { mine: true, limit: 50 }) : Promise.resolve([])), [visible]);
@@ -316,8 +316,8 @@ function FindCoaches({ onPost, onBook }) {
     ...(f.verified ? { verified: true } : {}), ...(f.rated ? { min_rating: 4 } : {}), ...(f.hours ? { has_hours: true } : {}), ...(f.audience ? { audience: f.audience } : {}), ...(f.intro ? { intro_offer: true } : {}), ...(f.max ? { max_rate_cents: f.max } : {}), ...(f.city.trim() ? { city: f.city.trim() } : {}),
   }), [q, f.sport, f.delivery, f.verified, f.rated, f.hours, f.audience, f.intro, f.sort, f.max, f.city]);
   const set = (k, v) => setF((p) => ({ ...p, [k]: v }));
-  const platformCur = usePlatformCurrency();
-  const cur = list.data?.[0]?.currency ?? platformCur;
+  const myCur = useMyCurrency();
+  const cur = list.data?.[0]?.currency ?? myCur;
   const active = [f.max, f.city.trim()].filter(Boolean).length;
   return (
     <View style={{ gap: 12, marginTop: 14 }}>
@@ -605,7 +605,7 @@ export function CoachProfile({ id }) {
             <Card key={k.id} pad={12}>
               <View style={{ flexDirection: 'row', justifyContent: 'space-between', gap: 8 }}>
                 <View style={{ flex: 1 }}><T weight="800">{k.title}</T><View style={{ flexDirection: 'row', gap: 6, flexWrap: 'wrap', marginTop: 4 }}><Pill label={`FOR ${k.audience.toUpperCase()}`} />{k.is_intro ? <Pill label="🎁 TRIAL OFFER" fg={c.sun} bg={c.sunSoft} /> : null}{k.sport ? <Pill label={k.sport.toUpperCase()} /> : null}</View></View>
-                <T weight="800" size={15}>{cardPrice(k, cur)}</T>
+                <T weight="800" size={15}>{cardPrice(k, k.currency ?? cur)}</T>
               </View>
               <T size={12} color={c.mute} style={{ marginTop: 4 }}>{[k.duration_min && k.unit !== 'hour' ? `${k.duration_min} min` : null, k.audience !== 'individual' ? `${k.min_participants}${k.max_participants ? `–${k.max_participants}` : '+'} people` : null, k.sessions_included ? `${k.sessions_included} sessions` : null, DELIVERY[k.delivery]].filter(Boolean).join(' · ')}</T>
               {k.description ? <T size={13} style={{ marginTop: 4 }}>{k.description}</T> : null}
@@ -698,6 +698,7 @@ const answerTags = (all) => {
 };
 
 function RespondSheet({ r, mine, onClose, onDone }) {
+  const myCur = useMyCurrency();   // an answer without a rate card is quoted in the coach's own country currency
   const today = todayIn(deviceTz);
   const { push } = useNav();
   const cards = useLoad(() => api.get('/coach/rate-cards'), []);
@@ -716,7 +717,7 @@ function RespondSheet({ r, mine, onClose, onDone }) {
     <FormSheet visible onClose={onClose} title={mine ? 'Update your answer' : `Answer: ${r.title}`} submitLabel={mine ? 'Update answer' : 'Send answer'} initial={{ duration_min: mine?.duration_min ?? 60, rate_cents_hour: mine && !mine.rate_card_id ? Number(mine.rate_cents_hour) : undefined, rate_card_id: mine?.rate_card_id ?? undefined }}
       fields={[
         ...(fit.length ? [{ key: 'rate_card_id', label: 'Quote from your rate cards', type: 'chips', optional: r.audience === 'individual', options: fit.map((k) => ({ value: k.id, label: `${k.title} · ${cardPrice(k, r.currency)}` })) }] : []),
-        { key: 'rate_cents_hour', label: 'Your rate per hour', type: 'money', currency: r.currency, optional: true, hint: 'Leave empty to use your profile rate for this sport.', show: (v) => !v.rate_card_id },
+        { key: 'rate_cents_hour', label: 'Your rate per hour', type: 'money', currency: myCur, optional: true, hint: 'Leave empty to use your profile rate for this sport.', show: (v) => !v.rate_card_id },
         { key: 'date', label: 'First session: date', type: 'date', min: today },
         { key: 'time', label: 'First session: start time', type: 'time', step: 15 },
         { key: 'duration_min', label: 'Session length', type: 'stepper', min: 15, max: 480, step: 15, default: 60, suffix: ' min', show: (v) => !v.rate_card_id || byId[v.rate_card_id]?.unit === 'hour' },
@@ -728,8 +729,8 @@ function RespondSheet({ r, mine, onClose, onDone }) {
 
 /** A person who wants to coach a sport: adds it as a coaching profile with their hourly rate. Also makes them a coach. */
 export function AddCoachSportSheet({ visible, onClose, onDone, initialSport, currency: given }) {
-  const platformCur = usePlatformCurrency();
-  const currency = given ?? platformCur;
+  const myCur = useMyCurrency();
+  const currency = given ?? myCur;
   return (
     <FormSheet visible={visible} onClose={onClose} title="Coach this sport" submitLabel="Add and continue" initial={{ sport: initialSport, level: 'amateur', experience_years: 1 }}
       fields={[
@@ -793,13 +794,13 @@ export function CoachRequest({ id }) {
                   <RatingLine avg={x.rating} n={x.rating_count} size={12} />
                   <T size={12} color={c.mute}>{x.sessions_done} session{x.sessions_done === 1 ? '' : 's'} coached</T>
                 </View>
-                <View style={{ alignItems: 'flex-end' }}><T weight="800" size={16}>{price(x.rate_cents_hour, cur)}/hr</T>{x.status !== 'pending' ? <StatusPill s={x.status} /> : null}</View>
+                <View style={{ alignItems: 'flex-end' }}><T weight="800" size={16}>{price(x.rate_cents_hour, x.currency ?? cur)}/hr</T>{x.status !== 'pending' ? <StatusPill s={x.status} /> : null}</View>
               </View>
               <View style={{ flexDirection: 'row', gap: 6, flexWrap: 'wrap', marginTop: 8 }}>
                 {x.credential_verified ? <Verified /> : null}
                 {(tags.get(x.id) ?? []).map((t) => <Pill key={t} label={t.toUpperCase()} fg={c.pink} bg={c.pinkSoft} />)}
               </View>
-              <T size={13} style={{ marginTop: 8 }}>First session <T weight="800" size={13}>{dateTimeIn(x.proposed_starts_at, deviceTz)}</T> · {x.duration_min} min · {price(x.first_session_cents, cur)}</T>
+              <T size={13} style={{ marginTop: 8 }}>First session <T weight="800" size={13}>{dateTimeIn(x.proposed_starts_at, deviceTz)}</T> · {x.duration_min} min · {price(x.first_session_cents, x.currency ?? cur)}</T>
               {x.message ? <T size={13} color={c.mute} style={{ marginTop: 4 }}>“{x.message}”</T> : null}
               <View style={{ flexDirection: 'row', gap: 8, marginTop: 10, flexWrap: 'wrap' }}>
                 {x.status === 'pending' && r.status === 'open' ? <Btn small title="Accept & book" onPress={() => setAccept(x)} /> : null}
@@ -815,7 +816,7 @@ export function CoachRequest({ id }) {
         <Section title="Your answer">
           {r.my_response ? (
             <Card pad={14}>
-              <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}><T weight="800" size={16}>{price(r.my_response.rate_cents_hour, cur)}/hr</T><StatusPill s={r.my_response.status} /></View>
+              <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}><T weight="800" size={16}>{price(r.my_response.rate_cents_hour, r.my_response.currency ?? cur)}/hr</T><StatusPill s={r.my_response.status} /></View>
               <T size={13} style={{ marginTop: 6 }}>First session {dateTimeIn(r.my_response.proposed_starts_at, deviceTz)} · {r.my_response.duration_min} min</T>
               {r.my_response.message ? <T size={13} color={c.mute}>“{r.my_response.message}”</T> : null}
               {r.my_response.status === 'pending' && r.status === 'open' ? (
@@ -834,11 +835,11 @@ export function CoachRequest({ id }) {
       )}
 
       <Confirm visible={!!accept} title={`Book ${accept?.display_name ?? ''}?`} yes="Accept & book" onClose={() => setAccept(null)} onYes={() => decide(accept, 'accept')}
-        body={accept ? `First session ${dateTimeIn(accept.proposed_starts_at, deviceTz)} for ${price(accept.first_session_cents, cur)}. The coach has already agreed, so it is confirmed as soon as you pay. Other coaches are told you chose someone else.` : ''} />
+        body={accept ? `First session ${dateTimeIn(accept.proposed_starts_at, deviceTz)} for ${price(accept.first_session_cents, accept.currency ?? cur)}. The coach has already agreed, so it is confirmed as soon as you pay. Other coaches are told you chose someone else.` : ''} />
       <Confirm visible={closing} title="Close this request?" yes="Close request" danger onClose={() => setClosing(false)} onYes={close} body="Coaches with pending answers are told. The request stays in your history." />
       <Confirm visible={!!withdraw} title="Withdraw your answer?" yes="Withdraw" danger onClose={() => setWithdraw(null)} body="The athlete will no longer see it."
         onYes={async () => { try { await api.post(`/coach-responses/${withdraw.id}/withdraw`); setWithdraw(null); await q.reload(); toast('Answer withdrawn'); } catch (e) { toast(e.message); } }} />
-      <AddCoachSportSheet visible={addSport} onClose={() => setAddSport(false)} initialSport={r.sport_slug} currency={r.currency} onDone={async () => { await refresh(); await q.reload(); }} />
+      <AddCoachSportSheet visible={addSport} onClose={() => setAddSport(false)} initialSport={r.sport_slug} onDone={async () => { await refresh(); await q.reload(); }} />
       {respond ? <RespondSheet r={r} mine={r.my_response?.status === 'pending' ? r.my_response : null} onClose={() => setRespond(false)} onDone={q.reload} /> : null}
       {paying2 ? <PaySheet target={paying2} onClose={() => setPaying(null)} onDone={q.reload} /> : null}
     </Screen>

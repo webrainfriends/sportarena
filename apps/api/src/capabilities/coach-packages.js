@@ -6,7 +6,7 @@ import { z } from 'zod';
 import { cap, id, page } from '../registry.js';
 import { one, many, tx } from '../db.js';
 import { badRequest, conflict, notFound } from '../errors.js';
-import { config } from '../config.js';
+import { coachCurrency, effective } from '../coach-currency.js';
 import { notify } from '../notify.js';
 import { audit } from '../helpers.js';
 import { paymentsEnabled, refundPartial } from '../payments/service.js';
@@ -49,7 +49,7 @@ cap({
     const row = waiting ?? (await c.query(
       `INSERT INTO coach_package_purchases(coach_id, rate_card_id, sport_id, athlete_id, payer_id, title, sessions_total, price_cents, currency, valid_days)
        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING id`,
-      [card.coach_id, card.id, card.sport_id, athleteId, user.id, card.title, card.sessions_included, price, config.payments.currency, card.valid_days])).rows[0];
+      [card.coach_id, card.id, card.sport_id, athleteId, user.id, card.title, card.sessions_included, price, effective(card.currency), card.valid_days])).rows[0];
     if (!waiting && (!paymentsEnabled() || price === 0)) await activateCoachPackage(c, row.id);
     const p = (await c.query(`SELECT ${VIEW}, ${LIVE_USED} AS used FROM coach_package_purchases p WHERE p.id=$1`, [row.id])).rows[0];
     return { package: shape(p), pay: p.status === 'awaiting_payment' ? { ...PAY, purpose_id: p.id } : null };
@@ -81,8 +81,9 @@ cap({
          FROM coach_package_purchases p JOIN users au ON au.id=p.athlete_id
         WHERE p.coach_id=$1 AND p.status <> 'awaiting_payment' AND ($4 = 'all' OR p.status = 'active')
         ORDER BY (p.status='active') DESC, p.created_at DESC, p.id LIMIT $2 OFFSET $3`, [user.id, i.limit, i.offset, i.status]);
+    const cur = await coachCurrency(user.id);
     const packages = rows.map((r) => ({ ...shape(r), unearned_cents: r.status === 'active' ? unusedValue(r) : 0, refund_estimate_cents: ['active', 'expired'].includes(r.status) ? unusedValue(r) : 0 }));
-    return { packages, totals: { sold: packages.length, open: packages.filter((p) => p.state === 'active').length, sessions_left: packages.reduce((n, p) => n + p.sessions_left, 0), unearned_cents: packages.reduce((n, p) => n + p.unearned_cents, 0), currency: config.payments.currency } };
+    return { packages, totals: { sold: packages.length, open: packages.filter((p) => p.state === 'active').length, sessions_left: packages.reduce((n, p) => n + p.sessions_left, 0), unearned_cents: packages.filter((p) => p.currency === cur).reduce((n, p) => n + p.unearned_cents, 0), currency: cur } };   // one currency per total: packages sold in another are listed with their own
   },
 });
 

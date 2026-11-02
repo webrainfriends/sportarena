@@ -6,7 +6,6 @@ import { cap, id, page, money } from '../registry.js';
 import { one, many, tx } from '../db.js';
 import { badRequest, conflict, forbidden, notFound } from '../errors.js';
 import { sportBySlugOrId } from '../helpers.js';
-import { config } from '../config.js';
 import { notify } from '../notify.js';
 import { requireRelationship } from '../coaching.js';
 import { canCoachTeam } from './teams.js';
@@ -14,6 +13,8 @@ import { AUDIENCES } from '../coach-pricing.js';
 import { addDays, dateRange, hhmm, validTimezone } from '../booking/time.js';
 import { dbDate, isoDate, loggedMap, occurrences, plain } from '../coach-commitments.js';
 import { loadCoachSchedule } from '../coach-slots.js';
+import { coachCurrency, effective } from '../coach-currency.js';
+import { toMajor } from '../currency.js';
 
 const TAG = 'Coach business';
 const COACH = ['coach'];
@@ -104,9 +105,9 @@ cap({
   async handler({ user }, i) {
     const sportId = await checkCard(user, i);
     return one(
-      `INSERT INTO coach_rate_cards(coach_id, sport_id, specialisation_id, title, audience, delivery, unit, price_cents, per_person, duration_min, min_participants, max_participants, sessions_included, is_intro, intro_scope, description, active, rollover_max, grace_days, block_discount_pct, block_min_sessions, allow_pay_per_date, valid_days)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23) RETURNING *`,
-      [user.id, sportId, i.specialisation_id ?? null, i.title, i.audience, i.delivery, i.unit, i.price_cents, i.per_person, i.duration_min ?? null, i.min_participants, i.max_participants ?? null, i.sessions_included ?? null, i.is_intro, i.intro_scope, i.description ?? null, i.active, i.rollover_max, i.grace_days, i.block_discount_pct, i.block_min_sessions, i.allow_pay_per_date, i.unit === 'package' ? i.valid_days ?? null : null]);
+      `INSERT INTO coach_rate_cards(coach_id, sport_id, specialisation_id, title, audience, delivery, unit, price_cents, per_person, duration_min, min_participants, max_participants, sessions_included, is_intro, intro_scope, description, active, rollover_max, grace_days, block_discount_pct, block_min_sessions, allow_pay_per_date, valid_days, currency)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24) RETURNING *`,
+      [user.id, sportId, i.specialisation_id ?? null, i.title, i.audience, i.delivery, i.unit, i.price_cents, i.per_person, i.duration_min ?? null, i.min_participants, i.max_participants ?? null, i.sessions_included ?? null, i.is_intro, i.intro_scope, i.description ?? null, i.active, i.rollover_max, i.grace_days, i.block_discount_pct, i.block_min_sessions, i.allow_pay_per_date, i.unit === 'package' ? i.valid_days ?? null : null, await coachCurrency(user.id)]);   // priced in the coach's country currency, fixed for this card
   },
 });
 
@@ -138,7 +139,7 @@ cap({
               (SELECT count(*)::int FROM coach_subscriptions z WHERE z.rate_card_id=k.id AND z.status IN ('active','past_due','paused')) AS subscribers
          FROM coach_rate_cards k LEFT JOIN sports s ON s.id=k.sport_id LEFT JOIN coach_specialisations z ON z.id=k.specialisation_id
         WHERE k.coach_id=$1 AND k.archived_at IS NULL ORDER BY k.active DESC, k.audience, k.price_cents`, [user.id]);
-    return rows.map((r) => ({ ...r, currency: config.payments.currency }));
+    return rows.map((r) => ({ ...r, currency: effective(r.currency) }));
   },
 });
 
@@ -170,9 +171,9 @@ cap({
     if (i.rate_card_id && !(await one('SELECT 1 FROM coach_rate_cards WHERE id=$1 AND coach_id=$2', [i.rate_card_id, user.id]))) throw notFound('Rate card');
     if (i.fee_cents != null && !i.fee_unit) throw badRequest('Say what the fee is for: per session, per month or in total');
     const row = await one(
-      `INSERT INTO coach_commitments(coach_id, kind, title, sport_id, client_user_id, team_id, event_id, client_name, rate_card_id, fee_cents, fee_unit, starts_on, ends_on, weekdays, start_min, duration_min, timezone, notes)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18) RETURNING *`,
-      [user.id, i.kind, i.title, sportId, i.client_user_id ?? null, i.team_id ?? null, i.event_id ?? null, i.client_name ?? null, i.rate_card_id ?? null, i.fee_cents ?? null, i.fee_unit ?? null, i.starts_on, i.ends_on ?? null, [...new Set(i.weekdays)].sort(), startMin, i.duration_min, tz, i.notes ?? null]);
+      `INSERT INTO coach_commitments(coach_id, kind, title, sport_id, client_user_id, team_id, event_id, client_name, rate_card_id, fee_cents, fee_unit, starts_on, ends_on, weekdays, start_min, duration_min, timezone, notes, currency)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19) RETURNING *`,
+      [user.id, i.kind, i.title, sportId, i.client_user_id ?? null, i.team_id ?? null, i.event_id ?? null, i.client_name ?? null, i.rate_card_id ?? null, i.fee_cents ?? null, i.fee_unit ?? null, i.starts_on, i.ends_on ?? null, [...new Set(i.weekdays)].sort(), startMin, i.duration_min, tz, i.notes ?? null, await coachCurrency(user.id)]);
     return { ...plain(row), clashes: await clashesOf(user.id, plain(row)) };
   },
 });
@@ -210,7 +211,7 @@ cap({
       const all = occurrences({ ...cs, status: cs.status === 'ended' ? 'ended' : 'active' }, cs.starts_on, horizon > addDays(cs.starts_on, 800) ? addDays(cs.starts_on, 800) : horizon, log);
       const done = [...log.values()].filter((l) => l.commitment_id === c.id);
       return {
-        ...cs, currency: config.payments.currency,
+        ...cs, currency: effective(cs.currency),
         delivered: done.filter((l) => l.status === 'delivered').length, skipped: done.filter((l) => ['skipped', 'cancelled'].includes(l.status)).length,
         overdue: all.filter((o) => o.on_date < today && !o.logged).length, to_log: all.filter((o) => o.on_date < today && !o.logged).slice(-5).map((o) => o.on_date), upcoming: all.filter((o) => o.on_date >= today).slice(0, 3).map(({ on_date, starts_at, ends_at }) => ({ on_date, starts_at, ends_at })),
         scheduled_total: cs.ends_on ? all.length + done.filter((l) => ['skipped', 'cancelled'].includes(l.status)).length : null,
@@ -314,10 +315,11 @@ const range = (i) => {
   return { from, to };
 };
 const rangeInput = z.object({ from: day.optional(), to: day.optional() });
-const SETTLED = "h.payment_status IN ('paid','not_required') AND h.status IN ('confirmed','completed')";
+const SETTLED_BASE = "h.payment_status IN ('paid','not_required') AND h.status IN ('confirmed','completed')";
 
 /** Money from commitments: per delivered session, or per calendar month touched by the range while active. */
-async function commitmentFigures(coachId, from, to) {
+async function commitmentFigures(coachId, from, to, currency) {
+  // money is only summed within one currency: commitments priced in another are still scheduled and counted, just not added to the income
   const cs = await many("SELECT * FROM coach_commitments WHERE coach_id=$1 AND status <> 'cancelled' AND starts_on <= $3::date AND (ends_on IS NULL OR ends_on >= $2::date)", [coachId, from, to]);
   const log = await loggedMap(cs.map((c) => c.id));
   const today = isoDate(new Date());
@@ -327,7 +329,7 @@ async function commitmentFigures(coachId, from, to) {
     const occ = occurrences({ ...c, status: c.status === 'paused' ? 'active' : c.status }, from, to, log);
     const done = occ.filter((o) => o.logged?.status === 'delivered');
     scheduled += occ.length; minutes += occ.length * c.duration_min; delivered += done.length;
-    if (c.fee_cents != null && c.kind !== 'block' && c.kind !== 'personal') {
+    if (c.fee_cents != null && c.kind !== 'block' && c.kind !== 'personal' && effective(raw.currency) === currency) {
       if (c.fee_unit === 'session') income += done.length * Number(c.fee_cents);
       else if (c.fee_unit === 'month') {
         const a = c.starts_on > from ? c.starts_on : from, b = c.ends_on && c.ends_on < to ? c.ends_on : to;
@@ -345,10 +347,13 @@ cap({
   async handler({ user }, i) {
     const { from, to } = range(i);
     const W = [user.id, from, to];
+    const cur = await coachCurrency(user.id);   // CURRENCIES whitelist: a validated 3-letter code, safe to inline
+    const SETTLED = `${SETTLED_BASE} AND h.currency='${cur}'`;
+    const OWED = `h.payment_status='unpaid' AND h.status IN ('requested','confirmed') AND h.currency='${cur}'`;
     const inRange = 'h.coach_id=$1 AND h.starts_at >= $2::date AND h.starts_at < $3::date + 1';
     const [tot, months, byAudience, bySport, byCard, bySpec, ratings, ratingMonths, funnel, repeat, sched, cf, cancels] = await Promise.all([
-      one(`SELECT count(*) FILTER (WHERE h.status='completed')::int AS sessions_completed, count(*) FILTER (WHERE h.status IN ('requested','confirmed'))::int AS sessions_open, count(*) FILTER (WHERE h.status='cancelled')::int AS sessions_cancelled,
-                  coalesce(sum(h.total_cents) FILTER (WHERE ${SETTLED}), 0)::bigint AS income_cents, coalesce(sum(h.total_cents) FILTER (WHERE h.payment_status='unpaid' AND h.status IN ('requested','confirmed')), 0)::bigint AS outstanding_cents,
+      one(`SELECT count(*) FILTER (WHERE h.status='completed')::int AS sessions_completed, count(*) FILTER (WHERE h.status IN ('requested','confirmed'))::int AS sessions_open, count(*) FILTER (WHERE h.status='cancelled')::int AS sessions_cancelled, count(*) FILTER (WHERE h.currency <> '${cur}' AND h.status IN ('confirmed','completed'))::int AS other_currency_sessions,
+                  coalesce(sum(h.total_cents) FILTER (WHERE ${SETTLED}), 0)::bigint AS income_cents, coalesce(sum(h.total_cents) FILTER (WHERE ${OWED}), 0)::bigint AS outstanding_cents,
                   coalesce(sum(h.duration_min) FILTER (WHERE h.status='completed'), 0)::int AS minutes_delivered, coalesce(sum(h.duration_min) FILTER (WHERE h.status IN ('confirmed','completed')), 0)::int AS minutes_booked,
                   count(DISTINCT h.hirer_id) FILTER (WHERE h.status IN ('confirmed','completed'))::int AS clients FROM coach_hires h WHERE ${inRange}`, W),
       many(`SELECT to_char(date_trunc('month', h.starts_at), 'YYYY-MM') AS month, count(*) FILTER (WHERE h.status='completed')::int AS sessions, coalesce(sum(h.total_cents) FILTER (WHERE ${SETTLED}), 0)::bigint AS income_cents, coalesce(sum(h.duration_min) FILTER (WHERE h.status='completed'), 0)::int AS minutes FROM coach_hires h WHERE ${inRange} GROUP BY 1 ORDER BY 1`, W),
@@ -361,7 +366,7 @@ cap({
       one("SELECT count(*)::int AS answered, count(*) FILTER (WHERE status='accepted')::int AS won, count(*) FILTER (WHERE status='declined')::int AS lost, count(*) FILTER (WHERE status='pending')::int AS pending FROM coach_request_responses WHERE coach_id=$1 AND created_at >= $2::date AND created_at < $3::date + 1", W),
       one(`SELECT count(*)::int AS repeat_clients FROM (SELECT h.hirer_id FROM coach_hires h WHERE ${inRange} AND h.status IN ('confirmed','completed') GROUP BY 1 HAVING count(*) >= 2) x`, W),
       loadCoachSchedule(user.id),
-      commitmentFigures(user.id, from, to),
+      commitmentFigures(user.id, from, to, cur),
       one(`SELECT count(*) FILTER (WHERE h.cancelled_by=h.coach_id)::int AS by_coach, count(*) FILTER (WHERE h.cancelled_by IS DISTINCT FROM h.coach_id)::int AS by_client FROM coach_hires h WHERE ${inRange} AND h.status='cancelled'`, W),
     ]);
     // utilisation: booked + committed minutes against the minutes of open hours in the period
@@ -372,7 +377,7 @@ cap({
     const totalHires = tot.sessions_completed + tot.sessions_open + tot.sessions_cancelled;
     const money2 = (r) => r.map((x) => ({ ...x, income_cents: Number(x.income_cents) }));
     return {
-      from, to, currency: config.payments.currency,
+      from, to, currency: cur, other_currency_sessions: tot.other_currency_sessions,
       totals: { ...tot, income_cents: Number(tot.income_cents), outstanding_cents: Number(tot.outstanding_cents), hours_delivered: Math.round((tot.minutes_delivered / 60) * 10) / 10, repeat_clients: repeat.repeat_clients, repeat_rate_pct: tot.clients ? Math.round((100 * repeat.repeat_clients) / tot.clients) : null, avg_session_cents: tot.sessions_completed ? Math.round(Number(tot.income_cents) / Math.max(1, tot.sessions_completed + tot.sessions_open)) : null },
       by_month: months.map((m) => ({ ...m, income_cents: Number(m.income_cents), hours: Math.round((m.minutes / 60) * 10) / 10 })),
       by_audience: money2(byAudience), by_sport: money2(bySport), by_rate_card: money2(byCard), by_specialisation: money2(bySpec),
@@ -394,18 +399,18 @@ cap({
   async handler({ user }, i) {
     const { from, to } = range(i);
     const hires = await many(
-      `SELECT h.starts_at, h.audience, h.duration_min, h.total_cents, h.payment_status, h.status, a.display_name AS client, t.name AS team, e.name AS event, s.name AS sport, k.title AS card
+      `SELECT h.starts_at, h.audience, h.duration_min, h.total_cents, h.payment_status, h.status, a.display_name AS client, h.currency, t.name AS team, e.name AS event, s.name AS sport, k.title AS card
          FROM coach_hires h JOIN users a ON a.id=h.hirer_id LEFT JOIN teams t ON t.id=h.team_id LEFT JOIN events e ON e.id=h.event_id LEFT JOIN sports s ON s.id=h.sport_id LEFT JOIN coach_rate_cards k ON k.id=h.rate_card_id
         WHERE h.coach_id=$1 AND h.starts_at >= $2::date AND h.starts_at < $3::date + 1 ORDER BY h.starts_at`, [user.id, from, to]);
     const cs = await many("SELECT c.*, s.name AS sport, t.name AS team, e.name AS event, u.display_name AS user_name FROM coach_commitments c LEFT JOIN sports s ON s.id=c.sport_id LEFT JOIN teams t ON t.id=c.team_id LEFT JOIN events e ON e.id=c.event_id LEFT JOIN users u ON u.id=c.client_user_id WHERE c.coach_id=$1 AND c.starts_on <= $3::date AND (c.ends_on IS NULL OR c.ends_on >= $2::date)", [user.id, from, to]);
     const log = await loggedMap(cs.map((c) => c.id));
-    const lines = hires.map((h) => [isoDate(h.starts_at), 'Session', h.team ?? h.event ?? h.client, h.audience, h.sport ?? '', h.card ?? 'Standard hourly rate', h.duration_min, (Number(h.total_cents) / 100).toFixed(2), h.payment_status, h.status]);
+    const lines = hires.map((h) => [isoDate(h.starts_at), 'Session', h.team ?? h.event ?? h.client, h.audience, h.sport ?? '', h.card ?? 'Standard hourly rate', h.duration_min, toMajor(h.total_cents, h.currency), h.currency, h.payment_status, h.status]);
     for (const raw of cs) {
       const c = plain(raw);
-      for (const o of occurrences(c, from, to, log).filter((x) => x.logged?.status === 'delivered')) lines.push([o.on_date, `Commitment: ${c.title}`, c.team ?? c.event ?? c.user_name ?? c.client_name ?? '', c.kind, c.sport ?? '', '', c.duration_min, c.fee_unit === 'session' && c.fee_cents != null ? (Number(c.fee_cents) / 100).toFixed(2) : '', 'n/a', 'delivered']);
+      for (const o of occurrences(c, from, to, log).filter((x) => x.logged?.status === 'delivered')) lines.push([o.on_date, `Commitment: ${c.title}`, c.team ?? c.event ?? c.user_name ?? c.client_name ?? '', c.kind, c.sport ?? '', '', c.duration_min, c.fee_unit === 'session' && c.fee_cents != null ? toMajor(c.fee_cents, effective(c.currency)) : '', c.fee_unit === 'session' && c.fee_cents != null ? effective(c.currency) : '', 'n/a', 'delivered']);
     }
     lines.sort((a, b) => String(a[0]).localeCompare(String(b[0])));
-    const head = ['Date', 'Type', 'Client', 'Audience', 'Sport', 'Rate card', 'Minutes', `Amount (${config.payments.currency})`, 'Payment', 'Status'];
+    const head = ['Date', 'Type', 'Client', 'Audience', 'Sport', 'Rate card', 'Minutes', 'Amount', 'Currency', 'Payment', 'Status'];
     return { filename: `coaching-statement-${from}-to-${to}.csv`, rows: lines.length, csv: [head, ...lines].map((r) => r.map(csvCell).join(',')).join('\n') };
   },
 });
