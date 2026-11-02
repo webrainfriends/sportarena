@@ -181,7 +181,7 @@ export function FormSheet({ visible, onClose, title, fields, initial = {}, submi
       case 'switch': return (
         <View style={{ gap: 4 }}><View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}><View style={{ flex: 1 }}>{lab(f)}</View><Switch accessibilityLabel={f.label} value={!!v[f.key]} onValueChange={(x) => { select(); set(f.key, x); }} trackColor={{ true: c.pink }} /></View>{hint(f)}</View>);
       case 'money': return (
-        <View style={{ gap: 6 }}><Field label={`${f.label}${f.optional ? ` (${t('form.optional')})` : ''}`} value={String(v[f.key] ?? '')} onChangeText={(x) => set(f.key, x.replace(/[^0-9.,]/g, ''))} keyboardType="decimal-pad" placeholder={`${curOf(f, v) ?? ''} ${f.placeholder ?? '0'}`.trim()} hint={f.hint} /></View>);
+        <View style={{ gap: 6 }}><Field label={`${f.label}${curOf(f, v) ? ` · ${curOf(f, v)}` : ''}${f.optional ? ` (${t('form.optional')})` : ''}`} value={String(v[f.key] ?? '')} onChangeText={(x) => set(f.key, x.replace(/[^0-9.,]/g, ''))} keyboardType="decimal-pad" placeholder={`${curOf(f, v) ?? ''} ${f.placeholder ?? '0'}`.trim()} hint={f.hint} /></View>);
       case 'weekdays': return (
         <View style={{ gap: 6 }}>{lab(f)}
           <View style={{ flexDirection: 'row', gap: 6, flexWrap: 'wrap' }}><Chip label={t('form.weekdays')} onPress={() => set(f.key, [1, 2, 3, 4, 5])} /><Chip label={t('form.weekend')} onPress={() => set(f.key, [6, 0])} /><Chip label={t('form.every_day')} onPress={() => set(f.key, [0, 1, 2, 3, 4, 5, 6])} /></View>
