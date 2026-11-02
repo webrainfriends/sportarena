@@ -3,7 +3,7 @@ import React from 'react';
 import { Empty, ErrorBox } from './ui';
 
 /** Message for a failed call; the server's own wording is kept for denials, because it names the role and the action. */
-export const explain = (e) => (e?.status === 409 ? `${e.message} — the latest version has been loaded; check it and try again.` : e?.status === 404 ? 'You no longer have access to this, or it no longer exists.' : '' + (e?.message ?? e));
+export const explain = (e) => (e?.code === 'pending_approval' || e?.code === 'limit_reached' || e?.code === 'not_entitled' ? e.message : e?.status === 409 ? `${e.message} — the latest version has been loaded; check it and try again.` : e?.status === 404 ? 'You no longer have access to this, or it no longer exists.' : '' + (e?.message ?? e));
 
 /** Full-screen/section state for a failed load: revoked or denied access is not retryable, anything else is. */
 export function LoadError({ error, onRetry }) {

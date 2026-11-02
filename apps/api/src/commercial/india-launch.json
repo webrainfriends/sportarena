@@ -179,6 +179,21 @@
        "effective_from": "2026-10-01",
        "entitlements": [
         {
+         "key": "academies",
+         "limit_value": 1,
+         "limit_behaviour": "hard"
+        },
+        {
+         "key": "staff_seats",
+         "limit_value": 3,
+         "limit_behaviour": "hard"
+        },
+        {
+         "key": "teams",
+         "limit_value": 3,
+         "limit_behaviour": "hard"
+        },
+        {
          "key": "active_athletes",
          "limit_value": 30,
          "limit_behaviour": "hard"
@@ -311,6 +326,11 @@
        "effective_from": "2026-10-01",
        "entitlements": [
         {
+         "key": "academies",
+         "limit_value": 2,
+         "limit_behaviour": "hard"
+        },
+        {
          "key": "staff_seats",
          "limit_value": 5,
          "limit_behaviour": "hard"
@@ -345,6 +365,11 @@
        "components": [],
        "effective_from": "2026-10-01",
        "entitlements": [
+        {
+         "key": "academies",
+         "limit_value": 10,
+         "limit_behaviour": "hard"
+        },
         {
          "key": "staff_seats",
          "limit_value": 15,

@@ -11,6 +11,8 @@ import { FormSheet } from '../FormSheet';
 import { c } from '../theme';
 import { moneyIn } from '../vtime';
 import { PaymentCountries } from './payment-countries';
+import { OrgReviews } from './org-reviews';
+import { t } from '../i18n';
 
 const label = (s) => String(s ?? '').replace(/[_.]/g, ' ');
 const d10 = (d) => (d ? String(d).slice(0, 10) : '');
@@ -486,8 +488,8 @@ export function CommercialConsole() {
     <Screen wide>
       <H1>Commercial</H1>
       <T color={c.mute} weight="700">Catalogue, prices, plans, entitlements and usage — one place, versioned, never hard-coded.</T>
-      <View style={{ marginVertical: 8 }}><Seg options={TABS.map(([value, l]) => ({ value, label: l }))} value={tab} onChange={setTab} /></View>
-      {tab === 'catalogue' ? <Catalogue cat={cat} keys={keys} /> : tab === 'bundles' ? <Bundles cat={cat} /> : tab === 'simulate' ? <Simulate cat={cat} /> : tab === 'accounts' ? <Account cat={cat} keys={keys} /> : tab === 'offers' ? <Offers cat={cat} /> : tab === 'payments' ? <PaymentCountries /> : <Audit />}
+      <View style={{ marginVertical: 8 }}><Seg options={[...TABS, ['reviews', t('rv.tab')]].map(([value, l]) => ({ value, label: l }))} value={tab} onChange={setTab} /></View>
+      {tab === 'reviews' ? <OrgReviews /> : tab === 'catalogue' ? <Catalogue cat={cat} keys={keys} /> : tab === 'bundles' ? <Bundles cat={cat} /> : tab === 'simulate' ? <Simulate cat={cat} /> : tab === 'accounts' ? <Account cat={cat} keys={keys} /> : tab === 'offers' ? <Offers cat={cat} /> : tab === 'payments' ? <PaymentCountries /> : <Audit />}
     </Screen>
   );
 }
