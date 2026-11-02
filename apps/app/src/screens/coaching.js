@@ -7,6 +7,7 @@ import { Pressable, View } from 'react-native';
 import { openPage } from '../video-player';
 import { api } from '../api';
 import { useLoad } from '../hooks';
+import { usePlatformCurrency } from '../platform-currency';
 import { useSession } from '../session';
 import { useNav } from '../nav';
 import { Avatar, Btn, Card, Chip, Empty, ErrorBox, Field, GradCard, H1, H2, Loading, Screen, Section, Seg, Sheet, StatPill, T } from '../ui';
@@ -271,7 +272,9 @@ export function BookCoachSheet({ coach, onClose, onDone }) {
 }
 
 // ================================================================================== POST A REQUEST
-export function PostRequestSheet({ visible, onClose, onDone, currency = 'INR' }) {
+export function PostRequestSheet({ visible, onClose, onDone, currency: given }) {
+  const platformCur = usePlatformCurrency();
+  const currency = given ?? platformCur;
   const today = todayIn(deviceTz);
   const { user } = useSession();
   const teams = useLoad(() => (visible ? api.get('/teams', { mine: true, limit: 50 }) : Promise.resolve([])), [visible]);
@@ -313,7 +316,8 @@ function FindCoaches({ onPost, onBook }) {
     ...(f.verified ? { verified: true } : {}), ...(f.rated ? { min_rating: 4 } : {}), ...(f.hours ? { has_hours: true } : {}), ...(f.audience ? { audience: f.audience } : {}), ...(f.intro ? { intro_offer: true } : {}), ...(f.max ? { max_rate_cents: f.max } : {}), ...(f.city.trim() ? { city: f.city.trim() } : {}),
   }), [q, f.sport, f.delivery, f.verified, f.rated, f.hours, f.audience, f.intro, f.sort, f.max, f.city]);
   const set = (k, v) => setF((p) => ({ ...p, [k]: v }));
-  const cur = list.data?.[0]?.currency ?? 'INR';
+  const platformCur = usePlatformCurrency();
+  const cur = list.data?.[0]?.currency ?? platformCur;
   const active = [f.max, f.city.trim()].filter(Boolean).length;
   return (
     <View style={{ gap: 12, marginTop: 14 }}>
@@ -723,7 +727,9 @@ function RespondSheet({ r, mine, onClose, onDone }) {
 }
 
 /** A person who wants to coach a sport: adds it as a coaching profile with their hourly rate. Also makes them a coach. */
-export function AddCoachSportSheet({ visible, onClose, onDone, initialSport, currency = 'INR' }) {
+export function AddCoachSportSheet({ visible, onClose, onDone, initialSport, currency: given }) {
+  const platformCur = usePlatformCurrency();
+  const currency = given ?? platformCur;
   return (
     <FormSheet visible={visible} onClose={onClose} title="Coach this sport" submitLabel="Add and continue" initial={{ sport: initialSport, level: 'amateur', experience_years: 1 }}
       fields={[

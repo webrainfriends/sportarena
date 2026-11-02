@@ -139,7 +139,7 @@ export function ClassSheet({ id, onClose, onChanged }) {
   );
 }
 
-function PublishSheet({ cards, currency, onClose, onDone }) {
+function PublishSheet({ cards, onClose, onDone }) {
   const byId = Object.fromEntries(cards.map((x) => [x.id, x]));
   return (
     <FormSheet visible onClose={onClose} title={t('cls.publish')} submitLabel={t('cls.publish')}
@@ -202,7 +202,7 @@ export function CoachClasses() {
         </View>
       )}
       {open ? <ClassSheet id={open} onClose={() => setOpen(null)} onChanged={list.reload} /> : null}
-      {publish ? <PublishSheet cards={groupCards} currency={user.currency} onClose={() => setPublish(false)} onDone={async () => { setPublish(false); await list.reload(); }} /> : null}
+      {publish ? <PublishSheet cards={groupCards} onClose={() => setPublish(false)} onDone={async () => { setPublish(false); await list.reload(); }} /> : null}
     </Screen>
   );
 }
