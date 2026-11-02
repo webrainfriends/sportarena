@@ -9,7 +9,7 @@ import { badRequest, conflict, forbidden, notFound } from '../errors.js';
 import { PUBLIC_USER, isAdmin, sportBySlugOrId } from '../helpers.js';
 import { NOT_YOUTH_SQL, isYouth } from '../youth.js';
 import { badgesFor } from '../verification.js';
-import { config } from '../config.js';
+import { coachCurrency, effective } from '../coach-currency.js';
 import { notify } from '../notify.js';
 import { paymentsEnabled } from '../payments/service.js';
 import { fmtMin, hhmm, validTimezone } from '../booking/time.js';
@@ -103,12 +103,12 @@ cap({
       one("SELECT count(*) FILTER (WHERE status='completed')::int AS sessions_done, count(DISTINCT hirer_id) FILTER (WHERE status IN ('confirmed','completed'))::int AS athletes FROM coach_hires WHERE coach_id=$1", [i.id]),
       loadCoachSchedule(i.id),
       badgesFor('user', [i.id]),
-      many(`SELECT k.id, k.title, k.audience, k.delivery, k.unit, k.price_cents, k.per_person, k.duration_min, k.min_participants, k.max_participants, k.sessions_included, k.valid_days, k.rollover_max, k.grace_days, k.is_intro, k.intro_scope, k.description, s.slug AS sport_slug, s.name AS sport FROM coach_rate_cards k LEFT JOIN sports s ON s.id=k.sport_id WHERE k.coach_id=$1 AND k.archived_at IS NULL AND k.active ORDER BY k.is_intro DESC, k.audience, k.price_cents`, [i.id]),
+      many(`SELECT k.id, k.title, k.audience, k.delivery, k.unit, k.price_cents, k.per_person, k.duration_min, k.min_participants, k.max_participants, k.sessions_included, k.valid_days, k.rollover_max, k.grace_days, k.is_intro, k.intro_scope, k.description, k.currency, s.slug AS sport_slug, s.name AS sport FROM coach_rate_cards k LEFT JOIN sports s ON s.id=k.sport_id WHERE k.coach_id=$1 AND k.archived_at IS NULL AND k.active ORDER BY k.is_intro DESC, k.audience, k.price_cents`, [i.id]),
       many('SELECT z.id, z.name, z.levels, z.years, z.certification, s.slug AS sport_slug, s.name AS sport, s.emoji FROM coach_specialisations z JOIN sports s ON s.id=z.sport_id WHERE z.coach_id=$1 AND z.archived_at IS NULL ORDER BY s.name, z.name', [i.id]),
     ]);
     const next = sched.windows.length ? (await openCoachSlots(i.id, new Date(), new Date(Date.now() + 14 * 864e5), { schedule: sched }))[0] ?? null : null;
     return {
-      ...u, currency: config.payments.currency, profile: profile ?? { delivery: 'in_person', accepting: true, listed: true, timezone: 'UTC', slot_min: 60, specialties: [], languages: [] }, sports,
+      ...u, currency: await coachCurrency(i.id), profile: profile ?? { delivery: 'in_person', accepting: true, listed: true, timezone: 'UTC', slot_min: 60, specialties: [], languages: [] }, sports,
       rating: { avg: summary.avg, count: summary.n, breakdown: [5, 4, 3, 2, 1].map((r) => ({ rating: r, count: spread.find((x) => x.rating === r)?.n ?? 0 })) },
       reviews, stats, rate_cards: rateCards, specialisations: specs, verified: badges.get(i.id) ?? [], next_available_at: next,
       hours: { timezone: sched.timezone, slot_min: sched.slot_min, windows: sched.windows.map((w) => ({ weekday: w.weekday, start: fmtMin(w.start_min), end: fmtMin(w.end_min) })) },
@@ -148,9 +148,9 @@ cap({
     const open = await one("SELECT count(*)::int AS n FROM coach_requests WHERE athlete_id=$1 AND status='open'", [user.id]);
     if (open.n >= 5) throw conflict('You already have 5 open requests — close one first');
     const r = await one(
-      `INSERT INTO coach_requests(athlete_id, sport_id, title, goal, level, delivery, city, budget_max_cents, sessions_per_week, preferred_days, start_by, audience, participants, team_id, event_id)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15) RETURNING *`,
-      [user.id, sport.id, i.title, i.goal ?? null, i.level ?? null, i.delivery, i.city ?? null, i.budget_max_cents ?? null, i.sessions_per_week ?? null, [...new Set(i.preferred_days)].sort(), i.start_by ?? null, i.audience, i.audience === 'individual' ? 1 : i.participants, client.team_id, client.event_id]);
+      `INSERT INTO coach_requests(athlete_id, sport_id, title, goal, level, delivery, city, budget_max_cents, sessions_per_week, preferred_days, start_by, audience, participants, team_id, event_id, currency)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16) RETURNING *`,
+      [user.id, sport.id, i.title, i.goal ?? null, i.level ?? null, i.delivery, i.city ?? null, i.budget_max_cents ?? null, i.sessions_per_week ?? null, [...new Set(i.preferred_days)].sort(), i.start_by ?? null, i.audience, i.audience === 'individual' ? 1 : i.participants, client.team_id, client.event_id, await coachCurrency(user.id)]);   // the athlete's country currency
     // publish it in the Community feed too, so coaches find it where everyone looks; the card opens the request
     const facts = [i.audience !== 'individual' ? `${i.audience[0].toUpperCase()}${i.audience.slice(1)}${i.audience !== 'team' && i.participants > 1 ? ` of ${i.participants}` : ''}` : null, i.sessions_per_week ? `${i.sessions_per_week}×/week` : null, i.budget_max_cents != null ? `up to ${(i.budget_max_cents / 100).toLocaleString('en')}/hr` : null].filter(Boolean).join(' · ');
     await one("INSERT INTO market_posts(author_id, kind, title, body, sport_id, city, positions, cta_label, visibility, coach_request_id) VALUES ($1,'wanted',$2,$3,$4,$5,1,'Answer as coach','public',$6) RETURNING id", [user.id, `Coach wanted: ${i.title}`.slice(0, 120), [i.goal, facts].filter(Boolean).join('\n') || null, sport.id, i.city ?? null, r.id]);
@@ -161,7 +161,7 @@ cap({
   },
 });
 
-const REQUEST_COLS = `r.audience, r.participants, r.team_id, r.event_id, (SELECT name FROM teams WHERE id=r.team_id) AS team_name, (SELECT name FROM events WHERE id=r.event_id) AS event_name, r.id, r.title, r.goal, r.level, r.delivery, r.city, r.budget_max_cents, r.sessions_per_week, r.preferred_days, r.start_by, r.status, r.created_at, r.closed_at, s.slug AS sport_slug, s.name AS sport, s.emoji AS sport_emoji`;
+const REQUEST_COLS = `r.audience, r.participants, r.team_id, r.event_id, (SELECT name FROM teams WHERE id=r.team_id) AS team_name, (SELECT name FROM events WHERE id=r.event_id) AS event_name, r.id, r.title, r.goal, r.level, r.delivery, r.city, r.budget_max_cents, r.currency, r.sessions_per_week, r.preferred_days, r.start_by, r.status, r.created_at, r.closed_at, s.slug AS sport_slug, s.name AS sport, s.emoji AS sport_emoji`;
 
 cap({
   name: 'my_coach_requests', method: 'GET', path: '/coach-requests/mine', tag: TAG,
@@ -170,7 +170,7 @@ cap({
     `SELECT ${REQUEST_COLS},
             (SELECT count(*)::int FROM coach_request_responses x WHERE x.request_id=r.id AND x.status='pending') AS pending_responses,
             (SELECT count(*)::int FROM coach_request_responses x WHERE x.request_id=r.id AND x.status <> 'withdrawn') AS responses
-       FROM coach_requests r JOIN sports s ON s.id=r.sport_id WHERE r.athlete_id=$1 AND ($2::text IS NULL OR r.status=$2) ORDER BY (r.status='open') DESC, r.created_at DESC, r.id LIMIT $3 OFFSET $4`, [user.id, i.status ?? null, i.limit, i.offset])).map((r) => ({ ...r, currency: config.payments.currency })),
+       FROM coach_requests r JOIN sports s ON s.id=r.sport_id WHERE r.athlete_id=$1 AND ($2::text IS NULL OR r.status=$2) ORDER BY (r.status='open') DESC, r.created_at DESC, r.id LIMIT $3 OFFSET $4`, [user.id, i.status ?? null, i.limit, i.offset])).map((r) => ({ ...r, currency: effective(r.currency) })),
 });
 
 cap({
@@ -188,16 +188,16 @@ cap({
           AND ($3 OR $2::uuid IS NOT NULL OR r.sport_id IN (SELECT sport_id FROM active_sport_profiles WHERE user_id=$1 AND role='coach'))
           AND ($4::text IS NULL OR r.title ILIKE '%'||$4||'%' OR r.goal ILIKE '%'||$4||'%' OR r.city ILIKE '%'||$4||'%')
         ORDER BY r.created_at DESC, r.id LIMIT $5 OFFSET $6`, [user.id, sport?.id ?? null, !!i.all_sports, i.q ? i.q.replace(/[%_\\]/g, '\\$&') : null, i.limit, i.offset]);
-    return rows.map((r) => ({ ...r, currency: config.payments.currency }));
+    return rows.map((r) => ({ ...r, currency: effective(r.currency) }));
   },
 });
 
 const responseRows = (requestId, where, params) => many(
   `SELECT x.id, x.coach_id, x.rate_cents_hour, x.message, x.proposed_starts_at, x.duration_min, x.status, x.hire_id, x.created_at, x.decided_at,
-          coalesce(x.total_cents, (x.rate_cents_hour * x.duration_min / 60))::bigint AS first_session_cents, x.rate_card_id, (SELECT title FROM coach_rate_cards k WHERE k.id=x.rate_card_id) AS rate_card_title, ${PUBLIC_USER.replace('u.id, ', '')}, ${rated},
+          coalesce(x.total_cents, (x.rate_cents_hour * x.duration_min / 60))::bigint AS first_session_cents, x.currency, x.rate_card_id, (SELECT title FROM coach_rate_cards k WHERE k.id=x.rate_card_id) AS rate_card_title, ${PUBLIC_USER.replace('u.id, ', '')}, ${rated},
           (SELECT count(*)::int FROM coach_hires h WHERE h.coach_id=u.id AND h.status='completed') AS sessions_done,
           EXISTS (SELECT 1 FROM verification_cases v WHERE v.subject_type='user' AND v.subject_id=u.id AND v.type='coach' AND v.status='approved' AND v.expires_at > now()) AS credential_verified
-     FROM coach_request_responses x JOIN users u ON u.id=x.coach_id WHERE x.request_id=$1 ${where} ORDER BY (x.status='pending') DESC, x.created_at, x.id`, [requestId, ...params]);
+     FROM coach_request_responses x JOIN users u ON u.id=x.coach_id WHERE x.request_id=$1 ${where} ORDER BY (x.status='pending') DESC, x.created_at, x.id`, [requestId, ...params]).then((rows) => rows.map((x) => ({ ...x, currency: effective(x.currency) })));
 
 cap({
   name: 'get_coach_request', method: 'GET', path: '/coach-requests/:id', tag: TAG,
@@ -209,7 +209,7 @@ cap({
     const mine = r.athlete_id === user.id;
     const responses = mine ? await responseRows(r.id, "AND x.status <> 'withdrawn'", []) : await responseRows(r.id, 'AND x.coach_id=$2', [user.id]);
     const coachSports = mine ? [] : (await many("SELECT s.slug FROM active_sport_profiles p JOIN sports s ON s.id=p.sport_id WHERE p.user_id=$1 AND p.role='coach'", [user.id])).map((x) => x.slug);
-    return { ...r, currency: config.payments.currency, can_respond: mine ? null : { is_coach: user.roles.includes('coach'), coaches_this_sport: coachSports.includes(r.sport_slug), open: r.status === 'open' }, i_am_owner: mine, responses: mine ? responses : [], my_response: mine ? null : responses[0] ?? null };
+    return { ...r, currency: effective(r.currency), can_respond: mine ? null : { is_coach: user.roles.includes('coach'), coaches_this_sport: coachSports.includes(r.sport_slug), open: r.status === 'open' }, i_am_owner: mine, responses: mine ? responses : [], my_response: mine ? null : responses[0] ?? null };
   },
 });
 
@@ -229,14 +229,15 @@ cap({
     if (card?.sport_id && card.sport_id !== r.sport_id) throw badRequest('That rate card is for a different sport');
     const mins = card && card.unit !== 'hour' ? card.duration_min ?? i.duration_min : i.duration_min;
     const quoted = card ? priceFor(card, mins, r.participants) : null;
+    const quoteCur = card ? effective(card.currency) : await coachCurrency(user.id);   // the answer is in the currency it was quoted in
     const rate = card ? Math.round(((quoted ?? 0) * 60) / mins) : i.rate_cents_hour ?? Number(prof.hourly_rate_cents ?? 0);
     if (await clashes(null, user.id, i.starts_at, mins)) throw conflict('You already have a session then');
     if ((await commitmentBusy(user.id, new Date(i.starts_at), new Date(+new Date(i.starts_at) + mins * 60_000))).length) throw conflict('You have another commitment then');
     const cur = await one('SELECT id, status FROM coach_request_responses WHERE request_id=$1 AND coach_id=$2', [r.id, user.id]);
     if (cur && ['accepted', 'declined'].includes(cur.status)) throw conflict(`Your answer was already ${cur.status}`);
     const saved = cur
-      ? await one("UPDATE coach_request_responses SET rate_cents_hour=$2, message=$3, proposed_starts_at=$4, duration_min=$5, rate_card_id=$6, total_cents=$7, status='pending' WHERE id=$1 RETURNING *", [cur.id, rate, i.message ?? null, i.starts_at, mins, card?.id ?? null, quoted])
-      : await one('INSERT INTO coach_request_responses(request_id, coach_id, rate_cents_hour, message, proposed_starts_at, duration_min, rate_card_id, total_cents) VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING *', [r.id, user.id, rate, i.message ?? null, i.starts_at, mins, card?.id ?? null, quoted]);
+      ? await one("UPDATE coach_request_responses SET rate_cents_hour=$2, message=$3, proposed_starts_at=$4, duration_min=$5, rate_card_id=$6, total_cents=$7, currency=$8, status='pending' WHERE id=$1 RETURNING *", [cur.id, rate, i.message ?? null, i.starts_at, mins, card?.id ?? null, quoted, quoteCur])
+      : await one('INSERT INTO coach_request_responses(request_id, coach_id, rate_cents_hour, message, proposed_starts_at, duration_min, rate_card_id, total_cents, currency) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING *', [r.id, user.id, rate, i.message ?? null, i.starts_at, mins, card?.id ?? null, quoted, quoteCur]);
     await notify(null, r.athlete_id, { kind: 'coach_request_response', title: `${user.display_name} answered your ${r.sport_name} request`, body: r.title, data: { request_id: r.id, response_id: saved.id } });
     return saved;
   },
@@ -281,7 +282,7 @@ cap({
       const hire = (await c.query(
         `INSERT INTO coach_hires(hirer_id, coach_id, sport_id, starts_at, duration_min, rate_cents_hour, total_cents, note, payment_status, status, request_response_id, audience, participants, team_id, event_id, rate_card_id, athlete_id, intro_scope, currency)
          VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$1,$17,$18) RETURNING id, coach_id, starts_at, duration_min, total_cents, currency, status, payment_status, audience, participants`,
-        [user.id, x.coach_id, x.sport_id, x.proposed_starts_at, x.duration_min, x.rate_cents_hour, cost, x.title, pay, pay === 'unpaid' ? 'requested' : 'confirmed', x.id, x.audience, x.participants, x.team_id, x.event_id, x.rate_card_id, introScope, config.payments.currency]).catch((e) => { throw mapIntroViolation(e); })).rows[0];
+        [user.id, x.coach_id, x.sport_id, x.proposed_starts_at, x.duration_min, x.rate_cents_hour, cost, x.title, pay, pay === 'unpaid' ? 'requested' : 'confirmed', x.id, x.audience, x.participants, x.team_id, x.event_id, x.rate_card_id, introScope, effective(x.currency)]).catch((e) => { throw mapIntroViolation(e); })).rows[0];
       await c.query("UPDATE coach_request_responses SET status='accepted', decided_at=now(), hire_id=$2 WHERE id=$1", [x.id, hire.id]);
       await c.query("UPDATE coach_requests SET status='filled', filled_by=$2, closed_at=now() WHERE id=$1", [x.request_id, x.coach_id]);
       await c.query("UPDATE market_posts SET status='closed' WHERE coach_request_id=$1", [x.request_id]);
@@ -346,13 +347,14 @@ cap({
 });
 
 // ----------------------------------------------------------------------------------------------- schedule + money
-const SESSION_COLS = `h.id, h.starts_at, h.duration_min, h.total_cents, h.status, h.payment_status, h.note, h.coach_id, h.hirer_id, s.name AS sport, s.emoji AS sport_emoji, s.slug AS sport_slug, h.audience, h.participants, h.series_id, (SELECT x.pay_mode FROM coach_series x WHERE x.id=h.series_id) AS series_pay_mode, ${venueText('coach_hire', 'h.id')}`;
+const SESSION_COLS = `h.id, h.currency, h.starts_at, h.duration_min, h.total_cents, h.status, h.payment_status, h.note, h.coach_id, h.hirer_id, s.name AS sport, s.emoji AS sport_emoji, s.slug AS sport_slug, h.audience, h.participants, h.series_id, (SELECT x.pay_mode FROM coach_series x WHERE x.id=h.series_id) AS series_pay_mode, ${venueText('coach_hire', 'h.id')}`;
 
 cap({
   name: 'coaching_overview', method: 'GET', path: '/coaching/overview', tag: TAG,
   summary: 'Your coaching at a glance, both sides. As an athlete: upcoming sessions, sessions waiting for your payment, sessions to review, open requests with new answers, what you paid and owe. As a coach (if you are one): upcoming sessions, requests to confirm, earned vs awaiting payment, rating and unanswered reviews, open requests you could answer.',
   async handler({ user }) {
     const isCoach = user.roles.includes('coach');
+    const cur = await coachCurrency(user.id);   // totals add up one currency only (a validated code, safe to inline); each session below carries its own
     const [upcoming, planSessions, unpaid, toReview, openReqs, spend] = await Promise.all([
       many(`SELECT ${SESSION_COLS}, u.display_name AS coach_name, u.avatar_emoji, u.avatar_color, u.avatar_url FROM coach_hires h JOIN users u ON u.id=h.coach_id LEFT JOIN sports s ON s.id=h.sport_id WHERE h.hirer_id=$1 AND h.status IN ('requested','confirmed') AND h.starts_at > now() - interval '3 hours' ORDER BY h.starts_at, h.id LIMIT 20`, [user.id]),
       many(`SELECT t.id, t.title, t.starts_at, t.duration_min, p.id AS plan_id, uc.display_name AS coach_name FROM training_sessions t JOIN training_plans p ON p.id=t.plan_id JOIN users uc ON uc.id=p.coach_id WHERE p.athlete_id=$1 AND t.status='scheduled' AND t.starts_at > now() ORDER BY t.starts_at, t.id LIMIT 10`, [user.id]),
@@ -360,7 +362,7 @@ cap({
       many(`SELECT ${SESSION_COLS}, u.display_name AS coach_name FROM coach_hires h JOIN users u ON u.id=h.coach_id LEFT JOIN sports s ON s.id=h.sport_id WHERE h.hirer_id=$1 AND h.status='completed' AND NOT EXISTS (SELECT 1 FROM coach_reviews r WHERE r.hire_id=h.id) ORDER BY h.completed_at DESC NULLS LAST, h.id LIMIT 10`, [user.id]),
       one("SELECT count(*)::int AS open, coalesce(sum((SELECT count(*) FROM coach_request_responses x WHERE x.request_id=r.id AND x.status='pending')), 0)::int AS new_answers FROM coach_requests r WHERE r.athlete_id=$1 AND r.status='open'", [user.id]),
       one(`SELECT coalesce(sum(total_cents) FILTER (WHERE payment_status='paid'), 0)::bigint AS paid_cents, coalesce(sum(total_cents) FILTER (WHERE payment_status IN ('paid','not_required') AND status IN ('confirmed','completed')), 0)::bigint AS spent_cents, coalesce(sum(total_cents) FILTER (WHERE payment_status='unpaid' AND status IN ('requested','confirmed')), 0)::bigint AS due_cents,
-                  coalesce(sum(total_cents) FILTER (WHERE payment_status='refunded'), 0)::bigint AS refunded_cents, count(*) FILTER (WHERE status='completed')::int AS sessions_completed FROM coach_hires WHERE hirer_id=$1`, [user.id]),
+                  coalesce(sum(total_cents) FILTER (WHERE payment_status='refunded'), 0)::bigint AS refunded_cents, count(*) FILTER (WHERE status='completed')::int AS sessions_completed FROM coach_hires WHERE hirer_id=$1 AND currency='${cur}'`, [user.id]),
     ]);
     const athlete = { upcoming, plan_sessions: planSessions, awaiting_payment: unpaid, to_review: toReview, requests: openReqs, spend };
     let coach = null;
@@ -371,14 +373,14 @@ cap({
         one(`SELECT coalesce(sum(total_cents) FILTER (WHERE payment_status IN ('paid','not_required') AND status IN ('confirmed','completed')), 0)::bigint AS earned_cents,
                     coalesce(sum(total_cents) FILTER (WHERE payment_status IN ('paid','not_required') AND status='completed'), 0)::bigint AS completed_cents,
                     coalesce(sum(total_cents) FILTER (WHERE payment_status='unpaid' AND status IN ('requested','confirmed')), 0)::bigint AS awaiting_payment_cents,
-                    coalesce(sum(total_cents) FILTER (WHERE payment_status='refunded'), 0)::bigint AS refunded_cents, count(*) FILTER (WHERE status='completed')::int AS sessions_completed FROM coach_hires WHERE coach_id=$1`, [user.id]),
+                    coalesce(sum(total_cents) FILTER (WHERE payment_status='refunded'), 0)::bigint AS refunded_cents, count(*) FILTER (WHERE status='completed')::int AS sessions_completed FROM coach_hires WHERE coach_id=$1 AND currency='${cur}'`, [user.id]),
         one('SELECT round(avg(rating)::numeric, 2)::float8 AS avg, count(*)::int AS n FROM coach_reviews WHERE coach_id=$1', [user.id]),
         many('SELECT r.id, r.rating, r.body, r.created_at, a.display_name AS author_name FROM coach_reviews r JOIN users a ON a.id=r.reviewer_id WHERE r.coach_id=$1 AND r.reply IS NULL ORDER BY r.created_at DESC LIMIT 10', [user.id]),
         one("SELECT count(*)::int AS open FROM coach_requests r WHERE r.status='open' AND r.athlete_id <> $1 AND r.sport_id IN (SELECT sport_id FROM active_sport_profiles WHERE user_id=$1 AND role='coach') AND NOT EXISTS (SELECT 1 FROM coach_request_responses x WHERE x.request_id=r.id AND x.coach_id=$1)", [user.id]),
       ]);
       coach = { upcoming: cu, to_confirm: toConfirm, earnings: money2, rating, unanswered_reviews: unanswered, board_open: board.open };
     }
-    return { currency: config.payments.currency, athlete, coach };
+    return { currency: cur, athlete, coach };
   },
 });
 
@@ -393,6 +395,6 @@ cap({
       `SELECT ${SESSION_COLS}, h.rate_cents_hour, o.display_name AS counterparty_name, o.avatar_emoji, o.avatar_color, o.avatar_url, p.paid_at, p.refunded_at, p.provider AS paid_with, $2::text AS as_role
          FROM coach_hires h JOIN users o ON o.id=${other} LEFT JOIN sports s ON s.id=h.sport_id
          LEFT JOIN LATERAL (SELECT paid_at, refunded_at, provider FROM payments WHERE ((purpose_type='coach_hire' AND purpose_id=h.id) OR id=(SELECT x.payment_id FROM coach_series x WHERE x.id=h.series_id)) AND status IN ('paid','refunded') ORDER BY created_at DESC LIMIT 1) p ON true
-        WHERE ${mine}=$1 AND ($3::text IS NULL OR h.payment_status=$3) ORDER BY h.starts_at DESC, h.id LIMIT $4 OFFSET $5`, [user.id, i.as, i.payment_status ?? null, i.limit, i.offset])).map((r) => ({ ...r, currency: config.payments.currency }));
+        WHERE ${mine}=$1 AND ($3::text IS NULL OR h.payment_status=$3) ORDER BY h.starts_at DESC, h.id LIMIT $4 OFFSET $5`, [user.id, i.as, i.payment_status ?? null, i.limit, i.offset])).map((r) => ({ ...r, currency: effective(r.currency) }));
   },
 });

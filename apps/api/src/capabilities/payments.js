@@ -9,6 +9,7 @@ import { audit } from '../helpers.js';
 import { notify } from '../notify.js';
 import { provider } from '../payments/providers.js';
 import { refundableMinor } from '../ads/engine.js';
+import { coachCurrency } from '../coach-currency.js';
 
 const purposes = ['shop_order', 'coach_hire', 'insurance_policy', 'venue_invoice', 'wallet_topup', 'gift_card', 'venue_plan', 'appointment', 'shop_checkout', 'physio_package', 'academy_charge', 'media_rights_fee', 'team_charge', 'team_contribution', 'ad_funding', 'marketplace_engagement', 'commercial_subscription', 'registration_instalment', 'coach_class_seat', 'ticket_order', 'coach_subscription_period', 'coach_package'];
 
@@ -21,7 +22,8 @@ cap({
     const m = await enabledMethods(country);
     // UPI needs a mobile number: tell the app whether the account already has one so it only asks when it must
     const contactKnown = user ? !!(await one('SELECT 1 AS x FROM users WHERE id=$1 AND phone_enc IS NOT NULL', [user.id])) : false;
-    return { country: m.country, providers: m.providers, methods: m.methods, currency: config.payments.currency, contact_known: contactKnown };
+    // local_currency: what this person's own country uses (their default address), for forms with no record yet; `currency` stays the platform default
+    return { country: m.country, providers: m.providers, methods: m.methods, currency: config.payments.currency, local_currency: user ? await coachCurrency(user.id) : config.payments.currency, contact_known: contactKnown };
   },
 });
 

@@ -8,7 +8,6 @@ import { inScope } from './activity.js';
 import { lockPayableInvoice } from '../booking/credits.js';
 import { markInvoicePaid } from '../booking/invoices.js';
 import { syncChargeInvoice, fulfilChargePaid } from '../academy-invoices.js';
-import { config } from '../config.js';
 
 const pointsOnPurpose = async (c, purposeType, purposeId) => Number((await c.query('SELECT coalesce(sum(points - restored),0) AS n FROM loyalty_redemptions WHERE purpose_type=$1 AND purpose_id=$2', [purposeType, purposeId])).rows[0].n);
 
@@ -57,14 +56,14 @@ const ADAPTERS = {
     if ((await c.query("SELECT 1 FROM payments WHERE purpose_type='coach_hire' AND purpose_id=$1 AND status='pending' AND provider_ref IS NOT NULL AND created_at > now() - interval '30 minutes'", [id])).rowCount)
       throw conflict('A card checkout for this session is in progress — finish it, or try again in half an hour');
     return {
-      currency: config.payments.currency, total: Number(h.total_cents), due, scope: { coachId: h.coach_id, eventId: h.event_id ?? null },
+      currency: h.currency, total: Number(h.total_cents), due, scope: { coachId: h.coach_id, eventId: h.event_id ?? null },
       async apply(c2, _redemption, taken) {
         await c2.query('UPDATE coach_hires SET loyalty_credit_cents = loyalty_credit_cents + $2 WHERE id=$1', [id, taken]);
         let paid = false;
         if (taken === due) {
           paid = !!(await c2.query("UPDATE coach_hires SET payment_status='paid', status=CASE WHEN request_response_id IS NOT NULL AND status='requested' THEN 'confirmed' ELSE status END WHERE id=$1 AND payment_status='unpaid' AND status IN ('requested','confirmed') RETURNING id", [id])).rowCount;
         }
-        return { paid, due_after: due - taken, currency: config.payments.currency };
+        return { paid, due_after: due - taken, currency: h.currency };
       },
     };
   },

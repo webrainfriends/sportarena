@@ -5,7 +5,7 @@ import { z } from 'zod';
 import { cap, id, page } from '../registry.js';
 import { one, many, tx } from '../db.js';
 import { badRequest, conflict, forbidden, notFound } from '../errors.js';
-import { config } from '../config.js';
+import { effective } from '../coach-currency.js';
 import { notify } from '../notify.js';
 import { audit } from '../helpers.js';
 import { paymentsEnabled } from '../payments/service.js';
@@ -61,7 +61,7 @@ cap({
     const sub = (await c.query(
       `INSERT INTO coach_subscriptions(coach_id, rate_card_id, athlete_id, payer_id, title, price_cents, currency, sessions_per_period, rollover_max, grace_days)
        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING *`,
-      [card.coach_id, card.id, athleteId, user.id, card.title, card.price_cents, config.payments.currency, card.sessions_included ?? 0, card.rollover_max, card.grace_days])).rows[0];
+      [card.coach_id, card.id, athleteId, user.id, card.title, card.price_cents, effective(card.currency), card.sessions_included ?? 0, card.rollover_max, card.grace_days])).rows[0];
     const period = await raisePeriod(c, sub, 1, new Date().toISOString().slice(0, 10));
     const who = (await c.query('SELECT display_name FROM users WHERE id=$1', [athleteId])).rows[0].display_name;
     await notify(c, card.coach_id, { kind: 'coach_sub_new', title: `${who} wants to subscribe`, body: `${card.title}. Waiting for their first payment.`, data: { subscription_id: sub.id, for_coach: true }, dedupe_key: `coach_sub_new:${sub.id}` });
