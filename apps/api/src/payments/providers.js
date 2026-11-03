@@ -69,6 +69,50 @@ export const stripe = {
     if (!res.ok || !b?.id) throw fail('Stripe', res.status, b?.error?.message);
     return { ref: b.id };
   },
+  // ---- Card on file (#680). Setup happens on Stripe's hosted page (mode=setup), so card data never touches us or the app. ----
+  async createCustomer({ key, name, metadata }) {
+    const { res, body: b } = await call('Stripe', `${cfg().stripe.base}/v1/customers`, { method: 'POST', headers: { ...stripeAuth(), 'content-type': 'application/x-www-form-urlencoded', 'idempotency-key': `customer-${key}` }, body: form({ name, metadata }) });
+    if (!res.ok || !b?.id) throw fail('Stripe', res.status, b?.error?.message);
+    return { ref: b.id };
+  },
+  /** A hosted page where the customer saves a card for later off-session charges. */
+  async createSetup({ mandateId, customer, successUrl, cancelUrl }) {
+    const body = form({ mode: 'setup', customer, success_url: successUrl, cancel_url: cancelUrl, client_reference_id: mandateId, payment_method_types: { 0: 'card' }, metadata: { mandate_id: mandateId }, setup_intent_data: { metadata: { mandate_id: mandateId } } });
+    const { res, body: b } = await call('Stripe', `${cfg().stripe.base}/v1/checkout/sessions`, { method: 'POST', headers: { ...stripeAuth(), 'content-type': 'application/x-www-form-urlencoded', 'idempotency-key': `setup-${mandateId}` }, body });
+    if (!res.ok || !b?.url) throw fail('Stripe', res.status, b?.error?.message);
+    return { ref: b.id, url: b.url };
+  },
+  /** Read back a setup session: has the customer saved a card, and which one (brand, last4 and expiry only for display). */
+  async retrieveSetup(ref) {
+    const { res, body: b } = await call('Stripe', `${cfg().stripe.base}/v1/checkout/sessions/${encodeURIComponent(ref)}?expand[]=setup_intent.payment_method`, { headers: stripeAuth() });
+    if (!res.ok) throw fail('Stripe', res.status, b?.error?.message);
+    return stripe.fromSetup(b);
+  },
+  fromSetup(s) {
+    const si = typeof s?.setup_intent === 'object' ? s.setup_intent : null;
+    const pm = si && typeof si.payment_method === 'object' ? si.payment_method : null;
+    const ok = s?.mode === 'setup' && s?.status === 'complete' && si?.status === 'succeeded' && !!pm?.id;
+    return { ok, customer: typeof s?.customer === 'string' ? s.customer : s?.customer?.id ?? null, paymentMethod: pm?.id ?? null,
+      brand: pm?.card?.brand ?? null, last4: pm?.card?.last4 ?? null, exp: pm?.card ? `${String(pm.card.exp_month).padStart(2, '0')}/${String(pm.card.exp_year).slice(-2)}` : null };
+  },
+  /**
+   * Charge a saved card with the customer absent (off-session). `key` is the idempotency key: the same key can never move money twice, and Stripe replays
+   * the first result for it. Never throws for a decline; a decline is a normal outcome ({ ok:false, reason, invalid }).
+   */
+  async chargeOffSession({ customer, paymentMethod, amount, currency, key, metadata }) {
+    const { res, body: b } = await call('Stripe', `${cfg().stripe.base}/v1/payment_intents`, { method: 'POST', headers: { ...stripeAuth(), 'content-type': 'application/x-www-form-urlencoded', 'idempotency-key': key }, body: form({ amount, currency: currency.toLowerCase(), customer, payment_method: paymentMethod, off_session: 'true', confirm: 'true', metadata }) });
+    if (res.ok && b?.id) return { ok: b.status === 'succeeded', processing: b.status === 'processing', ref: b.id, amount: b.amount_received || b.amount, currency: String(b.currency ?? currency).toUpperCase(), reason: b.status === 'succeeded' || b.status === 'processing' ? null : `payment ${b.status}`, invalid: b.status === 'requires_action' };
+    const e = b?.error ?? {};
+    if (res.status >= 500 || res.status === 429) throw fail('Stripe', res.status, e.message);   // transient: the attempt is retried with the same key
+    // a card error: the issuer said no. Some answers mean the saved card cannot be used again, so the mandate stops instead of retrying.
+    const dead = ['expired_card', 'authentication_required', 'incorrect_number', 'invalid_number', 'invalid_expiry_year', 'invalid_expiry_month', 'card_not_supported', 'resource_missing'].includes(e.code) || ['lost_card', 'stolen_card', 'pickup_card'].includes(e.decline_code);
+    return { ok: false, ref: e.payment_intent?.id ?? null, reason: String(e.message ?? e.code ?? 'declined').slice(0, 160), invalid: dead };
+  },
+  async detachPaymentMethod(pm) {
+    const { res, body: b } = await call('Stripe', `${cfg().stripe.base}/v1/payment_methods/${encodeURIComponent(pm)}/detach`, { method: 'POST', headers: { ...stripeAuth(), 'content-type': 'application/x-www-form-urlencoded' } });
+    // already detached / unknown at the provider is the state we wanted
+    if (!res.ok && !/already|no such|detach/i.test(b?.error?.message ?? '')) throw fail('Stripe', res.status, b?.error?.message);
+  },
   /** Verify a Stripe-Signature header against the raw request body (HMAC-SHA256, 5 minute tolerance). */
   verifyWebhook(raw, header, secret = cfg().stripe.webhookSecret, now = Date.now()) {
     if (!secret || !header) return false;
