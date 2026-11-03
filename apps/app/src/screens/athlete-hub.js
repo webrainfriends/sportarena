@@ -53,8 +53,10 @@ export function AthleteHub({ sport }) {
       <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 12 }}>
         {[
           { icon: '📍', title: t('ws.hub.venue'), sub: sportName ? t('ws.hub.venue_sub', { sport: sportName }) : t('ws.hub.venue_sub_any'), onPress: () => goTab('Schedule', { section: 'book', sport: sport?.sport_slug }) },
+          { icon: '🏟️', title: t('ws.hub.event'), sub: t('ws.hub.event_sub'), onPress: () => goTab('Explore', { sport: sport?.sport_slug }) },
           { icon: '🏅', title: t('ws.hub.profile'), sub: t('ws.hub.profile_sub'), onPress: () => goTab('Player') },
           { icon: '🧑‍🏫', title: t('ws.hub.coach'), sub: t('ws.hub.coach_sub'), onPress: () => goTab('Schedule', { section: 'coach' }) },
+          { icon: '💼', title: t('ws.hub.sponsor'), sub: t('ws.hub.sponsor_sub'), onPress: () => push('FundingOpportunities', { sport: sport?.sport_slug }) },
           { icon: '🩺', title: t('ws.hub.physio'), sub: t('ws.hub.physio_sub'), onPress: () => push('Health', { tab: 'find' }) },
           { icon: '🤝', title: t('ws.hub.team'), sub: t('ws.hub.team_sub'), onPress: () => setTeam(true) },
           { icon: '🎓', title: t('ws.hub.learn'), sub: t('ws.hub.learn_sub'), onPress: () => push('Pathways') },

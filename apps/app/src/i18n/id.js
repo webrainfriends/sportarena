@@ -5210,4 +5210,8 @@ export default {
   'ws.hub.see_all': 'Lihat semua',
   'ws.hub.following_empty': 'Ikuti atlet, pelatih, dan tim untuk melihat hasil dan kiriman mereka di sini.',
   'ws.hub.following_find': 'Cari orang untuk diikuti',
+  'ws.hub.event': 'Cari acara',
+  'ws.hub.event_sub': 'Turnamen, liga, dan pertandingan',
+  'ws.hub.sponsor': 'Cari sponsor',
+  'ws.hub.sponsor_sub': 'Panggilan sponsor dan pendanaan',
 };
