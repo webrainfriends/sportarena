@@ -78,12 +78,22 @@ Outsiders get 404; a member without a finance level gets 403. Platform view stay
 (only values that exist in the books); Overview tiles drill into Transactions; Receivables/Payables show ageing buckets and the items behind them; Access & audit manages levels.
 All text is translated through `t()` (`fin.*`); machine-drafted languages stay `reviewed: false`.
 
+**Venue invoices, player-contract money and tax (migration 141)**
+| Source | Posted as | Key |
+|---|---|---|
+| Venue booking invoices (not academy, team, supplier, marketplace or front-desk ones: those have their own owner) | open `charge` with `due_on` (new `invoices.due_on`), settled when paid, cancelled when void; an open invoice edited in place is cancelled and re-posted at the new amount, one open charge at a time; paid at the venue (cash, card, UPI, bank) posts an offline receipt; points and pass credits settle it with no receipt | `obl:venue_invoice:<id>`, `obl:venue_invoice:<id>:r<revision>`, `receipt:venue_invoice:<id>:<paid>` |
+| Venue credit notes paid back by hand | `refund` for the part that did not go to the wallet, only when nothing was refunded through the provider | `refund:venue_credit_note:<id>` |
+| Approved player-contract expenses not yet on a payout line | open payable of the team or event organisation, due = decision date + pay terms; steps aside (cancelled) once a live payout line carries it, returns if the line fails or the run is cancelled | `obl:player_contract_expense:<id>` |
+| Player-contract credit notes | open receivable of the club owed by the player; settles by cash repayment (a payment, income) or by netting against a later payout (a `credit_note` row, not income); oldest note first | `obl:player_contract_credit_note:<id>`, `receipt:...`, `crn:...` |
+
+**Tax engine.** `org_tax_profiles` (regime, registered, rounding half_up / half_even) and effective-dated `org_tax_rules` (category or source type, code, treatment standard / zero_rated / exempt / out_of_scope / reverse_charge, rate, evidence); rules are never deleted, only ended. `src/tax.js` `resolveTax` gives the tax inside a tax-inclusive gross; it applies only to income and refunds where the source gave no tax, and with no rule nothing changes. Each ledger row records `tax_code`, `tax_rate_bp`, `tax_treatment` and `tax_basis` (`source`, `engine` or `prorata`). Online payments take tax from their source document (venue invoice, academy charge, ticket order, supplier invoice, front-desk sale), pro-rated to what the payment covers. Withholding deducted from payees is its own `withheld_minor` (payout items and player payout lines moved over, older rows copied across); it is never reported as tax.
+Capabilities: `get_finance_tax_report` (collected against paid, per currency, period, code and rate; refunds take their share back; withheld; money with no tax recorded; money zero by rule; rounding variance), `get_org_tax_settings`, `set_org_tax_profile`, `add_org_tax_rule`, `end_org_tax_rule` (controller level, audit-logged). The Finance screen has a Tax tab for accountant level and above.
+
 ## Migration status (honest)
-Covered: every purpose that settles through `payments`, refunds, chargebacks, provider payouts, and (from #593) the obligations, staff-recorded receipts, spend and credits listed above for registration and team charges, instalments, suppliers, sponsorship, event budget, agent commissions, player payouts, official fees, trips, front-desk tenders and wallet tenders.
-Still outside the ledger, by design or not yet built:
+Covered: every purpose that settles through `payments`, refunds, chargebacks, provider payouts, and the obligations, staff-recorded receipts, spend and credits listed above.
+Stays outside the ledger, by design:
 - Drawer movements (cash drops, paid-outs, float) are cash handling, not income, and stay in the shift record.
 - Loyalty points and pass credits have no currency value and are not posted.
-- A credit note on a venue invoice reduces money only through the refund that pays it back; a credit note on a still-unpaid venue invoice does not change a receivable (venue invoices are not obligations here).
-- Player-contract credit notes and expense reimbursements are covered only through the payout line that pays them.
-- A supplier invoice keeps the amount it was first posted with; later credit is a separate `credit_note` row.
-- Tax: figures are those the source module computed (supplier tax, GST on venue invoices, POS tax, provider ledger tax, payout withholding). A per-entity tax engine with its own rounding rules and provider configuration is not part of this plane.
+- A supplier invoice keeps the amount it was first posted with; later credit is a separate `credit_note` row. A venue invoice edited while open is re-posted, as described above.
+- Money posted before an organisation adds a tax rule keeps the tax it had: posted rows are never rewritten, so the report shows them under "no tax recorded".
+- Tax figures are informational, not tax advice, and filing or remitting tax is outside this plane.
