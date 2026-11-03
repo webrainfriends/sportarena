@@ -15,6 +15,7 @@ import { actionLabel, hintText, statLabel } from '../ws-text';
 import { api } from '../api';
 import { useLoad } from '../hooks';
 import { AthleteHub } from './athlete-hub';
+import { VenueHub } from './venue-hub';
 import { PlayerHero } from '../hero';
 
 // Home and Workbench: the two role-driven tabs of the mobile shell (issue #599). Both read the one workspace the API composes for the active
@@ -144,6 +145,7 @@ export function RoleHome() {
   const early = gate(ws);
   if (early) return early;
   const top = d.work.slice(0, 3);
+  const venueHome = d.role === 'venue_manager'; // the venue owner's home is the wizard or the command centre, not the generic queue
   const athleteHome = d.role === 'athlete'; // the athlete's home leads with the nine hub cards; today and the queue come after
   // Order is chosen here, not with a reversed flex direction: a reversed container pushes its overflow out of the scrollable range on the web.
   const todayQueue = (
@@ -175,15 +177,17 @@ export function RoleHome() {
   );
   return (
       <Screen onRefresh={ws.reload} refreshing={ws.loading} wide>
-        <View style={{ marginTop: 4, borderRadius: 24, overflow: 'hidden', borderWidth: 1, borderColor: c.line }}>
+        {venueHome ? null : <View style={{ marginTop: 4, borderRadius: 24, overflow: 'hidden', borderWidth: 1, borderColor: c.line }}>
           <PlayerHero user={user} profile={main} pad={16} onAvatar={() => goTab('Me')} />
-        </View>
+        </View>}
         <View style={{ marginTop: 14 }}><Context ws={ws} /></View>
+        {venueHome ? <View style={{ marginTop: 14 }}><VenueHub /></View> : <>
         {athleteHome ? null : <SetupCard />}
         <View style={{ marginTop: 14 }}><Tiles items={d.summary} role={d.role} /></View>
         <View style={tablet ? { flexDirection: 'row', gap: 24, alignItems: 'flex-start' } : null}>
           {athleteHome ? <>{side}{todayQueue}</> : <>{todayQueue}{side}</>}
         </View>
+        </>}
       </Screen>
   );
 }
