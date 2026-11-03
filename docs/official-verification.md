@@ -1,0 +1,11 @@
+# Official verification (#479, on the governance discipline)
+
+Suspensions are never on a public surface. The one controlled outlet is an **official verification**: an organiser, competition official or academy asks the platform for a verified statement of a person's standing for a sport, and an **Official verifier** answers it.
+
+* **Who may ask:** someone who runs the competition (or owns / administers the organisation) **and** whose plan holds the `reports.official_verification` platform-reports entitlement. With no published plan the service is closed (402), not open. A request about yourself is refused; a young person needs current guardian consent.
+* **What the answer is:** an attestation, `eligible` / `not_eligible` / `unable_to_verify` as of a date, valid for 30 days. It never carries the sanction, its reason, the evidence or the competition it came from. A verifier can revoke it (the record is kept as revoked).
+* **How standing is read:** by the server, at decision time: an integrity decision with a sporting sanction, or a live blocking disciplinary sanction (`match_suspension` while matches remain, `date_suspension`, `competition_ban`, `role_suspension`) in a competition of that sport. The verifier never sees the sanction either.
+* **The role:** `official_verifier` is platform staff for these requests only. Granted and revoked by the platform admin (`mustBePlatformAdmin`), never self-assignable, never shown on a public profile or roster, MFA required, not stripped by the admin-label reconcile. Platform admin itself is unchanged (still exactly the two listed accounts).
+* **Where:** requesters use *Official verification* at the bottom of a competition's Discipline tab; the verifier uses the *Official verifier desk* workspace (More). One request is claimed by one verifier; you cannot verify a request you made or one about yourself.
+
+Capabilities (REST + OpenAPI + MCP): `request_official_verification`, `list_my_official_verifications`, `withdraw_official_verification`, `list_verifier_queue`, `claim_verification_request`, `decide_verification_request`, `revoke_verification_attestation`, `grant_official_verifier`, `revoke_official_verifier`, `list_official_verifiers`. Tables: `disc_verification_requests`, `disc_attestations` (migration 152, additive; attestations are append-only except revocation).

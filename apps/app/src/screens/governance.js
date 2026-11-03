@@ -14,6 +14,7 @@ import { EntityPicker } from '../entity-picker';
 import { SwitchRow, Cols } from '../federation-bits';
 import { Banner, Metric, fmtDate } from '../federation-ui';
 import { useDo } from './console-utils';
+import { VerificationPanel } from './verification-request';
 
 const Row = ({ children, style }) => <View style={[{ flexDirection: 'row', gap: 8, flexWrap: 'wrap', alignItems: 'center' }, style]}>{children}</View>;
 const TONE = { draft: c.violetSoft, submitted: c.sunSoft, approved: c.cyanSoft, completed: c.limeSoft, rejected: c.redSoft, withdrawn: c.violetSoft, cancelled: c.violetSoft,
@@ -152,6 +153,7 @@ export function DisciplineTab({ comp, can }) {
           {x.appeal_deadline ? <T size={12} color={c.mute}>{t('gov.disc.appealBy', { date: fmtDate(x.appeal_deadline) })}</T> : null}
         </Card>)) : <Empty emoji="⚖️" title={t('gov.disc.emptyTitle')} sub={t('gov.disc.emptySub')} />}
       {open ? <CaseSheet id={open} onClose={() => { setOpen(null); q.reload(); }} /> : null}
+      {can ? <VerificationPanel competitionId={comp.id} /> : null}
       <PolicySheet visible={policy} compId={comp.id} onClose={() => setPolicy(false)} onDone={() => { setPolicy(false); pol.reload(); }} />
     </View>
   );

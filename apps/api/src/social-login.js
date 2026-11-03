@@ -10,7 +10,7 @@ import { reconcilePlatformRoles } from './platform.js';
 import { roles } from './registry.js';
 
 /** Roles a person may pick for themselves at sign-up: everything except the platform roles. */
-export const selfRoles = roles.filter((r) => r !== 'admin' && r !== 'platform_admin');
+export const selfRoles = roles.filter((r) => r !== 'admin' && r !== 'platform_admin' && r !== 'official_verifier');
 
 const USER_COLS = 'id, handle, display_name, roles, avatar_emoji, avatar_color, avatar_url, avatar_cutout, access_status';
 /** Identity-provider columns on users (fixed list: the column name is interpolated into SQL). */
