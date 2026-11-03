@@ -18,7 +18,7 @@ const when = (iso) => { try { return new Date(iso).toLocaleString(locale, { week
 function Tile({ icon, title, sub, onPress, children, wide }) {
   const label = [title, sub].filter(Boolean).join('. ');
   return (
-    <Card onPress={onPress} pad={14} accessibilityLabel={label} style={{ flexGrow: 1, flexBasis: wide ? '100%' : '46%', minHeight: 88, gap: 4 }}>
+    <Card onPress={onPress} pad={14} accessibilityLabel={label} style={wide ? { alignSelf: 'stretch', minHeight: 88, gap: 4 } : { flexGrow: 1, minHeight: 88, gap: 4 }}>
       <T weight="800" size={wide ? 17 : 15}>{icon} {title}</T>
       {sub ? <T size={13} color={c.mute}>{sub}</T> : null}
       {children}
