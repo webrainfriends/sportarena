@@ -14,6 +14,7 @@ import { t } from '../i18n';
 import { actionLabel, hintText, statLabel } from '../ws-text';
 import { api } from '../api';
 import { useLoad } from '../hooks';
+import { AthleteHub } from './athlete-hub';
 import { PlayerHero } from '../hero';
 
 // Home and Workbench: the two role-driven tabs of the mobile shell (issue #599). Both read the one workspace the API composes for the active
@@ -143,16 +144,10 @@ export function RoleHome() {
   const early = gate(ws);
   if (early) return early;
   const top = d.work.slice(0, 3);
-  return (
-      <Screen onRefresh={ws.reload} refreshing={ws.loading} wide>
-        <View style={{ marginTop: 4, borderRadius: 24, overflow: 'hidden', borderWidth: 1, borderColor: c.line }}>
-          <PlayerHero user={user} profile={main} pad={16} onAvatar={() => goTab('Me')} />
-        </View>
-        <View style={{ marginTop: 14 }}><Context ws={ws} /></View>
-        <SetupCard />
-        <View style={{ marginTop: 14 }}><Tiles items={d.summary} role={d.role} /></View>
-        <View style={tablet ? { flexDirection: 'row', gap: 24, alignItems: 'flex-start' } : null}>
-          <View style={{ flex: 1 }}>
+  const athleteHome = d.role === 'athlete'; // the athlete's home leads with the nine hub cards; today and the queue come after
+  // Order is chosen here, not with a reversed flex direction: a reversed container pushes its overflow out of the scrollable range on the web.
+  const todayQueue = (
+          <View style={{ flex: tablet ? 1 : undefined, width: tablet ? undefined : '100%' }}>
             <Heading>{t('ws.today')}</Heading>
             {d.today.length ? d.today.map((x, i) => (
               <Card key={`${x.kind}${i}`} onPress={() => go(x.target)} pad={14} style={{ marginBottom: 10 }} accessibilityLabel={`${x.title}. ${x.detail}${x.at ? `. ${at(x.at)}` : ''}`}>
@@ -164,7 +159,10 @@ export function RoleHome() {
             <Heading action={d.work.length > top.length ? t('ws.all_n', { n: d.work.length }) : undefined} onAction={() => goTab('Work')}>{t('ws.needs_you')}</Heading>
             {top.length ? top.map((x, i) => <View key={`${x.kind}${i}`} style={{ marginBottom: 10 }}><QueueItem x={x} ws={ws} /></View>) : <Empty emoji="✅" title={t('ws.caught_up')} sub={t('ws.caught_up_sub')} />}
           </View>
-          <View style={{ flex: tablet ? 0.9 : undefined, width: tablet ? undefined : '100%' }}>
+  );
+  const side = (
+          <View style={{ flex: tablet ? (athleteHome ? 1.5 : 0.9) : undefined, width: tablet ? undefined : '100%' }}>
+            {athleteHome ? <AthleteHub sport={main} /> : <>
             <Heading>{t('ws.quick_actions')}</Heading>
             <Actions actions={d.actions} cols={2} role={d.role} />
             <Heading>{t('ws.beyond')}</Heading>
@@ -172,7 +170,19 @@ export function RoleHome() {
               <Card onPress={() => push('Community')} pad={14} accessibilityLabel={t('ws.a11y_community')}><T weight="700">💬 {t('ws.community')}</T><T size={13} color={c.mute}>{t('ws.community_sub')}</T></Card>
               <Card onPress={() => goTab('Explore')} pad={14} accessibilityLabel={t('ws.a11y_explore')}><T weight="700">🧭 {t('ws.explore')}</T><T size={13} color={c.mute}>{t('ws.explore_sub')}</T></Card>
             </View>
+            </>}
           </View>
+  );
+  return (
+      <Screen onRefresh={ws.reload} refreshing={ws.loading} wide>
+        <View style={{ marginTop: 4, borderRadius: 24, overflow: 'hidden', borderWidth: 1, borderColor: c.line }}>
+          <PlayerHero user={user} profile={main} pad={16} onAvatar={() => goTab('Me')} />
+        </View>
+        <View style={{ marginTop: 14 }}><Context ws={ws} /></View>
+        {athleteHome ? null : <SetupCard />}
+        <View style={{ marginTop: 14 }}><Tiles items={d.summary} role={d.role} /></View>
+        <View style={tablet ? { flexDirection: 'row', gap: 24, alignItems: 'flex-start' } : null}>
+          {athleteHome ? <>{side}{todayQueue}</> : <>{todayQueue}{side}</>}
         </View>
       </Screen>
   );

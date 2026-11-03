@@ -378,12 +378,12 @@ function ApplySheet({ apply, onClose, onDone }) {
 const Summary = ({ p }) => <T size={12} color={c.mute}>{[p.sports.length ? p.sports.join(', ') : 'Any sport', p.regions.length ? p.regions.join(', ') : 'Anywhere', (p.eligibility?.target_types ?? []).map((t) => TARGET_LABEL[t]).join(', '), p.eligibility?.verified_only ? 'Verified applicants only' : null].filter(Boolean).join(' · ')}</T>;
 
 /** Applicants: search sponsorship calls, the ones I was invited to, and my applications. */
-export function FundingOpportunities() {
+export function FundingOpportunities({ sport: initialSport } = {}) {
   const { user, toast } = useSession();
   const { push } = useNav();
   const [check, setCheck] = useState(null);
   const [q, setQ] = useState('');
-  const [sport, setSport] = useState(null);
+  const [sport, setSport] = useState(initialSport ?? null);
   const [thread, setThread] = useState(null);
   const [region, setRegion] = useState('');
   const [sort, setSort] = useState('newest');

@@ -72,14 +72,14 @@ export function RegisterVenue({ visible, onClose, onCreated }) {
   );
 }
 
-export function Book() {
+export function Book({ sport: initialSport } = {}) {
   const { push } = useNav();
   const { has } = useSession();
   const L = useLayout();
   const { compare, toggleCompare, clearCompare } = useBasket();
   const [filters, setFilters] = useState(false);
   const [q, setQ] = useState('');
-  const [sport, setSport] = useState('');
+  const [sport, setSport] = useState(initialSport ?? '');
   const [sort, setSort] = useState('name');
   const [amenity, setAmenity] = useState('');
   const [near, setNear] = useState(null);

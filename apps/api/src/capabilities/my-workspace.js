@@ -2,6 +2,7 @@ import { z } from 'zod';
 import { cap, capabilities } from '../registry.js';
 import { one, many } from '../db.js';
 import { forbidden } from '../errors.js';
+import { resolveDefaultRole } from '../default-role.js';
 import { invoke } from '../invoke.js';
 
 // The role-driven mobile workspace (issue #599). The app opens on what the signed-in person does, not on the platform's modules:
@@ -164,11 +165,11 @@ const BUILD = { athlete, coach, organizer, referee, venue_manager: venueManager 
 cap({
   name: 'get_my_workspace', method: 'GET', path: '/me/role-workspace', tag: TAG,
   summary: 'Your role-driven mobile workspace: the roles and organisations you can switch between, then for the active role today\'s items, the queue of things waiting on you, headline numbers and the fast actions (each names the screen that does it). Read-only; it composes the role homes, so it shows only what those already let you see.',
-  input: z.object({ role: z.enum(Object.keys(ROLE_LABEL)).optional().describe('which of your roles to show; defaults to your first role') }),
+  input: z.object({ role: z.enum(Object.keys(ROLE_LABEL)).optional().describe('which of your roles to show; defaults to your default role (athlete unless you chose another)') }),
   async handler({ user }, i) {
     const held = ORDER.filter((r) => user.roles?.includes(r)); // admin / platform_admin are never offered
     if (i.role && !held.includes(i.role)) throw forbidden('You do not hold that role');
-    const role = i.role ?? held[0] ?? null;
+    const role = i.role ?? (held.includes(resolveDefaultRole(user.roles, user.default_role)) ? resolveDefaultRole(user.roles, user.default_role) : held[0]) ?? null;
     const [orgs, unread] = await Promise.all([
       many(`SELECT o.id, o.name, m.role AS my_role FROM organisation_members m JOIN organisations o ON o.id=m.organisation_id WHERE m.user_id=$1 AND m.status='active' ORDER BY o.name LIMIT 20`, [user.id]),
       one('SELECT count(*)::int AS n FROM notifications WHERE user_id=$1 AND read_at IS NULL', [user.id]),

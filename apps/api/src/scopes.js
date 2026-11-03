@@ -17,7 +17,7 @@ const PAYMENT = new Set([
   'set_finance_access', 'resolve_organisation_finance_reconciliation_item',
 ]);
 // Credential / role management must not be reachable with a narrow token (otherwise a read token could mint a wider one).
-const ACCOUNT = new Set(['create_api_token', 'revoke_api_token', 'list_api_tokens', 'update_my_roles', 'list_login_sessions', 'revoke_login_session', 'logout', 'logout_all', 'change_my_password', 'get_security_status', 'mfa_setup', 'mfa_enable', 'mfa_disable', 'verify_mfa', 'request_email_verification', 'admin_reset_mfa']);
+const ACCOUNT = new Set(['create_api_token', 'revoke_api_token', 'list_api_tokens', 'update_my_roles', 'set_default_role', 'list_login_sessions', 'revoke_login_session', 'logout', 'logout_all', 'change_my_password', 'get_security_status', 'mfa_setup', 'mfa_enable', 'mfa_disable', 'verify_mfa', 'request_email_verification', 'admin_reset_mfa']);
 const CLINICAL_TAGS = new Set(['Athlete health']);
 const CLINICAL_PATH = /^\/(medical|appointments|followups|me\/(wellness|body-pain|loads|load-history|workload|readiness)|people\/:id\/clearance)/;
 
