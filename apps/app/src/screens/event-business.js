@@ -13,16 +13,12 @@ import { Inventory } from './sponsor-roi';
 
 const KINDS = [['sponsor', '💎', 'Sponsor'], ['retail', '🛍️', 'Retail stall'], ['catering', '🍽️', 'Catering'], ['other', '🔧', 'Other']];
 
-export function MoneyTiles({ money, short }) {
+export function MoneyTiles({ money }) {
   if (!money) return null;
   const m = (x) => moneyIn(x, money.currency);
   return (
     <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10 }}>
-      {short ? (
-        <><AStat icon="📥" label="Income" value={m(money.income_cents)} tone={A.green} /><AStat icon="📤" label="Crew cost" value={m(money.expected_cost_cents)} tone={A.sun} /><AStat icon="📊" label="Net" value={m(money.net_cents)} /></>
-      ) : (
-        <><AStat icon="🎟️" label="Entry fees" value={m(money.entry_fees_cents)} /><AStat icon="💎" label="Sponsors" value={m(money.sponsors.cents)} tone={A.green} /><AStat icon="🛍️" label="Vendor fees" value={m(money.vendors.pitch_fees_cents)} /><AStat icon="📤" label="Crew cost" value={m(money.staff.cost_cents)} tone={A.sun} /><AStat icon="📊" label="Net" value={m(money.net_cents)} /></>
-      )}
+      <AStat icon="🎟️" label="Entry fees" value={m(money.entry_fees_cents)} /><AStat icon="💎" label="Sponsors" value={m(money.sponsors.cents)} tone={A.green} /><AStat icon="🛍️" label="Vendor fees" value={m(money.vendors.pitch_fees_cents)} /><AStat icon="📤" label="Crew cost" value={m(money.staff.cost_cents)} tone={A.sun} /><AStat icon="📊" label="Net" value={m(money.net_cents)} />
     </View>
   );
 }
