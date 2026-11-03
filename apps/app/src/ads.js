@@ -15,7 +15,7 @@ const REASONS = [['misleading', 'Misleading'], ['offensive', 'Offensive'], ['irr
 const ENTITY_SCREEN = { venue: 'Venue', coach: 'CoachProfile', event: 'Event', academy: 'AcademyPage', supplier: 'SupplierPage' };
 const deviceCountry = (() => { try { return new Intl.Locale(locale).region ?? null; } catch { return null; } })();
 
-/** Open a destination the API returned: a Gotmygame page in-app, an https link in the browser (new tab on web, system browser on a device). */
+/** Open a destination the API returned: a GotMyGame page in-app, an https link in the browser (new tab on web, system browser on a device). */
 function openDestination(dest, push) {
   if (!dest || dest.type === 'none') return;
   if (dest.type === 'entity') { const screen = ENTITY_SCREEN[dest.entity_type]; if (screen) push(screen, { id: dest.entity_id }); return; }

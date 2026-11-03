@@ -13,7 +13,7 @@ export function installWebShell() {
   meta('mobile-web-app-capable', 'yes');
   meta('apple-mobile-web-app-capable', 'yes');
   meta('apple-mobile-web-app-status-bar-style', dark ? 'black-translucent' : 'default');
-  meta('apple-mobile-web-app-title', 'Gotmygame');
+  meta('apple-mobile-web-app-title', 'GotMyGame');
   const link = (rel, href, extra = {}) => { const l = document.createElement('link'); l.rel = rel; l.href = href; Object.assign(l, extra); document.head.appendChild(l); };
   link('manifest', '/manifest.webmanifest');
   link('icon', '/favicon.png', { type: 'image/png' });

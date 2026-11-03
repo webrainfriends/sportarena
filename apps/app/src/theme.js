@@ -2,7 +2,7 @@ import { Appearance, Platform } from 'react-native';
 import { locale } from './locale';
 import { formatMoney } from './money';
 import { HAS_SPORT_THEME, sportTheme } from './sport-theme';
-// Gotmygame design tokens — "Ember": a bright, airy light theme. Lavender-white canvas, white cards with
+// GotMyGame design tokens — "Ember": a bright, airy light theme. Lavender-white canvas, white cards with
 // soft shadows, one confident indigo accent plus a small family of sport colours. Colourful hero panels carry white text.
 // Token names are stable (pink = primary accent, ink = text, paper = card, violet = strong slate for dark buttons)
 // so every screen inherits the theme.

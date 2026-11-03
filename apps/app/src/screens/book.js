@@ -10,6 +10,7 @@ import { useBasket } from '../basket';
 import { useLayout } from '../layout';
 import { Bubble, Btn, Card, Empty, ErrorBox, Field, H1, ListScreen, Loading, Row, Screen, Seg, Section, Sheet, T, Tag } from '../ui';
 import { FormSheet } from '../FormSheet';
+import { venueFormProps } from './venue-register';
 import { Gallery, VenueReviews } from './venue-media';
 import { VenuePlans } from './plans';
 import { AlertSheet } from './alerts';
@@ -60,16 +61,10 @@ function VenueCard({ v, onOpen, picked, onPick, width, onFav }) {
   );
 }
 
-/** "Register a venue" form: creates the venue, then opens its setup checklist. Used by the venue workspace. */
+/** "Register a venue" form: creates the venue, then opens its setup checklist. Used by the venue workspace. The fields are shared with the venue home wizard (venue-register.js). */
 export function RegisterVenue({ visible, onClose, onCreated }) {
   const { push } = useNav();
-  return (
-    <FormSheet visible={visible} onClose={onClose} title="Register a venue" submitLabel="Create venue" initial={{ currency: 'INR', timezone: (() => { try { return Intl.DateTimeFormat().resolvedOptions().timeZone; } catch { return 'UTC'; } })() }}
-      fields={[{ key: 'name', label: 'Venue name' }, { key: 'address', label: 'Address', optional: true }, { key: 'city', label: 'City or area', type: 'region', optional: true },
-        { key: 'latitude', lngKey: 'longitude', label: 'Map location', type: 'location', optional: true },
-        { key: 'currency', label: 'Currency', type: 'currency' }, { key: 'timezone', label: 'Time zone', type: 'timezone' }]}
-      onSubmit={async (v) => { const x = await api.post('/venues', v); onCreated?.(); push('Manage', { id: x.id, wizard: true }); return 'Venue created — follow the checklist to open for bookings'; }} />
-  );
+  return <FormSheet visible={visible} onClose={onClose} {...venueFormProps((x) => { onCreated?.(); push('Manage', { id: x.id, wizard: true }); })} />;
 }
 
 export function Book({ sport: initialSport } = {}) {

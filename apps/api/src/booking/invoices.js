@@ -109,9 +109,10 @@ export async function reconcileInvoices(c, reservationId) {
         if ((await c.query('SELECT credits_cents FROM invoices WHERE id=$1', [open.id])).rows[0].credits_cents >= delta) await markInvoicePaid(c, open.id, { method: 'wallet', by: rs.user_id });
       } else {
         await c.query(
-          `INSERT INTO invoices(kind, number, venue_id, reservation_id, user_id, currency, total_cents, tax_cents, tax_name, tax_rate_bp, tax_inclusive, seller, buyer_enc, lines, walk_in, tax_breakup)
-           VALUES ('invoice',$1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)`,
-          [await nextNumber(c, venue, 'invoice'), venueId, reservationId, rs.user_id, money.currency, delta, tax, money.tax_name, money.tax_rate_bp, money.tax_inclusive, seller(venue), await buyerBlob(c, rs), JSON.stringify(docLines), rs.walk_in, split ? JSON.stringify(split) : null]);
+          `INSERT INTO invoices(kind, number, venue_id, reservation_id, user_id, currency, total_cents, tax_cents, tax_name, tax_rate_bp, tax_inclusive, seller, buyer_enc, lines, walk_in, tax_breakup, due_on)
+           VALUES ('invoice',$1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)`,
+          [await nextNumber(c, venue, 'invoice'), venueId, reservationId, rs.user_id, money.currency, delta, tax, money.tax_name, money.tax_rate_bp, money.tax_inclusive, seller(venue), await buyerBlob(c, rs), JSON.stringify(docLines), rs.walk_in, split ? JSON.stringify(split) : null,
+            new Date(rs.payment_deadline ?? mine[0]?.starts_at ?? Date.now()).toISOString().slice(0, 10)]);   // when it falls due: the hold deadline, else the first booking
       }
       await c.query("UPDATE bookings b SET payment_status='unpaid' FROM resources r WHERE r.id=b.resource_id AND r.venue_id=$2 AND b.reservation_id=$1 AND b.status IN ('confirmed','no_show') AND b.payment_status IN ('paid','unpaid')", [reservationId, venueId]);
       continue;
