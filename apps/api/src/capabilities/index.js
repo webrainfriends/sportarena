@@ -335,3 +335,6 @@ import './venue-seating.js';
 import './payouts.js';
 import './discovery.js';
 import './smart-clips.js';
+import './para-governance.js';
+import './para-cases.js';
+import './para-outcomes.js';
