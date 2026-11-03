@@ -482,7 +482,7 @@ export function CommercialConsole() {
   const [tab, setTab] = useState('catalogue');
   const allowed = user.roles.includes('platform_admin');
   const cat = useLoad(() => (allowed ? api.get('/admin/commercial/catalogue') : Promise.resolve(null)), [allowed]);
-  if (!allowed) return <Screen><H1>Commercial</H1><Empty emoji="🔒" title="Platform admin only" sub="This console is only available to the Gotmygame platform admin." /></Screen>;
+  if (!allowed) return <Screen><H1>Commercial</H1><Empty emoji="🔒" title="Platform admin only" sub="This console is only available to the GotMyGame platform admin." /></Screen>;
   const keys = [...new Set([...(cat.data?.meters ?? []).map((m) => m.key), ...(cat.data?.products ?? []).flatMap((p) => p.plans.flatMap((pl) => pl.versions.flatMap((v) => v.entitlements.map((e) => e.key))))])].sort();
   return (
     <Screen wide>

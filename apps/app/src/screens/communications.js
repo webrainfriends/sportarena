@@ -314,7 +314,7 @@ export function CommsPlatform() {
   const retire = async (p) => { try { await api.del(`/admin/communications/providers/${p.id}`); toast('Account retired'); st.reload(); } catch (e) { toast(e.message); } };
   const linkFields = [
     { key: 'kind', label: 'Provider', type: 'chips', options: [{ value: 'whatsapp_cloud', label: 'WhatsApp Business (Cloud API)' }, { value: 'sms_http', label: 'SMS gateway' }] },
-    { key: 'label', label: 'Name', hint: 'e.g. Gotmygame WhatsApp' },
+    { key: 'label', label: 'Name', hint: 'e.g. GotMyGame WhatsApp' },
     { key: 'sender_label', label: 'Sender shown to admins', optional: true },
     { key: 'organisation_id', label: 'Only for this organisation', type: 'entity', entityKind: 'person', noun: 'organisation', options: orgs.map((o) => ({ id: o.id, label: o.name, sub: o.city })), optional: true, hint: 'Leave empty for the platform account used by everyone' },
     ...Object.entries(PROVIDER_FIELDS).flatMap(([kind, fs]) => fs.map(([key, label, type, optional]) => ({ key: `cfg_${kind}_${key}`, label, type: type === 'secret' ? 'secret' : 'text', optional, show: (v) => v.kind === kind }))),

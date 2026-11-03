@@ -356,8 +356,8 @@ export function ShopProduct({ id }) {
   const share = async () => {
     const url = Platform.OS === 'web' ? window.location.href : undefined;
     try {
-      if (Platform.OS === 'web' && navigator.share) await navigator.share({ title: p.name, text: `${p.name} · ${money(p.price_cents, p.currency)} on Gotmygame`, url });
-      else if (Platform.OS === 'web') { await navigator.clipboard?.writeText(url); toast('Link copied'); } else await Share.share({ message: `${p.name} · ${money(p.price_cents, p.currency)} on Gotmygame` });
+      if (Platform.OS === 'web' && navigator.share) await navigator.share({ title: p.name, text: `${p.name} · ${money(p.price_cents, p.currency)} on GotMyGame`, url });
+      else if (Platform.OS === 'web') { await navigator.clipboard?.writeText(url); toast('Link copied'); } else await Share.share({ message: `${p.name} · ${money(p.price_cents, p.currency)} on GotMyGame` });
     } catch { /* cancelled */ }
   };
   const stock = p.stock < 1 ? ['Sold out', c.red] : p.stock < 5 ? [`Only ${p.stock} left — order soon`, c.sun] : ['In stock', GOOD];

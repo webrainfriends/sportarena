@@ -121,7 +121,7 @@ export function AdminDecision({ data, onChanged }) {
       <Section title="What to check">
         <Card>
           <T size={13}><T weight="800" size={13}>Claims declared: </T>{cr?.claim_labels?.length ? cr.claim_labels.join(', ') : 'none'}</T>
-          <T size={13}><T weight="800" size={13}>Destination: </T>{k.landing ? (k.landing.type === 'external' ? k.landing.url : `${k.landing.entity_type} page on Gotmygame`) : 'none'}</T>
+          <T size={13}><T weight="800" size={13}>Destination: </T>{k.landing ? (k.landing.type === 'external' ? k.landing.url : `${k.landing.entity_type} page on GotMyGame`) : 'none'}</T>
           <T size={13}><T weight="800" size={13}>Placements: </T>{data.placements.map((p) => p.label).join(', ')}</T>
           <T size={13}><T weight="800" size={13}>Targeting: </T>{[k.sports.length ? `sports ${k.sports.join(', ')}` : 'any sport', k.countries.length ? `countries ${k.countries.join(', ')}` : null, k.cities.length ? `cities ${k.cities.join(', ')}` : null, k.keywords.length ? `words ${k.keywords.join(', ')}` : null, `audience ${k.audience}`].filter(Boolean).join(' · ')}</T>
           <T size={13}><T weight="800" size={13}>Billing: </T>{k.billing_model} · {moneyIn(k.rate_minor, k.currency)} · budget {moneyIn(k.budget_minor, k.currency)} · {k.starts_on}→{k.ends_on}</T>

@@ -16,7 +16,7 @@ import { locale } from '../locale';
 const num = (n) => Number(n ?? 0).toLocaleString(locale);
 const day = (d) => (d ? new Date(d).toLocaleDateString(locale) : '');
 const pct = (bp) => `${bp / 100}%`;
-const KIND = { platform: 'Gotmygame', venue: 'Venue', organisation: 'Academy / club', coach: 'Coach', event: 'Event' };
+const KIND = { platform: 'GotMyGame', venue: 'Venue', organisation: 'Academy / club', coach: 'Coach', event: 'Event' };
 const STATUS = { draft: [c.sunSoft, 'draft'], active: [c.mint, 'running'], paused: [c.sunSoft, 'paused'], ended: [c.violetSoft, 'ended'] };
 const REF = { registered: 'Signed up', qualified: 'Qualified — reward on its way', rewarded: 'Rewarded', under_review: 'Under review', blocked: 'Not eligible', void: 'Cancelled (payment refunded)' };
 const SIGN = (n) => (n > 0 ? `+${n}` : `${n}`);
@@ -38,7 +38,7 @@ function ProgrammeSheet({ id, onClose }) {
     <Sheet visible onClose={onClose} title={d?.name ?? 'Programme'}>
       {p.loading && !d ? <Loading /> : p.error ? <ErrorBox error={p.error} onRetry={p.reload} /> : (
         <View style={{ gap: 10 }}>
-          <T color={c.mute} size={13}>{KIND[d.owner_kind]} · {d.owner_name} · {d.funding_owner === 'sponsor' ? 'sponsor-funded' : d.funding_owner === 'platform' ? 'funded by Gotmygame' : 'funded by the business'}</T>
+          <T color={c.mute} size={13}>{KIND[d.owner_kind]} · {d.owner_name} · {d.funding_owner === 'sponsor' ? 'sponsor-funded' : d.funding_owner === 'platform' ? 'funded by GotMyGame' : 'funded by the business'}</T>
           <T weight="800" size={22}>{num(d.my_points)} {d.unit} <T size={14} color={c.mute}>= {moneyIn(d.my_points, d.currency)}</T></T>
           {d.my_lots.length ? d.my_lots.map((l, k) => <T key={k} size={13}>{num(l.points)} expire {day(l.expires_at)}</T>) : null}
           <T weight="700" style={{ marginTop: 4 }}>How you earn</T>
@@ -93,7 +93,7 @@ function Invite({ onChange }) {
             <StatPill label="Signed up" value={String(k.signed_up)} /><StatPill label="Qualified" value={String(k.qualified)} /><StatPill label="Rewarded" value={String(k.rewarded)} />
           </View>
           <View style={{ flexDirection: 'row', gap: 8, marginTop: 8, flexWrap: 'wrap' }}>
-            <Btn small title="Share" onPress={() => shareText(`Join me on Gotmygame and we both earn rewards. Use my code ${k.code} (Rewards → Enter a code).`, toast)} />
+            <Btn small title="Share" onPress={() => shareText(`Join me on GotMyGame and we both earn rewards. Use my code ${k.code} (Rewards → Enter a code).`, toast)} />
             <Btn small title="Revoke" color={c.paper} ink={c.red} onPress={async () => { try { await api.del(`/referral-codes/${k.id}`); toast('Code revoked'); reload(); } catch (e) { toast(e.message); } }} />
           </View>
         </Card>
@@ -108,7 +108,7 @@ function Invite({ onChange }) {
       <Sheet visible={pick} onClose={() => setPick(false)} title="Which programme?">
         {progs.loading ? <Loading /> : progs.data?.length ? progs.data.map((p) => (
           <Row key={p.id} title={p.name} sub={`${p.owner_name} · you get ${p.referral.referrer_points}, they get ${p.referral.invitee_points}`} onPress={() => { setPick(false); setMake(p); }} />
-        )) : <Empty emoji="🎁" title="No invite programmes are running" sub="When a venue, academy or Gotmygame runs one, it shows up here." />}
+        )) : <Empty emoji="🎁" title="No invite programmes are running" sub="When a venue, academy or GotMyGame runs one, it shows up here." />}
       </Sheet>
       <FormSheet visible={!!make} onClose={() => setMake(null)} title={`Invite code · ${make?.name ?? ''}`} submitLabel="Create code"
         fields={[{ key: 'campaign', label: 'Who is it for?', type: 'chips', optional: true, options: ['Friends', 'Team-mates', 'Family', 'Club', 'Class'] },
@@ -378,7 +378,7 @@ export function LoyaltyConsole({ ownerKind, ownerId, currency }) {
         fields={[{ key: 'name', label: 'Name members will see', hint: 'e.g. "Court Club"' },
           { key: 'unit', label: 'Call them', type: 'chips', options: [{ value: 'points', label: 'Points' }, { value: 'credits', label: 'Credits' }] },
           ...(needCurrency ? [{ key: 'currency', label: 'Currency', type: 'currency' }] : []),
-          { key: 'funding', label: 'Who pays for the rewards?', type: 'chips', options: [{ value: 'owner', label: 'We do' }, ...(ownerKind === 'platform' ? [{ value: 'platform', label: 'Gotmygame' }] : []), ...((spons.data ?? []).length ? [{ value: 'sponsor', label: 'A sponsor' }] : [])] },
+          { key: 'funding', label: 'Who pays for the rewards?', type: 'chips', options: [{ value: 'owner', label: 'We do' }, ...(ownerKind === 'platform' ? [{ value: 'platform', label: 'GotMyGame' }] : []), ...((spons.data ?? []).length ? [{ value: 'sponsor', label: 'A sponsor' }] : [])] },
           { key: 'sponsorship_id', label: 'Sponsorship agreement', type: 'chips', options: (spons.data ?? []).map((s) => ({ value: s.id, label: `${s.sponsor_name} · ${moneyIn(Number(s.amount_cents), s.currency)}` })), show: (v) => v.funding === 'sponsor' }]}
         onSubmit={async (v) => { await api.post('/loyalty/programmes', { owner_kind: ownerKind, ...(ownerId ? { owner_id: ownerId } : {}), name: v.name, unit: v.unit, ...(needCurrency ? { currency: v.currency } : {}), funding_owner: v.funding, ...(v.funding === 'sponsor' ? { sponsorship_id: v.sponsorship_id } : {}) }); list.reload(); return 'Draft created — set up its rules'; }} />
     </Section>

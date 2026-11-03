@@ -177,7 +177,7 @@ cap({
 });
 
 // ---------------------------------------------------------------- live status board
-async function boardOf(ev, c) {
+export async function boardOf(ev, c) {
   const q = (s, p) => (c ?? pool).query(s, p);
   const games = (await q("SELECT status, count(*)::int n FROM fixtures WHERE event_id=$1 GROUP BY status", [ev.id])).rows;
   const g = Object.fromEntries(games.map((x) => [x.status, x.n]));

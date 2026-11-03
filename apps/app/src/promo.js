@@ -65,7 +65,7 @@ function PromoCardNative({ onJoin, width }) {
   const height = Math.round(width * 16 / 9);
   const rise = enter.interpolate({ inputRange: [0, 1], outputRange: [22, 0] });
   return (
-    <View accessibilityRole="summary" accessibilityLabel="Gotmygame in 30 seconds" style={{ width, height, maxWidth: '100%', borderRadius: 34, overflow: 'hidden', backgroundColor: '#23252F', borderWidth: 6, borderColor: '#23252F', shadowColor: '#494D5F', shadowOpacity: 0.45, shadowRadius: 30, shadowOffset: { width: 0, height: 18 }, elevation: 12 }}>
+    <View accessibilityRole="summary" accessibilityLabel="GotMyGame in 30 seconds" style={{ width, height, maxWidth: '100%', borderRadius: 34, overflow: 'hidden', backgroundColor: '#23252F', borderWidth: 6, borderColor: '#23252F', shadowColor: '#494D5F', shadowOpacity: 0.45, shadowRadius: 30, shadowOffset: { width: 0, height: 18 }, elevation: 12 }}>
       <LinearGradient key={sc.id} colors={[sc.colors[0], sc.colors[1], '#23252F']} locations={[0, 0.6, 1]} start={{ x: 0.2, y: 0 }} end={{ x: 0.8, y: 1 }} style={StyleSheet.absoluteFill}>
         <Animated.Text style={{ position: 'absolute', top: '17%', left: 0, right: 0, textAlign: 'center', fontSize: Math.round(width * 0.36), transform: [{ translateY: bob.interpolate({ inputRange: [0, 1], outputRange: [0, -14] }) }, { rotate: bob.interpolate({ inputRange: [0, 1], outputRange: ['-5deg', '6deg'] }) }] }}>{sc.emoji}</Animated.Text>
         <Animated.View style={{ position: 'absolute', left: 22, right: 22, bottom: 86, opacity: enter, transform: [{ translateY: rise }] }}>
@@ -123,7 +123,7 @@ function PromoCardWeb({ onJoin, width }) {
   };
   const joinBtn = h('button', { onClick: onJoin, style: { position: 'absolute', left: 18, right: 18, bottom: 18, border: 0, cursor: 'pointer', borderRadius: 999, padding: '14px 18px', background: '#fff', color: '#494D5F', fontWeight: 800, fontSize: 15, fontFamily: 'inherit', boxShadow: '0 10px 30px rgba(0,0,0,.4)' } }, 'Join the arena — it’s free');
 
-  return h('div', { ref: shell, style: frame, role: 'region', 'aria-label': 'Gotmygame in 30 seconds' },
+  return h('div', { ref: shell, style: frame, role: 'region', 'aria-label': 'GotMyGame in 30 seconds' },
     // real footage, when it exists
     h('video', {
       src: '/promo.mp4', autoPlay: true, muted: true, loop: true, playsInline: true, preload: 'auto',
