@@ -18,6 +18,7 @@ import { dateTimeIn, localToIso } from '../vtime';
 import { AthleteBenchmarks } from './player-insights';
 import { SharedByPlayers } from './player-goals';
 import { t, tEnum } from '../i18n';
+import { VideoPlayer } from '../video-player';
 
 const GOAL_CATEGORIES = ['technical', 'tactical', 'physical', 'mental_performance', 'teamwork', 'match_objective', 'custom'];
 const GOAL_STATUS = ['planned', 'active', 'achieved', 'paused', 'stopped'];
@@ -311,7 +312,7 @@ export function CoachJournal({ athlete_id, team_id, name }) {
       <T size={13} color={c.mute}>{t('cs.journal_help')}</T>
       {athlete_id ? <View style={{ flexDirection: 'row', gap: 8, marginTop: 8, flexWrap: 'wrap' }}><Btn small title={t('nav.title.CoachGoals')} onPress={() => push('CoachGoals', { athlete_id, name })} /><Btn small title={t('nav.title.CoachReports')} color={c.paper} ink={c.ink} onPress={() => push('CoachReports', { athlete_id, name })} /><Btn small title={t('cs.assistant_ro')} color={c.paper} ink={c.ink} onPress={() => push('PlayerAssistant', { child_id: athlete_id, name, staff: true })} /><Btn small title={t('cs.progress_ai')} color={c.paper} ink={c.ink} onPress={() => push('CoachCopilot', { task: 'player_progress', athlete_id })} /><Btn small title={t('cs.ask_notes_ai')} color={c.paper} ink={c.ink} onPress={() => push('CoachCopilot', { task: 'ask', athlete_id })} /></View> : <View style={{ flexDirection: 'row', gap: 8, marginTop: 8 }}><Btn small title={t('nav.title.CoachGoals')} onPress={() => push('CoachGoals', { team_id })} /><Btn small title={t('nav.title.CoachReports')} color={c.paper} ink={c.ink} onPress={() => push('CoachReports', { team_id })} /><Btn small title={t('cs.patterns_ai')} color={c.paper} ink={c.ink} onPress={() => push('CoachCopilot', { task: 'team_patterns', team_id })} /></View>}
       <Cols wide={wide && !!athlete_id}>
-        <>{athlete_id ? <><Metrics athlete_id={athlete_id} team_id={team_id} /><Section title={t('cs.benchmarks')} color={c.cyan}><AthleteBenchmarks athlete_id={athlete_id} /></Section></> : null}</>
+        <>{athlete_id ? <><Metrics athlete_id={athlete_id} team_id={team_id} /><Section title={t('cs.benchmarks')} color={c.cyan}><AthleteBenchmarks athlete_id={athlete_id} /></Section><ClipsShared athlete_id={athlete_id} /></> : null}</>
         <>
       {tags.length ? <HScroll><Chip label={t('common.all')} active={!tag} onPress={() => setTag(null)} />{tags.map((tg) => <Chip key={tg} label={tg} active={tag === tg} onPress={() => setTag(tg)} />)}</HScroll> : null}
       {tl.loading && !tl.data ? <Loading /> : tl.error ? <ErrorBox error={tl.error} onRetry={tl.reload} /> : !tl.data.length ?
@@ -329,6 +330,31 @@ export function CoachJournal({ athlete_id, team_id, name }) {
         </>
       </Cols>
     </Screen>
+  );
+}
+
+// Clips the athlete chose to share or publish (read-only). The API answers 404 when this coach does not coach the athlete or a young person's
+// guardian has not given media consent, so the screen says "not available" rather than hinting which.
+function ClipsShared({ athlete_id }) {
+  const v = useLoad(() => api.get(`/athletes/${athlete_id}/videos`, { limit: 50 }), [athlete_id]);
+  return (
+    <Section title={t('cs.clips_title')} color={c.violet}>
+      <T size={12} color={c.mute}>{t('cs.clips_sub')}</T>
+      <T size={11} color={c.mute} style={{ marginTop: 2 }}>{t('cs.clips_logged')}</T>
+      {v.loading && !v.data ? <Loading /> : v.error?.status === 404 ? <Empty emoji="🔒" title={t('cs.clips_unavailable')} sub={t('cs.clips_unavailable_sub')} />
+        : v.error ? <ErrorBox error={v.error} onRetry={v.reload} /> : !v.data?.length ? <Empty emoji="🎬" title={t('cs.clips_empty')} sub={t('cs.clips_empty_sub')} />
+        : v.data.map((x) => (
+          <Card key={x.id} pad={12} style={{ marginTop: 8 }}>
+            <VideoPlayer video={{ ...x, file_url: x.has_file ? `/passport-videos/${x.id}/file` : null }} />
+            <View style={{ flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 6, marginTop: 8 }}>
+              <T weight="700" style={{ flexShrink: 1 }}>{x.title}</T>
+              <Tag label={t(`vl.vis_${x.visibility}`)} color={c.violetSoft} />
+            </View>
+            {x.sport_slug ? <T size={12} color={c.mute}>{label(x.sport_slug)}</T> : null}
+            {x.description ? <T size={13} style={{ marginTop: 4 }}>{x.description}</T> : null}
+          </Card>
+        ))}
+    </Section>
   );
 }
 
