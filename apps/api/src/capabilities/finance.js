@@ -9,7 +9,7 @@ import { many, one, tx } from '../db.js';
 import { badRequest, conflict, forbidden, notFound } from '../errors.js';
 import { audit } from '../helpers.js';
 import { mustBePlatformAdmin } from '../platform.js';
-import { BUCKETS, CATEGORY_LABEL, LEVELS, MODULE_LABEL, ageing, atLeast, auditTrail, financeLevel, filterOptions, getTransaction, listReconciliation, listTransactions, obligations, reconcileFinance, settlements, summary } from '../finance.js';
+import { BUCKETS, CATEGORY_LABEL, LEVELS, MODULE_LABEL, ageing, atLeast, auditTrail, financeLevel, filterOptions, getTransaction, listReconciliation, listTransactions, obligations, reconcileFinance, settlements, summary, taxReport } from '../finance.js';
 
 const day = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Use a calendar date (YYYY-MM-DD)');
 const cur = z.string().regex(/^[A-Z]{3}$/);
@@ -217,6 +217,87 @@ cap({
       if (i.level !== 'none') row = (await c.query('INSERT INTO fin_finance_access(organisation_id, user_id, level, granted_by) VALUES ($1,$2,$3,$4) RETURNING *', [i.organisation_id, i.user_id, i.level, user.id])).rows[0];
       await audit(c, user.id, 'set_finance_access', 'organisations', i.organisation_id);
       return row ?? { organisation_id: i.organisation_id, user_id: i.user_id, level: 'none', status: 'revoked' };
+    });
+  },
+});
+
+cap({
+  name: 'get_finance_tax_report', method: 'GET', path: '/finance/tax', tag: TAG,
+  summary: 'Tax from the finance ledger for an organisation (accountant level or above) or, without organisation_id, the platform (platform admin): tax collected on money received against tax paid on money paid out, per currency, period (month, quarter or year), tax code and rate, with refunds and chargebacks taking their share back; the net position; withholding deducted from payees as its own line; money with no tax recorded and money zero by rule (exempt, zero-rated, out of scope) counted separately; and the rounding variance of engine-computed figures. Currencies are never added together. Informational, not tax advice.',
+  input: z.object({ organisation_id: id.optional(), from: day.optional(), to: day.optional(), currency: cur.optional(), period: z.enum(['month', 'quarter', 'year']).default('month'), ...dimFilters }),
+  async handler({ user }, i) {
+    const scope = await scopeOf(user, i.organisation_id, 'accountant');
+    return taxReport(scope, withDims(i));
+  },
+});
+
+const TREATMENT = z.enum(['standard', 'zero_rated', 'exempt', 'out_of_scope', 'reverse_charge']);
+const categoryOrAll = z.string().refine((v) => v === '*' || !!CATEGORY_LABEL[v], 'Unknown category');
+
+cap({
+  name: 'get_org_tax_settings', method: 'GET', path: '/finance/tax/settings', tag: TAG,
+  summary: "An organisation's tax settings for the finance ledger (accountant level or above): its profile (regime, registered or not, rounding) and its tax rules (rate and treatment per category or source, effective-dated, with their evidence), newest first, including ended ones. With no rule for a category, the ledger keeps the figure the source module gave.",
+  input: z.object({ organisation_id: id }),
+  async handler({ user }, i) {
+    const scope = await scopeOf(user, i.organisation_id, 'accountant');
+    const profile = (await one('SELECT regime, registered, rounding_mode, updated_at FROM org_tax_profiles WHERE organisation_id=$1', [i.organisation_id])) ?? { regime: 'none', registered: false, rounding_mode: 'half_up', updated_at: null };
+    const rules = await many('SELECT id, category, source_type, code, treatment, rate_bp, withholding_bp, effective_from, effective_to, evidence, created_at FROM org_tax_rules WHERE organisation_id=$1 ORDER BY effective_from DESC, created_at DESC', [i.organisation_id]);
+    const org = await one('SELECT tax_id FROM organisations WHERE id=$1', [i.organisation_id]);
+    return { level: scope.level, profile, registration_id: org?.tax_id ?? null, categories: CATEGORY_LABEL, rules };
+  },
+});
+
+cap({
+  name: 'set_org_tax_profile', method: 'POST', path: '/finance/tax/profile', tag: TAG,
+  summary: "Set an organisation's tax profile for the finance ledger (controller level): regime (none, gst_in, vat, sales_tax), whether it is registered (an unregistered organisation records no tax) and how rounding is done (half_up, half_even). Takes effect on figures posted afterwards; posted amounts never change. Audit-logged.",
+  input: z.object({ organisation_id: id, regime: z.enum(['none', 'gst_in', 'vat', 'sales_tax']), registered: z.boolean(), rounding_mode: z.enum(['half_up', 'half_even']).default('half_up') }),
+  async handler({ user }, i) {
+    await scopeOf(user, i.organisation_id, 'controller');
+    return tx(async (c) => {
+      const row = (await c.query(
+        `INSERT INTO org_tax_profiles(organisation_id, regime, registered, rounding_mode, updated_by) VALUES ($1,$2,$3,$4,$5)
+         ON CONFLICT (organisation_id) DO UPDATE SET regime=$2, registered=$3, rounding_mode=$4, updated_by=$5, updated_at=now() RETURNING organisation_id, regime, registered, rounding_mode, updated_at`, [i.organisation_id, i.regime, i.registered, i.rounding_mode, user.id])).rows[0];
+      await audit(c, user.id, 'set_finance_tax_profile', 'organisations', i.organisation_id);
+      return row;
+    });
+  },
+});
+
+cap({
+  name: 'add_org_tax_rule', method: 'POST', path: '/finance/tax/rules', tag: TAG, status: 201,
+  summary: 'Add a tax rule for an organisation (controller level): a rate (basis points) and treatment (standard, zero_rated, exempt, out_of_scope, reverse_charge) for a ledger category or one source type from a start date, with where the rate comes from. A rule that is still open for the same category and source is ended the day before the new one starts; a new rule cannot start on or before an open rule. Rules are never deleted or edited, only ended. The tax inside the gross of income posted from then on follows the rule. Audit-logged.',
+  input: z.object({ organisation_id: id, category: categoryOrAll.default('*'), source_type: z.string().regex(/^[a-z_]{2,40}$/).optional(), code: z.string().trim().min(1).max(20), treatment: TREATMENT.default('standard'),
+    rate_bp: z.coerce.number().int().min(0).max(10000).default(0), withholding_bp: z.coerce.number().int().min(0).max(5000).default(0), effective_from: day, evidence: z.string().trim().max(500).optional() }),
+  async handler({ user }, i) {
+    await scopeOf(user, i.organisation_id, 'controller');
+    if (i.treatment !== 'standard' && i.rate_bp > 0) throw badRequest('Only a standard rule has a rate');
+    return tx(async (c) => {
+      const open = (await c.query(
+        `SELECT id, effective_from FROM org_tax_rules WHERE organisation_id=$1 AND category=$2 AND source_type IS NOT DISTINCT FROM $3 AND effective_to IS NULL FOR UPDATE`, [i.organisation_id, i.category, i.source_type ?? null])).rows;
+      if (open.some((r) => String(r.effective_from.toISOString?.().slice(0, 10) ?? r.effective_from) >= i.effective_from)) throw conflict('An open rule for this category already starts on or after that date: end it first');
+      await c.query("UPDATE org_tax_rules SET effective_to = ($4::date - 1) WHERE organisation_id=$1 AND category=$2 AND source_type IS NOT DISTINCT FROM $3 AND effective_to IS NULL", [i.organisation_id, i.category, i.source_type ?? null, i.effective_from]);
+      const row = (await c.query(
+        `INSERT INTO org_tax_rules(organisation_id, category, source_type, code, treatment, rate_bp, withholding_bp, effective_from, evidence, created_by) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
+         RETURNING id, category, source_type, code, treatment, rate_bp, withholding_bp, effective_from, effective_to, evidence`, [i.organisation_id, i.category, i.source_type ?? null, i.code, i.treatment, i.rate_bp, i.withholding_bp, i.effective_from, i.evidence ?? null, user.id])).rows[0];
+      await audit(c, user.id, 'add_finance_tax_rule', 'organisations', i.organisation_id);
+      return row;
+    });
+  },
+});
+
+cap({
+  name: 'end_org_tax_rule', method: 'POST', path: '/finance/tax/rules/:id/end', tag: TAG,
+  summary: 'End a tax rule from a date (controller level): money posted after that date is no longer taxed by it. The rule stays on record. Audit-logged.',
+  input: z.object({ id, organisation_id: id, effective_to: day }),
+  async handler({ user }, i) {
+    await scopeOf(user, i.organisation_id, 'controller');
+    return tx(async (c) => {
+      const r = (await c.query('SELECT * FROM org_tax_rules WHERE id=$1 AND organisation_id=$2 FOR UPDATE', [i.id, i.organisation_id])).rows[0];
+      if (!r) throw notFound('Tax rule');
+      if (i.effective_to < String(r.effective_from.toISOString().slice(0, 10))) throw badRequest('A rule cannot end before it starts');
+      const row = (await c.query('UPDATE org_tax_rules SET effective_to=$2 WHERE id=$1 RETURNING id, category, source_type, code, treatment, rate_bp, effective_from, effective_to', [i.id, i.effective_to])).rows[0];
+      await audit(c, user.id, 'end_finance_tax_rule', 'organisations', i.organisation_id);
+      return row;
     });
   },
 });

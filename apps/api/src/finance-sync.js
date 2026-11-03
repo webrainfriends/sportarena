@@ -57,7 +57,7 @@ const OBLIGATIONS = [
   {
     // what a club owes a player for a payout run (#593): owed once the run is approved, settled when the line is paid; withholding is the tax
     type: 'player_payout_line', module: 'contracts', cumulative: true,
-    sql: `SELECT l.id, NULL::uuid AS payer_id, l.payee_id, coalesce(t.organisation_id, e.organisation_id) AS payer_org, NULL::uuid AS payee_org, r.currency, l.gross_cents AS gross, l.withheld_cents AS tax, r.as_of AS due_on,
+    sql: `SELECT l.id, NULL::uuid AS payer_id, l.payee_id, coalesce(t.organisation_id, e.organisation_id) AS payer_org, NULL::uuid AS payee_org, r.currency, l.gross_cents AS gross, 0::bigint AS tax, l.withheld_cents AS withheld, r.as_of AS due_on,
             CASE WHEN r.status = 'cancelled' THEN 'cancelled' WHEN l.status = 'paid' THEN 'settled' ELSE 'open' END AS state,
             r.event_id, r.team_id, NULL::uuid AS workspace_id, r.created_at AS at, l.paid_at, CASE WHEN l.status = 'paid' THEN l.gross_cents ELSE 0 END AS paid_total
           FROM player_payout_lines l JOIN player_payout_runs r ON r.id = l.run_id LEFT JOIN teams t ON t.id = r.team_id LEFT JOIN events e ON e.id = r.event_id
@@ -82,6 +82,18 @@ const OBLIGATIONS = [
           FROM trip_claims c JOIN trips tr ON tr.id = c.trip_id JOIN trip_participants tp ON tp.id = c.participant_id LEFT JOIN teams t ON t.id = tr.team_id
           WHERE coalesce(tr.organisation_id, t.organisation_id) IS NOT NULL`,
   },
+  {
+    // an approved player expense the club has not yet paid out. Once it sits on a live payout line that line's obligation carries it, so this one steps aside
+    // (cancelled) and comes back if the run is cancelled or the line fails.
+    type: 'player_contract_expense', module: 'contracts', cumulative: false,
+    sql: `SELECT x.id, NULL::uuid AS payer_id, x.payee_id, coalesce(t.organisation_id, e.organisation_id) AS payer_org, NULL::uuid AS payee_org, x.currency, x.amount_cents AS gross, 0::bigint AS tax,
+            (coalesce(x.decided_at, x.created_at)::date + coalesce((SELECT v.pay_terms_days FROM player_contract_versions v WHERE v.contract_id = c.id ORDER BY v.version DESC LIMIT 1), 7)) AS due_on,
+            CASE WHEN x.status = 'approved' AND (x.run_line_id IS NULL OR r.status IN ('draft','cancelled') OR l.status = 'failed') THEN 'open' ELSE 'cancelled' END AS state,
+            c.event_id, c.team_id, NULL::uuid AS workspace_id, coalesce(x.decided_at, x.created_at) AS at, NULL::timestamptz AS paid_at, 0::bigint AS paid_total
+          FROM player_contract_expenses x JOIN player_contracts c ON c.id = x.contract_id LEFT JOIN teams t ON t.id = c.team_id LEFT JOIN events e ON e.id = c.event_id
+          LEFT JOIN player_payout_lines l ON l.id = x.run_line_id LEFT JOIN player_payout_runs r ON r.id = l.run_id
+          WHERE coalesce(t.organisation_id, e.organisation_id) IS NOT NULL`,
+  },
 ];
 
 const entryOf = (d, r, extra) => ({
@@ -99,7 +111,7 @@ async function syncObligations(d, limit) {
     await tx(async (c) => {
       const key = `obl:${d.type}:${r.id}`;
       if (r.fin_id) { if (await setStatus(c, key, r.state, null, { source: 'sync' })) updated++; return; }
-      const id = await insert(c, { ...entryOf(d, r, {}), kind: 'charge', status: r.state, gross: n(r.gross), tax: n(r.tax), net: n(r.gross), dueOn: r.due_on, at: r.at, key, meta: { origin: 'obligation' } });
+      const id = await insert(c, { ...entryOf(d, r, {}), kind: 'charge', status: r.state, gross: n(r.gross), tax: n(r.tax), withheld: n(r.withheld), net: n(r.gross), dueOn: r.due_on, at: r.at, key, meta: { origin: 'obligation' } });
       if (id) {
         posted++;
         // a checkout that was started for the same source raised its own open charge: this obligation replaces it, so the receivable is counted once
@@ -120,7 +132,7 @@ async function syncCumulativeReceipts(d, limit) {
   let posted = 0;
   for (const r of rows) {
     const delta = n(r.delta), gross = n(r.gross);
-    if (await tx((c) => insert(c, { ...entryOf(d, r, {}), kind: 'payment', status: 'settled', gross: delta, tax: gross ? Math.round((n(r.tax) * delta) / gross) : 0, provider: 'offline', dueOn: null,
+    if (await tx((c) => insert(c, { ...entryOf(d, r, {}), kind: 'payment', status: 'settled', gross: delta, tax: gross ? Math.round((n(r.tax) * delta) / gross) : 0, withheld: gross ? Math.round((n(r.withheld) * delta) / gross) : 0, provider: 'offline', dueOn: null,
       at: r.paid_at ?? null, key: `receipt:${d.type}:${r.id}:${n(r.paid_total)}`, meta: { origin: 'receipt', recorded_outside_provider: true } }))) posted++;
   }
   return { posted };
@@ -313,9 +325,118 @@ async function syncSponsorshipRefunds(limit) {
   return { posted };
 }
 
+// A booking invoice a venue raised (not one that belongs to an academy, a team, a supplier order or a front-desk sale: those have their own owner above).
+const PLAIN_VENUE_INVOICE = `i.kind = 'invoice' AND i.venue_id IS NOT NULL AND i.reservation_id IS NOT NULL AND NOT EXISTS (SELECT 1 FROM pos_sale_invoices psi WHERE psi.invoice_id = i.id)`;
+const INVOICE_STATE = "CASE i.status WHEN 'open' THEN 'open' WHEN 'paid' THEN 'settled' ELSE 'cancelled' END";
+
+/**
+ * Venue invoices as obligations: an open invoice is a receivable of the venue's organisation (payer = the bill-to, none for a walk-in), settled when paid, cancelled when void.
+ * An open invoice that is edited in place (the booking changed) has its charge cancelled and re-posted at the new amount under `:r<revision>`: a posted amount never changes,
+ * and only one charge is ever open for the invoice. Points and pass credits settle it but are not money, so they never become a receipt.
+ */
+async function syncVenueInvoices(limit) {
+  const rows = await many(
+    `SELECT i.id, i.revision, i.total_cents, i.tax_cents, i.currency, i.status, i.issued_at, i.due_on, i.walk_in, i.user_id, v.owner_id AS payee_id, v.organisation_id AS payee_org, ${INVOICE_STATE} AS state,
+            cur.idem_key AS cur_key, cur.status AS cur_status, cur.gross_minor AS cur_gross
+       FROM invoices i JOIN venues v ON v.id = i.venue_id
+       LEFT JOIN LATERAL (SELECT f.idem_key, f.status, f.gross_minor FROM fin_transactions f WHERE f.kind = 'charge' AND f.source_type = 'venue_invoice' AND f.source_id = i.id AND f.idem_key LIKE 'obl:%' ORDER BY f.created_at DESC, f.id DESC LIMIT 1) cur ON true
+      WHERE ${PLAIN_VENUE_INVOICE} AND i.total_cents > 0
+        AND ((cur.idem_key IS NULL AND i.status <> 'void') OR (cur.idem_key IS NOT NULL AND (cur.status <> ${INVOICE_STATE} OR (i.status = 'open' AND cur.gross_minor <> i.total_cents))))
+      ORDER BY i.issued_at, i.id LIMIT $1`, [limit]);
+  let posted = 0, updated = 0, revised = 0;
+  for (const r of rows) {
+    await tx(async (c) => {
+      const post = async (key, meta) => {
+        const id = await insert(c, { module: 'venue', kind: 'charge', status: r.state, sourceType: 'venue_invoice', sourceId: r.id, payerId: r.walk_in ? null : r.user_id, payeeId: r.payee_id, payeeOrgId: r.payee_org, currency: r.currency,
+          gross: n(r.total_cents), tax: n(r.tax_cents), net: n(r.total_cents), dueOn: r.due_on, at: r.issued_at, key, meta: { origin: 'obligation', revision: r.revision, ...meta } });
+        if (id) await c.query("UPDATE fin_transactions SET status='cancelled' WHERE kind='charge' AND status='open' AND source_type='venue_invoice' AND source_id=$1 AND idem_key LIKE 'charge:%'", [r.id]);   // a checkout charge for the same invoice is replaced
+        return id;
+      };
+      if (!r.cur_key) { if (r.state !== 'cancelled' && (await post(`obl:venue_invoice:${r.id}`))) posted++; return; }
+      if (r.status === 'open' && n(r.cur_gross) !== n(r.total_cents)) {
+        await setStatus(c, r.cur_key, 'cancelled', null, { source: 'sync', reason: 'invoice revised' });
+        if (await post(`obl:venue_invoice:${r.id}:r${r.revision}`, { supersedes: r.cur_key })) revised++;
+        return;
+      }
+      if (await setStatus(c, r.cur_key, r.state, null, { source: 'sync' })) updated++;
+    });
+  }
+  return { posted: posted + revised, updated };
+}
+
+// Receipts for a venue invoice paid at the venue (cash, card, UPI, bank, other): what the invoice says is paid, less points/pass credits (not money), less the payments the ledger already holds.
+const VENUE_INVOICE_RECEIPTS = {
+  type: 'venue_invoice', module: 'venue',
+  sql: `SELECT i.id, CASE WHEN i.walk_in THEN NULL ELSE i.user_id END AS payer_id, v.owner_id AS payee_id, NULL::uuid AS payer_org, v.organisation_id AS payee_org, i.currency, i.total_cents AS gross, i.tax_cents AS tax, i.due_on,
+          CASE i.status WHEN 'paid' THEN 'settled' ELSE 'cancelled' END AS state, NULL::uuid AS event_id, NULL::uuid AS team_id, NULL::uuid AS workspace_id, i.issued_at AS at, i.paid_at,
+          i.total_cents - coalesce((SELECT sum(ic.amount_cents - ic.returned_cents) FROM invoice_credits ic WHERE ic.invoice_id = i.id AND ic.source IN ('points','pass')), 0) AS paid_total
+        FROM invoices i JOIN venues v ON v.id = i.venue_id WHERE ${PLAIN_VENUE_INVOICE} AND i.status = 'paid' AND coalesce(i.payment_method, '') NOT IN ('online', 'points', 'pass')`,
+};
+
+/** A credit note whose money went back by hand (cash, bank): the part that did not go to the customer's wallet, for a booking nobody paid online. Provider refunds are posted from payments. */
+async function syncVenueCreditNotes(limit) {
+  const rows = await many(
+    `SELECT cn.id, cn.parent_id, cn.currency, cn.total_cents, cn.tax_cents, cn.refund_to_credits_cents, coalesce(cn.refunded_at, cn.paid_at) AS at, cn.walk_in, cn.user_id, v.owner_id AS payee_id, v.organisation_id AS payee_org
+       FROM invoices cn JOIN venues v ON v.id = cn.venue_id
+      WHERE cn.kind = 'credit_note' AND cn.refund_status = 'done' AND cn.parent_id IS NOT NULL AND cn.total_cents > cn.refund_to_credits_cents
+        AND NOT EXISTS (SELECT 1 FROM payments p WHERE p.status IN ('paid','refunded') AND p.purpose_type = 'venue_invoice' AND p.purpose_id = cn.parent_id)
+        AND NOT EXISTS (SELECT 1 FROM fin_transactions f WHERE f.idem_key = 'refund:venue_credit_note:' || cn.id) ORDER BY cn.paid_at, cn.id LIMIT $1`, [limit]);
+  let posted = 0;
+  for (const r of rows) {
+    const amount = n(r.total_cents) - n(r.refund_to_credits_cents);
+    const tax = n(r.total_cents) ? Math.round((n(r.tax_cents) * amount) / n(r.total_cents)) : 0;
+    if (await tx((c) => insert(c, { module: 'venue', kind: 'refund', status: 'settled', sourceType: 'venue_invoice', sourceId: r.parent_id, payerId: r.walk_in ? null : r.user_id, payeeId: r.payee_id, payeeOrgId: r.payee_org, currency: r.currency,
+      gross: amount, tax, provider: 'offline', at: r.at, key: `refund:venue_credit_note:${r.id}`, meta: { origin: 'refund', credit_note_id: r.id, recorded_outside_provider: true } }))) posted++;
+  }
+  return { posted };
+}
+
+/**
+ * A credit note on a player contract means the player now owes the club that amount. It is a receivable of the club's organisation that ages, and it settles two ways:
+ * the player repays it (a `refund` entry on the contract: real money, posted as a payment) or a later payout is reduced by it (netting: a credit_note row, not income).
+ * What is still owed is the contract balance (all entries); what has been cleared is the credit notes' total less that, applied oldest note first, cash repayments first.
+ */
+async function syncContractCreditNotes(limit) {
+  const notes = await many(
+    `SELECT n.id, n.contract_id, n.payee_id, n.currency, abs(n.gross_cents) AS amount, n.issued_at, coalesce(t.organisation_id, e.organisation_id) AS club_org, c.event_id, c.team_id,
+            (n.issued_at::date + coalesce((SELECT v.pay_terms_days FROM player_contract_versions v WHERE v.contract_id = c.id ORDER BY v.version DESC LIMIT 1), 7)) AS due_on
+       FROM player_contract_invoices n JOIN player_contracts c ON c.id = n.contract_id LEFT JOIN teams t ON t.id = c.team_id LEFT JOIN events e ON e.id = c.event_id
+      WHERE n.kind = 'credit_note' AND n.gross_cents < 0 AND coalesce(t.organisation_id, e.organisation_id) IS NOT NULL ORDER BY n.contract_id, n.issued_at, n.id LIMIT $1`, [limit * 4]);
+  if (!notes.length) return { posted: 0 };
+  const ids = [...new Set(notes.map((x) => x.contract_id))];
+  const bal = new Map((await many("SELECT contract_id, sum(amount_cents)::bigint AS balance, coalesce(sum(amount_cents) FILTER (WHERE kind = 'refund'), 0)::bigint AS repaid FROM player_contract_entries WHERE contract_id = ANY($1) GROUP BY contract_id", [ids])).map((r) => [r.contract_id, r]));
+  const byContract = new Map();
+  for (const x of notes) { if (!byContract.has(x.contract_id)) byContract.set(x.contract_id, []); byContract.get(x.contract_id).push(x); }
+  let posted = 0;
+  for (const [contractId, list] of byContract) {
+    const total = list.reduce((t, x) => t + n(x.amount), 0);
+    const b = bal.get(contractId) ?? { balance: 0, repaid: 0 };
+    const owes = Math.max(0, -n(b.balance));
+    let cleared = Math.max(0, total - owes), cashLeft = Math.min(n(b.repaid), cleared);
+    for (const x of list) {
+      const take = Math.min(cleared, n(x.amount)); cleared -= take;
+      const cash = Math.min(cashLeft, take); cashLeft -= cash;
+      const net = take - cash;
+      const state = take >= n(x.amount) ? 'settled' : 'open';
+      const src = { module: 'contracts', sourceType: 'player_contract_credit_note', sourceId: x.id, payerId: x.payee_id, payeeOrgId: x.club_org, currency: x.currency, eventId: x.event_id, teamId: x.team_id };
+      await tx(async (c) => {
+        const key = `obl:player_contract_credit_note:${x.id}`;
+        const have = (await c.query('SELECT status FROM fin_transactions WHERE idem_key=$1', [key])).rows[0];
+        if (!have) { if (await insert(c, { ...src, kind: 'charge', status: state, gross: n(x.amount), net: n(x.amount), dueOn: x.due_on, at: x.issued_at, key, meta: { origin: 'obligation', contract_id: contractId } })) posted++; }
+        else if (have.status !== state) await setStatus(c, key, state, null, { source: 'sync' });
+        const sum = async (kind) => n((await c.query("SELECT coalesce(sum(gross_minor),0)::bigint AS s FROM fin_transactions WHERE kind=$1 AND status='settled' AND source_type='player_contract_credit_note' AND source_id=$2", [kind, x.id])).rows[0].s);
+        const cashDelta = cash - (await sum('payment')), netDelta = net - (await sum('credit_note'));
+        if (cashDelta > 0 && (await insert(c, { ...src, kind: 'payment', status: 'settled', gross: cashDelta, provider: 'offline', key: `receipt:player_contract_credit_note:${x.id}:${cash}`, meta: { origin: 'receipt', recorded_outside_provider: true } }))) posted++;
+        if (netDelta > 0 && (await insert(c, { ...src, kind: 'credit_note', status: 'settled', gross: netDelta, key: `crn:player_contract_credit_note:${x.id}:${net}`, meta: { origin: 'netting' } }))) posted++;
+      });
+    }
+  }
+  return { posted };
+}
+
 /** Catch the canonical ledger up with every source above and fill the filter dimensions. Idempotent; called by reconcileFinance (worker step `finance`). */
 export async function syncLedger({ limit = 500 } = {}) {
-  const out = { obligations: 0, obligations_updated: 0, receipts: 0, spend: 0, spend_reversed: 0, more: false, commissions: 0, pos: 0, wallet: 0, credit_notes: 0, trip_payments: 0, sponsorship_refunds: 0 };
+  const out = { obligations: 0, obligations_updated: 0, receipts: 0, spend: 0, spend_reversed: 0, more: false, commissions: 0, contract_credit_notes: 0, venue_credit_notes: 0, pos: 0, wallet: 0, credit_notes: 0, trip_payments: 0, sponsorship_refunds: 0 };
   for (const d of OBLIGATIONS) {
     const o = await syncObligations(d, limit);
     out.obligations += o.posted; out.obligations_updated += o.updated; out.more ||= o.more;
@@ -325,8 +446,12 @@ export async function syncLedger({ limit = 500 } = {}) {
   out.receipts += (await syncSponsorshipReceipts(limit)).posted;
   const s = await syncEventSpend(limit);
   out.spend = s.posted; out.spend_reversed = s.reversed;
-  const parts = [['commissions', syncCommissions], ['pos', syncPosTenders], ['wallet', syncWalletTenders], ['credit_notes', syncCreditNotes], ['trip_payments', syncTripPayments], ['sponsorship_refunds', syncSponsorshipRefunds]];
+  const vi = await syncVenueInvoices(limit);
+  out.obligations += vi.posted; out.obligations_updated += vi.updated;
+  const parts = [['commissions', syncCommissions], ['contract_credit_notes', syncContractCreditNotes], ['pos', syncPosTenders], ['venue_credit_notes', syncVenueCreditNotes], ['wallet', syncWalletTenders], ['credit_notes', syncCreditNotes], ['trip_payments', syncTripPayments], ['sponsorship_refunds', syncSponsorshipRefunds]];
   for (const [name, fn] of parts) { const r = await fn(limit); out[name] = (r.posted ?? 0) + (r.receipts ?? 0); }
+  // after the wallet and front-desk tenders, so what they already hold is netted before the rest is treated as paid at the venue
+  out.receipts += (await syncCumulativeReceipts(VENUE_INVOICE_RECEIPTS, limit)).posted;
   await applyDimensions(null, null);
   return out;
 }
