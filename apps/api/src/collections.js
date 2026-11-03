@@ -182,7 +182,7 @@ async function syncAttempts(c, cs, today) {
 // nothing pretends to auto-debit - the invoice stays unpaid and the payer is asked to pay.
 const executors = new Map();
 export const registerMandateExecutor = (provider, fn) => (fn ? executors.set(provider, fn) : executors.delete(provider));
-const executorFor = () => executors.values().next().value ?? null;
+const executorFor = () => [...executors].find(([k]) => !k.endsWith('-coach'))?.[1] ?? null;   // coach months (#680) have their own executors
 
 // Work a mandate executor wants done after the case's transaction commits (settling takes the same row lock the case holds). Drained by runCollections.
 const deferred = [];
