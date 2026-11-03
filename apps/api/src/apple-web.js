@@ -8,9 +8,12 @@ import { invoke, toErrorBody } from './invoke.js';
 import { parseCookies, setWebCookies } from './web-session.js';
 
 const STATE_COOKIE = 'sa_apple_state';
+const PENDING_COOKIE = 'sa_apple_pending'; // a NEW Apple user who still has to choose their role: the verified token waits here (HttpOnly, 10 minutes)
 const loginApple = () => capabilities.find((c) => c.name === 'login_apple');
 const back = (res, params) => res.redirect(303, `/?${new URLSearchParams(params)}`);
 // Apple's POST is a cross-site navigation, so the state cookie must be SameSite=None (which requires Secure); plain-HTTP dev falls back to lax.
+// The pending cookie is only ever read by our own same-site POST, so it is SameSite=Lax (a cross-site page cannot make the browser send it).
+const pendingOpts = (req) => ({ httpOnly: true, path: '/api/v1/auth/apple', maxAge: 10 * 60_000, secure: Boolean(req.secure), sameSite: 'lax' });
 const cookieOpts = (req) => ({ httpOnly: true, path: '/api/v1/auth/apple', maxAge: 10 * 60_000, secure: Boolean(req.secure), sameSite: req.secure ? 'none' : 'lax' });
 
 export function appleWebRouter() {
@@ -38,12 +41,35 @@ export function appleWebRouter() {
     let name;
     try { const n = JSON.parse(user ?? '{}').name; name = [n?.firstName, n?.lastName].filter(Boolean).join(' ') || undefined; } catch { /* name is optional */ }
     try {
-      const out = await invoke(loginApple(), null, { credential: id_token, name, nonce }, { ip: req.ip, userAgent: req.headers['user-agent'] });
+      const out = await invoke(loginApple(), null, { credential: id_token, name, nonce, require_role: true }, { ip: req.ip, userAgent: req.headers['user-agent'] });
+      if (out.needs_role) {
+        res.cookie(PENDING_COOKIE, Buffer.from(JSON.stringify({ id_token, nonce, name })).toString('base64url'), pendingOpts(req));
+        return back(res, { apple_role: '1' });
+      }
       if (out.mfa_required) return back(res, { apple_mfa: out.mfa_token });
       setWebCookies(req, res, { token: out.token, refresh_token: out.refresh_token });
       return res.redirect(303, '/');
     } catch (e) {
       return back(res, { apple_error: toErrorBody(e).message });
+    }
+  });
+
+  // Step 2 for a new Apple user: the person has chosen their role(s); the verified token from the cookie creates the account with them.
+  r.post('/auth/apple/complete', express.json({ limit: '2kb' }), async (req, res) => {
+    const raw = String(parseCookies(req.headers.cookie)[PENDING_COOKIE] ?? '');
+    res.clearCookie(PENDING_COOKIE, { ...pendingOpts(req), maxAge: undefined });
+    let pending;
+    try { pending = JSON.parse(Buffer.from(raw, 'base64url').toString('utf8')); } catch { /* handled below */ }
+    if (!pending?.id_token) return res.status(401).json({ error: { code: 'unauthorized', message: 'Apple sign-in expired. Please try again.' } });
+    try {
+      const out = await invoke(loginApple(), null, { credential: pending.id_token, name: pending.name, nonce: pending.nonce, roles: req.body?.roles }, { ip: req.ip, userAgent: req.headers['user-agent'] });
+      if (out.mfa_required) return res.json({ mfa_required: true, mfa_token: out.mfa_token });
+      const { token, refresh_token, ...rest } = out;
+      setWebCookies(req, res, { token, refresh_token });
+      return res.json({ ...rest, cookie_session: true });
+    } catch (e) {
+      const { status, code, message, details } = toErrorBody(e);
+      return res.status(status).json({ error: { code, message, details } });
     }
   });
   return r;

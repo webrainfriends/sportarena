@@ -3,7 +3,7 @@ import { createRemoteJWKSet, jwtVerify } from 'jose';
 import { cap } from '../registry.js';
 import { config } from '../config.js';
 import { badRequest, unauthorized } from '../errors.js';
-import { socialSignIn } from '../social-login.js';
+import { selfRoles, socialSignIn } from '../social-login.js';
 
 const jwks = createRemoteJWKSet(new URL('https://appleid.apple.com/auth/keys'));
 
@@ -23,6 +23,8 @@ cap({
     credential: z.string().min(20).max(4000).describe('the Apple identity token (JWT)'),
     name: z.string().max(120).optional().describe('the person\'s name, as Apple gave it to the app on first sign-in'),
     nonce: z.string().min(8).max(200).optional().describe('when you sent a nonce to Apple, the same value: it must match the token'),
+    roles: z.array(z.enum(selfRoles)).min(1).max(6).optional().describe('the role(s) a NEW account is created with (never admin / platform_admin); ignored for an existing account'),
+    require_role: z.boolean().optional().describe('true: do not create a new account yet, return { needs_role: true } so the person can choose their role first'),
   }),
   async handler({ meta }, i) {
     if (!config.appleClientId && !config.appleAppId) throw badRequest('Apple sign-in is not set up on this site');
@@ -32,6 +34,6 @@ cap({
     const email = String(claims.email ?? '').toLowerCase();
     const verified = claims.email_verified === true || claims.email_verified === 'true';
     // Apple omits the email on later sign-ins; an existing Apple account is found by its id alone, so the email is only needed to create/link one.
-    return socialSignIn({ provider: 'apple', sub: claims.sub, email, verified, name: i.name, meta });
+    return socialSignIn({ provider: 'apple', sub: claims.sub, email, verified, name: i.name, meta, roles: i.roles, requireRole: i.require_role });
   },
 });

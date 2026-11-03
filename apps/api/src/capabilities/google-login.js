@@ -7,7 +7,7 @@ import { badRequest, notFound, unauthorized } from '../errors.js';
 import { decryptFields } from '../crypto.js';
 import { revokeUserSessions } from '../sessions.js';
 import { audit } from '../helpers.js';
-import { socialSignIn } from '../social-login.js';
+import { selfRoles, socialSignIn } from '../social-login.js';
 
 const jwks = createRemoteJWKSet(new URL('https://www.googleapis.com/oauth2/v3/certs'));
 
@@ -28,7 +28,11 @@ cap({
 cap({
   name: 'login_google', method: 'POST', path: '/auth/google', tag: 'Identity', auth: 'public',
   summary: 'Sign in (or create an account) with a Google ID token from "Sign in with Google". Matches the account by Google id, then by verified email; a new Google user gets an athlete account with a generated handle (roles can be changed in Me). Returns the same session as login, or mfa_required + mfa_token when two-step verification is on.',
-  input: z.object({ credential: z.string().min(20).max(4000).describe('the Google ID token (JWT)') }),
+  input: z.object({
+    credential: z.string().min(20).max(4000).describe('the Google ID token (JWT)'),
+    roles: z.array(z.enum(selfRoles)).min(1).max(6).optional().describe('the role(s) a NEW account is created with (never admin / platform_admin); ignored for an existing account'),
+    require_role: z.boolean().optional().describe('true: do not create a new account yet, return { needs_role: true } so the person can choose their role first'),
+  }),
   async handler({ meta }, i) {
     if (!config.googleClientId) throw badRequest('Google sign-in is not set up on this site');
     let claims;
@@ -36,7 +40,7 @@ cap({
     const email = String(claims.email ?? '').toLowerCase();
     if (!claims.sub || !email || claims.email_verified !== true) throw unauthorized('Your Google account has no verified email address.');
 
-    return socialSignIn({ provider: 'google', sub: claims.sub, email, name: claims.name, meta });
+    return socialSignIn({ provider: 'google', sub: claims.sub, email, name: claims.name, meta, roles: i.roles, requireRole: i.require_role });
   },
 });
 

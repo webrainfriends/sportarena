@@ -5210,4 +5210,7 @@ export default {
   'es.number_hint': 'A number is typed or stepped, so describe what good looks like in "What it measures" above.',
   'es.enter_value': 'Enter a value',
   'es.clear_value': 'Clear',
+  'auth.choose_role': 'Choose your role',
+  'auth.choose_role_sub': 'Pick everything that applies to you. You can change this any time in Profile.',
+  'auth.choose_role_continue': 'Continue',
 };

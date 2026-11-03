@@ -5190,4 +5190,7 @@ export default {
   'es.number_hint': 'Angka diketik atau dinaikkan bertahap, jadi jelaskan seperti apa yang baik di "Yang diukur" di atas.',
   'es.enter_value': 'Masukkan nilai',
   'es.clear_value': 'Hapus',
+  'auth.choose_role': 'Pilih peran Anda',
+  'auth.choose_role_sub': 'Pilih semua yang sesuai dengan Anda. Anda dapat mengubahnya kapan saja di Profil.',
+  'auth.choose_role_continue': 'Lanjutkan',
 };
