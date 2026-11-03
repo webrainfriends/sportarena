@@ -89,7 +89,7 @@ test('a season pack reads the canonical records with provenance and never includ
   assert.equal(prev.career.rows[0].verification_status, 'unverified');
   assert.equal(prev.goals.rows.find((g) => g.latest_value === 5.9).basis, 'athlete_claim');
   assert.ok(prev.evidence.notes.length >= 4);
-  assert.deepEqual(prev.never_included, ['private_notes', 'health_and_wellness', 'contact_details', 'date_of_birth']);
+  assert.deepEqual(prev.never_included, ['private_notes', 'health_and_wellness', 'contact_details', 'date_of_birth', 'disciplinary_record']);
   for (const secret of ['PRIVATE-MATCH-NOTE', 'PRIVATE-WHY', 'PRIVATE-PROGRESS-NOTE', 'PRIVATE-WELLNESS-NOTE', 'SECRET-EVIDENCE-REF', 'ep' + '@example', 'password']) assert.ok(!everything(prev).includes(secret), `leaked ${secret}`);
 
   const career = ok(await post(s.ath.token, '/export-packs/preview', body({ scope: 'career', season: undefined }))).snapshot;

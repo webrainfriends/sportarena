@@ -81,6 +81,27 @@ export const divisionRow = async (c, did, { lock = false } = {}) => {
   if (!d) throw notFound('Division');
   return d;
 };
+/**
+ * The one way a points adjustment is written (also used by disciplinary points deductions, which carry `disc_sanction_id` for traceability).
+ * Append-only; a mistake is a reversing row. Refused once the division's table is frozen. Never touches a match result.
+ */
+export async function recordAdjustment(c, d, { team_id, points_delta, reason, reverses_id = null, user_id, disc_sanction_id = null }) {
+  if ((await c.query('SELECT 1 FROM comp_standing_snapshots WHERE division_id=$1', [d.id])).rowCount) throw conflict('This division’s table is frozen');
+  if (!(await c.query("SELECT 1 FROM comp_memberships WHERE division_id=$1 AND team_id=$2 AND status='accepted'", [d.id, team_id])).rowCount) throw badRequest('That team is not in this division');
+  let delta = points_delta;
+  if (reverses_id) {
+    const o = (await c.query('SELECT * FROM comp_adjustments WHERE id=$1 AND division_id=$2 AND team_id=$3', [reverses_id, d.id, team_id])).rows[0];
+    if (!o || o.reverses_id) throw badRequest('Choose an adjustment of this team to reverse');
+    delta = -o.points_delta;
+  }
+  if (!delta) throw badRequest('Give the points to add or take away');
+  try {
+    const a = (await c.query('INSERT INTO comp_adjustments(season_id,division_id,team_id,points_delta,reason,reverses_id,created_by,disc_sanction_id) VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING *', [d.season_id, d.id, team_id, delta, reason, reverses_id, user_id, disc_sanction_id])).rows[0];
+    await audit(c, user_id, 'competition.adjustment', 'competition_division', d.id);
+    return a;
+  } catch (e) { if (e.code === '23505') throw conflict('That adjustment has already been reversed'); throw e; }
+}
+
 export const currentRules = async (c, sid) => (await c.query('SELECT * FROM comp_rule_versions WHERE season_id=$1 ORDER BY version DESC LIMIT 1', [sid])).rows[0];
 export const asOpen = (e) => { if (e?.code === '23514') throw conflict(String(e.message).replace(/^.*?: /, ''), { code: 'history_closed' }); throw e; };
 
@@ -669,20 +690,7 @@ cap({
     return tx(async (c) => {
       const d = await divisionRow(c, i.id, { lock: true });
       await manageSeason(c, user, d.season_id);
-      if ((await c.query('SELECT 1 FROM comp_standing_snapshots WHERE division_id=$1', [d.id])).rowCount) throw conflict('This division’s table is frozen');
-      if (!(await c.query("SELECT 1 FROM comp_memberships WHERE division_id=$1 AND team_id=$2 AND status='accepted'", [d.id, i.team_id])).rowCount) throw badRequest('That team is not in this division');
-      let delta = i.points_delta;
-      if (i.reverses_id) {
-        const o = (await c.query('SELECT * FROM comp_adjustments WHERE id=$1 AND division_id=$2 AND team_id=$3', [i.reverses_id, d.id, i.team_id])).rows[0];
-        if (!o || o.reverses_id) throw badRequest('Choose an adjustment of this team to reverse');
-        delta = -o.points_delta;
-      }
-      if (!delta) throw badRequest('Give the points to add or take away');
-      try {
-        const a = (await c.query('INSERT INTO comp_adjustments(season_id,division_id,team_id,points_delta,reason,reverses_id,created_by) VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING *', [d.season_id, d.id, i.team_id, delta, i.reason, i.reverses_id ?? null, user.id])).rows[0];
-        await audit(c, user.id, 'competition.adjustment', 'competition_division', d.id);
-        return a;
-      } catch (e) { if (e.code === '23505') throw conflict('That adjustment has already been reversed'); throw e; }
+      return recordAdjustment(c, d, { team_id: i.team_id, points_delta: i.points_delta, reason: i.reason, reverses_id: i.reverses_id, user_id: user.id });
     });
   },
 });

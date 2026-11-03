@@ -12,7 +12,7 @@ import { hasConsent } from './youth.js';
 export const SECTIONS = ['matches', 'results', 'goals', 'awards', 'career', 'reports', 'evidence'];
 export const SECTION_LABEL = { matches: 'Matches', results: 'Results', goals: 'Goals', awards: 'Awards', career: 'Career timeline', reports: 'Coaching reports', evidence: 'Evidence & provenance' };
 /** Always excluded, whatever is selected. Listed in every pack so a reader sees what was left out on purpose. */
-export const NEVER_INCLUDED = ['private_notes', 'health_and_wellness', 'contact_details', 'date_of_birth'];
+export const NEVER_INCLUDED = ['private_notes', 'health_and_wellness', 'contact_details', 'date_of_birth', 'disciplinary_record'];
 export const ROW_CAP = 1000;
 
 const PROVENANCE_TEXT = {

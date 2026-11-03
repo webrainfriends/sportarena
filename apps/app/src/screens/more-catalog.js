@@ -1,7 +1,7 @@
 // Every module the More wheel offers: [route, title, sub, group]. The route is the PAGES key in App.js.
 export const MODULES = [
   ['Leaderboard', 'Leaderboard', 'Points & glory', 'play'], ['Awards', 'Trophy room', 'Cups, medals, MVPs', 'play'],
-  ['CareerTimeline', 'Career & clubs', 'Your clubs, verified by them', 'play'], ['SportsGraph', 'Sports graph', 'Search people, clubs, teams & events', 'play'], ['MyLicences', 'My licences', 'Federation licences & standing', 'play'], ['MyIntegrity', 'My integrity', 'Notices, exemptions & education', 'play'],
+  ['MyDiscipline', 'My discipline', 'Cases, matches to serve & appeals', 'play'], ['CareerTimeline', 'Career & clubs', 'Your clubs, verified by them', 'play'], ['SportsGraph', 'Sports graph', 'Search people, clubs, teams & events', 'play'], ['MyLicences', 'My licences', 'Federation licences & standing', 'play'], ['MyIntegrity', 'My integrity', 'Notices, exemptions & education', 'play'],
   ['FindGames', 'Find a game', 'Open games near you, today & this weekend', 'play'], ['Network', 'Network', 'Follow people, friends & requests', 'play'], ['MyApplications', 'My applications', 'Trials, offers & answers', 'play'],
   ['MyAccreditations', 'My badges', 'Event accreditation & QR', 'play'],
   ['MyTickets', 'My tickets', 'Match tickets & QR entry', 'play'],
@@ -38,6 +38,7 @@ export const WORKSPACES = [
   ['agent', 'Representation', 'Clients, mandates, negotiations & commission'],
   ['insurer', 'InsurerDesk', 'Products, quotes & claims'],
   ['athlete', 'Passport', 'Player passport & QR'],
+  ['official_verifier', 'VerifierDesk', 'Official verification requests', null, 'Official verifier desk'],
   ['admin', 'PartnerConsole', 'Partners & platform team', null, 'Platform team console'],
   ['platform_admin', 'CommercialConsole', 'Catalogue, pricing & entitlements', null, 'Commercial console'],
   ['platform_admin', 'IntegrationRequests', 'Price and enable integrations for organisations', null, 'Integration requests'],

@@ -133,7 +133,7 @@ export async function evaluate(c, ctx, teamId, userId) {
       ORDER BY kind, created_at DESC, id`, [event.id, userId, day])).rows;
   const byKind = new Map(deps.map((d) => [d.kind, d]));
   // an active sporting sanction recorded by a governing body is read live, never copied: it says only that the person is suspended and until when
-  const sanction = await activeSportingSanction(q(c), userId, event.sport_id, day);
+  const sanction = await activeSportingSanction(q(c), userId, event.sport_id, day, { eventId: event.id, at: when });
   if (sanction) byKind.set('disciplinary', { id: sanction.id, kind: 'disciplinary', status: 'blocked', valid_until: sanction.valid_until, source_label: 'Sporting sanction' });
   const NAME = { licence: 'Licence', transfer: 'Transfer clearance', loan: 'Loan clearance', classification: 'Classification', disciplinary: 'Disciplinary status' };
   for (const kind of DEP_KINDS) {

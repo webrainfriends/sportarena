@@ -37,6 +37,7 @@ import { RaceDay } from './race-desk';
 import { PublicPageTab } from './event-public';
 import { EventOfficialsSettings } from './officials-home';
 import { OperationsTab, ReadinessCard } from './event-ops';
+import { DisciplineTab } from './event-discipline';
 
 const STEPS = [['draft', 'Setup'], ['open', 'Open'], ['ongoing', 'Running'], ['completed', 'Ended']];
 const rank = { draft: 0, open: 1, ongoing: 2, paused: 2, completed: 3, cancelled: 3 };
@@ -78,13 +79,14 @@ export function EventCommand({ id, tab: first = 'overview' }) {
   const nav = useNav();
   const ev = useLoad(() => api.get(`/events/${id}`), [id]);
   const [tab, setTab] = useState(first);
-  const [sub, setSub] = useState({ people: 'departments', business: 'partners', operations: '' });
+  const [sub, setSub] = useState({ people: 'departments', business: 'partners', operations: '', discipline: '' });
   const [ask, setAsk] = useState(null);       // 'pause' | 'end' | 'force'
   const [blockers, setBlockers] = useState(0);
   const [busy, setBusy] = useState(false);
   const e = ev.data;
   const isOrg = !!e && !!user && (e.organizer_id === user.id || !!user.roles?.includes('admin'));
   const D = useConsoleData(id, isOrg);
+  const disc = useLoad(() => api.get(`/events/${id}/discipline-scope`).catch(() => null), [id]);   // 404 unless this event is a competition season and you hold disciplinary standing: the tab stays hidden
   const ops = useLoad(() => api.get(`/events/${id}/ops/board`).catch(() => null), [id]);   // 404 for anyone who is not on the crew: the tab stays hidden
   if (ev.error) return <AScreen><ErrorBox error={ev.error} onRetry={ev.reload} /></AScreen>;
   if (!e) return <AScreen><Loading /></AScreen>;
@@ -111,6 +113,7 @@ export function EventCommand({ id, tab: first = 'overview' }) {
     { key: 'registration', label: 'Registration', icon: '🪪', badge: regAwaiting || undefined },
     { key: 'people', label: 'People', icon: '🧩' },
     ...(ops.data ? [{ key: 'operations', label: 'Operations', icon: '🛰️', badge: ops.data.incidents.open || undefined }] : []),
+    ...(disc.data ? [{ key: 'discipline', label: t('disc.tab'), icon: '⚖️', badge: undefined }] : []),
     { key: 'accreditation', label: 'Accreditation', icon: '🎫' },
     { key: 'tickets', label: t('tix.tab'), icon: '🎟️' },
     ...(isOrg ? [{ key: 'compliance', label: 'Compliance', icon: '🛡️' }] : []),
@@ -155,6 +158,7 @@ export function EventCommand({ id, tab: first = 'overview' }) {
           {sub.people === 'hiring' && isOrg ? <HiringTab {...P} roles={D.roles.data ?? []} staff={D.staff.data ?? []} reload={reloadAll} /> : <DepartmentsTab id={id} isOrg={isOrg} />}
         </>
       )}
+      {tab === 'discipline' && disc.data && <DisciplineTab id={id} scope={disc.data} sub={sub.discipline} setSub={(s) => go('discipline', s)} />}
       {tab === 'operations' && ops.data && <OperationsTab id={id} e={e} isOrg={isOrg} sub={sub.operations} setSub={(s) => go('operations', s)} goTab={go} />}
       {tab === 'accreditation' && <AccreditationTab id={id} e={e} isOrg={isOrg} />}
       {tab === 'tickets' && <TicketsTab id={id} e={e} isOrg={isOrg} />}

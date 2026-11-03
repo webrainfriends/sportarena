@@ -14,6 +14,7 @@ import { liveState, loggedEvents, rulesetForEvent, pinFixtureRuleset } from '../
 import { rejectReason, matchPhase, CONTROL_KINDS } from '../scoring/engine.js';
 import { rulesetSchema, builtinSlugs, builtinRuleset } from '../scoring/rulesets.js';
 import { isKnockout } from '../tournament/advance.js';
+import { flagForEvent } from '../discipline.js';
 
 const TAG = 'Match tracking';
 const kindKey = z.string().regex(/^[a-z][a-z0-9_]{0,23}$/);
@@ -227,6 +228,7 @@ cap({
       const cur = (await c.query('SELECT * FROM match_events WHERE id=$1', [i.id])).rows[0];
       if (cur.voided_at) throw conflict('Already voided');
       await c.query('UPDATE match_events SET voided_at=now(), voided_by=$2, void_reason=$3 WHERE id=$1', [i.id, user.id, i.reason]);
+      await flagForEvent(c, i.id, user.id, `Match event voided: ${i.reason}`);
       await c.query("INSERT INTO match_event_revisions(fixture_id, match_event_id, action, authority, reason, before, actor_id, client_key) VALUES ($1,$2,'void',$3,$4,$5,$6,$7)", [m.fixture_id, i.id, authorityOf(x, user), i.reason, JSON.stringify(cur), user.id, i.client_key ?? null]);
     }));
     return broadcast(m.fixture_id);

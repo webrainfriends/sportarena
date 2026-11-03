@@ -335,3 +335,5 @@ import './venue-seating.js';
 import './payouts.js';
 import './discovery.js';
 import './smart-clips.js';
+import './discipline.js';
+import './official-verification.js';

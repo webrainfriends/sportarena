@@ -18,6 +18,7 @@ import { isKnockout } from '../tournament/advance.js';
 import { discipline, mustSession, viewer, entryRows, isAssignedOfficial, recordSessionResults } from './multisport-play.js';
 import { eventAccess, organizerOnly } from './multisport.js';
 import { assertEventReadable, assertFixtureReadable } from '../spectator.js';
+import { flagForEvent } from '../discipline.js';
 
 const TAG = 'Live scoring';
 const kindKey = z.string().regex(/^[a-z][a-z0-9_]{0,23}$/);
@@ -68,6 +69,7 @@ cap({
         [m.fixture_id, x.f.event_id, next.seq, i.client_key ?? null, next.kind, next.side, next.side ? x.f[`${next.side}_team_id`] : null, next.player_id, next.period, next.clock_seconds,
           JSON.stringify(next.payload ?? {}), user.id, cur.id, next.position_seq, authority])).rows[0];
       await c.query('UPDATE match_events SET voided_at=now(), voided_by=$2, void_reason=$3 WHERE id=$1', [cur.id, user.id, `Corrected: ${i.reason}`]);
+      await flagForEvent(c, cur.id, user.id, `Match event corrected: ${i.reason}`);   // disciplinary cases fed by it are flagged for re-evaluation, never silently changed
       await c.query("INSERT INTO match_event_revisions(fixture_id, match_event_id, replacement_id, action, authority, reason, before, after, actor_id) VALUES ($1,$2,$3,'correct',$4,$5,$6,$7,$8)",
         [m.fixture_id, cur.id, rep.id, authority, i.reason, JSON.stringify(cur), JSON.stringify(rep), user.id]);
       return rep;
