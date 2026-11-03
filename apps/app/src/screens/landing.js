@@ -148,7 +148,9 @@ export default function Landing() {
   useWebCss();
   const { width } = useWindowDimensions();
   const wide = width >= 900;
-  const [auth, setAuth] = useState(null);       // { mode, intent } while the sign-in flow is open
+  // { mode, intent } while the sign-in flow is open. A page opened from Apple sign-in or a security email carries one of these query values:
+  // the sign-in screen reads it, so it has to be open already.
+  const [auth, setAuth] = useState(() => (isWeb && typeof location !== 'undefined' && ['apple_role', 'apple_error', 'apple_mfa', 'reset_password', 'verify_email'].some((k) => new URLSearchParams(location.search).has(k)) ? { mode: 'login', intent: null } : null));
   const [kind, setKind] = useState(null);
   const [sport, setSport] = useState(null);
   const [q, setQ] = useState('');

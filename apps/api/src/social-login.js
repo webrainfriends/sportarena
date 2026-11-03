@@ -7,6 +7,10 @@ import { issueToken } from './account-security.js';
 import { audit } from './helpers.js';
 import { isPlatformAdminEmail } from './access.js';
 import { reconcilePlatformRoles } from './platform.js';
+import { roles } from './registry.js';
+
+/** Roles a person may pick for themselves at sign-up: everything except the platform roles. */
+export const selfRoles = roles.filter((r) => r !== 'admin' && r !== 'platform_admin');
 
 const USER_COLS = 'id, handle, display_name, roles, avatar_emoji, avatar_color, avatar_url, avatar_cutout, access_status';
 /** Identity-provider columns on users (fixed list: the column name is interpolated into SQL). */
@@ -27,8 +31,10 @@ export async function freeHandle(email, name) {
  * Sign in (or create an account) for a person whose email was verified by an identity provider ('google' | 'apple').
  * Matches the account by provider id, then by verified email; a new user gets an athlete account that waits for approval.
  * Returns the same session as password login, or mfa_required + mfa_token when two-step verification is on.
+ * A client that asks for it (`requireRole`) gets `{ needs_role: true }` instead of a new account until the person has chosen their role(s);
+ * nothing is created before that. Without `requireRole` (older apps) a new user is an athlete, as before. Super-admin emails never see the step.
  */
-export async function socialSignIn({ provider, sub, email, verified = true, name, meta }) {
+export async function socialSignIn({ provider, sub, email, verified = true, name, meta, roles: chosen, requireRole = false }) {
   const col = SUB_COL[provider];
   if (!col) throw badRequest('Unknown sign-in provider');
   if (!sub) throw unauthorized('Sign-in could not be verified.');
@@ -51,11 +57,12 @@ export async function socialSignIn({ provider, sub, email, verified = true, name
       u = Object.fromEntries(Object.entries(byEmail).filter(([k]) => !['email_verified_at', 'linked_sub'].includes(k)));
     } else {
       const display = String(name ?? '').trim().slice(0, 60) || email.split('@')[0].slice(0, 60);
+      if (requireRole && !chosen?.length && !isSuper) return { needs_role: true, provider, email, name: display };
       u = await one(
         `INSERT INTO users (handle, display_name, roles, password_hash, email_enc, email_idx, ${col}, email_verified_at, access_status)
          VALUES ($1,$2,$7,$3,$4,$5,$6, now(), $8) RETURNING ${USER_COLS}`,
         [await freeHandle(email, name), display, await hashPassword(randomBytes(24).toString('base64url')), encrypt(email, 'users.email'), blindIndex(email), sub,
-          isSuper ? ['athlete', 'admin', 'platform_admin'] : ['athlete'], isSuper ? 'approved' : 'pending']);
+          isSuper ? ['athlete', 'admin', 'platform_admin'] : chosen?.length ? [...new Set(chosen)] : ['athlete'], isSuper ? 'approved' : 'pending']);
       await audit(null, u.id, `${provider}_register`, 'users', u.id);
     }
   }
