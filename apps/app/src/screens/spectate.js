@@ -346,7 +346,7 @@ export function PublicShell({ eventId, fixtureId, clipId, renderEvent, onExit })
   return (
     <View style={{ flex: 1, backgroundColor: c.bg }}>
       <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16, height: 52, borderBottomWidth: 1, borderColor: c.line }}>
-        {top || onExit ? <Pressable onPress={top ? back : onExit} accessibilityRole="button" accessibilityLabel="Back" style={{ minHeight: 44, minWidth: 44, justifyContent: 'center' }}><T weight="700" color={c.pink}>‹ Back</T></Pressable> : <T weight="800" size={17}>Gotmygame</T>}
+        {top || onExit ? <Pressable onPress={top ? back : onExit} accessibilityRole="button" accessibilityLabel="Back" style={{ minHeight: 44, minWidth: 44, justifyContent: 'center' }}><T weight="700" color={c.pink}>‹ Back</T></Pressable> : <T weight="800" size={17}>GotMyGame</T>}
         <Btn small title="Sign in" onPress={signIn} />
       </View>
       {view.name === 'Clip' ? <PublicClipView {...view.params} /> : view.name === 'LiveCentre' ? <LiveCentre {...view.params} /> : renderEvent(view.params)}

@@ -297,7 +297,7 @@ export function Migrate({ organisation_id, id: resume }) {
       {!done ? (
         <Card>
           <T weight="800" size={16}>Ready to import</T>
-          <T size={13} color={c.mute} style={{ marginTop: 4, lineHeight: 19 }}>{project.summary?.importable ?? r?.validation?.importable ?? 0} approved rows. People already on Gotmygame are invited to their team. Everyone else is invited when they register with the same email. Nobody is added until they accept.</T>
+          <T size={13} color={c.mute} style={{ marginTop: 4, lineHeight: 19 }}>{project.summary?.importable ?? r?.validation?.importable ?? 0} approved rows. People already on GotMyGame are invited to their team. Everyone else is invited when they register with the same email. Nobody is added until they accept.</T>
           <Btn title="Import now" onPress={doRun} loading={busy === 'run'} style={{ marginTop: 12 }} />
         </Card>
       ) : null}

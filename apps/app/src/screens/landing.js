@@ -12,6 +12,7 @@ import { setIntent } from '../market/intent';
 import { useSports } from '../sportpicker';
 import Auth from './auth';
 import { Logo } from '../logo';
+import { Wordmark } from '../wordmark';
 import { HScroll, VenueBooking } from './landing-venues';
 import { OpenPositions } from './openings';
 import { Discover } from './landing-discover';
@@ -41,7 +42,7 @@ function useWebCss() {
   useEffect(() => {
     if (!isWeb || document.getElementById('sa-landing-css')) return;
     const s = document.createElement('style'); s.id = 'sa-landing-css'; s.textContent = CSS; document.head.appendChild(s);
-    document.title = 'Gotmygame — find athletes, matches, venues & sponsors';
+    document.title = 'GotMyGame — find athletes, matches, venues & sponsors';
   }, []);
 }
 
@@ -205,7 +206,7 @@ export default function Landing() {
       <View style={{ backgroundColor: 'rgba(11,16,32,0.96)', borderBottomWidth: 1, borderColor: 'rgba(255,255,255,0.08)', zIndex: 5 }}>
         <View style={[wrap, { height: 64, flexDirection: 'row', alignItems: 'center', gap: 14 }]}>
           <Logo size={44} />
-          <T color="#fff" weight="800" size={22} style={{ letterSpacing: -0.8 }}>Gotmygame</T>
+          <Wordmark width={wide ? 150 : 112} />
           <View style={{ flex: 1 }} />
           {wide ? [['Opportunities', browse], ['Sponsors', () => find('sponsors')], ['Physio & doctors', () => find('health')], ['Coaches', () => find('coaches')], ['Study', () => find('study')], ['Advertise', () => start('advertise')]].map(([l, f]) => <Pressable key={l} onPress={f}><T color="#E5EAF5" weight="700" size={14}>{l}</T></Pressable>) : null}
           <Pressable onPress={() => start('login')}><T color="#fff" weight="700" size={14}>Log in</T></Pressable>
@@ -305,7 +306,7 @@ export default function Landing() {
 
         <View style={{ backgroundColor: '#23252F', marginTop: 56, paddingVertical: 36 }}>
           <View style={[wrap, { flexDirection: wide ? 'row' : 'column', gap: 14, justifyContent: 'space-between' }]}>
-            <View><T color="#fff" weight="800" size={20}>🏟️ Gotmygame</T><T color="#94A3B8" size={13} style={{ marginTop: 4 }}>The home of sport. Teams · Fixtures · Venues · Performance.</T></View>
+            <View><Wordmark width={200} tagline onDark /><T color="#94A3B8" size={13} style={{ marginTop: 4 }}>The home of sport. Teams · Fixtures · Venues · Performance.</T></View>
             <View style={{ flexDirection: 'row', gap: 22 }}>
               <Pressable onPress={() => start('login')}><T color="#E5EAF5" weight="700" size={13}>Log in</T></Pressable>
               <Pressable onPress={() => start('join')}><T color="#E5EAF5" weight="700" size={13}>Create account</T></Pressable>

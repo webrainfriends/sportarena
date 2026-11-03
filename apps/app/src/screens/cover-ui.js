@@ -40,7 +40,7 @@ function PayerPicker({ onPick, onClose }) {
       {res.loading && q.trim().length >= 3 ? <Loading /> : null}
       {(res.data?.people ?? []).map((p) => <Row key={p.id} title={`${p.avatar_emoji ?? '🙂'} ${p.display_name}`} sub={`@${p.handle}`} onPress={() => onPick({ payer_user_id: p.id, name: p.display_name })} />)}
       {(res.data?.organisations ?? []).map((o) => <Row key={o.id} title={`🏢 ${o.name}`} sub={String(o.kind).replace(/_/g, ' ')} onPress={() => onPick({ payer_org_id: o.id, name: o.name })} />)}
-      {res.data && !res.data.people.length && !res.data.organisations.length ? <T size={13} color={c.mute}>Nobody found. Ask them to join Gotmygame, or try another spelling.</T> : null}
+      {res.data && !res.data.people.length && !res.data.organisations.length ? <T size={13} color={c.mute}>Nobody found. Ask them to join GotMyGame, or try another spelling.</T> : null}
     </Sheet>
   );
 }

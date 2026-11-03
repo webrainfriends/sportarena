@@ -128,8 +128,8 @@ const icsTime = (iso) => new Date(iso).toISOString().replace(/[-:]|\.\d{3}/g, ''
 const icsText = (t) => String(t).replace(/([,;\\])/g, '\\$1').replace(/\n/g, '\\n');
 /** An .ics calendar file with one event per active slot (opens in Apple/Google/Outlook calendars). */
 export function icsFor(r) {
-  const ev = r.bookings.filter((b) => b.status === 'confirmed').map((b) => ['BEGIN:VEVENT', `UID:${b.id}@sportarena`, `DTSTAMP:${icsTime(new Date().toISOString())}`, `DTSTART:${icsTime(b.starts_at)}`, `DTEND:${icsTime(b.ends_at)}`, `SUMMARY:${icsText(`${b.resource_name} · ${b.venue_name}`)}`, `LOCATION:${icsText(b.venue_name)}`, `DESCRIPTION:${icsText([`Gotmygame booking ${r.code}`, ...(r.lockers ?? []).filter((l) => l.venue_id === b.venue_id && l.pin).map((l) => `Locker ${l.label}${l.zone ? ` (${l.zone})` : ''} · PIN ${l.pin}`)].join('\n'))}`, 'END:VEVENT'].join('\r\n'));
-  return ['BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//Gotmygame//Booking//EN', ...ev, 'END:VCALENDAR'].join('\r\n');
+  const ev = r.bookings.filter((b) => b.status === 'confirmed').map((b) => ['BEGIN:VEVENT', `UID:${b.id}@sportarena`, `DTSTAMP:${icsTime(new Date().toISOString())}`, `DTSTART:${icsTime(b.starts_at)}`, `DTEND:${icsTime(b.ends_at)}`, `SUMMARY:${icsText(`${b.resource_name} · ${b.venue_name}`)}`, `LOCATION:${icsText(b.venue_name)}`, `DESCRIPTION:${icsText([`GotMyGame booking ${r.code}`, ...(r.lockers ?? []).filter((l) => l.venue_id === b.venue_id && l.pin).map((l) => `Locker ${l.label}${l.zone ? ` (${l.zone})` : ''} · PIN ${l.pin}`)].join('\n'))}`, 'END:VEVENT'].join('\r\n'));
+  return ['BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//GotMyGame//Booking//EN', ...ev, 'END:VCALENDAR'].join('\r\n');
 }
 function addToCalendar(r, toast) {
   if (Platform.OS === 'web') {

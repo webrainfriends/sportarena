@@ -11,6 +11,7 @@ import GoogleButton from '../google-button';
 import AppleButton from '../apple-button';
 import { OrgSsoButton, SsoFinish } from '../sso';
 import { Logo } from '../logo';
+import { Wordmark } from '../wordmark';
 import { t } from '../i18n';
 
 
@@ -133,7 +134,7 @@ export default function Auth({ intent, initialMode, onClose } = {}) {
         <View style={{ position: 'absolute', right: 80, bottom: -60, width: 120, height: 120, borderRadius: 60, backgroundColor: '#fff', opacity: 0.08 }} />
         <Logo size={96} style={{ marginBottom: 14 }} />
         <Text style={[fam, { color: '#fff', opacity: 0.65, fontWeight: '700', fontSize: 12, letterSpacing: 2.5 }]}>{t('auth.home_of_sport')}</Text>
-        <Text style={[fam, { color: '#fff', fontWeight: '800', fontSize: 44, letterSpacing: -1.8, marginTop: 10 }]}>Gotmygame</Text>
+        <Wordmark width={300} tagline onDark style={{ marginTop: 10 }} />
         <T color="#E5EAF5" weight="500" size={15} style={{ marginTop: 8, lineHeight: 22 }}>{t('auth.tagline')}</T>
       </LinearGradient>
 

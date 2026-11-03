@@ -70,7 +70,7 @@ export function OrgIdentity({ o, role, archived, toast }) {
           {conn?.test_ok === true ? <Tag label="Tested ✓" color={c.mint} /> : conn?.test_ok === false ? <Tag label="Test failed" color={c.orange} /> : null}
         </View>
         <T size={13} color={c.mute} style={{ marginTop: 6 }}>
-          {conn ? 'People with an address on a verified domain can sign in with your identity provider. Passwords and personal accounts keep working unless you require SSO.' : 'Connect your identity provider so staff sign in with their work account. Each person stays one Gotmygame account and can belong to several organisations.'}
+          {conn ? 'People with an address on a verified domain can sign in with your identity provider. Passwords and personal accounts keep working unless you require SSO.' : 'Connect your identity provider so staff sign in with their work account. Each person stays one GotMyGame account and can belong to several organisations.'}
         </T>
         {conn?.test_detail ? <T size={12} color={conn.test_ok ? c.mute : c.red} style={{ marginTop: 4 }}>{conn.test_detail}</T> : null}
         {owner ? (

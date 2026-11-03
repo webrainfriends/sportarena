@@ -41,7 +41,7 @@ function EntryForm({ entry, forUser, sport, onClose, onDone }) {
         : { listed: 'listed', still_here: true, competition_level: 'club', sport: sport ?? undefined }}
       fields={[
         ...(editing ? [{ key: 'club_note', type: 'section', label: `${entry.sport_emoji} ${entry.club}${entry.unlisted ? ' (not listed)' : ''}` }] : [
-          { key: 'listed', label: 'Which club?', type: 'chips', options: [{ value: 'listed', label: 'Pick from Gotmygame' }, { value: 'unlisted', label: 'Not listed' }] },
+          { key: 'listed', label: 'Which club?', type: 'chips', options: [{ value: 'listed', label: 'Pick from GotMyGame' }, { value: 'unlisted', label: 'Not listed' }] },
           { key: 'team_id', label: 'Club or team', type: 'entity', entityKind: 'team', noun: 'club or team', show: (v) => v.listed === 'listed' },
           { key: 'sport', label: 'Sport', type: 'sport', show: (v) => v.listed === 'unlisted' },
           { key: 'club_name', label: 'Club name', placeholder: 'As it appears on your registration', show: (v) => v.listed === 'unlisted', hint: 'Unlisted clubs stay self-reported unless the platform team confirms them.' },
@@ -112,7 +112,7 @@ function Detail({ entry, forUser, onClose, onChanged, canEdit = true }) {
         <Tag label={label} color={tone} />
         <T size={14}>{entry.sport_emoji} {entry.sport} · {span(entry)}{entry.season_label ? ` · ${entry.season_label}` : ''}</T>
         <T size={14} color={c.mute}>{[entry.position, cap(nice(entry.competition_level)), entry.jersey_no !== null ? `#${entry.jersey_no}` : null, entry.source === 'roster' ? 'from the team roster' : entry.source === 'backfill' ? 'from your profile' : null].filter(Boolean).join(' · ')}</T>
-        {entry.unlisted && !entry.external ? <T size={12} color={c.mute}>This club is not on Gotmygame, so it can only be confirmed by the platform team.</T> : null}
+        {entry.unlisted && !entry.external ? <T size={12} color={c.mute}>This club is not on GotMyGame, so it can only be confirmed by the platform team.</T> : null}
         {entry.external ? (
           <View style={{ gap: 6 }}>
             <T size={13}>{entry.verification_status === 'verified' ? `Confirmed by ${entry.external_source}` : `Came from ${entry.external_source}, no longer confirmed`}{entry.verified_via ? ` · ${VIA[entry.verified_via] ?? ''}` : ''}</T>
@@ -229,7 +229,7 @@ function OfficialIds({ forUser, onChanged }) {
       <T size={12} color={c.mute} style={{ marginTop: 4 }}>Link the ID a league or federation knows you by. Once its staff confirm it, they can confirm your clubs and seasons here. You can dispute anything they add.</T>
       <View style={{ gap: 10, marginTop: 10 }}>
         {ids.loading && !ids.data ? <Loading /> : ids.error ? <ErrorBox error={ids.error} onRetry={ids.reload} /> : !ids.data.length ? (
-          <T size={13} color={c.mute}>{sources.data?.length ? 'No ID linked yet.' : 'No league or federation has been connected to Gotmygame yet.'}</T>
+          <T size={13} color={c.mute}>{sources.data?.length ? 'No ID linked yet.' : 'No league or federation has been connected to GotMyGame yet.'}</T>
         ) : ids.data.map((x) => (
           <Card key={x.id} pad={14}>
             <View style={{ flexDirection: 'row', gap: 6, marginBottom: 6 }}><Tag label={label[x.status][0]} color={label[x.status][1]} /></View>
@@ -295,7 +295,7 @@ export function CareerTimeline({ sport, user_id: forUser }) {
 
       <View style={{ marginTop: 14 }}>
         {list.loading && !list.data ? <Loading /> : list.error ? <ErrorBox error={list.error} onRetry={list.reload} /> : !shown.length ? (
-          <Empty emoji="🧭" title="No clubs on your timeline yet" sub="Add the clubs and teams you have played for. Joining a team on Gotmygame adds it automatically." />
+          <Empty emoji="🧭" title="No clubs on your timeline yet" sub="Add the clubs and teams you have played for. Joining a team on GotMyGame adds it automatically." />
         ) : (
           <View accessibilityRole="list" accessibilityLabel="Career timeline" style={phone ? { gap: 0 } : { gap: 0, maxWidth: 720 }}>
             {shown.map((m, i) => {
