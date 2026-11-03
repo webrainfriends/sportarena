@@ -5190,6 +5190,8 @@ export default {
   'es.number_hint': 'Angka diketik atau dinaikkan bertahap, jadi jelaskan seperti apa yang baik di "Yang diukur" di atas.',
   'es.enter_value': 'Masukkan nilai',
   'es.clear_value': 'Hapus',
+  'me.default_role': 'Peran bawaan',
+  'me.default_role_hint': 'Peran yang Anda tuju saat masuk. Atlet dipakai kecuali Anda memilih yang lain.',
   'ws.hub.calendar': 'Kalender & janji temu saya',
   'ws.hub.calendar_empty': 'Tidak ada apa pun dalam 7 hari ke depan. Ketuk untuk melihat kalender atau menambah blok.',
   'ws.hub.venue': 'Cari tempat',
