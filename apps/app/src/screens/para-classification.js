@@ -19,6 +19,8 @@ const STAGES = ['submitted', 'evidence_review', 'assessment_scheduled', 'assessm
 const STATUSES = ['confirmed', 'review_required', 'temporary', 'not_eligible', 'other'];
 const TONE = { confirmed: c.limeSoft, temporary: c.sunSoft, review_required: c.orangeSoft, not_eligible: c.redSoft, other: c.violetSoft };
 const label = (group, v) => t(`para.${group}.${v}`);
+const join = (...p) => p.filter((x) => x !== null && x !== undefined && x !== '').join(', ');
+const dot = (a, b) => [a, b].join(' · ');
 const when = (d) => (d ? String(d).slice(0, 10) : '—');
 /** A short, locale-aware date ("3 Nov 2028") that fits a stat tile on a phone. */
 const short = (d) => { if (!d) return '—'; try { return new Intl.DateTimeFormat(locale, { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC' }).format(new Date(`${String(d).slice(0, 10)}T00:00:00Z`)); } catch { return when(d); } };
@@ -64,6 +66,7 @@ function CaseSheet({ id, onClose, reload }) {
   const [form, setForm] = useState(null);
   const x = d.data;
   const v = x?.viewer;
+  const isLead = x?.panel?.some((p) => p.you && p.role === 'lead');
   const classes = useLoad(() => (x ? api.get('/para/class-versions', { sport_id: x.sport_id, body_id: x.body_id }) : Promise.resolve(null)), [x?.version_id]);
   const classOptions = useMemo(() => (classes.data?.versions ?? []).find((z) => z.id === x?.version_id)?.classes?.map((k) => ({ value: k.code, label: `${k.code} · ${k.name}` })) ?? [], [classes.data, x?.version_id]);
   const open = async (e) => {
@@ -83,7 +86,7 @@ function CaseSheet({ id, onClose, reload }) {
           {x.requester_note ? <Card pad={12}><T size={12} weight="800" color={c.mute}>{t('para.note').toUpperCase()}</T><T size={14}>{x.requester_note}</T></Card> : null}
           <Block title={t('para.panel')}>
             {x.panel.length ? x.panel.map((p) => (
-              <Card key={p.id} pad={12} accessibilityLabel={`${p.name}, ${label('role', p.role)}, ${p.decided ? t('para.decided') : t('para.awaiting')}`}>
+              <Card key={p.id} pad={12} accessibilityLabel={join(p.name, label('role', p.role), p.decided ? t('para.decided') : t('para.awaiting'))}>
                 <View style={{ flexDirection: 'row', justifyContent: 'space-between', gap: 8 }}>
                   <View style={{ flexShrink: 1 }}><T weight="800">{p.name}{p.you ? ` (${t('para.you')})` : ''}</T><T size={12} color={c.mute}>{label('role', p.role)} · {p.grade}</T></View>
                   <Tag label={p.decided ? t('para.decided') : t('para.awaiting')} color={p.decided ? c.limeSoft : c.violetSoft} />
@@ -96,7 +99,7 @@ function CaseSheet({ id, onClose, reload }) {
             <Block title={t('para.evidence')} right={v === 'athlete' || v === 'guardian' || v === 'panel' ? <Btn small title={t('para.add')} onPress={() => setForm('evidence')} /> : null}>
               <T size={12} color={c.mute}>{t('para.evidence_private')}</T>
               {x.evidence.length ? x.evidence.map((e) => (
-                <Card key={e.id} pad={12} onPress={() => open(e)} accessibilityLabel={`${e.label}. ${t('para.open_item')}`}>
+                <Card key={e.id} pad={12} onPress={() => open(e)} accessibilityLabel={join(e.label, t('para.open_item'))}>
                   <T weight="800">{e.label}</T><T size={12} color={c.mute}>{e.file_name ?? t('para.reference')}{e.size_bytes ? ` · ${Math.round(e.size_bytes / 1024)} KB` : ''}</T>
                 </Card>
               )) : <T size={13} color={c.mute}>{t('para.no_evidence')}</T>}
@@ -109,7 +112,7 @@ function CaseSheet({ id, onClose, reload }) {
             {(v === 'staff' || v === 'panel') ? x.next.filter((n) => n !== 'closed' || v === 'staff').map((n) => <Btn key={n} small color={n === 'incomplete' ? c.paper : c.pink} ink={n === 'incomplete' ? c.red : '#fff'} title={label('stage', n)} onPress={() => setForm(n)} />) : null}
             {v === 'staff' ? <Btn small title={t('para.assign_panel')} onPress={() => setForm('panel')} /> : null}
             {v === 'panel' && x.status === 'panel_review' ? <Btn small title={t('para.record_decision')} onPress={() => setForm('decision')} /> : null}
-            {v === 'panel' && x.status === 'panel_review' && x.panel.find((p) => p.you)?.role === 'lead' ? <Btn small color={c.mint} ink={c.ink} title={t('para.issue')} onPress={() => run(() => api.post(`/para/cases/${id}/outcome`, {}), t('para.issued'))} /> : null}
+            {v === 'panel' && x.status === 'panel_review' && isLead ? <Btn small color={c.mint} ink={c.ink} title={t('para.issue')} onPress={() => run(() => api.post(`/para/cases/${id}/outcome`, {}), t('para.issued'))} /> : null}
             {(v === 'athlete' || v === 'guardian') && ['submitted', 'evidence_review', 'assessment_scheduled', 'assessment_completed', 'panel_review'].includes(x.status) ? <Btn small color={c.paper} ink={c.red} title={t('para.withdraw')} onPress={() => run(() => api.post(`/para/cases/${id}/withdraw`, {}), t('para.withdrawn'))} /> : null}
           </View>
           <FormSheet visible={form === 'evidence'} onClose={() => setForm(null)} title={t('para.add_evidence')} notice={t('para.evidence_notice')}
@@ -165,7 +168,7 @@ function Mine({ athleteId, wards, onWard }) {
       <Block title={t('para.current')} right={<Btn small title={t('para.start')} onPress={() => setForm('case')} />}>
         {x.outcomes.length ? (
           <Row2>{x.outcomes.map((o) => (
-            <Card key={o.id} pad={16} style={{ flexGrow: 1, flexBasis: tablet ? 300 : '100%', gap: 8 }} accessibilityLabel={`${o.sport}: ${o.class_code ?? ''} ${label('status', o.status)}. ${o.authority}`}>
+            <Card key={o.id} pad={16} style={{ flexGrow: 1, flexBasis: tablet ? 300 : '100%', gap: 8 }} accessibilityLabel={join(o.sport, o.class_code, label('status', o.status), o.authority)}>
               <T size={12} weight="800" color={c.mute}>{o.sport.toUpperCase()}{o.discipline ? ` · ${o.discipline}` : ''}</T>
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
                 <T size={34} weight="800" style={{ letterSpacing: -1 }}>{o.class_code ?? '—'}</T><Tag label={label('status', o.status)} color={TONE[o.status]} />
@@ -178,7 +181,7 @@ function Mine({ athleteId, wards, onWard }) {
                 {o.review_by ? <T size={12} color={c.mute}>{t('para.review_by', { date: short(o.review_by) })}</T> : null}
                 {o.expires_on ? <T size={12} color={c.mute}>{t('para.expires', { date: short(o.expires_on) })}</T> : null}
               </View>
-              {o.appeal ? <Tag label={`${label('appeal', o.appeal.kind)} · ${label('appealstate', o.appeal.status)}`} color={c.sunSoft} /> : null}
+              {o.appeal ? <Tag label={dot(label('appeal', o.appeal.kind), label('appealstate', o.appeal.status))} color={c.sunSoft} /> : null}
               {!o.appeal || o.appeal.status !== 'open' ? <Btn small color={c.paper} ink={c.ink} title={t('para.ask_review', { date: o.appeal_open_until })} onPress={() => setForm({ appeal: o })} /> : null}
             </Card>
           ))}</Row2>
@@ -189,7 +192,7 @@ function Mine({ athleteId, wards, onWard }) {
       ) : null}
       <Block title={t('para.cases')}>
         {x.cases.length ? x.cases.map((k) => (
-          <Card key={k.id} pad={14} onPress={() => setCaseId(k.id)} style={{ gap: 8 }} accessibilityLabel={`${k.sport}, ${k.authority}, ${label('stage', k.status)}`}>
+          <Card key={k.id} pad={14} onPress={() => setCaseId(k.id)} style={{ gap: 8 }} accessibilityLabel={join(k.sport, k.authority, label('stage', k.status))}>
             <T weight="800">{k.sport} · {k.authority}</T><StageTrack status={k.status} />
           </Card>
         )) : <T size={13} color={c.mute}>{t('para.no_cases')}</T>}
@@ -229,7 +232,7 @@ function Desk({ desk }) {
       </Row2>
       <Block title={t('para.credentials')}>
         {desk.classifier.length ? desk.classifier.map((k) => (
-          <Card key={k.id} pad={14} accessibilityLabel={`${k.sport}, ${k.grade}, ${k.live ? t('para.live') : label('credstate', k.status)}`}>
+          <Card key={k.id} pad={14} accessibilityLabel={join(k.sport, k.grade, k.live ? t('para.live') : label('credstate', k.status))}>
             <View style={{ flexDirection: 'row', justifyContent: 'space-between', gap: 8, flexWrap: 'wrap' }}><T weight="800">{k.sport}{k.discipline ? ` · ${k.discipline}` : ''}</T><Tag label={k.live ? t('para.live') : label('credstate', k.status)} color={k.live ? c.limeSoft : c.orangeSoft} /></View>
             <T size={13} color={c.mute}>{k.issuing_body} · {k.grade} · {k.class_codes?.length ? k.class_codes.join(', ') : t('para.all_classes')} · {t('para.expires', { date: k.expires_on })}</T>
           </Card>
@@ -237,7 +240,7 @@ function Desk({ desk }) {
       </Block>
       <Block title={t('para.assigned_cases')}>
         {cases.data?.cases?.length ? cases.data.cases.map((k) => (
-          <Card key={k.id} pad={14} onPress={() => setCaseId(k.id)} style={{ gap: 8 }} accessibilityLabel={`${k.sport}, ${label('stage', k.status)}`}>
+          <Card key={k.id} pad={14} onPress={() => setCaseId(k.id)} style={{ gap: 8 }} accessibilityLabel={join(k.sport, label('stage', k.status))}>
             <T weight="800">{k.athlete} · {k.sport}</T><StageTrack status={k.status} />
             <T size={12} color={c.mute}>{t('para.panel_progress', { done: k.panel_decided, total: k.panel_assigned })} · {t('para.age_days', { n: k.age_days })}</T>
           </Card>
@@ -246,7 +249,7 @@ function Desk({ desk }) {
       <Block title={t('para.reviews')}>
         {appeals.data?.appeals?.length ? appeals.data.appeals.map((a) => (
           <Card key={a.id} pad={14} style={{ gap: 6 }}>
-            <View style={{ flexDirection: 'row', justifyContent: 'space-between', gap: 8, flexWrap: 'wrap' }}><T weight="800">{a.athlete} · {a.sport} · {a.class_code ?? '—'}</T><Tag label={`${label('appeal', a.kind)} · ${label('appealstate', a.status)}`} color={c.sunSoft} /></View>
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', gap: 8, flexWrap: 'wrap' }}><T weight="800">{a.athlete} · {a.sport} · {a.class_code ?? '—'}</T><Tag label={dot(label('appeal', a.kind), label('appealstate', a.status))} color={c.sunSoft} /></View>
             <T size={14}>{a.grounds}</T>
             {a.status === 'open' ? <Btn small title={t('para.rule')} onPress={() => setRuling(a)} /> : null}
           </Card>
@@ -292,7 +295,7 @@ function Authority({ desk }) {
       </Row2>
       <Block title={t('para.queue')}>
         {queue.data?.cases?.length ? queue.data.cases.map((k) => (
-          <Card key={k.id} pad={14} onPress={() => setCaseId(k.id)} style={{ gap: 8 }} accessibilityLabel={`${k.athlete}, ${k.sport}, ${label('stage', k.status)}`}>
+          <Card key={k.id} pad={14} onPress={() => setCaseId(k.id)} style={{ gap: 8 }} accessibilityLabel={join(k.athlete, k.sport, label('stage', k.status))}>
             <View style={{ flexDirection: 'row', justifyContent: 'space-between', gap: 8 }}><T weight="800">{k.athlete} · {k.sport}</T><T size={12} color={c.mute}>{t('para.age_days', { n: k.age_days })}</T></View>
             <StageTrack status={k.status} /><T size={12} color={c.mute}>{t('para.panel_progress', { done: k.panel_decided, total: k.panel_assigned })}</T>
           </Card>
@@ -320,7 +323,7 @@ function Authority({ desk }) {
       <Block title={t('para.reviews')}>
         {appeals.data?.appeals?.length ? appeals.data.appeals.map((a) => (
           <Card key={a.id} pad={12} style={{ gap: 4 }}>
-            <View style={{ flexDirection: 'row', justifyContent: 'space-between', gap: 8, flexWrap: 'wrap' }}><T weight="800">{a.athlete} · {a.sport}</T><Tag label={`${label('appeal', a.kind)} · ${label('appealstate', a.status)}`} color={c.sunSoft} /></View>
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', gap: 8, flexWrap: 'wrap' }}><T weight="800">{a.athlete} · {a.sport}</T><Tag label={dot(label('appeal', a.kind), label('appealstate', a.status))} color={c.sunSoft} /></View>
             <T size={12} color={c.mute}>{t('para.deadline', { date: a.deadline_on })} · {a.reviewer_assigned ? t('para.reviewer_set') : t('para.reviewer_needed')}</T>
             {a.status === 'open' && !a.reviewer_assigned ? <Btn small title={t('para.assign_reviewer')} onPress={() => setForm({ reviewer: a })} /> : null}
           </Card>
