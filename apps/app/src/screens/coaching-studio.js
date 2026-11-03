@@ -1,5 +1,7 @@
 // Performance Studio (issue #269, slice 1): today's coaching work, the run-a-session screen and the coaching journal.
 // Everything links to canonical records through the /coaching/* capabilities; nothing here edits a booking, plan or score.
+import { ReportSections } from './report-sections';
+import { ReportShares } from './report-shares';
 import React, { useEffect, useState } from 'react';
 import { View } from 'react-native';
 import { api } from '../api';
@@ -540,8 +542,8 @@ export function CoachCopilot({ task: taskProp = 'player_progress', athlete_id, t
 }
 
 // Reports: choose an audience, see exactly what that audience will get, then publish a frozen version.
-const AUD = [['coach_private', t('cs.aud_me')], ['athlete', t('cs.aud_athlete')], ['guardian', t('cs.aud_guardian')], ['team_staff', t('cs.vis_staff')]];
-const KIND = ['athlete_progress', 'session', 'goal_review', 'team_training', 'match_debrief', 'period_review', 'action_summary'];
+const AUD = [['coach_private', t('cs.aud_me')], ['athlete', t('cs.aud_athlete')], ['guardian', t('cs.aud_guardian')], ['team_staff', t('cs.vis_staff')], ['organisation', t('rsh.aud_org')]];
+const KIND = ['athlete_progress', 'session', 'goal_review', 'team_training', 'match_debrief', 'period_review', 'action_summary', 'team_performance'];
 
 export function CoachReports({ athlete_id, team_id, name }) {
   const { push } = useNav();
@@ -593,18 +595,7 @@ export function CoachReport({ id }) {
       <T size={13} color={c.mute} style={{ marginTop: 6 }}>{snap.disclosure}</T>
       {prev.data.needs_ai_review ? <Card pad={10} color={c.cyanSoft} style={{ marginTop: 8 }}><T size={12} weight="700">{t('cs.ai_started')}</T><T size={12} color={c.mute}>{t('cs.ai_read_first')}</T></Card> : null}
       <Section title={t('cs.preview')}>
-        {snap.sections.map((sec) => (
-          <Card key={sec.key} pad={12} style={{ marginBottom: 8 }}>
-            <T weight="800">{sec.title}</T>
-            {sec.kind === 'text' ? <T size={13}>{sec.body}</T> : sec.items.map((it, n) => (
-              <View key={n} style={{ marginTop: 6 }}>
-                <View style={{ flexDirection: 'row', justifyContent: 'space-between', gap: 8 }}><T weight="700" size={13} style={{ flexShrink: 1 }}>{it.title}</T>{it.value ? <T weight="800" size={13}>{it.value}</T> : null}</View>
-                {it.meta ? <T size={11} color={c.mute}>{it.meta}</T> : null}
-                {it.body ? <T size={12}>{it.body}</T> : null}
-              </View>
-            ))}
-          </Card>
-        ))}
+        <ReportSections sections={snap.sections} cards />
         {!snap.sections.length ? <T size={13} color={c.mute}>{t('cs.nothing_selected')}</T> : null}
       </Section>
       <View style={{ flexDirection: 'row', gap: 8, flexWrap: 'wrap', marginTop: 8 }}>
@@ -614,6 +605,7 @@ export function CoachReport({ id }) {
           if (typeof window !== 'undefined' && window.open) { const url = URL.createObjectURL(await api.download(`/branded-documents/${d.id}/file`)); window.open(url, '_blank', 'noopener'); setTimeout(() => URL.revokeObjectURL(url), 120000); }
         }, t('cs.pdf_ready'))} /> : null}
       </View>
+      {r.latest_version && r.audience === 'organisation' ? <ReportShares report={r} /> : null}
       {r.versions.length ? <Section title={t('cs.published_versions')}>{r.versions.map((v) => <Row key={v.version} title={t('cs.version_n', { n: v.version })} sub={t('cs.version_line', { when: dateTimeIn(v.published_at, tz), aud: AUD.find(([x]) => x === v.audience)[1] })} />)}</Section> : null}
       <FormSheet visible={sure} onClose={() => setSure(false)} title={t('cs.publish_ai_q')} submitLabel={t('cs.publish_read')} fields={[]}
         onSubmit={async () => { await api.post(`/coaching/reports/${id}/publish`, { row_version: r.row_version, confirm_reviewed: true }); setSure(false); toast(t('cs.published')); rep.reload(); prev.reload(); }} />
@@ -632,17 +624,7 @@ export function CoachReportView({ id, version }) {
     <Screen>
       <H1>{s.title}</H1>
       <T size={13} color={c.mute}>{t('cs.view_line', { subject: s.subject, from: s.period.from, to: s.period.to, coach: s.coach_name, v: v.data.version })}</T>
-      {s.sections.map((sec) => (
-        <Section key={sec.key} title={sec.title}>
-          {sec.kind === 'text' ? <T size={14}>{sec.body}</T> : sec.items.map((it, n) => (
-            <Card key={n} pad={12} style={{ marginBottom: 8 }}>
-              <View style={{ flexDirection: 'row', justifyContent: 'space-between', gap: 8 }}><T weight="700" style={{ flexShrink: 1 }}>{it.title}</T>{it.value ? <T weight="800">{it.value}</T> : null}</View>
-              {it.meta ? <T size={11} color={c.mute}>{it.meta}</T> : null}
-              {it.body ? <T size={13}>{it.body}</T> : null}
-            </Card>
-          ))}
-        </Section>
-      ))}
+      <ReportSections sections={s.sections} />
     </Screen>
   );
 }

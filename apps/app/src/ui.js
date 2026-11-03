@@ -122,7 +122,7 @@ export const Bubble = ({ emoji, color = c.sun, size = 46 }) => (
   </View>
 );
 
-export function Field({ label, value, onChangeText, secure, multiline, keyboardType, placeholder, hint, maxLength, accessibilityLabel, minHeight }) {
+export function Field({ label, value, onChangeText, secure, multiline, keyboardType, placeholder, hint, maxLength, accessibilityLabel, minHeight, rtl }) {
   const [focus, setFocus] = useState(false);
   const [reveal, setReveal] = useState(false);
   return (
@@ -131,7 +131,7 @@ export function Field({ label, value, onChangeText, secure, multiline, keyboardT
       <View>
         <TextInput value={value ?? ''} onChangeText={onChangeText} accessibilityLabel={accessibilityLabel ?? label ?? placeholder} maxLength={maxLength} secureTextEntry={secure && !reveal} multiline={multiline} keyboardType={keyboardType} placeholder={placeholder}
           onFocus={() => setFocus(true)} onBlur={() => setFocus(false)}
-          autoCapitalize="none" placeholderTextColor={c.mute} style={[fam, s.input, focus && { borderColor: c.ink }, multiline && { minHeight: minHeight ?? 80, textAlignVertical: 'top' }, secure && { paddingEnd: 52 }, Platform.OS === 'web' && { outlineStyle: 'none' }]} />
+          autoCapitalize="none" placeholderTextColor={c.mute} style={[fam, s.input, focus && { borderColor: c.ink }, multiline && { minHeight: minHeight ?? 80, textAlignVertical: 'top' }, rtl && { textAlign: 'right', writingDirection: 'rtl' }, secure && { paddingEnd: 52 }, Platform.OS === 'web' && { outlineStyle: 'none' }]} />
         {secure ? (
           <Pressable onPress={() => setReveal((x) => !x)} accessibilityRole="button" accessibilityLabel={reveal ? t('auth.hide_password') : t('auth.show_password')} accessibilityState={{ selected: reveal }}
             hitSlop={4} style={{ position: 'absolute', end: 0, top: 0, bottom: 0, width: 48, alignItems: 'center', justifyContent: 'center' }}>

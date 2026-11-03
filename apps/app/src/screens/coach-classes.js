@@ -87,7 +87,7 @@ export function ClassSheet({ id, onClose, onChanged }) {
         {k.notes ? <T size={14}>{k.notes}</T> : null}
         <T size={12} color={c.mute}>{t('cls.min_note', { n: k.min_participants })} · {t('cls.cancel_policy', { h: k.cancel_before_hours })}</T>
 
-        {k.can_manage && k.status !== 'cancelled' ? <Btn title={t('st.open')} onPress={() => { onClose(); push('ClassStudio', { id: k.id }); }} accessibilityLabel={t('st.open')} /> : null}
+        {k.can_manage && k.status !== 'cancelled' ? <Btn title={t('swk.open')} onPress={() => { onClose(); push('SessionWorkspace', { source_type: 'coach_class', source_id: k.id }); }} accessibilityLabel={t('swk.open')} /> : null}
         {!k.can_manage && holdsSeat ? <ClassPlanView k={k} /> : null}
         {k.status === 'cancelled' ? <T weight="700" color={c.red}>{t('cls.cancelled')}{k.cancelled_reason ? `: ${k.cancelled_reason}` : ''}</T> : null}
         {k.online_url ? <Btn small title={t('cls.open_link')} color={c.violet} onPress={() => Linking.openURL(k.online_url)} /> : null}

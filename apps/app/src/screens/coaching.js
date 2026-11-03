@@ -14,6 +14,7 @@ import { Avatar, Btn, Card, Chip, Empty, ErrorBox, Field, GradCard, H1, H2, Load
 import { AdSlot } from '../ads';
 import { MenuField } from '../menu-field';
 import { t } from '../i18n';
+import { SharedSessionSheet } from './session-workspace';
 import { FormSheet } from '../FormSheet';
 import { TimelineSheet } from '../Timeline';
 import { SportSelect } from '../sportpicker';
@@ -127,7 +128,7 @@ export function CoachToolGrid({ push, counts = {} }) {
   const tools = [
     ['🗂️', 'Desk', 'CoachDesk'], ['📬', 'Request board', 'CoachBoard', counts.board], ['🏃', 'Athletes', 'CoachAthletes'], ['🤝', 'Shared wellness', 'SharedWellness'], ['📄', 'Shared reports', 'SharedSeasonReports'], ['🎬', 'Recruitment', 'PassportDesk'], ['🪪', 'Profile & hours', 'CoachSetup'],
     ['📅', 'Schedule', 'CoachCalendar'], ['🏫', 'Academy week', 'AcademyAgenda'], ['🏷️', 'Rate cards', 'CoachRates'], ['🎽', 'My classes', 'CoachClasses'], ['🏟️', t('vc.title'), 'CoachVenues'], ['📑', 'Commitments', 'CoachCommitments'], ['⭐', 'Reviews', 'CoachReviews', counts.reviews],
-    ['🧠', 'Performance Studio', 'PerformanceStudio'], ['🧰', 'Drill library', 'CoachDrills'], ['👥', 'Saved groups', 'CoachGroups'], ['📋', t('nav.title.Evaluations'), 'Evaluations'], ['📏', t('es.sheets_title'), 'CoachRubrics'], ['📈', 'Analytics', 'CoachAnalytics'], ['📝', 'Training plans', 'MyPlans', null, { as: 'coach' }], ['📍', 'Courts', 'TrainingVenue', counts.courts], ['🔁', 'Recurring booking', 'RecurringVenue'],
+    ['🧠', 'Performance Studio', 'PerformanceStudio'], ['📊', t('nav.title.TeamPerformance'), 'TeamPerformance'], ['🧰', 'Drill library', 'CoachDrills'], ['👥', 'Saved groups', 'CoachGroups'], ['📋', t('nav.title.Evaluations'), 'Evaluations'], ['📏', t('es.sheets_title'), 'CoachRubrics'], ['📈', 'Analytics', 'CoachAnalytics'], ['📝', 'Training plans', 'MyPlans', null, { as: 'coach' }], ['📍', 'Courts', 'TrainingVenue', counts.courts], ['🔁', 'Recurring booking', 'RecurringVenue'],
   ];
   return (
     <Card pad={16} color={c.violetSoft}>
@@ -425,7 +426,8 @@ const paying = (hire, coachName) => ({ type: 'coach_hire', id: hire.id, amount: 
 function Session({ h, who, children }) {
   const { push } = useNav();
   const { user } = useSession();
-  const [hist, setHist] = useState(false);
+  const [hist, setHist] = useState(false), [shared, setShared] = useState(false);
+  const ran = ['confirmed', 'completed'].includes(h.status);
   return (
     <Card pad={14}>
       <View style={{ flexDirection: 'row', gap: 12, alignItems: 'center' }}>
@@ -444,7 +446,11 @@ function Session({ h, who, children }) {
           {h.payment_status === 'unpaid' ? <StatusPill s="unpaid" /> : h.payment_status === 'paid' ? <StatusPill s="paid" /> : null}
         </View>
       </View>
-      <View style={{ flexDirection: 'row', gap: 8, marginTop: 10, flexWrap: 'wrap' }}>{children}<Btn small title="History" color={c.paper} ink={c.mute} accessibilityLabel="Show the history of this session" onPress={() => setHist(true)} /></View>
+      <View style={{ flexDirection: 'row', gap: 8, marginTop: 10, flexWrap: 'wrap' }}>{children}<Btn small title="History" color={c.paper} ink={c.mute} accessibilityLabel="Show the history of this session" onPress={() => setHist(true)} />
+        {ran && who === 'athlete' ? <Btn small title={t('swk.open')} accessibilityLabel={t('swk.open')} onPress={() => push('SessionWorkspace', { source_type: 'coach_hire', source_id: h.id })} /> : null}
+        {ran && who === 'coach' ? <Btn small title={t('swk.athlete.open')} color={c.paper} ink={c.ink} accessibilityLabel={t('swk.athlete.open')} onPress={() => setShared(true)} /> : null}
+      </View>
+      {shared ? <SharedSessionSheet hireId={h.id} onClose={() => setShared(false)} /> : null}
       {hist ? <TimelineSheet kind="hire" id={h.id} meId={user.id} title="Session history" onClose={() => setHist(false)} /> : null}
     </Card>
   );

@@ -6,6 +6,7 @@
 //   MyEvaluations    what was shared with me (or my child), and what is waiting on me
 //   MyEvaluation     the shared version, my self-assessment, my answers, the thread, my trend, PDF
 // The server owns the numbers and the rules (who may see what, consent for young people, frozen versions); this screen shows them.
+import { DictationSheet } from './dictation';
 import React, { useEffect, useMemo, useState } from 'react';
 import { Pressable, View } from 'react-native';
 import { api } from '../api';
@@ -23,6 +24,8 @@ import { pillarName, orderOf, isNumeric } from '../eval-pillars';
 import { t } from '../i18n';
 import { c, when } from '../theme';
 import { explain } from '../access';
+const mic = (s) => `🎙️ ${s}`;
+const colon = (a, b) => `${a}: ${b}`;
 
 const STATUS_TONE = { draft: c.mute, shared: c.cyan, responded: c.sun, closed: c.lime };
 const REACTIONS = [['agree', c.lime], ['discuss', c.sun], ['disagree', c.red]];
@@ -248,6 +251,7 @@ export function Evaluation({ id }) {
   const q = useLoad(() => api.get(`/coaching/evaluations/${id}`), [id]);
   const [scores, setScores] = useState({}), [narr, setNarr] = useState({}), [title, setTitle] = useState(null);
   const [busy, setBusy] = useState(false), [share, setShare] = useState(false), [open, setOpen] = useState(null), [ev, setEvidence] = useState(null), [exportOpen, setExportOpen] = useState(false);
+  const [dictate, setDictate] = useState(null);   // null | { mode: 'text', kind: 'comment'|'narr', key } | { mode: 'form' }
   const d = q.data;
   useEffect(() => { setScores({}); setNarr({}); setTitle(null); }, [d?.row_version]);
   const merged = (k) => ({ ...(d?.criteria.find((x) => x.key === k) ?? {}), ...(scores[k] ?? {}) });
@@ -322,6 +326,7 @@ export function Evaluation({ id }) {
                 <Scale d={x} value={score ?? null} previous={x.previous} self={x.self} readOnly={closed} onPick={(v) => setScore(x.key, { score: v })} />
                 {x.self_comment ? <View style={{ padding: 10, borderRadius: 10, backgroundColor: c.mintSoft }}><T size={12} weight="800" color={SELF_COLOR}>{t('es.self')}</T><T size={13}>{x.self_comment}</T></View> : null}
                 <Field label={t('es.comment')} value={comment} onChangeText={(v) => setScore(x.key, { comment: v })} multiline minHeight={64} maxLength={2000} hint={x.evidence_hint ? t('es.look_for', { text: x.evidence_hint }) : undefined} />
+                {!closed ? <Btn small title={mic(t('dic.dictate'))} color={c.paper} ink={c.ink} onPress={() => setDictate({ mode: 'text', kind: 'comment', key: x.key })} style={{ alignSelf: 'flex-start' }} accessibilityLabel={colon(t('dic.dictate'), x.name)} /> : null}
                 {evid.map((e, i) => (
                   <View key={i} style={{ flexDirection: 'row', gap: 8, alignItems: 'center' }}>
                     <Tag label={t(`es.evidence.${e.type}`)} /><T size={13} style={{ flex: 1 }}>{[e.at, e.text, e.url].filter(Boolean).join(' · ')}</T>
@@ -336,8 +341,13 @@ export function Evaluation({ id }) {
       ))}
       <Section title={t('es.feedback')} color={c.violet}>
         <View style={{ gap: 12 }}>
+          {!closed ? <Btn small title={mic(t('dic.speak_all'))} onPress={() => setDictate({ mode: 'form' })} style={{ alignSelf: 'flex-start' }} accessibilityLabel={t('dic.speak_all')} /> : null}
+          {d.narrative?.ai_drafted || narr.ai_drafted ? <T size={12} weight="700" color={c.sun}>{t('dic.ai_gate')}</T> : null}
           {[['strengths', 'es.strengths'], ['development', 'es.development'], ['cues', 'es.cues'], ['next_steps', 'es.next_steps']].map(([k, label]) => (
-            <Field key={k} label={t(label)} value={narr[k] ?? d.narrative[k] ?? ''} onChangeText={(v) => setNarr((x) => ({ ...x, [k]: v }))} multiline minHeight={88} maxLength={3000} />
+            <View key={k} style={{ gap: 6 }}>
+              <Field label={t(label)} value={narr[k] ?? d.narrative[k] ?? ''} onChangeText={(v) => setNarr((x) => ({ ...x, [k]: v }))} multiline minHeight={88} maxLength={3000} />
+              {!closed ? <Btn small title={mic(t('dic.dictate'))} color={c.paper} ink={c.ink} onPress={() => setDictate({ mode: 'text', kind: 'narr', key: k })} style={{ alignSelf: 'flex-start' }} accessibilityLabel={colon(t('dic.dictate'), t(label))} /> : null}
+            </View>
           ))}
           <Field label={t('es.private')} value={narr.private ?? d.narrative.private ?? ''} onChangeText={(v) => setNarr((x) => ({ ...x, private: v }))} multiline minHeight={70} maxLength={4000} hint={t('es.private_hint')} />
         </View>
@@ -368,10 +378,26 @@ export function Evaluation({ id }) {
         {tablet ? <View style={{ flexDirection: 'row', gap: 16, alignItems: 'flex-start' }}><View style={{ flex: 3, minWidth: 0 }}>{body}</View><View style={{ flex: 2, minWidth: 300 }}>{summary}</View></View> : <View style={{ gap: 12 }}>{summary}{body}</View>}
       </View>
       {exportOpen ? <ExportSheet d={d} onClose={() => setExportOpen(false)} /> : null}
+      {dictate ? (
+        <DictationSheet mode={dictate.mode} evaluationId={id} onClose={() => setDictate(null)}
+          onUse={(r) => {
+            const join = (a, b) => (a ? `${a}\n${b}` : b);
+            if (dictate.mode === 'text') {
+              if (dictate.kind === 'comment') setScore(dictate.key, { comment: join(scores[dictate.key]?.comment ?? d.criteria.find((x) => x.key === dictate.key)?.comment ?? '', r) });
+              else setNarr((x) => ({ ...x, [dictate.key]: join(x[dictate.key] ?? d.narrative[dictate.key] ?? '', r) }));
+              toast(t('dic.added'));
+            } else {
+              // a drafted evaluation lands in the form as unsaved edits: the coach reads, changes and saves it; the AI marker keeps the share gate
+              setNarr((x) => ({ ...x, ...Object.fromEntries(['strengths', 'development', 'cues', 'next_steps'].filter((k) => r.narrative[k]).map((k) => [k, join(x[k] ?? d.narrative[k] ?? '', r.narrative[k])])), ai_drafted: true }));
+              for (const [k, v] of Object.entries(r.comments)) setScore(k, { comment: join(scores[k]?.comment ?? d.criteria.find((x) => x.key === k)?.comment ?? '', v) });
+              toast(t('dic.drafted'));
+            }
+          }} />
+      ) : null}
       {share ? (
         <FormSheet visible onClose={() => setShare(false)} title={d.version ? t('es.share_again') : t('es.share')} submitLabel={t('es.share')} initial={{}} notice={t('es.share_notice')}
-          fields={[{ key: 'note', label: t('es.share_note'), type: 'multiline', optional: true }]}
-          onSubmit={async (v) => { await api.post(`/coaching/evaluations/${id}/share`, { ...(v.note ? { note: v.note } : {}) }); setShare(false); await q.reload(); return t('es.shared_done'); }} />
+          fields={[{ key: 'note', label: t('es.share_note'), type: 'multiline', optional: true }, ...(d.narrative?.ai_drafted ? [{ key: 'confirm', label: t('dic.confirm_reviewed'), type: 'switch', default: false }] : [])]}
+          onSubmit={async (v) => { await api.post(`/coaching/evaluations/${id}/share`, { ...(v.note ? { note: v.note } : {}), ...(d.narrative?.ai_drafted ? { confirm_reviewed: !!v.confirm } : {}) }); setShare(false); await q.reload(); return t('es.shared_done'); }} />
       ) : null}
       {ev ? (
         <FormSheet visible onClose={() => setEvidence(null)} title={t('es.add_evidence')} submitLabel={t('common.save')} initial={{ type: 'note' }}
