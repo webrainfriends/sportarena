@@ -332,30 +332,3 @@ export function Debrief({ id, e }) {
     </>
   );
 }
-
-/** Overview summary: the readiness percentage and the next things to fix. Replaces the old client-side "Get the event ready" list (same checks, now server-side in Readiness). */
-export function ReadinessCard({ id, goTab }) {
-  const r = useLoad(() => api.get(`/events/${id}/ops/readiness`), [id]);
-  const act = useDo(r.reload);
-  if (!r.data) return null;
-  const d = r.data;
-  if (!d.items.length) return (
-    <ACard tone={A.violet} style={{ gap: 8 }}>
-      <AT size={17} weight="900">Get the event ready</AT>
-      <AT size={13} color={A.mute}>Add the standard requirements: venue, teams, crew, accreditation, budget and more, each read live from where you already entered it.</AT>
-      <ABtn small title="Add the requirements" onPress={() => act(() => api.post(`/events/${id}/ops/requirements/standard`, {}), 'Requirements added')} style={{ alignSelf: 'flex-start' }} />
-    </ACard>
-  );
-  const next = d.items.filter((i) => i.state === 'open' && i.required).slice(0, 3);
-  return (
-    <ACard tone={d.percent === 100 ? A.green : A.violet} style={{ gap: 6 }} onPress={() => goTab('operations', 'readiness')}>
-      <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
-        <AT size={17} weight="900">{d.percent === 100 ? 'All set 🎉' : 'Get the event ready'}</AT>
-        <AT size={13} weight="900" color={A.cyan} num>{d.percent}%</AT>
-      </View>
-      <ABar pct={d.percent} color={d.percent === 100 ? A.green : A.magenta} />
-      {next.map((i) => <AT key={i.id} size={13} color={A.mute}>○ {i.title}{i.detail ? ` · ${i.detail}` : ''}</AT>)}
-      <AT size={12} weight="800" color={A.cyan}>Open the Operations centre →</AT>
-    </ACard>
-  );
-}

@@ -16,6 +16,7 @@ import { api } from '../api';
 import { useLoad } from '../hooks';
 import { AthleteHub } from './athlete-hub';
 import { PlayerHero } from '../hero';
+import { EventTowerHome } from './event-tower';
 
 // Home and Workbench: the two role-driven tabs of the mobile shell (issue #599). Both read the one workspace the API composes for the active
 // role. Home answers "what is on today and what is waiting on me"; Workbench is the role's one page: its queue and fast actions on top of its own screen.
@@ -144,6 +145,7 @@ export function RoleHome() {
   const early = gate(ws);
   if (early) return early;
   const top = d.work.slice(0, 3);
+  const eventHome = d.role === 'organizer' && !!d.tower; // the event role's landing page is the event control tower
   const athleteHome = d.role === 'athlete'; // the athlete's home leads with the nine hub cards; today and the queue come after
   // Order is chosen here, not with a reversed flex direction: a reversed container pushes its overflow out of the scrollable range on the web.
   const todayQueue = (
@@ -175,15 +177,28 @@ export function RoleHome() {
   );
   return (
       <Screen onRefresh={ws.reload} refreshing={ws.loading} wide>
-        <View style={{ marginTop: 4, borderRadius: 24, overflow: 'hidden', borderWidth: 1, borderColor: c.line }}>
-          <PlayerHero user={user} profile={main} pad={16} onAvatar={() => goTab('Me')} />
-        </View>
+        {eventHome ? (
+          <View style={{ marginTop: 4 }}>
+            <H1 style={{ fontSize: 26 }}>{user.display_name}</H1>
+            <T color={c.mute} weight="600">{roleLabel(d.role)}</T>
+          </View>
+        ) : (
+          <View style={{ marginTop: 4, borderRadius: 24, overflow: 'hidden', borderWidth: 1, borderColor: c.line }}>
+            <PlayerHero user={user} profile={main} pad={16} onAvatar={() => goTab('Me')} />
+          </View>
+        )}
         <View style={{ marginTop: 14 }}><Context ws={ws} /></View>
         {athleteHome ? null : <SetupCard />}
-        <View style={{ marginTop: 14 }}><Tiles items={d.summary} role={d.role} /></View>
-        <View style={tablet ? { flexDirection: 'row', gap: 24, alignItems: 'flex-start' } : null}>
-          {athleteHome ? <>{side}{todayQueue}</> : <>{todayQueue}{side}</>}
-        </View>
+        {eventHome ? (
+          <View style={{ marginTop: 14 }}><EventTowerHome tower={d.tower} push={push} goTab={goTab} /></View>
+        ) : (
+          <>
+            <View style={{ marginTop: 14 }}><Tiles items={d.summary} role={d.role} /></View>
+            <View style={tablet ? { flexDirection: 'row', gap: 24, alignItems: 'flex-start' } : null}>
+              {athleteHome ? <>{side}{todayQueue}</> : <>{todayQueue}{side}</>}
+            </View>
+          </>
+        )}
       </Screen>
   );
 }
