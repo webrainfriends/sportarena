@@ -20,7 +20,7 @@ const providerFor = (method, offered) => PROVIDER[method].find((p) => offered.in
 
 /**
  * Hosted checkout for one invoice, in the invoice's own currency: pick Stripe or PayPal, pay on the provider's page, then confirm.
- * target = { id, label, amount, currency }. Card details never touch Gotmygame.
+ * target = { id, label, amount, currency }. Card details never touch GotMyGame.
  */
 export function PaySheet({ target, onClose, onDone }) {
   const { toast } = useSession();

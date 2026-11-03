@@ -310,7 +310,7 @@ export function RegistrationApply({ id, entry_id }) {
                 {plan === 'instalments' ? quote.instalments.map((i) => <T key={i.seq} size={13}>{i.seq}. {fmtMoney(i.amount_cents, p.currency)} · {day(i.due_on)}</T>) : null}
               </View>
             ) : null}
-            <T size={12} color={c.mute}>You pay securely through Gotmygame after you submit. Card details never touch us.</T>
+            <T size={12} color={c.mute}>You pay securely through GotMyGame after you submit. Card details never touch us.</T>
           </>
         ) : null}
         {cur.id === 'review' ? (

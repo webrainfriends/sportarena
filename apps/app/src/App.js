@@ -25,6 +25,7 @@ import { Setup } from './screens/setup';
 import { Inbox } from './screens/inbox';
 import { BetaBanner } from './beta-banner';
 import { Logo } from './logo';
+import { Wordmark } from './wordmark';
 import { c, dark, fam } from './theme';
 
 installWebShell();
@@ -285,7 +286,7 @@ function TopBar() {
       <View style={{ width: '100%', maxWidth: contentMax, alignSelf: 'center', height: 48, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: gutter }}>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
           <Logo size={34} />
-          <Text style={[fam, { fontSize: 18, fontWeight: '800', color: c.ink, letterSpacing: -0.4 }]}>Gotmygame</Text>
+          <Wordmark width={112} />
         </View>
         <TopRight />
       </View>

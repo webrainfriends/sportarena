@@ -3,6 +3,7 @@
 import PDFDocument from 'pdfkit';
 import { AppError } from '../errors.js';
 import { fonts, assertGlyphs } from './render.js';
+import { drawWordmark } from './brand-font.js';
 import { SECTION_LABEL } from '../export-pack.js';
 
 const MM = 72 / 25.4;
@@ -55,7 +56,7 @@ export async function renderSeasonReport({ layout, kit, logo, pack, createdAt, p
       const top = doc.page.margins.top; let x = left;
       if (layout.style === 'modern') doc.rect(0, 0, doc.page.width, 10).fill(accent);
       if (logo) { try { doc.image(logo, x, top, { fit: [130, 56] }); x += 140; } catch { throw new AppError(422, 'logo_unreadable', 'The brand logo could not be read. Upload it again as PNG or JPEG.'); } }
-      label(kit?.display_name ?? 'Sportarena', x, top, width - (x - left), { bold: true, size: 14, color: accent });
+      if (kit?.display_name) label(kit.display_name, x, top, width - (x - left), { bold: true, size: 14, color: accent }); else drawWordmark(doc, x, top - 2, { size: 22 });
       const sub = [kit?.legal_name, kit?.address, [kit?.contact_email, kit?.phone].filter(Boolean).join(' · '), kit?.website].filter(Boolean).join('\n');
       if (sub) label(sub, x, doc.y + 2, width - (x - left), { size: 8 });
       doc.y = Math.max(doc.y, top + (logo ? 60 : 0)) + 14;
