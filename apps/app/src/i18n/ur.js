@@ -5210,4 +5210,8 @@ export default {
   'ws.hub.see_all': 'سب دیکھیں',
   'ws.hub.following_empty': 'کھلاڑیوں، کوچز اور ٹیموں کو فالو کریں تو ان کے نتائج اور پوسٹس یہاں نظر آئیں گی۔',
   'ws.hub.following_find': 'فالو کرنے کے لیے لوگ تلاش کریں',
+  'ws.hub.event': 'ایونٹ تلاش کریں',
+  'ws.hub.event_sub': 'ٹورنامنٹ، لیگ اور میچ',
+  'ws.hub.sponsor': 'اسپانسر تلاش کریں',
+  'ws.hub.sponsor_sub': 'اسپانسرشپ کالز اور فنڈنگ',
 };

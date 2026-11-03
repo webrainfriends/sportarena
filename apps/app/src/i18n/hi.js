@@ -5210,4 +5210,8 @@ export default {
   'ws.hub.see_all': 'सब देखें',
   'ws.hub.following_empty': 'एथलीट, कोच और टीमें फ़ॉलो करें, उनके नतीजे और पोस्ट यहाँ दिखेंगे।',
   'ws.hub.following_find': 'फ़ॉलो करने के लिए लोग खोजें',
+  'ws.hub.event': 'इवेंट खोजें',
+  'ws.hub.event_sub': 'टूर्नामेंट, लीग और मुकाबले',
+  'ws.hub.sponsor': 'स्पॉन्सर खोजें',
+  'ws.hub.sponsor_sub': 'स्पॉन्सरशिप कॉल और फंडिंग',
 };

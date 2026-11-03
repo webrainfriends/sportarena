@@ -5210,4 +5210,8 @@ export default {
   'ws.hub.see_all': 'সব দেখুন',
   'ws.hub.following_empty': 'অ্যাথলিট, কোচ ও দল ফলো করলে তাদের ফলাফল ও পোস্ট এখানে দেখা যাবে।',
   'ws.hub.following_find': 'ফলো করার জন্য মানুষ খুঁজুন',
+  'ws.hub.event': 'ইভেন্ট খুঁজুন',
+  'ws.hub.event_sub': 'টুর্নামেন্ট, লিগ ও ম্যাচ',
+  'ws.hub.sponsor': 'স্পনসর খুঁজুন',
+  'ws.hub.sponsor_sub': 'স্পনসরশিপ আহ্বান ও তহবিল',
 };

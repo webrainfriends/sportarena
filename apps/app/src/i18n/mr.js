@@ -5210,4 +5210,8 @@ export default {
   'ws.hub.see_all': 'सर्व पहा',
   'ws.hub.following_empty': 'खेळाडू, प्रशिक्षक आणि संघ फॉलो करा, त्यांचे निकाल आणि पोस्ट इथे दिसतील.',
   'ws.hub.following_find': 'फॉलो करण्यासाठी लोक शोधा',
+  'ws.hub.event': 'स्पर्धा शोधा',
+  'ws.hub.event_sub': 'स्पर्धा, लीग आणि सामने',
+  'ws.hub.sponsor': 'प्रायोजक शोधा',
+  'ws.hub.sponsor_sub': 'प्रायोजकत्व आवाहने आणि निधी',
 };

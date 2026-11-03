@@ -5210,4 +5210,8 @@ export default {
   'ws.hub.see_all': 'ସବୁ ଦେଖନ୍ତୁ',
   'ws.hub.following_empty': 'ଆଥଲେଟ୍, କୋଚ୍ ଓ ଦଳକୁ ଅନୁସରଣ କଲେ ସେମାନଙ୍କ ଫଳାଫଳ ଓ ପୋଷ୍ଟ ଏଠି ଦେଖାଯିବ।',
   'ws.hub.following_find': 'ଅନୁସରଣ ପାଇଁ ଲୋକ ଖୋଜନ୍ତୁ',
+  'ws.hub.event': 'ଇଭେଣ୍ଟ ଖୋଜନ୍ତୁ',
+  'ws.hub.event_sub': 'ଟୁର୍ଣ୍ଣାମେଣ୍ଟ, ଲିଗ୍ ଓ ଖେଳ',
+  'ws.hub.sponsor': 'ସ୍ପନସର୍ ଖୋଜନ୍ତୁ',
+  'ws.hub.sponsor_sub': 'ସ୍ପନସରସିପ୍ ଆହ୍ୱାନ ଓ ପାଣ୍ଠି',
 };
