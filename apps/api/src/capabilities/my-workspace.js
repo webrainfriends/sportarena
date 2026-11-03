@@ -4,6 +4,7 @@ import { one, many } from '../db.js';
 import { forbidden } from '../errors.js';
 import { resolveDefaultRole } from '../default-role.js';
 import { invoke } from '../invoke.js';
+import { eventsStrip } from './event-control-tower.js';
 
 // The role-driven mobile workspace (issue #599). The app opens on what the signed-in person does, not on the platform's modules:
 // Home (today and what needs me), Calendar, Work (the queue and the fast actions of the active role), Inbox and Profile.
@@ -119,7 +120,9 @@ async function organizer(user) {
     ...(e.pending_badges ? [item('badges', `${e.pending_badges} badge${e.pending_badges === 1 ? '' : 's'} to decide`, e.name, go('EventCommand', { id: e.id, tab: 'accreditation' }), e.starts_on, 'now')] : []),
     ...(e.open_positions ? [item('positions', `${e.open_positions} position${e.open_positions === 1 ? '' : 's'} still to fill`, e.name, go('EventCommand', { id: e.id }), e.starts_on, 'soon')] : []),
   ]);
+  const tower = await eventsStrip(user).catch(() => null); // the landing page is the event control tower: the strip of events and which need attention
   return {
+    tower,
     summary: [{ key: 'events', label: 'Events', value: events.length }, { key: 'running', label: 'Today', value: running.length }, { key: 'approvals', label: 'To approve', value: events.reduce((n, e) => n + e.pending_entries + e.pending_badges, 0) }],
     today: running.map((e) => item('event', e.name, e.status, go('EventCommand', { id: e.id }), e.starts_on, 'now')),
     work,
@@ -199,7 +202,7 @@ cap({
       role, role_label: role ? ROLE_LABEL[role] : null,
       roles: held.map((r) => ({ key: r, label: ROLE_LABEL[r], native: NATIVE.includes(r) })),
       organisations: orgs, unread: unread.n,
-      generic: !!body.generic, summary: body.summary, today: body.today.sort((a, b) => String(a.at ?? '').localeCompare(String(b.at ?? ''))), work,
+      generic: !!body.generic, tower: body.tower ?? null, summary: body.summary, today: body.today.sort((a, b) => String(a.at ?? '').localeCompare(String(b.at ?? ''))), work,
       actions: body.actions, unavailable: body.unavailable ?? [], as_of: new Date().toISOString(),
     };
   },

@@ -6,11 +6,10 @@ import React, { useState } from 'react';
 import { View } from 'react-native';
 import { api } from '../api';
 import { useLoad } from '../hooks';
-import { usePoll } from '../live';
 import { useSession } from '../session';
 import { useNav } from '../nav';
 import { EventSanctions } from './federation-club';
-import { A, ABtn, ACard, AChip, AEmpty, AHero, AScreen, ASection, AStat, AT, ATabs, AG, LiveBadge, ReasonSheet, StageRail } from '../arena';
+import { A, ABtn, ACard, AChip, AEmpty, AHero, AScreen, ASection, AT, ATabs, AG, LiveBadge, ReasonSheet, StageRail } from '../arena';
 import { ErrorBox, Field, Loading, Sheet, T } from '../ui';
 import { c } from '../theme';
 import { DepartmentsTab } from './event-departments';
@@ -22,7 +21,7 @@ import { TeamsTab } from './event-teams';
 import { RegistrationTab } from './event-registration';
 import { TrialsTab } from './event-trials';
 import { HiringTab } from './event-hiring';
-import { BusinessTab, MoneyTiles } from './event-business';
+import { BusinessTab } from './event-business';
 import { PlanPicker } from './plans-billing';
 import { ServicesBuyer } from './svc-buyer';
 import { EventVenues } from './event-venues';
@@ -36,7 +35,8 @@ import { TravelTab } from './trips';
 import { RaceDay } from './race-desk';
 import { PublicPageTab } from './event-public';
 import { EventOfficialsSettings } from './officials-home';
-import { OperationsTab, ReadinessCard } from './event-ops';
+import { OperationsTab } from './event-ops';
+import { EventTower } from './event-tower';
 import { DisciplineTab } from './event-discipline';
 
 const STEPS = [['draft', 'Setup'], ['open', 'Open'], ['ongoing', 'Running'], ['completed', 'Ended']];
@@ -74,12 +74,12 @@ function useConsoleData(id, org) {
   return { fx, bracket, venues, inv, seeds, roles, staff, vend, money, plan, rosters, races, reload: () => all.forEach((l) => l.reload()) };
 }
 
-export function EventCommand({ id, tab: first = 'overview' }) {
+export function EventCommand({ id, tab: first = 'overview', sub: firstSub, plan: planFirst }) {
   const { user, toast } = useSession();
   const nav = useNav();
   const ev = useLoad(() => api.get(`/events/${id}`), [id]);
   const [tab, setTab] = useState(first);
-  const [sub, setSub] = useState({ people: 'departments', business: 'partners', operations: '', discipline: '' });
+  const [sub, setSub] = useState({ people: 'departments', business: 'partners', operations: '', discipline: '', ...(firstSub ? { [first]: firstSub } : {}) });
   const [ask, setAsk] = useState(null);       // 'pause' | 'end' | 'force'
   const [blockers, setBlockers] = useState(0);
   const [busy, setBusy] = useState(false);
@@ -147,7 +147,7 @@ export function EventCommand({ id, tab: first = 'overview' }) {
       ) : null}
 
       <ATabs tabs={tabs} value={tab} onChange={setTab} />
-      {tab === 'overview' && <Overview {...P} D={D} games={games} accepted={accepted} money={money} />}
+      {tab === 'overview' && <Overview {...P} games={games} crew={!!ops.data} planFirst={planFirst} />}
       {tab === 'trial' && e.kind === 'trial' && <TrialsTab id={id} isOrg={isOrg} />}
       {tab === 'teams' && isOrg && <TeamsTab {...P} accepted={accepted} inv={D.inv.data ?? []} seeds={D.seeds.data ?? []} />}
       {tab === 'registration' && <RegistrationTab id={id} e={e} isOrg={isOrg} reload={reloadAll} />}
@@ -203,37 +203,29 @@ function Paper({ children }) {
   return <View style={{ backgroundColor: c.bg, borderRadius: 24, paddingHorizontal: 12, paddingBottom: 14, overflow: 'hidden' }}>{children}</View>;
 }
 
-function Overview({ id, e, isOrg, go, D, games, accepted, money, reload }) {
+/**
+ * The overview of an event is its control tower (screens/event-tower.js): readiness, what needs the manager, today and up next, live operations,
+ * people, money, venue, workforce, tickets, commercial, tenders, compliance, media, travel and results, ordered for the event's phase. The cards it
+ * replaced (stat tiles, readiness, up next, money) are merged into it. Only what is unique stays here: federation sanctions, the games programme
+ * link and the status log. Viewers who are not crew cannot read the tower, so they keep a short up-next and the empty state.
+ */
+function Overview({ id, e, isOrg, go, games, crew, reload, planFirst }) {
   const { push } = useNav();
   const depts = useLoad(() => api.get(`/events/${id}/departments`), [id]);
-  const live = useLoad(() => api.get(`/events/${id}/live`), [id]);
   const hist = useLoad(() => (isOrg ? api.get(`/events/${id}/status-history`) : Promise.resolve([])), [id, isOrg]);
-  const [plan, setPlan] = useState(false);
-  usePoll(live.reload, 8000);
+  const [plan, setPlan] = useState(!!planFirst);
   const n = depts.data?.length ?? 0;
   const next = games.filter((g) => !['completed', 'cancelled', 'abandoned'].includes(g.status)).sort((a, b) => +new Date(a.scheduled_at) - +new Date(b.scheduled_at))[0];
-  const played = games.filter((g) => g.status === 'completed').length;
   return (
     <>
-      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10 }}>
-        <AStat icon="👥" value={accepted.length} label="Teams" /><AStat icon="⚽" value={`${played}/${games.length}`} label="Played" /><AStat icon="🔴" value={live.data?.filter((g) => g.fixture.status === 'live').length ?? 0} label="Live now" /><AStat icon="🧩" value={n} label="Departments" />
-      </View>
+      {crew || isOrg ? <EventTower id={id} embedded onOpen={(fix) => go(fix.tab, fix.sub)} onPlan={() => setPlan(true)} /> : (
+        <>
+          <ASection title="Up next" action={games.length ? 'All games' : undefined} onAction={() => go('games')} />
+          {next ? <GameRow f={next} onPress={() => push('MatchCentre', { id: next.id })} /> : <AEmpty emoji="🗓️" title="No games scheduled yet" sub="Fixtures will appear here." />}
+        </>
+      )}
 
-      {isOrg ? <ReadinessCard id={id} goTab={go} /> : null}
       {isOrg ? <EventSanctions event={e} canManage={isOrg} onChanged={reload} /> : null}
-
-      {isOrg ? (
-        <ACard tone={A.violet} style={{ gap: 8 }}>
-          <AT size={18} weight="900">🤖 Plan it with AI</AT>
-          <AT size={13} color={A.mute}>Get the departments this event needs and starter tasks for each, dated backwards from day one. You review everything before it is created.</AT>
-          <ABtn small title={n ? 'Suggest what is missing' : 'Suggest a plan'} onPress={() => setPlan(true)} style={{ alignSelf: 'flex-start' }} />
-        </ACard>
-      ) : null}
-
-      <ASection title="Up next" action={games.length ? 'All games' : undefined} onAction={() => go('games')} />
-      {next ? <GameRow f={next} onPress={() => push('MatchCentre', { id: next.id })} /> : <AEmpty emoji="🗓️" title="No games scheduled yet" sub={isOrg ? 'Plan the schedule once teams are in.' : 'Fixtures will appear here.'} />}
-
-      {isOrg && money ? <><ASection title="Money" sub={`In ${e.currency ?? 'INR'}`} action="Details" onAction={() => go('business', 'budget')} /><MoneyTiles money={money} short /></> : null}
 
       {isOrg && e.sport === 'Multi-sport games' ? <ABtn tone="neon" title="Run the games programme (sports, houses, timetable)" onPress={() => push('Games', { id })} /> : null}
 

@@ -3,6 +3,7 @@
 // exports and reconciliation read only from here. See docs/finance.md for the model, the module map and what is migrated.
 import { many, one, pool, tx } from './db.js';
 import { sharesFor } from './settlement.js';
+import { resolveTax } from './tax.js';
 
 /** payments.purpose_type -> the business module whose money it is. A type missing here is labelled 'other', never dropped. */
 export const MODULE_OF = {
@@ -86,14 +87,20 @@ async function parties(c, p) {
 }
 
 export const insert = async (c, e) => {
+  // the tax this figure contains: what the source module gave, else (income side only) what the organisation's own tax rules say; none = unchanged
+  let tax = n(e.tax), ti = { code: e.taxCode ?? null, rate: e.taxRate ?? null, treatment: e.taxTreatment ?? null, basis: e.taxBasis ?? (tax > 0 ? 'source' : null) };
+  if (!tax && e.payeeOrgId && ['charge', 'payment', 'refund'].includes(e.kind) && !ti.basis) {
+    const g = await safe(c, (k) => resolveTax(k, { orgId: e.payeeOrgId, category: categoryOf(e.module), sourceType: e.sourceType, at: e.at, gross: n(e.gross) }), null);
+    if (g) { tax = g.tax; ti = { code: g.code, rate: g.rate_bp, treatment: g.treatment, basis: g.basis }; }
+  }
   const r = (await q(c).query(
     `INSERT INTO fin_transactions(kind, status, source_module, source_type, source_id, payer_id, payee_id, payer_org_id, payee_org_id, currency, gross_minor, tax_minor, fee_minor, discount_minor, net_minor,
-       provider, provider_ref, payment_id, payout_id, parent_id, idem_key, occurred_at, meta, category, due_on, event_id, team_id, workspace_id)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,coalesce($22, now()),$23,$24,$25,$26,$27,$28)
+       provider, provider_ref, payment_id, payout_id, parent_id, idem_key, occurred_at, meta, category, due_on, event_id, team_id, workspace_id, tax_code, tax_rate_bp, tax_treatment, tax_basis, withheld_minor)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,coalesce($22, now()),$23,$24,$25,$26,$27,$28,$29,$30,$31,$32,$33)
      ON CONFLICT (idem_key) DO NOTHING RETURNING id`,
     [e.kind, e.status ?? 'settled', e.module, e.sourceType, e.sourceId ?? null, e.payerId ?? null, e.payeeId ?? null, e.payerOrgId ?? null, e.payeeOrgId ?? null, e.currency, e.gross,
-      e.tax ?? 0, e.fee ?? 0, e.discount ?? 0, e.net ?? e.gross - (e.tax ?? 0) - (e.fee ?? 0), e.provider ?? null, e.providerRef ?? null, e.paymentId ?? null, e.payoutId ?? null,
-      e.parentId ?? null, e.key, e.at ?? null, JSON.stringify(e.meta ?? {}), categoryOf(e.module), e.dueOn ?? null, e.eventId ?? null, e.teamId ?? null, e.workspaceId ?? null])).rows[0];
+      tax, e.fee ?? 0, e.discount ?? 0, e.net ?? e.gross - tax - (e.fee ?? 0), e.provider ?? null, e.providerRef ?? null, e.paymentId ?? null, e.payoutId ?? null,
+      e.parentId ?? null, e.key, e.at ?? null, JSON.stringify(e.meta ?? {}), categoryOf(e.module), e.dueOn ?? null, e.eventId ?? null, e.teamId ?? null, e.workspaceId ?? null, ti.code, ti.rate, ti.treatment, ti.basis, n(e.withheld)])).rows[0];
   if (r) {
     await q(c).query("INSERT INTO fin_tx_events(tx_id, actor_id, action, data) VALUES ($1,$2,$3,$4)", [r.id, e.actorId ?? null, 'posted', JSON.stringify({ kind: e.kind, status: e.status ?? 'settled' })]);
     await safe(c, (k) => applyDimensions(k, [r.id]), null);   // season / event / team / workspace, read from the source record; a miss never blocks the posting
@@ -149,21 +156,34 @@ export const setStatus = async (c, idem, status, actorId = null, data = {}) => {
 /** A charge: money someone owes for a thing, open until paid. Posted when checkout starts. */
 export async function recordCharge(c, p) {
   // a source that already carries a canonical obligation (academy / team charge, instalment, supplier invoice ...) is one receivable, never two
-  if ((await q(c).query('SELECT 1 FROM fin_transactions WHERE idem_key=$1', [`obl:${p.purpose_type}:${p.purpose_id}`])).rowCount) return null;
+  const obl = `obl:${p.purpose_type}:${p.purpose_id}`;
+  if ((await q(c).query('SELECT 1 FROM fin_transactions WHERE idem_key = $1 OR idem_key LIKE $2 LIMIT 1', [obl, `${obl}:%`])).rowCount) return null;   // :r<n> = a revised amount
   const who = await parties(c, p);
   return insert(c, { kind: 'charge', status: 'open', module: moduleOf(p.purpose_type), sourceType: p.purpose_type, sourceId: p.purpose_id, payerId: p.payer_id, payeeId: who.payeeId,
     payerOrgId: who.payerOrgId, payeeOrgId: who.payeeOrgId, currency: p.currency, gross: n(p.amount_cents), net: n(p.amount_cents), provider: p.provider, providerRef: p.provider_ref, paymentId: p.id, key: `charge:${p.id}` });
 }
 export const closeCharge = (c, paymentId, status) => setStatus(c, `charge:${paymentId}`, status);
 
+/** Where the tax of an online payment's source document is, for the purposes whose provider ledger carries none: [tax, document total] of the document being paid. */
+const SOURCE_TAX = {
+  venue_invoice: 'SELECT tax_cents::bigint AS tax, total_cents::bigint AS total FROM invoices WHERE id=$1',
+  academy_charge: 'SELECT tax_minor AS tax, amount_minor AS total FROM academy_charges WHERE id=$1',
+  ticket_order: 'SELECT tax_minor AS tax, total_minor AS total FROM ticket_orders WHERE id=$1',
+  service_invoice: 'SELECT tax_minor AS tax, gross_minor AS total FROM svc_invoices WHERE id=$1',
+  pos_sale: 'SELECT tax_cents::bigint AS tax, total_cents::bigint AS total FROM pos_sales WHERE id=$1',
+};
+
 /** The customer's payment, once the provider confirmed it. Tax and fee come from what the settlement ledger posted for the same payment. */
 export async function recordPayment(c, p) {
   const who = await parties(c, p);
   const led = (await safe(c, async (k) => (await k.query("SELECT coalesce(sum(tax_cents) FILTER (WHERE kind='sale'),0)::bigint AS tax, coalesce(-sum(amount_cents) FILTER (WHERE kind='commission'),0)::bigint AS fee FROM provider_ledger WHERE payment_id=$1", [p.id])).rows[0], null)) ?? { tax: 0, fee: 0 };
-  let tax = n(led.tax);
-  if (!tax && p.purpose_type === 'venue_invoice') tax = n((await safe(c, async (k) => (await k.query('SELECT tax_cents FROM invoices WHERE id=$1', [p.purpose_id])).rows[0], null))?.tax_cents);
+  let tax = n(led.tax), taxBasis = tax ? 'source' : null;   // from the provider ledger, or the share of the source document's tax
+  if (!tax) {   // the tax the source document carries, pro-rated to what this payment covers (a payment may be part of the document)
+    const src = await safe(c, async (k) => (await k.query(SOURCE_TAX[p.purpose_type] ?? 'SELECT 0::bigint AS tax, 0::bigint AS total WHERE false', [p.purpose_id])).rows[0], null);
+    if (src && n(src.total) > 0 && n(src.tax) > 0) { tax = Math.min(n(src.tax), Math.round((n(src.tax) * n(p.amount_cents)) / n(src.total))); taxBasis = 'prorata'; }
+  }
   const id = await insert(c, { kind: 'payment', module: moduleOf(p.purpose_type), sourceType: p.purpose_type, sourceId: p.purpose_id, payerId: p.payer_id, payeeId: who.payeeId, payerOrgId: who.payerOrgId,
-    payeeOrgId: who.payeeOrgId, currency: p.currency, gross: n(p.amount_cents), tax, fee: n(led.fee), provider: p.provider, providerRef: p.provider_payment_ref ?? p.provider_ref, paymentId: p.id, key: `payment:${p.id}`, at: p.paid_at });
+    payeeOrgId: who.payeeOrgId, currency: p.currency, gross: n(p.amount_cents), tax, taxBasis: tax ? taxBasis : undefined, fee: n(led.fee), provider: p.provider, providerRef: p.provider_payment_ref ?? p.provider_ref, paymentId: p.id, key: `payment:${p.id}`, at: p.paid_at });
   await setStatus(c, `charge:${p.id}`, 'settled');
   return id;
 }
@@ -212,7 +232,7 @@ export async function recordPayout(c, po, status = 'open') {
 export async function recordPayoutItem(c, it, status = 'open', batchRail = 'bank_file') {
   const key = `payout_item:${it.id}:${it.attempt}`;
   const id = await insert(c, { kind: 'payout', status, module: it.source_type === 'official_fee' ? 'officials' : 'venue', sourceType: 'payout_item', sourceId: it.id, payeeId: it.payee_id, currency: it.currency,
-    gross: n(it.gross_minor), tax: n(it.tax_minor), fee: n(it.fee_minor), net: n(it.net_minor), provider: batchRail === 'stripe' ? 'stripe' : 'manual_transfer', providerRef: it.reference ?? null, key,
+    gross: n(it.gross_minor), withheld: n(it.tax_minor), fee: n(it.fee_minor), net: n(it.net_minor), provider: batchRail === 'stripe' ? 'stripe' : 'manual_transfer', providerRef: it.reference ?? null, key,
     meta: { batch_id: it.batch_id, source_type: it.source_type, source_id: it.source_id } });
   if (!id) await setStatus(c, key, status);
   return id;
@@ -564,4 +584,49 @@ export async function filterOptions(scope) {
     seasons: seasons.map((x) => ({ id: x.id, name: x.name, starts_on: x.starts_on, ends_on: x.ends_on, status: x.status })), events, teams, workspaces,
     categories: Object.entries(CATEGORY_LABEL).map(([value, label]) => ({ value, label })),
   };
+}
+
+// ------------------------------------------------------------------------------------------------ tax report (#593)
+
+// withholding sources carry the deduction in withheld_minor (older rows also in tax_minor): never report it as tax
+const TAX_OF = "CASE WHEN f.source_type IN ('payout_item','player_payout_line') THEN 0 ELSE f.tax_minor END";
+const WITHHELD_OF = "CASE WHEN f.source_type IN ('payout_item','player_payout_line') THEN greatest(f.withheld_minor, f.tax_minor) ELSE f.withheld_minor END";
+const PERIODS = { month: 'YYYY-MM', quarter: 'YYYY-"Q"Q', year: 'YYYY' };
+
+/**
+ * Tax collected (on money received) against tax paid (on money you paid out), per currency, period, tax code and rate, read from the ledger: refunds and chargebacks
+ * take their share back; withholding deducted from payees is its own line; money with no tax recorded, and money zero by rule, are counted so the difference is visible.
+ * Currencies are never added together. Informational, not tax advice.
+ */
+export async function taxReport(scope, { from, to, currency, period = 'month', ...dims } = {}) {
+  const fmt = PERIODS[period] ?? PERIODS.month;
+  const params = [from ?? '1970-01-01', to ? `${to}T23:59:59.999Z` : '9999-12-31'];
+  const sd = side(scope, params);
+  let extra = '';
+  if (currency) { params.push(currency); extra += ` AND f.currency = $${params.length}`; }
+  extra += dimSql(params, dims);
+  const base = `FROM fin_transactions f WHERE f.status = 'settled' AND f.kind IN ('payment','refund','chargeback') AND f.occurred_at >= $1 AND f.occurred_at <= $2${extra}`;
+  const sign = "(CASE WHEN f.kind = 'payment' THEN 1 ELSE -1 END)";
+  const label = `to_char(f.occurred_at AT TIME ZONE 'UTC', '${fmt}')`;
+  const lines = await many(
+    `SELECT f.currency, CASE WHEN ${sd.inn} THEN 'collected' ELSE 'paid' END AS side, ${label} AS period, coalesce(f.tax_code, '') AS code, coalesce(f.tax_rate_bp, -1) AS rate_bp, coalesce(f.tax_treatment, '') AS treatment,
+            sum(${sign} * (f.gross_minor - ${TAX_OF}))::bigint AS taxable, sum(${sign} * ${TAX_OF})::bigint AS tax, sum(${sign} * f.gross_minor)::bigint AS gross, count(*)::int AS rows
+       ${base} AND (${sd.inn} OR ${sd.out}) GROUP BY 1, 2, 3, 4, 5, 6 ORDER BY 1, 2, 3, 4, 5`, params);
+  const withheld = await many(`SELECT f.currency, ${label} AS period, sum(${WITHHELD_OF})::bigint AS withheld, count(*)::int AS rows ${base} AND f.kind = 'payment' AND ${sd.out} AND ${WITHHELD_OF} > 0 GROUP BY 1, 2 ORDER BY 1, 2`, params);
+  const untaxed = await many(`SELECT f.currency, coalesce(f.category, 'other') AS category, count(*)::int AS rows, sum(f.gross_minor)::bigint AS gross ${base} AND f.kind = 'payment' AND ${sd.inn} AND ${TAX_OF} = 0 AND f.tax_treatment IS NULL GROUP BY 1, 2 ORDER BY 1, 2`, params);
+  const byRule = await many(`SELECT f.currency, f.tax_treatment AS treatment, count(*)::int AS rows, sum(f.gross_minor)::bigint AS gross ${base} AND f.kind = 'payment' AND ${sd.inn} AND ${TAX_OF} = 0 AND f.tax_treatment IS NOT NULL GROUP BY 1, 2 ORDER BY 1, 2`, params);
+  const rounding = await many(`SELECT f.currency, round(sum(f.tax_minor - f.gross_minor::numeric * f.tax_rate_bp / (10000 + f.tax_rate_bp)), 2)::float8 AS variance ${base} AND f.kind = 'payment' AND ${sd.inn} AND f.tax_basis = 'engine' AND f.tax_rate_bp > 0 GROUP BY 1`, params);
+  const cur = new Map();
+  const of = (c) => { if (!cur.has(c)) cur.set(c, { currency: c, collected: { tax: 0, taxable: 0, gross: 0, rows: 0, lines: [] }, paid: { tax: 0, taxable: 0, gross: 0, rows: 0, lines: [] }, net_tax: 0, withheld: { total: 0, by_period: [] }, no_tax_recorded: [], zero_by_rule: [], rounding_variance_minor: 0 }); return cur.get(c); };
+  for (const l of lines) {
+    const t = of(l.currency)[l.side];
+    t.tax += n(l.tax); t.taxable += n(l.taxable); t.gross += n(l.gross); t.rows += l.rows;
+    t.lines.push({ period: l.period, code: l.code || null, rate_bp: l.rate_bp < 0 ? null : l.rate_bp, treatment: l.treatment || null, taxable_minor: n(l.taxable), tax_minor: n(l.tax), gross_minor: n(l.gross), rows: l.rows });
+  }
+  for (const w of withheld) { const t = of(w.currency).withheld; t.total += n(w.withheld); t.by_period.push({ period: w.period, withheld_minor: n(w.withheld), rows: w.rows }); }
+  for (const u of untaxed) of(u.currency).no_tax_recorded.push({ category: u.category, label: CATEGORY_LABEL[u.category] ?? u.category, rows: u.rows, gross_minor: n(u.gross) });
+  for (const u of byRule) of(u.currency).zero_by_rule.push({ treatment: u.treatment, rows: u.rows, gross_minor: n(u.gross) });
+  for (const r of rounding) of(r.currency).rounding_variance_minor = r.variance ?? 0;
+  for (const c of cur.values()) c.net_tax = c.collected.tax - c.paid.tax;
+  return { period, currencies: [...cur.values()].sort((a, b) => a.currency.localeCompare(b.currency)) };
 }

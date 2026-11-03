@@ -337,3 +337,7 @@ import './discovery.js';
 import './smart-clips.js';
 import './discipline.js';
 import './official-verification.js';
+import './para-governance.js';
+import './para-cases.js';
+import './para-outcomes.js';
+import './event-control-tower.js';

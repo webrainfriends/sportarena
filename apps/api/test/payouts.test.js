@@ -90,8 +90,8 @@ test('an officials fee is paid through a batch: maker-checker, bank file, result
   const row = (await pool.query('SELECT pay_status, payout_item_id FROM fixture_officials WHERE id=$1', [fo])).rows[0];
   assert.deepEqual([row.pay_status, row.payout_item_id], ['paid', item.id]);
   assert.equal((await pool.query('SELECT payout_item_id FROM fixture_official_pay_log WHERE fixture_official_id=$1 AND to_status=$2', [fo, 'paid'])).rows[0].payout_item_id, item.id, 'the pay log links the payout');
-  const fin = (await pool.query("SELECT status, gross_minor, tax_minor, fee_minor, net_minor, source_module FROM fin_transactions WHERE source_type='payout_item' AND source_id=$1", [item.id])).rows[0];
-  assert.deepEqual([fin.status, Number(fin.gross_minor), Number(fin.tax_minor), Number(fin.net_minor), fin.source_module], ['settled', 10000, 1000, 8900, 'officials']);
+  const fin = (await pool.query("SELECT status, gross_minor, tax_minor, withheld_minor, fee_minor, net_minor, source_module FROM fin_transactions WHERE source_type='payout_item' AND source_id=$1", [item.id])).rows[0];
+  assert.deepEqual([fin.status, Number(fin.gross_minor), Number(fin.tax_minor), Number(fin.withheld_minor), Number(fin.net_minor), fin.source_module], ['settled', 10000, 0, 1000, 8900, 'officials']);   // withholding is its own amount, never tax
   assert.equal(must(await api('GET', `/admin/payout-batches/${b.id}`, { token: maker.token })).status, 'closed');
   const mine = must(await api('GET', '/me/payout-items', { token: ref.token }));
   assert.equal(mine.length, 1);
