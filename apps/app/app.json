@@ -91,7 +91,7 @@
     "splash": {
       "image": "./assets/splash.png",
       "resizeMode": "contain",
-      "backgroundColor": "#E5EAF5"
+      "backgroundColor": "#000000"
     },
     "description": "One platform for everyone who dreams of sport"
   }
