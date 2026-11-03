@@ -6,6 +6,7 @@ import { recordCharge } from '../finance.js';
 import { raiseException } from '../settlement.js';
 import { notify } from '../notify.js';
 import { settle } from './service.js';
+import { cancelCardMandate } from './card-autopay.js';
 
 /** The recurring period that is waiting for payment under this mandate, with the purpose type it is paid under. */
 export async function awaitingPeriod(c, m) {
@@ -71,7 +72,9 @@ export async function sweepMandates() {
                                                       AND ((u.venue_id IS NOT NULL AND u.venue_id=(SELECT venue_id FROM user_plans WHERE id=m.subject_id)) OR (u.enrolment_id IS NOT NULL AND u.enrolment_id=(SELECT enrolment_id FROM user_plans WHERE id=m.subject_id))))))`);
   let cancelled = 0;
   for (const m of rows) {
-    try { await provider(m.provider).cancelMandate(m.provider_ref); await one("UPDATE payment_mandates SET status='cancelled', cancelled_at=now(), updated_at=now() WHERE id=$1", [m.id]); cancelled++; } catch (e) { console.error('[mandates] cancel failed', m.id, e.message); }
+    try {
+      if (m.provider === 'stripe') { await cancelCardMandate(m, { reason: 'The subscription ended' }); cancelled++; continue; }
+      await provider(m.provider).cancelMandate(m.provider_ref); await one("UPDATE payment_mandates SET status='cancelled', cancelled_at=now(), updated_at=now() WHERE id=$1", [m.id]); cancelled++; } catch (e) { console.error('[mandates] cancel failed', m.id, e.message); }
   }
   return { cancelled };
 }

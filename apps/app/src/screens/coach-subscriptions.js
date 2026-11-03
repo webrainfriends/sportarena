@@ -8,6 +8,7 @@ import { useSession } from '../session';
 import { Btn, Card, ErrorBox, Loading, Section, Sheet, T } from '../ui';
 import { Pill } from './marketplace';
 import { PaySheet } from '../PaySheet';
+import { AutoPayPanel } from '../AutoPay';
 import { Confirm, Tile } from './coaching';
 import { MenuField } from '../menu-field';
 import { c } from '../theme';
@@ -51,7 +52,7 @@ export function SubscribeSheet({ card, coach, currency, onClose, onDone }) {
       </Card>
       {kids.data?.length ? <MenuField label={t('coaching.bookingFor')} value={athleteId} onChange={setAthleteId} options={[{ value: user.id, label: user.display_name }, ...kids.data.map((l) => ({ value: l.child_id, label: l.child?.display_name ?? '—' }))]} /> : null}
       {athleteId !== user.id ? <T size={12} color={c.mute}>{t('coachSub.guardianPays')}</T> : null}
-      <T size={12} color={c.mute}>{t('coachSub.noAutoCharge')}</T>
+      <T size={12} color={c.mute}>{t('coachSub.autoNote')}</T>
       {err ? <T size={13} color={c.red} role="alert">{err}</T> : null}
       <Btn title={busy ? '…' : t('coachSub.continuePay')} onPress={go} disabled={busy} accessibilityLabel={t('coachSub.continuePay')} />
     </Sheet>
@@ -62,6 +63,7 @@ export function SubscribeSheet({ card, coach, currency, onClose, onDone }) {
 export function MyCoachSubscriptions() {
   const { toast } = useSession();
   const subs = useLoad(() => api.get('/me/coach-subscriptions', { limit: 50 }), []);
+  const autopay = useLoad(() => api.get('/payments/mandates', { limit: 100 }).catch(() => []), []);   // automatic payment (#680): a failure here never hides the subscriptions
   const [pay, setPay] = useState(null), [cancel, setCancel] = useState(null);
   const act = async (s, verb) => { try { await api.post(`/coach-subscriptions/${s.id}/${verb}`); await subs.reload(); toast(t(`coachSub.done.${verb}`)); } catch (e) { toast(e.message); } };
   const rows = subs.data ?? [];
@@ -83,6 +85,7 @@ export function MyCoachSubscriptions() {
             <T size={13} style={{ marginTop: 6 }}>{moneyIn(Number(s.price_cents), s.currency)} · {t('coachSub.perMonthShort')}{cur ? ` · ${t('coachSub.sessionsLeft', { n: cur.sessions_left })} · ${s.cancel_at_period_end ? t('coachSub.endsOn', { date: day(cur.expires_at) }) : t('coachSub.renewsOn', { date: day(cur.expires_at) })}` : ''}</T>
             {s.status === 'past_due' ? <T size={12} color={c.red} weight="700" style={{ marginTop: 4 }}>{t('coachSub.pastDueNote', { n: s.grace_days })}</T> : null}
             {s.status === 'lapsed' ? <T size={12} color={c.mute} style={{ marginTop: 4 }}>{t('coachSub.lapsedNote')}</T> : null}
+            <AutoPayPanel sub={s} mandates={autopay.data} onChange={async () => { await autopay.reload(); await subs.reload(); }} />
             {live || s.open_period_id ? (
               <View style={{ flexDirection: 'row', gap: 8, marginTop: 10, flexWrap: 'wrap' }}>
                 {s.open_period_id && s.i_pay ? <Btn small title={t('coachSub.payMonth')} accessibilityLabel={t('coachSub.payMonth')} onPress={() => setPay({ id: s.open_period_id, type: 'coach_subscription_period', label: s.title, amount: Number(s.price_cents), currency: s.currency })} /> : null}
