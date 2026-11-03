@@ -15,6 +15,7 @@ import { actionLabel, hintText, statLabel } from '../ws-text';
 import { api } from '../api';
 import { useLoad } from '../hooks';
 import { AthleteHub } from './athlete-hub';
+import { CoachHub } from './coach-hub';
 import { PlayerHero } from '../hero';
 
 // Home and Workbench: the two role-driven tabs of the mobile shell (issue #599). Both read the one workspace the API composes for the active
@@ -53,12 +54,13 @@ function Context({ ws }) {
 
 function Tiles({ items, role }) {
   if (!items?.length) return null;
+  const many = items.length > 4; // a longer strip wraps instead of squeezing its labels; up to four tiles render exactly as before
   return (
-    <View style={{ flexDirection: 'row', gap: 10 }}>
+    <View style={{ flexDirection: 'row', gap: 10, flexWrap: many ? 'wrap' : 'nowrap' }}>
       {items.map((s) => (
-        <View key={s.key} accessible accessibilityLabel={`${statLabel(role, s)}: ${s.value}`} style={{ flex: 1, minHeight: 76, backgroundColor: c.paper, borderRadius: 16, borderWidth: 1, borderColor: c.line, padding: 12, justifyContent: 'center' }}>
+        <View key={s.key} accessible accessibilityLabel={`${statLabel(role, s)}: ${s.value}`} style={{ ...(many ? { flexGrow: 1, flexBasis: 120, minWidth: 120 } : { flex: 1 }), minHeight: 76, backgroundColor: c.paper, borderRadius: 16, borderWidth: 1, borderColor: c.line, padding: 12, justifyContent: 'center' }}>
           <T weight="800" size={26} style={{ letterSpacing: -0.8 }}>{s.value}</T>
-          <T size={12} weight="700" color={c.mute} numberOfLines={1}>{statLabel(role, s)}</T>
+          <T size={12} weight="700" color={c.mute} numberOfLines={many ? 2 : 1}>{statLabel(role, s)}</T>
         </View>
       ))}
     </View>
@@ -162,7 +164,10 @@ export function RoleHome() {
   );
   const side = (
           <View style={{ flex: tablet ? (athleteHome ? 1.5 : 0.9) : undefined, width: tablet ? undefined : '100%' }}>
-            {athleteHome ? <AthleteHub sport={main} /> : <>
+            {athleteHome ? <AthleteHub sport={main} /> : d.role === 'coach' ? <>
+            <Heading>{t('ch.quick')}</Heading>
+            <CoachHub />
+            </> : <>
             <Heading>{t('ws.quick_actions')}</Heading>
             <Actions actions={d.actions} cols={2} role={d.role} />
             <Heading>{t('ws.beyond')}</Heading>
