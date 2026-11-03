@@ -119,6 +119,7 @@ import './coach-subscriptions.js';
 import './coach-packages.js';
 import './venue-sessions.js';
 import './venue-facility.js';
+import './venue-command.js';
 import './venue-coaches.js';
 import './training-plans.js';
 import './coach.js';
