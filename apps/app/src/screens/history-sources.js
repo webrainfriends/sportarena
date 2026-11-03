@@ -92,7 +92,7 @@ function AcceptSheet({ source, rec, onClose, onDone }) {
             </View>) }] : []),
           { key: 'user_id', label: 'Player', type: 'entity', entityKind: 'person', noun: 'player', hint: 'Search by name or handle.' },
         ]),
-        { key: 'team_id', label: `Which club is “${rec.club_name}” on Gotmygame?`, type: 'entity', entityKind: 'team', noun: 'club or team', optional: true, hint: 'Optional. Remembered for this source, so the next record resolves by itself.' },
+        { key: 'team_id', label: `Which club is “${rec.club_name}” on GotMyGame?`, type: 'entity', entityKind: 'team', noun: 'club or team', optional: true, hint: 'Optional. Remembered for this source, so the next record resolves by itself.' },
         ...(needsLevel ? [{ key: 'competition_level', label: 'Competition level (the source did not say)', type: 'chips', options: LEVELS }] : []),
         ...(dups.length ? [
           { key: 'sep', type: 'section', label: 'This player already has a similar entry' },

@@ -311,7 +311,7 @@ function Finance({ p, cat }) {
   return (
     <>
       <Section title="Tax configuration">
-        <Note>You decide the tax treatment that applies to your supply. Gotmygame prints and totals what you configure; it does not assert any jurisdiction’s rules or file e-invoices.</Note>
+        <Note>You decide the tax treatment that applies to your supply. GotMyGame prints and totals what you configure; it does not assert any jurisdiction’s rules or file e-invoices.</Note>
         {rules.data?.map((t) => <Row key={t.id} title={`${t.code} · ${t.name}`} sub={`${t.jurisdiction} · ${label(t.treatment)} ${(t.rate_bp / 100).toFixed(2)}%${t.withholding_bp ? ` · withholding ${(t.withholding_bp / 100).toFixed(2)}%` : ''} · from ${day(t.effective_from)}`} />)}
         <Btn small color={c.paper} ink={c.ink} title="Add a tax rule" onPress={() => setForm('tax')} style={{ alignSelf: 'flex-start' }} />
       </Section>

@@ -107,7 +107,7 @@ export function AthleteProfilePanel({ p, onChanged }) {
             { key: 's_dominant_side', label: 'Dominant side', type: 'chips', options: SCOPES },
             { key: 's_positions', label: 'Positions', type: 'chips', options: SCOPES },
             { key: 's_play_prefs', label: 'Preferences', type: 'chips', options: SCOPES },
-            { key: 's_affiliations', label: 'Verified affiliations', type: 'chips', options: SCOPES, hint: 'Teams and credentials already verified on Gotmygame.' },
+            { key: 's_affiliations', label: 'Verified affiliations', type: 'chips', options: SCOPES, hint: 'Teams and credentials already verified on GotMyGame.' },
           ]}
           onSubmit={async (v) => {
             const positions = open ? String(v.positions_text ?? '').split(',').map((x) => x.trim()).filter(Boolean) : v.positions ?? [];

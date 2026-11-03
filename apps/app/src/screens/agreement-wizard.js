@@ -93,7 +93,7 @@ export function AgreementWizard({ o, edit, revise, onClose, onDone }) {
         <FormSheet inline visible initial={v} submitLabel="Next: wording" onBack={edit ? undefined : back} onClose={() => {}}
           fields={[
             { key: 'title', label: 'Agreement title' },
-            { key: 'party', label: `${tpl?.other_party ?? 'Other party'} (registered person)`, type: 'entity', entityKind: 'person', optional: true, onPick: (p) => setV((x) => ({ ...x, party__pick: p })), hint: 'Search for a person on Gotmygame, or type a name below.' },
+            { key: 'party', label: `${tpl?.other_party ?? 'Other party'} (registered person)`, type: 'entity', entityKind: 'person', optional: true, onPick: (p) => setV((x) => ({ ...x, party__pick: p })), hint: 'Search for a person on GotMyGame, or type a name below.' },
             { key: 'counterparty', label: `${tpl?.other_party ?? 'Other party'} name`, optional: true, hint: 'A person, family, company or club. Defaults to the person picked above.' },
             { key: 's1', type: 'section', label: 'Term' },
             { key: 'effective_from', label: 'Effective from → ends', type: 'daterange', toKey: 'effective_to', optional: true },

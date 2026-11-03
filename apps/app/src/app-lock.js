@@ -45,7 +45,7 @@ export function AppLockProvider({ children }) {
     return () => sub.remove();
   }, [enabled]);
 
-  const unlock = useCallback(async () => { try { const r = await prompt('Unlock Gotmygame'); if (r.success) setLocked(false); } catch { /* stay locked */ } }, []);
+  const unlock = useCallback(async () => { try { const r = await prompt('Unlock GotMyGame'); if (r.success) setLocked(false); } catch { /* stay locked */ } }, []);
   useEffect(() => { if (locked && user) unlock(); }, [locked, user?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   /** Turning it on needs one successful check, so a person cannot lock themselves out with a method that does not work. */
@@ -63,7 +63,7 @@ export function AppLockProvider({ children }) {
       {enabled && locked && user ? (
         <View accessibilityViewIsModal style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, zIndex: 100, backgroundColor: c.bg, alignItems: 'center', justifyContent: 'center', padding: 32, gap: 14 }}>
           <T size={44}>🔒</T>
-          <T size={22} weight="800" accessibilityRole="header">Gotmygame is locked</T>
+          <T size={22} weight="800" accessibilityRole="header">GotMyGame is locked</T>
           <T color={c.mute} style={{ textAlign: 'center' }}>Unlock with Face ID, your fingerprint or your device passcode.</T>
           <Btn title="Unlock" onPress={unlock} />
           <Btn small title="Sign out instead" color={c.paper} ink={c.ink} onPress={async () => { setLocked(false); await signOut(); }} />

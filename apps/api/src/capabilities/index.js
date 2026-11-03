@@ -108,6 +108,7 @@ import './hire.js';
 import './coach-series.js';
 import './coach-market.js';
 import './coach-business.js';
+import './coach-feedback.js';
 import './coach-classes.js';
 import './coach-class-plans.js';
 import './coaching-workspace.js';

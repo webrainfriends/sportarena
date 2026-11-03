@@ -67,7 +67,7 @@ export function ImpactEvidence({ deal, shared }) {
   return (
     <>
       <T weight="900" style={{ marginTop: 6 }}>Impact evidence</T>
-      <T size={12} color={c.mute}>Milestones, community outcomes and results from outside the platform, entered by the beneficiary and labelled with their source. Not verified by Gotmygame, and they never change a payment or the agreement.</T>
+      <T size={12} color={c.mute}>Milestones, community outcomes and results from outside the platform, entered by the beneficiary and labelled with their source. Not verified by GotMyGame, and they never change a payment or the agreement.</T>
       {q.loading && !q.data ? <Loading /> : err && sponsor ? <Empty emoji="🔒" title="Not shared" sub={err.status === 403 ? err.message : 'Impact evidence is available once the beneficiary accepts and shares it.'} /> : err ? <LoadError error={err} onRetry={reload} /> : r ? (
         <>
           {r.items.length ? r.items.map((x) => (

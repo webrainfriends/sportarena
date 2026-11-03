@@ -20,7 +20,7 @@ const RES = [
   ['error', /new Error\(\s*'([^']*[A-Za-z]{3,}[^']*)'/g],
 ];
 // words that are not prose: identifiers, units, brand, symbols, urls
-const NOT_PROSE = /^(?:[a-z][a-zA-Z0-9_.:/-]*|[A-Z0-9_]+|https?:.*|\W+|Gotmygame|[a-z]{1,3})$/;
+const NOT_PROSE = /^(?:[a-z][a-zA-Z0-9_.:/-]*|[A-Z0-9_]+|https?:.*|\W+|Gotmygame|GotMyGame|[a-z]{1,3})$/;
 
 export function* walk(dir = ROOT) {
   for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
