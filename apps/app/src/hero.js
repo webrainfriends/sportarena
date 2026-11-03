@@ -70,6 +70,7 @@ const RoundBtn = ({ icon, onPress, label }) => (
  */
 export function PlayerHero({ user, profile, onBell, onAvatar, pad = 16 }) {
   const photo = useAvatarPhoto();
+  const { activeRole } = useSession();
   const L = useLayout();
   const tone = profile ? toneFor(profile.sport_slug) : null;
   const [first, ...rest] = String(user.display_name).trim().split(/\s+/);
@@ -117,7 +118,7 @@ export function PlayerHero({ user, profile, onBell, onAvatar, pad = 16 }) {
           </View>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: 14 }}>
             {profile && profile.jersey_no !== null && profile.jersey_no !== undefined ? <View style={{ minWidth: 30, height: 30, borderRadius: 9, backgroundColor: tone[0], alignItems: 'center', justifyContent: 'center', paddingHorizontal: 6 }}><T size={14} weight="800" color="#fff">{profile.jersey_no}</T></View> : null}
-            <T size={11} weight="700" color={c.mute} style={{ letterSpacing: 1.6 }}>{(profile?.position ?? (user.roles?.[0] ? roleLabel(user.roles[0]) : t('role.athlete'))).toUpperCase()}</T>
+            <T size={11} weight="700" color={c.mute} style={{ letterSpacing: 1.6 }}>{(profile?.position ?? (activeRole ?? user.roles?.[0] ? roleLabel(activeRole ?? user.roles[0]) : t('role.athlete'))).toUpperCase()}</T>
           </View>
           {about.length || user.bio ? (
             <View style={{ marginTop: 14 }} accessibilityLabel={t('hero.about')}>
