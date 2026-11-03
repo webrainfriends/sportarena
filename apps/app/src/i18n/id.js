@@ -5190,4 +5190,6 @@ export default {
   'es.number_hint': 'Angka diketik atau dinaikkan bertahap, jadi jelaskan seperti apa yang baik di "Yang diukur" di atas.',
   'es.enter_value': 'Masukkan nilai',
   'es.clear_value': 'Hapus',
+  'me.default_role': 'Peran bawaan',
+  'me.default_role_hint': 'Peran yang Anda tuju saat masuk. Atlet dipakai kecuali Anda memilih yang lain.',
 };

@@ -5210,4 +5210,6 @@ export default {
   'es.number_hint': 'A number is typed or stepped, so describe what good looks like in "What it measures" above.',
   'es.enter_value': 'Enter a value',
   'es.clear_value': 'Clear',
+  'me.default_role': 'Default role',
+  'me.default_role_hint': 'The role you land in when you sign in. Athlete is used unless you choose another.',
 };

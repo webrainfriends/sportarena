@@ -41,3 +41,25 @@ test('one account can add and drop roles; created data is kept', async () => {
   assert.equal((await api('PATCH', '/me/roles', { token, body: { remove: ['athlete'] } })).status, 400, 'at least one role stays');
   assert.equal((await api('PATCH', '/me/roles', { token, body: {} })).status, 400);
 });
+
+test('default role: athlete unless you chose another; admin is never a default', async () => {
+  const r = await api('POST', '/auth/register', { body: { handle: 'dflt_role', display_name: 'Dflt', email: 'dflt@example.com', password: 'correct-horse-battery', roles: ['coach', 'athlete'] } });
+  const token = r.body.token;
+  assert.equal((await api('GET', '/me', { token })).body.default_role, 'athlete', 'athlete wins when held');
+  assert.equal((await api('GET', '/me/role-workspace', { token })).body.role, 'athlete');
+
+  assert.equal((await api('PATCH', '/me/default-role', { token, body: { role: 'coach' } })).status, 200);
+  assert.equal((await api('GET', '/me', { token })).body.default_role, 'coach', 'an explicit choice is respected');
+  assert.equal((await api('GET', '/me/role-workspace', { token })).body.role, 'coach');
+
+  assert.equal((await api('PATCH', '/me/default-role', { token, body: { role: 'referee' } })).status, 400, 'must hold the role');
+  assert.equal((await api('PATCH', '/me/default-role', { token, body: { role: 'admin' } })).status, 400, 'admin is not selectable');
+
+  await api('PATCH', '/me/roles', { token, body: { remove: ['coach'] } });
+  assert.equal((await api('GET', '/me', { token })).body.default_role, 'athlete', 'dropping the default falls back to athlete');
+  assert.equal((await pool.query(`SELECT default_role FROM users WHERE handle='dflt_role'`)).rows[0].default_role, null, 'stale choice cleared');
+
+  const only = await api('POST', '/auth/register', { body: { handle: 'dflt_two', display_name: 'Two', email: 'dflt2@example.com', password: 'correct-horse-battery', roles: ['physio', 'coach'] } });
+  assert.equal((await api('GET', '/me', { token: only.body.token })).body.default_role, 'physio', 'no athlete: first role');
+  assert.equal((await api('PATCH', '/me/default-role', { token: only.body.token, body: { role: null } })).status, 200, 'null resets to automatic');
+});

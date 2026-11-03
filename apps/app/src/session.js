@@ -15,7 +15,7 @@ export function SessionProvider({ children }) {
   const [state, setState] = useState({ ready: false, user: null });
   const [toastMsg, setToastMsg] = useState(null);
   const [activeRole, setActive] = useState(null); // which of the user's roles the app is currently showing (view mode)
-  const setActiveRole = useCallback((r) => { setActive(r); storage.set('activeRole', r); }, []);
+  const setActiveRole = useCallback((r) => setActive(r), []);
 
   const signOut = useCallback(async () => {
     await beforeSignOut().catch(() => {}); // upload the player's saved drafts, then keep or remove the rest as they chose (offline.js)
@@ -65,7 +65,9 @@ export function SessionProvider({ children }) {
     const roles = state.user?.roles;
     if (!roles?.length) return;
     if (activeRole && roles.includes(activeRole)) return;
-    (async () => { const saved = await storage.get('activeRole'); setActive(saved && roles.includes(saved) ? saved : roles[0]); })();
+    // You land in your default role (athlete unless you chose another); switching on Home lasts for the session.
+    const def = state.user.default_role;
+    setActive(def && roles.includes(def) ? def : roles.find((r) => r !== 'admin' && r !== 'platform_admin') ?? roles[0]);
   }, [state.user, activeRole]);
 
   // `has` follows the active role (admin always passes); `hasAny` checks every role the account holds.

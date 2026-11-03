@@ -17,6 +17,7 @@ import { LANGUAGE_CODES } from '../comms-catalogue.js';
 import { canSeeYouth, NOT_YOUTH_SQL, refreshYouth, YOUTH_SQL } from '../youth.js';
 import { claimMigrationInvites } from '../migration.js';
 
+import { resolveDefaultRole } from '../default-role.js';
 const PII = ['full_name', 'phone', 'dob', 'national_id', 'address'];
 const pii = {
   full_name: z.string().min(2).max(120).optional(),
@@ -112,7 +113,7 @@ cap({
     await audit(null, user.id, 'read_pii', 'users', user.id);
     return {
       id: row.id, handle: row.handle, display_name: row.display_name, roles: row.roles, bio: row.bio,
-      avatar_emoji: row.avatar_emoji, avatar_color: row.avatar_color, avatar_url: row.avatar_url, avatar_cutout: row.avatar_cutout, access_status: row.access_status, language: row.language, created_at: row.created_at,
+      avatar_emoji: row.avatar_emoji, avatar_color: row.avatar_color, avatar_url: row.avatar_url, avatar_cutout: row.avatar_cutout, default_role: resolveDefaultRole(row.roles, row.default_role), access_status: row.access_status, language: row.language, created_at: row.created_at,
       email: decryptFields(row, 'users', ['email']).email, ...decryptFields(row, 'users', PII),
     };
   },
@@ -160,10 +161,24 @@ cap({
     const next = [...new Set([...user.roles.filter((r) => !i.remove.includes(r)), ...i.add.filter((r) => !PLATFORM_ROLES.includes(r)), ...held])];
     if (!withoutPlatformRoles(next).length) throw badRequest('Keep at least one role');
     await tx(async (c) => {
-      await c.query('UPDATE users SET roles = $2 WHERE id = $1', [user.id, next]);
+      await c.query('UPDATE users SET roles = $2, default_role = CASE WHEN default_role = ANY($2::text[]) THEN default_role ELSE NULL END WHERE id = $1', [user.id, next]);
       await audit(c, user.id, 'update_roles', 'users', user.id);
     });
     return { roles: withoutPlatformRoles(next) };
+  },
+});
+
+cap({
+  name: 'set_default_role', method: 'PATCH', path: '/me/default-role', tag: 'Identity', auth: 'user',
+  summary: 'Choose which of your roles you land in when you sign in. Send `role: null` to go back to the automatic choice (athlete if you hold it, otherwise your first role).',
+  input: z.object({ role: z.enum(selfRoles).nullable() }),
+  async handler({ user }, i) {
+    if (i.role && !user.roles.includes(i.role)) throw badRequest('You do not hold that role');
+    await tx(async (c) => {
+      await c.query('UPDATE users SET default_role = $2 WHERE id = $1', [user.id, i.role]);
+      await audit(c, user.id, 'set_default_role', 'users', user.id);
+    });
+    return { default_role: resolveDefaultRole(user.roles, i.role), explicit: i.role };
   },
 });
 
