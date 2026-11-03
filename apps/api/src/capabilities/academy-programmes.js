@@ -6,7 +6,7 @@ import { cap, id, page } from '../registry.js';
 import { one, many, tx } from '../db.js';
 import { badRequest, conflict, notFound } from '../errors.js';
 import { audit } from '../helpers.js';
-import { orgFor } from '../org-access.js';
+import { orgFor, requireApproved } from '../org-access.js';
 import { isSupportedCurrency } from '../currency.js';
 import { STAFF, questionsShape, checkQuestions, lockProgramme, promoteWaitlist, actFor, outstandingPolicies } from '../academy.js';
 
@@ -39,7 +39,8 @@ cap({
     invoice_prefix: z.string().trim().toUpperCase().regex(/^[A-Z0-9]{3,8}$/, '3–8 letters or digits').optional().describe('printed at the start of your invoice numbers'), tax_id: z.string().trim().max(40).optional().describe('printed on invoices'), billing_address: z.string().trim().max(300).optional().describe('printed on invoices'),
   }),
   handler: ({ user }, i) => tx(async (c) => {
-    await orgFor(user, i.id, STAFF, { write: true, c });
+    const { org } = await orgFor(user, i.id, STAFF, { write: true, allowPending: true, c }); // the profile can be finished while the platform reviews the organisation
+    if (i.listed) await requireApproved(org, c); // but it only goes public once approved
     const { id: oid, row_version, ...v } = i;
     if (row_version === 0) {
       const r = (await c.query(
@@ -47,6 +48,7 @@ cap({
          VALUES ($1,$2,$3,coalesce($4,'mixed'),$5,$6,$7,coalesce($8,'GBP'),coalesce($9,false),$10,$11,$12,$13,$14) ON CONFLICT (organisation_id) DO NOTHING RETURNING *`,
         [oid, v.legal_name ?? null, v.sports ?? [], v.focus, v.age_min ?? null, v.age_max ?? null, v.timezone ?? null, v.currency, v.listed, v.policy_url ?? null, v.contact_channel ?? null, v.invoice_prefix ?? null, v.tax_id ?? null, v.billing_address ?? null])).rows[0];
       if (!r) throw stale();
+      await audit(c, user.id, 'create_academy_profile', 'organisations', oid);
       return r;
     }
     const r = (await c.query(
@@ -189,7 +191,7 @@ cap({
   async handler(_ctx, i) {
     return many(
       `SELECT p.created_by IS NULL AS _x, p.*, o.name AS organisation_name, o.city, v.billing_model, v.currency, v.fee_minor, v.registration_fee_minor, v.instalments, v.description AS terms_description, ${SEATS_SQL} AS seats_taken, ${WAIT_SQL} AS waitlisted
-         FROM academy_programmes p JOIN organisations o ON o.id=p.organisation_id AND o.status='active'
+         FROM academy_programmes p JOIN organisations o ON o.id=p.organisation_id AND o.status='active' AND o.approval_status='approved'
          JOIN academy_profiles ap ON ap.organisation_id=o.id AND ap.listed
          JOIN academy_programme_versions v ON v.programme_id=p.id AND v.version=p.current_version
         WHERE p.status='published' AND p.public AND ($1::text IS NULL OR lower(p.sport)=lower($1)) AND ($2::text IS NULL OR p.focus=$2) AND ($3::text IS NULL OR p.format=$3)
@@ -208,7 +210,7 @@ cap({
     const p = await one('SELECT * FROM academy_programmes WHERE id=$1', [i.id]);
     if (!p) throw notFound('Programme');
     const staff = user ? await one("SELECT 1 FROM organisation_members WHERE organisation_id=$1 AND user_id=$2 AND status='active' AND role IN ('owner','admin','coach','finance')", [p.organisation_id, user.id]) : null;
-    const listed = await one("SELECT 1 FROM academy_profiles ap JOIN organisations o ON o.id=ap.organisation_id WHERE ap.organisation_id=$1 AND ap.listed AND o.status='active'", [p.organisation_id]);
+    const listed = await one("SELECT 1 FROM academy_profiles ap JOIN organisations o ON o.id=ap.organisation_id WHERE ap.organisation_id=$1 AND ap.listed AND o.status='active' AND o.approval_status='approved'", [p.organisation_id]);
     if (!staff && !(p.status === 'published' && p.public && listed)) throw notFound('Programme');
     const version = await one('SELECT * FROM academy_programme_versions WHERE programme_id=$1 AND version=$2', [p.id, p.current_version]);
     const seats = await one(`SELECT ${SEATS_SQL} AS seats_taken, ${WAIT_SQL} AS waitlisted FROM academy_programmes p WHERE p.id=$1`, [p.id]);

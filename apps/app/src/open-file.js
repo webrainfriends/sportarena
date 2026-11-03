@@ -49,3 +49,20 @@ export async function saveExport(out) {
   if (!(await Sharing.isAvailableAsync())) throw new Error('This device cannot share files from here.');
   await Sharing.shareAsync(file.uri, { mimeType: out.content_type.split(';')[0], dialogTitle: out.filename });
 }
+
+/**
+ * Hand an export to another app: on a phone or tablet the share sheet (WhatsApp, Messages, Mail, Drive…); in a browser the system share dialog with the
+ * file where it is supported, otherwise the file is downloaded and WhatsApp opens with the message ready, so the file only has to be attached.
+ * @returns {Promise<'shared'|'downloaded'>}
+ */
+export async function shareExport(out, message = '') {
+  if (Platform.OS !== 'web' || typeof document === 'undefined') { await saveExport(out); return 'shared'; }
+  const bytes = out.encoding === 'base64' ? Uint8Array.from(atob(out.content), (ch) => ch.charCodeAt(0)) : new TextEncoder().encode(out.content);
+  const file = typeof File !== 'undefined' ? new File([bytes], out.filename, { type: out.content_type.split(';')[0] }) : null;
+  if (file && typeof navigator !== 'undefined' && navigator.canShare?.({ files: [file] })) {
+    try { await navigator.share({ files: [file], text: message, title: out.filename }); return 'shared'; } catch (e) { if (e?.name === 'AbortError') return 'shared'; }
+  }
+  await saveExport(out);
+  if (typeof window !== 'undefined') window.open(`https://wa.me/?text=${encodeURIComponent(message)}`, '_blank', 'noopener');
+  return 'downloaded';
+}

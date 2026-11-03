@@ -109,7 +109,8 @@ export function evaluate(s, o, now = new Date()) {
   const known = rules.filter((r) => r.status === 'match' || r.status === 'mismatch');
   const w = (r) => WEIGHT[r.rule === 'sport' ? 'sport' : r.dimension] ?? 1;
   const total = known.reduce((n, r) => n + w(r), 0);
-  const score = total ? Math.round((100 * known.filter((r) => r.status === 'match').reduce((n, r) => n + w(r), 0)) / total) : null;
+  // the sport alone proves nothing about fit: with no other known rule there is no score (fit 'unknown'), never a strong fit
+  const score = total && known.some((r) => r.rule !== 'sport') ? Math.round((100 * known.filter((r) => r.status === 'match').reduce((n, r) => n + w(r), 0)) / total) : null;
   const hard = (r) => r.status === 'mismatch' && (r.dimension === 'eligibility' || (o.kind === 'sponsor' && r.dimension === 'region'));
   const eligible = !rules.some(hard);
   const fit = !eligible ? 'ineligible' : score == null ? 'unknown' : score >= 75 ? 'strong' : score >= 50 ? 'possible' : 'weak';

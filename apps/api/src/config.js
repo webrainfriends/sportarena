@@ -43,6 +43,8 @@ export const config = {
   googleClientId: env.GOOGLE_CLIENT_ID,
   // The iOS OAuth client id (public) used by the native app's Google button; its tokens carry this audience instead of the web client id.
   googleIosClientId: env.GOOGLE_IOS_CLIENT_ID ?? '909476957194-bmrrif4q7qdffemon7mrrm3puoovbg5r.apps.googleusercontent.com',
+  // The Android OAuth client id (public; package dev.gotmygame.app + the app signing SHA-1) used by the native Android app's Google button. Unset = no Google button on Android.
+  googleAndroidClientId: env.GOOGLE_ANDROID_CLIENT_ID,
   // Sign in with Apple. appleClientId = the Services ID (web button; public). appleAppId = the app's bundle id (primary App ID, used by the native button).
   // Both are accepted as the id token's audience. Unset appleClientId = the Apple button is hidden and the endpoint refuses web sign-in.
   appleClientId: env.APPLE_CLIENT_ID,
@@ -52,6 +54,8 @@ export const config = {
   superAdminEmail: env.SUPER_ADMIN_EMAIL,
   // The only accounts that may hold the `admin` / `platform_admin` roles (comma-separated). Falls back to SUPER_ADMIN_EMAIL; unset = nobody holds them.
   platformAdminEmails: env.PLATFORM_ADMIN_EMAILS ?? env.SUPER_ADMIN_EMAIL,
+  // Product-analytics telemetry older than this many days is de-identified (the person link, the entity and the properties are removed; the row and its counts stay). Min 30.
+  analyticsRetentionDays: Math.max(30, Number(env.ANALYTICS_RETENTION_DAYS ?? 395)),
   tokenTtl: env.TOKEN_TTL ?? '12h', // access-token lifetime
   refreshTtlDays: Number(env.REFRESH_TTL_DAYS ?? 30), // sliding: each rotation extends the session by this much
   requireSession: env.AUTH_REQUIRE_SESSION === 'true', // refuse pre-session JWTs that carry no session id
@@ -120,11 +124,11 @@ export const config = {
     commissionBp: Math.min(10000, Math.max(0, Number.parseInt(env.PROVIDER_COMMISSION_BP ?? '0', 10) || 0)),   // platform fee on provider sales, basis points
     holdDays: Math.min(90, Math.max(0, Number.parseInt(env.SETTLEMENT_HOLD_DAYS ?? '0', 10) || 0)),            // days a sale stays unpayable (refund / dispute window)
     payoutsEnabled: String(env.SETTLEMENT_PAYOUTS ?? 'off').toLowerCase() === 'on',                            // live payouts stay off until the operator has checked the configuration
-    currencies: (env.SETTLEMENT_CURRENCIES ?? env.PAYMENT_CURRENCY ?? 'INR').split(',').map((x) => x.trim().toUpperCase()).filter(Boolean),
+    currencies: (env.SETTLEMENT_CURRENCIES?.trim() || env.PAYMENT_CURRENCY?.trim() || 'INR').split(',').map((x) => x.trim().toUpperCase()).filter(Boolean),
     minPayoutCents: Math.max(1, Number.parseInt(env.SETTLEMENT_MIN_PAYOUT_CENTS ?? '1', 10) || 1),
   },
   payments: {
-    currency: (env.PAYMENT_CURRENCY ?? 'INR').toUpperCase(),
+    currency: (env.PAYMENT_CURRENCY?.trim() || 'INR').toUpperCase(), // '' (an unset deploy variable) must mean the default, not an empty currency
     stripe: { secretKey: env.STRIPE_SECRET_KEY, webhookSecret: env.STRIPE_WEBHOOK_SECRET, base: env.STRIPE_API_BASE ?? 'https://api.stripe.com' },
     razorpay: { keyId: env.RAZORPAY_KEY_ID, keySecret: env.RAZORPAY_KEY_SECRET, webhookSecret: env.RAZORPAY_WEBHOOK_SECRET, base: env.RAZORPAY_API_BASE ?? 'https://api.razorpay.com' },
     paypal: {

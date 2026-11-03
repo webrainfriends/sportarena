@@ -12,6 +12,9 @@ A private place for the athlete to log how they feel and see whether to push or 
 
 ACWR bands: below 0.8 low, 0.8-1.3 optimal, 1.3-1.5 caution, above 1.5 high. The ratio shows as "building" until the first logged session is three weeks old. Loads come only from what the athlete logs; matches are included when they log them. Nothing is estimated or invented.
 
+## Connected devices (#583)
+Athletes can import daily summaries from wearables and share them with a coach as the `wearables` share field. See `docs/wearables.md`. Imported readings are labelled by provider and never overwrite what the athlete logged.
+
 ## Privacy
 Everything is the athlete's alone. Notes (`note_enc`) are AES-256-GCM encrypted with their own context and every read that decrypts a note writes an `audit_log` row (`read_wellness`). Scores and charts use numbers only. Coaches, teams and providers cannot read any of it unless the athlete shares it (see below).
 
@@ -21,7 +24,7 @@ Wellness stays private until the athlete creates a **share** (`apps/api/src/capa
 | Capability | REST | What it does |
 |---|---|---|
 | `list_wellness_share_recipients` | `GET /me/wellness-shares/recipients` | Who can be picked: coaches with a live coaching relationship (`RELATIONSHIP_SQL`), and physios/doctors with an active **full** medical grant and a verified credential. Team or sponsor membership alone never appears. |
-| `create_wellness_share` | `POST /me/wellness-shares` | Recipient, purpose (`training_load`, `injury_prevention`, `return_to_play`, `performance_review`), fields (`sleep`, `soreness`, `mood`, `hydration`, `readiness`, `workload`, `body_map`), `history_days` (1-365), `expires_on` (at most a year ahead). Young athletes need the guardian's current `coaching` (coach) or `medical` (clinician) consent. Repeating the same request returns the existing share; a different one for the same person and purpose is a 409 `share_exists`. |
+| `create_wellness_share` | `POST /me/wellness-shares` | Recipient, purpose (`training_load`, `injury_prevention`, `return_to_play`, `performance_review`), fields (`sleep`, `soreness`, `mood`, `hydration`, `readiness`, `workload`, `body_map`, `wearables`), `history_days` (1-365), `expires_on` (at most a year ahead). Young athletes need the guardian's current `coaching` (coach) or `medical` (clinician) consent. Repeating the same request returns the existing share; a different one for the same person and purpose is a 409 `share_exists`. |
 | `update_wellness_share` | `PATCH /me/wellness-shares/:id` | Change fields, days or end date. Needs the `version` last seen; otherwise 409 `stale_version`. |
 | `revoke_wellness_share` | `POST /me/wellness-shares/:id/revoke` | Ends access on the recipient's next read; idempotent; a verified guardian may do it for a young athlete. |
 | `list_wellness_shares` | `GET /me/wellness-shares` | The athlete's (or, with `athlete_id`, a guardian's child's) shares with state, whether each is live right now and why not, view counts and an activity log. |

@@ -91,6 +91,16 @@ ${card.app_url ? `<a class="btn" href="${esc(card.app_url)}">Open the live centr
     const { ev } = await loadViewableEvent(null, req.params.id);
     return { ev, sheet: sheetOf(ev, await stageViews(ev.id, { organiser: false })) };
   };
+  // Where Stripe, PayPal and Razorpay send a phone user back to after paying. It only hands the person to the app (sportarena://payment); it reads nothing
+  // from the database and changes nothing. The app asks the server whether the payment really went through, so the query is only a hint.
+  r.get('/pay/return', (req, res) => {
+    const payment = String(req.query.payment ?? '');
+    const result = String(req.query.result ?? '');
+    res.set({ 'Cache-Control': 'no-store', 'Referrer-Policy': 'no-referrer', 'X-Content-Type-Options': 'nosniff', 'X-Robots-Tag': 'noindex, nofollow, noarchive' });
+    if (!UUID.test(payment) || !['success', 'cancel'].includes(result)) return res.status(400).type('html').send('<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Gotmygame</title></head><body><p>This payment link is not valid.</p></body></html>');
+    const link = `sportarena://payment?payment=${payment}&result=${result}`;   // fixed scheme and path; only the two validated values are used
+    res.status(302).set('Location', link).type('html').send(`<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex"><title>Gotmygame</title><style>${STYLE}</style></head><body><main><h1>${result === 'success' ? 'Thank you' : 'Payment cancelled'}</h1><p>Return to the Gotmygame app to see the result.</p><a class="btn" style="display:inline-flex;align-items:center;justify-content:center;text-decoration:none" href="${esc(link)}">Open the app</a></main></body></html>`);
+  });
   r.get('/share/bracket/:id', async (req, res) => {
     try {
       const { ev, sheet } = await bracketSheet(req);

@@ -20,11 +20,11 @@ export default function GoogleButton({ onCredential, onError }) {
   const box = useRef(null);
   const cb = useRef({ onCredential, onError });
   cb.current = { onCredential, onError };
-  const native = Platform.OS === 'ios';
+  const native = Platform.OS === 'ios' || Platform.OS === 'android';   // the phone apps use the system browser sign-in; the web uses Google's script
   useEffect(() => {
     if (Platform.OS !== 'web' && !native) return;
     api.get('/auth/config').then((r) => {
-      const id = native ? r.google_ios_client_id : r.google_client_id;
+      const id = Platform.OS === 'ios' ? r.google_ios_client_id : Platform.OS === 'android' ? r.google_android_client_id : r.google_client_id;
       return id ? setClientId(id) : setOff(true);
     }, () => setOff(true));
   }, [native]);

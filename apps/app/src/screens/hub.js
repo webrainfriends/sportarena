@@ -288,9 +288,9 @@ export function Awards() {
   );
 }
 
-export function Health() {
+export function Health({ tab: initialTab } = {}) {
   const { user, has, toast } = useSession();
-  const [tab, setTab] = useState(has('athlete') ? 'recovery' : has('physio', 'doctor') ? 'practice' : 'find');
+  const [tab, setTab] = useState(initialTab ?? (has('athlete') ? 'recovery' : has('physio', 'doctor') ? 'practice' : 'find'));
   const [paying, setPaying] = useState(null);
   const [fu, setFu] = useState(null);
   const [share, setShare] = useState(null);

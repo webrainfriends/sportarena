@@ -8,6 +8,7 @@ import { markInvoicePaid } from '../booking/invoices.js';
 import { completeTopup, activateGiftCard } from '../wallet.js';
 import { activateUserPlan } from '../booking/plans.js';
 import { activateCoachPeriod } from '../coach-subscriptions.js';
+import { activateCoachPackage } from '../coach-packages.js';
 import { activatePhysioPackage } from '../capabilities/provider-packages.js';
 import { fulfilSponsorshipPayment } from '../sponsor-agreements.js';
 import { fulfilChargePaid } from '../academy-invoices.js';
@@ -53,6 +54,11 @@ export async function describePurpose(c, type, id) {
     // payable while the period waits for payment and the agreement is still alive (a paused or lapsed one cannot be paid into)
     const u = await q("SELECT up.user_id AS payer_id, up.price_cents AS amount, up.currency, up.status, up.name, s.status AS sub_status, c.display_name FROM user_plans up JOIN coach_subscriptions s ON s.id=up.subscription_id JOIN users c ON c.id=up.coach_id WHERE up.id=$1 FOR UPDATE OF up");
     return u && { payerId: u.payer_id, amount: Number(u.amount), currency: u.currency, name: `${u.name} · ${u.display_name}`, payable: u.status === 'awaiting_payment' && ['active', 'past_due'].includes(u.sub_status) };
+  }
+  if (type === 'coach_package') {
+    // payable while the package waits for payment; the amount is the price copied at purchase time
+    const k = await q("SELECT k.payer_id, k.price_cents AS amount, k.currency, k.status, k.title, u.display_name FROM coach_package_purchases k JOIN users u ON u.id=k.coach_id WHERE k.id=$1 FOR UPDATE OF k");
+    return k && { payerId: k.payer_id, amount: Number(k.amount), currency: k.currency, name: `${k.title} · ${k.display_name}`, payable: k.status === 'awaiting_payment' && Number(k.amount) > 0 };
   }
   if (type === 'coach_class_seat') {
     // a seat is payable only while it is held (reserved for the payer) and the class is still open
@@ -155,6 +161,7 @@ async function fulfil(c, type, id, payment) {
   if (type === 'venue_plan') return activateUserPlan(c, id);
   if (type === 'coach_subscription_period') return activateCoachPeriod(c, id);
   if (type === 'physio_package') return activatePhysioPackage(c, id);
+  if (type === 'coach_package') return activateCoachPackage(c, id);
   if (type === 'sponsorship_payment') return fulfilSponsorshipPayment(c, id);
   if (type === 'academy_charge') return fulfilChargePaid(c, id, { method: 'online', payment });
   if (type === 'service_invoice') return fulfilServiceInvoicePaid(c, id, payment);
@@ -309,7 +316,10 @@ export async function startCheckout(user, i) {
   } catch (e) { await client.query('ROLLBACK'); throw e; } finally { client.release(); }
 
   const base = safeReturnBase(i.return_url);
-  const mk = (r) => `${base}/?payment=${paymentId}&result=${r}`;
+  // The phone app asks for client:'app': the provider then returns to a page on our own server that hands the person back to the app (sportarena://payment).
+  // The target is built from config only, never from the request, and the app still confirms the payment with the server (the URL is only a hint).
+  const appBase = i.client === 'app' ? safeReturnBase(undefined) : null;
+  const mk = (r) => (appBase ? `${appBase}/api/v1/pay/return?payment=${paymentId}&result=${r}` : `${base}/?payment=${paymentId}&result=${r}`);
   try {
     const out = i.upi
       ? await provider(i.provider).createUpi({ paymentId, amount: d.amount, currency, name: d.name, upi: i.upi, payer: await upiPayer(user.id, i.upi) })

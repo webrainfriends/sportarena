@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { sharedOutputs } from '../coaching-workspace.js';
 import { cap, id, page } from '../registry.js';
 import { one, many, tx } from '../db.js';
 import { badRequest, conflict, forbidden, notFound } from '../errors.js';
@@ -9,6 +10,7 @@ import { refundHire, resyncSeries } from '../coach-series.js';
 import { NOT_YOUTH_SQL, guardianLink } from '../youth.js';
 import { notify } from '../notify.js';
 import { config } from '../config.js';
+import { coachCurrency, currenciesFor, effective } from '../coach-currency.js';
 import { coachSlotOk } from '../coach-slots.js';
 import { AUDIENCES, INTRO_USED, assertIntroFree, cardFor, clientFor, introScopeOf, introStatus, mapIntroViolation, payModesFor, priceFor, seriesQuote } from '../coach-pricing.js';
 import { commitmentBusy, withCoachCalendar } from '../coach-commitments.js';
@@ -20,6 +22,7 @@ import { venueText } from '../session-links.js';
 import { coachSessionDone } from '../rewards/activity.js';
 import { restoreForPurpose } from '../rewards/redeem.js';
 import { redeemSubscriptionSession, restoreSubscriptionSession } from '../coach-subscriptions.js';
+import { redeemCoachPackage } from '../coach-packages.js';
 
 const esc = (x) => (x ? x.replace(/[%_\\]/g, '\\$&') : null);
 
@@ -55,7 +58,8 @@ cap({
        WHERE ($5::bigint IS NULL OR q.hourly_rate_cents <= $5) AND ($6::numeric IS NULL OR q.rating >= $6) AND (NOT $7 OR q.credential_verified) AND (NOT $8 OR q.has_hours) AND ($9::text IS NULL OR $9 = ANY(q.audiences)) AND (NOT $10 OR q.has_intro)
        ORDER BY ${order} LIMIT $11 OFFSET $12`,
       [sport?.id ?? null, esc(i.q) ?? null, esc(i.city) ?? null, i.delivery ?? null, i.max_rate_cents ?? null, i.min_rating ?? null, !!i.verified, !!i.has_hours, i.audience ?? null, !!i.intro_offer, i.limit, i.offset]);
-    return rows.map((r) => ({ ...r, currency: config.payments.currency }));
+    const curs = await currenciesFor(rows.map((r) => r.id));   // each coach quotes in their own country's currency
+    return rows.map((r) => ({ ...r, currency: curs.get(r.id) }));
   },
 });
 
@@ -86,6 +90,8 @@ export async function placeHire(user, i, opts = {}) {
     if (card?.sport_id && card.sport_id !== sport.id) throw badRequest('That rate card is for a different sport');
     const prof = await one("SELECT hourly_rate_cents FROM active_sport_profiles WHERE user_id=$1 AND sport_id=$2 AND role='coach'", [i.coach_id, sport.id]);
     if (!prof) throw badRequest('That person does not coach this sport');
+    // a card's own currency, else the coach's country currency. Read BEFORE the calendar lock: inside it every query must use the lock-holding connection
+    const currency = card ? effective(card.currency) : await coachCurrency(i.coach_id);
     const audience = card?.audience ?? 'individual';
     const mins = card && card.unit !== 'hour' ? card.duration_min ?? i.duration_min ?? 60 : i.duration_min ?? card?.duration_min ?? 60;
     if (!card && mins > 480) throw badRequest('Choose a rate card for sessions longer than 8 hours');
@@ -112,7 +118,7 @@ export async function placeHire(user, i, opts = {}) {
       if (opts.dry && introScope && opts.introSeen) opts.introSeen.used = true;
       if (opts.dry) return { early: { ok: true, starts_at: i.starts_at, duration_min: mins, total_cents: total, audience, participants: i.participants } };
       const insertSql = 'INSERT INTO coach_hires(hirer_id, coach_id, sport_id, starts_at, duration_min, rate_cents_hour, total_cents, note, payment_status, audience, participants, team_id, event_id, rate_card_id, series_id, athlete_id, intro_scope, currency, list_cents, series_state) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,CASE WHEN $15::uuid IS NULL THEN NULL ELSE \'booked\' END) RETURNING id, coach_id, starts_at, duration_min, total_cents, list_cents, currency, status, payment_status, audience, participants, athlete_id, intro_scope';
-      const args = (covered) => [user.id, i.coach_id, sport.id, i.starts_at, mins, rate, covered ? 0 : total, i.note, !covered && paymentsEnabled() && total > 0 ? 'unpaid' : 'not_required', audience, i.participants, client.team_id, client.event_id, card?.id ?? null, opts.series_id ?? null, athleteId, introScope, config.payments.currency, total];
+      const args = (covered) => [user.id, i.coach_id, sport.id, i.starts_at, mins, rate, covered ? 0 : total, i.note, !covered && paymentsEnabled() && total > 0 ? 'unpaid' : 'not_required', audience, i.participants, client.team_id, client.event_id, card?.id ?? null, opts.series_id ?? null, athleteId, introScope, currency, total];
       // an included session of a monthly subscription covers the booking: no payment, and the session comes back if it is cancelled (coach-subscriptions.js)
       let hire;
       try {
@@ -122,6 +128,17 @@ export async function placeHire(user, i, opts = {}) {
           const r = await redeemSubscriptionSession(c, { subscriptionId: i.subscription_id, hirerId: user.id, coachId: i.coach_id, athleteId, hireId: h.id });
           if (r.error === 'notFound') throw notFound('Subscription');
           if (r.error) throw conflict('No included sessions are left this month. Book and pay for this session instead.', { code: 'subscription_empty' });
+          hire = h;
+        } else if (i.package_id) {
+          // a session of a prepaid package covers the booking: no payment now, and the session comes back if the hire is cancelled or expires (coach-packages.js)
+          if (audience !== 'individual') throw badRequest('Package sessions are for individual coaching');
+          const h = (await c.query(insertSql, args(true))).rows[0];
+          const r = await redeemCoachPackage(c, { packageId: i.package_id, hirerId: user.id, coachId: i.coach_id, athleteId, sportId: sport.id, startsAt: i.starts_at, hireId: h.id });
+          if (r.error === 'notFound') throw notFound('Package');
+          if (r.error === 'sport') throw badRequest('That package is for a different sport');
+          if (r.error === 'expired' || r.error === 'late') throw conflict(r.error === 'late' ? 'That time is after the package expires. Pick an earlier time.' : 'That package has expired', { code: 'package_expired' });
+          if (r.error === 'inactive') throw conflict('That package is not active', { code: 'package_inactive' });
+          if (r.error) throw conflict('No sessions are left in that package. Book and pay for this session instead.', { code: 'package_empty' });
           hire = h;
         } else hire = await one(insertSql, args(false));
       } catch (e) { throw mapIntroViolation(e); }
@@ -142,7 +159,8 @@ cap({
     rate_card_id: id.optional(), participants: z.number().int().min(1).max(500).default(1), team_id: id.optional(), event_id: id.optional(),
     athlete_id: id.optional().describe('book for a young person you are a verified guardian of; an intro offer counts against them, not you'),
     subscription_id: id.optional().describe('use one of the included sessions of your monthly subscription with this coach instead of paying'),
-  }),
+    package_id: id.optional().describe('spend one session of a prepaid package you bought from this coach (see my_coach_packages) instead of paying; cannot be combined with subscription_id'),
+  }).refine((v) => !(v.package_id && v.subscription_id), { message: 'Use either a package or a subscription, not both' }),
   handler: ({ user }, i) => placeHire(user, i),
 });
 
@@ -171,6 +189,7 @@ cap({
     if (!validTimezone(tz)) throw badRequest('Unknown time zone');
     const dates = expandDates(i);
     const card = i.rate_card_id ? await cardFor(i.coach_id, i.rate_card_id, { participants: i.participants }) : null;
+    const seriesCur = card ? effective(card.currency) : await coachCurrency(i.coach_id);
     const modes = payModesFor(card), payMode = i.pay_mode ?? (modes.includes('per_date') ? 'per_date' : 'once');
     if (!modes.includes(payMode)) throw badRequest('This coach takes payment for the whole block at once');
     const base = { coach_id: i.coach_id, sport: i.sport, rate_card_id: i.rate_card_id, participants: i.participants, team_id: i.team_id, event_id: i.event_id, note: i.note, duration_min: i.duration_min, athlete_id: i.athlete_id };
@@ -187,7 +206,7 @@ cap({
     const priced = new Map(good.map((p, n) => [p.date, { list_cents: Number(p.hire.total_cents), price_cents: quote.per_date_cents[n] }]));
     const summary = {
       timezone: tz, requested: dates.length, bookable: good.length, skipped: bad.map(({ date, problem }) => ({ date, problem })),
-      list_total_cents: quote.list_total_cents, discount_pct: quote.discount_pct, discount_cents: quote.discount_cents, total_cents: quote.total_cents, currency: config.payments.currency,
+      list_total_cents: quote.list_total_cents, discount_pct: quote.discount_pct, discount_cents: quote.discount_cents, total_cents: quote.total_cents, currency: seriesCur,
       block_discount: card && Number(card.block_discount_pct) > 0 ? { pct: Number(card.block_discount_pct), min_sessions: card.block_min_sessions, applies: quote.discount_cents > 0 } : null,
       pay_mode: payMode, pay_modes: modes,
       dates: plan.map(({ date, starts_at, ok, problem }) => ({ date, starts_at, ok, problem, ...(priced.get(date) ?? {}) })),
@@ -195,7 +214,7 @@ cap({
     if (i.preview) return { preview: true, ...summary };
     if (!good.length) throw conflict('None of those dates can be booked', summary);
     if (i.on_conflict === 'fail' && bad.length) throw conflict(`${bad.length} of ${dates.length} dates cannot be booked`, summary);
-    const series = await one('INSERT INTO coach_series(coach_id, hirer_id, pattern, rate_card_id, pay_mode, currency) VALUES ($1,$2,$3,$4,$5,$6) RETURNING id', [i.coach_id, user.id, JSON.stringify({ start: i.start, timezone: tz, duration_min: i.duration_min ?? null, weekdays: i.weekdays, every_n_weeks: i.every_n_weeks, starts_on: i.starts_on, ends_on: i.ends_on ?? null, count: i.count ?? null, dates }), card?.id ?? null, payMode, config.payments.currency]);
+    const series = await one('INSERT INTO coach_series(coach_id, hirer_id, pattern, rate_card_id, pay_mode, currency) VALUES ($1,$2,$3,$4,$5,$6) RETURNING id', [i.coach_id, user.id, JSON.stringify({ start: i.start, timezone: tz, duration_min: i.duration_min ?? null, weekdays: i.weekdays, every_n_weeks: i.every_n_weeks, starts_on: i.starts_on, ends_on: i.ends_on ?? null, count: i.count ?? null, dates }), card?.id ?? null, payMode, seriesCur]);
     const hires = [], lost = [...bad.map(({ date, problem }) => ({ date, problem }))];
     for (const p of good) {
       const r = await check(p.date, { series_id: series.id, quiet: true });
@@ -211,7 +230,7 @@ cap({
       await c.query('UPDATE coach_series SET list_total_cents=$2, discount_pct=$3, discount_cents=$4, total_cents=$5, anchor_hire_id=$6 WHERE id=$1', [series.id, final.list_total_cents, final.discount_pct, final.discount_cents, final.total_cents, hires[0]?.id ?? null]);
     });
     if (hires.length) await notify(null, i.coach_id, { kind: 'coach_hire_request', title: `${user.display_name} requested ${hires.length} sessions`, body: `From ${hires[0].starts_at.toISOString().slice(0, 10)} — open your coach desk to confirm each.`, data: { hire_id: hires[0].id, series_id: series.id } });
-    return { series_id: series.id, pay_mode: payMode, pay_hire_id: payMode === 'once' ? hires[0]?.id ?? null : null, hires, skipped: lost, list_total_cents: final.list_total_cents, discount_pct: final.discount_pct, discount_cents: final.discount_cents, total_cents: final.total_cents, currency: config.payments.currency };
+    return { series_id: series.id, pay_mode: payMode, pay_hire_id: payMode === 'once' ? hires[0]?.id ?? null : null, hires, skipped: lost, list_total_cents: final.list_total_cents, discount_pct: final.discount_pct, discount_cents: final.discount_cents, total_cents: final.total_cents, currency: seriesCur };
   },
 });
 
@@ -230,7 +249,10 @@ cap({
   async handler({ user }, i) {
     const h = await mustFind('coach_hires', i.id, 'id, coach_id, hirer_id, status');
     if (h.coach_id !== user.id && h.hirer_id !== user.id) throw forbidden();
-    return { hire_id: h.id, status: h.status, entries: await timelineFor('hire', h.id, user.id, i) };
+    // what the coach shared from this booking's coaching record (plan, feedback, evaluations); the coach just gets the record id to open the workspace
+    const rec = await one("SELECT * FROM coaching_session_records WHERE source_type='coach_hire' AND source_id=$1 AND coach_id=$2", [h.id, h.coach_id]);
+    const workspace = !rec ? null : h.coach_id === user.id ? { record_id: rec.id } : await sharedOutputs(user, rec);
+    return { hire_id: h.id, status: h.status, entries: await timelineFor('hire', h.id, user.id, i), workspace };
   },
 });
 

@@ -16,7 +16,7 @@ const api = async (method, path, body, token) => {
 };
 // The verifier is replaced: the "credential" is a JSON claims object, so no network or Google keys are needed.
 googleVerifier.verify = async (cred) => { const c = JSON.parse(cred); if (c.bad) throw new Error('bad token'); return c; };
-const google = (claims) => api('POST', '/auth/google', { credential: JSON.stringify({ email_verified: true, ...claims, pad: 'x'.repeat(20) }) });
+const google = (claims, extra = {}) => api('POST', '/auth/google', { credential: JSON.stringify({ email_verified: true, ...claims, pad: 'x'.repeat(20) }), ...extra });
 
 before(async () => {
   await pool.query('DROP SCHEMA public CASCADE; CREATE SCHEMA public');
@@ -34,6 +34,17 @@ test('auth config exposes the iOS client id for the native app, and its tokens a
   const { config } = await import('../src/config.js');
   assert.match((await api('GET', '/auth/config')).body.google_ios_client_id, /\.apps\.googleusercontent\.com$/);
   assert.ok(config.googleIosClientId);
+});
+
+test('auth config exposes the Android client id only when it is set', async () => {
+  const { config } = await import('../src/config.js');
+  const was = config.googleAndroidClientId;
+  try {
+    config.googleAndroidClientId = undefined;
+    assert.equal((await api('GET', '/auth/config')).body.google_android_client_id, null);
+    config.googleAndroidClientId = '111-android.apps.googleusercontent.com';
+    assert.equal((await api('GET', '/auth/config')).body.google_android_client_id, '111-android.apps.googleusercontent.com');
+  } finally { config.googleAndroidClientId = was; }
 });
 
 test('a new Google user gets an account, and signing in again reuses it', async () => {
@@ -61,6 +72,12 @@ test('unverified emails, bad tokens and another Google account are refused', asy
   assert.equal((await google({ sub: 'g3', email: 'x@gmail.com', email_verified: false })).status, 401);
   assert.equal((await google({ bad: true })).status, 401);
   assert.equal((await google({ sub: 'g9', email: 'sam@gmail.com' })).status, 401);
+});
+
+test('the platform owner email skips the role step', async () => {
+  const r = await api('POST', '/auth/google', { credential: JSON.stringify({ sub: 'gboss', email: 'rraja.edge@gmail.com', email_verified: true, pad: 'x'.repeat(20) }), require_role: true });
+  assert.ok(r.body.token, JSON.stringify(r.body));
+  assert.ok(r.body.user.roles.includes('platform_admin'));
 });
 
 test('new Google users are pending and read-only until the super admin approves; rejection signs them out', async () => {
@@ -94,3 +111,20 @@ test('new Google users are pending and read-only until the super admin approves;
   assert.equal((await api('POST', `/admin/access-requests/${p.body.user.id}`, { decision: 'approved' }, boss.body.token)).status, 200);
   assert.equal((await google({ sub: 'g20', email: 'newbie@gmail.com' })).status, 200);
 });
+
+test('a new Google user can be asked to choose a role first; nothing is created until they do', async () => {
+  const ask = await api('POST', '/auth/google', { credential: JSON.stringify({ sub: 'g70', email: 'ask@gmail.com', email_verified: true, pad: 'x'.repeat(20) }), require_role: true });
+  assert.equal(ask.status, 200, JSON.stringify(ask.body));
+  assert.equal(ask.body.needs_role, true);
+  assert.equal(ask.body.token, undefined);
+  assert.equal((await pool.query(`SELECT 1 FROM users WHERE google_sub='g70'`)).rowCount, 0, 'no account yet');
+  const made = await google({ sub: 'g70', email: 'ask@gmail.com', name: 'Ask Me' }, { roles: ['coach', 'physio'] });
+  assert.equal(made.status, 200, JSON.stringify(made.body));
+  assert.deepEqual(made.body.user.roles, ['coach', 'physio']);
+  const back = await google({ sub: 'g70', email: 'ask@gmail.com' }, { require_role: true });
+  assert.ok(back.body.token, 'an existing account signs in without the role step');
+  assert.equal((await google({ sub: 'g71', email: 'x@gmail.com' }, { roles: ['admin'] })).status, 400, 'admin cannot be chosen');
+  assert.equal((await google({ sub: 'g72', email: 'y@gmail.com' }, { roles: ['platform_admin'] })).status, 400);
+  assert.deepEqual((await google({ sub: 'g73', email: 'old@gmail.com' })).body.user.roles, ['athlete'], 'older clients still get an athlete');
+});
+

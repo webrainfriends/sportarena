@@ -18,6 +18,7 @@ import { PaySheet } from '../PaySheet';
 import { WalletApplySheet } from './wallet';
 import { PointsSheet } from './rewards';
 import { PassApplySheet } from './plans';
+import { track } from '../track';
 import { NewCaseSheet } from './cases';
 import { AttachSessionsSheet } from './training-venue';
 import { currentDevice, disablePush, enablePush, pushSupport } from '../push';
@@ -25,6 +26,7 @@ import { KIND } from './book';
 import { QuietHoursCard } from './inbox';
 import { addDays, dateTimeIn, dayLabel, fmtMin, localDate, hoursSummary, localToIso, moneyIn, offerLabel, timeIn, todayIn } from '../vtime';
 import { locale } from '../locale';
+import { openInvoicePdf } from './academy-ui';
 
 const open = (url) => (Platform.OS === 'web' ? window.open(url, '_blank', 'noopener') : Linking.openURL(url));
 const Line = ({ k, v, strong }) => <View style={{ flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 3 }}><T color={c.mute} weight={strong ? '700' : '500'}>{k}</T><T weight={strong ? '700' : '600'}>{v}</T></View>;
@@ -55,6 +57,7 @@ export function Basket() {
     setBusy(true);
     try {
       const r = await api.post('/reservations', body());
+      track('booking_completed', { entityType: 'reservation', entityId: r.id });
       clear(); toast(`Booked ${r.code} 🎉`); replace('Reservation', { id: r.id });
     } catch (e) { toast(e.message); setQuote(null); api.post('/reservations/quote', body()).then(setQuote).catch(() => {}); } finally { setBusy(false); }
   };
@@ -171,7 +174,7 @@ export function Invoice({ id }) {
         </View>
       </Card>
       {d.credit_notes?.length ? <Section title="Credit notes" color={c.sun}>{d.credit_notes.map((n) => <Row key={n.id} title={n.number} sub={n.refund_status} right={<T weight="700">−{money(n.total_cents)}</T>} />)}</Section> : null}
-      {Platform.OS === 'web' ? <Btn title="Print / save as PDF" color={c.violet} onPress={() => window.print()} style={{ marginTop: 14 }} /> : <Btn title="Share" color={c.violet} onPress={() => toast('Open this on the web app to print or save as PDF')} style={{ marginTop: 14 }} />}
+      <Btn title={t(credit ? 'invoice.credit_note_pdf' : d.status === 'paid' ? 'invoice.receipt_pdf' : 'invoice.pdf')} accessibilityLabel={t(credit ? 'invoice.credit_note_pdf' : d.status === 'paid' ? 'invoice.receipt_pdf' : 'invoice.pdf')} color={c.violet} onPress={() => openInvoicePdf(id, toast)} style={{ marginTop: 14 }} />
       {!credit ? <Btn small title="Dispute this invoice" color={c.paper} ink={c.ink} onPress={() => setReport(true)} style={{ marginTop: 10, alignSelf: 'flex-start' }} /> : null}
       <NewCaseSheet visible={report} onClose={() => setReport(false)} kind="dispute" links={[{ type: 'invoice', id }]} />
     </Screen>
@@ -569,6 +572,18 @@ export function Notifications() {
             <Seg options={[{ value: true, label: 'On' }, { value: false, label: 'Off' }]} value={p.push !== false} onChange={(v) => setPref({ push: v })} color={c.pink} />
             <Line k="Remind me before a booking" v="" />
             <Seg options={[2, 6, 12, 24, 48].map((h) => ({ value: h, label: `${h}h` }))} value={p.reminder_hours} onChange={(v) => setPref({ reminder_hours: v })} color={c.violet} />
+          </Card>
+        ) : <Loading />}
+      </Section>
+      <Section title={t('community.notify_title')} color={c.pink}>
+        {p?.social_categories ? (
+          <Card>
+            {['people', 'communities', 'comments'].map((k) => (
+              <View key={k}>
+                <Line k={t(`community.notify_${k}`)} v="" />
+                <Seg options={[{ value: true, label: t('common.on') }, { value: false, label: t('common.off') }]} value={p.social_categories[k]} onChange={(v) => setPref({ social_categories: { [k]: v } })} color={c.pink} />
+              </View>
+            ))}
           </Card>
         ) : <Loading />}
       </Section>

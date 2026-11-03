@@ -11,6 +11,7 @@ import { Btn, Card, Empty, ErrorBox, H1, H2, Loading, Screen, Seg, Sheet, T, Tag
 import { FormSheet } from '../FormSheet';
 import { MenuField } from '../menu-field';
 import { t } from '../i18n';
+import { TravelPartnersAdmin } from './travel-partners';
 import { c } from '../theme';
 
 const nice = (s) => String(s).replace(/[._]/g, ' ').replace(/^./, (x) => x.toUpperCase());
@@ -326,11 +327,21 @@ export function IntegrationHub({ organisation_id }) {
 
 /** Platform admin only (the server enforces it and the entry is hidden for everyone else): review, price, build and enable integration requests. */
 export function IntegrationRequests() {
+  const [tab, setTab] = useState('requests');
+  return (
+    <Screen wide>
+      <View style={{ marginBottom: 10 }}><Seg options={[{ value: 'requests', label: t('tpart.tab_requests') }, { value: 'travel', label: t('tpart.tab_travel') }]} value={tab} onChange={setTab} /></View>
+      {tab === 'travel' ? <TravelPartnersAdmin /> : <IntegrationRequestList />}
+    </Screen>
+  );
+}
+
+function IntegrationRequestList() {
   const [status, setStatus] = useState('open');
   const q = useLoad(() => api.get('/admin/integration-access', { status, limit: 50 }), [status]);
   const [open, setOpen] = useState(null);
   return (
-    <Screen refreshing={q.loading && !!q.data} onRefresh={q.reload} wide>
+    <View>
       <H1>{t('ih.admin.title')}</H1>
       <MenuField label={t('ih.admin.open')} value={status} onChange={setStatus} options={['open', 'needs_info', 'quoted', 'accepted', 'in_development', 'enabled', 'declined', 'revoked'].map((v) => ({ value: v, label: v === 'open' ? t('ih.admin.open') : stageLabel(v) }))} />
       <View style={{ marginTop: 12, gap: 10 }}>
@@ -343,6 +354,6 @@ export function IntegrationRequests() {
           </Card>))}
       </View>
       {open ? <RequestDetail id={open} platform onClose={() => setOpen(null)} onChanged={q.reload} /> : null}
-    </Screen>
+    </View>
   );
 }

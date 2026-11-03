@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { Pressable, ScrollView, View } from 'react-native';
+import { FlatList, Pressable, ScrollView, View } from 'react-native';
 import { api } from '../api';
 import { useLoad } from '../hooks';
 import { useSession } from '../session';
@@ -98,6 +98,7 @@ export function Feed({ header, narrow }) {
     <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
       <View style={{ flex: 1 }}><Seg options={[{ value: 'market', label: t('social.feed_market') }, { value: 'following', label: t('social.feed_following') }]} value={mode} onChange={setMode} /></View>
       <Small label={t('social.title')} onPress={() => push('Network')} />
+      <Small label={t('community.title')} onPress={() => push('Communities')} />
     </View>
   );
   const feed = mode === 'following' ? (
@@ -120,18 +121,49 @@ export function Feed({ header, narrow }) {
         <OpenPositions compact limit={3} onSeeAll={() => push('Openings')} onOpenMine={() => push('Openings')} />
       </View>
       {err ? <ErrorBox error={err} onRetry={() => load(0)} /> : null}
-      {busy && !rows.length ? <Loading /> : !rows.length && !err ? <Empty emoji="📭" title="Nothing here yet" sub="Be the first to post — athletes wanted, a match, kit for sale or a campaign." /> : rows.map((p, i) => <React.Fragment key={p.id}><MarketCard p={p} user={user} gate={gate} feed />{i === 2 ? <AdSlot placement="sponsored_post" style={{ marginVertical: 6 }} /> : null}</React.Fragment>)}
+      {busy && !rows.length ? <Loading /> : !rows.length && !err ? <Empty emoji="📭" title="Nothing here yet" sub="Be the first to post — athletes wanted, a match, kit for sale or a campaign." /> : null}
+{rows.map((p, i) => <React.Fragment key={p.id}><MarketCard p={p} user={user} gate={gate} feed />{i === 2 ? <AdSlot placement="sponsored_post" style={{ marginVertical: 6 }} /> : null}</React.Fragment>)}
       {more ? <Pressable onPress={() => load(rows.length)} disabled={busy} style={{ alignSelf: 'center', borderRadius: 999, borderWidth: 1.5, borderColor: c.ink, paddingVertical: 11, paddingHorizontal: 26 }}><T weight="800">{busy ? 'Loading…' : 'Show more'}</T></Pressable> : null}
     </View>
   );
+  // On a phone (and in a narrow column) the market posts are a virtualized list: only the cards on screen are built, and the next page loads as it is scrolled.
+  // On a tablet the posts sit beside the Rail, so that layout keeps its scroll view.
+  const asList = !(L.tablet && !narrow) && mode === 'market';
+  const col = { paddingHorizontal: L.gutter, width: '100%', maxWidth: narrow ? COL : 640, alignSelf: 'center' };
   return (
     <View style={{ flex: 1 }}>
+      {asList ? (
+        <FlatList data={rows} keyExtractor={(p) => String(p.id)} showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: L.bottomPad }}
+          onEndReached={() => { if (more && !busy) load(rows.length); }} onEndReachedThreshold={0.6} initialNumToRender={6} windowSize={7}
+          ListHeaderComponent={<>{header}<View style={[col, { paddingTop: L.gutter, gap: 14 }]}>
+      {switcher}
+      <Card pad={14}>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+          <Avatar user={user} size={44} />
+          <Pressable onPress={() => setCompose({})} style={{ flex: 1, borderWidth: 1, borderColor: c.line, borderRadius: 999, paddingVertical: 12, paddingHorizontal: 18 }}><T color={c.mute} weight="600">Start a post — wanted, match, sale, campaign…</T></Pressable>
+        </View>
+        <HScroll style={{ marginTop: 12 }}>
+          {Object.entries(KINDS).map(([k, v]) => <Pressable key={k} onPress={() => setCompose({ kind: k })} style={{ paddingVertical: 8, paddingHorizontal: 14, borderRadius: 999, backgroundColor: c.bg }}><T size={13} weight="700" color="#334155">{v.emoji} {v.label}</T></Pressable>)}
+          <Pressable onPress={() => setCompose({ ad: true })} style={{ paddingVertical: 8, paddingHorizontal: 14, borderRadius: 999, backgroundColor: c.sunSoft }}><T size={13} weight="700" color="#92400E">⭐ Advertise</T></Pressable>
+        </HScroll>
+      </Card>
+      <View style={{ gap: 8 }}>
+        <T size={19} weight="700" style={{ letterSpacing: -0.3 }}>💼 Open positions</T>
+        <OpenPositions compact limit={3} onSeeAll={() => push('Openings')} onOpenMine={() => push('Openings')} />
+      </View>
+      {err ? <ErrorBox error={err} onRetry={() => load(0)} /> : null}
+      {busy && !rows.length ? <Loading /> : !rows.length && !err ? <Empty emoji="📭" title="Nothing here yet" sub="Be the first to post — athletes wanted, a match, kit for sale or a campaign." /> : null}
+          </View></>}
+          renderItem={({ item: p, index: i }) => <View style={[col, { marginTop: 14 }]}><MarketCard p={p} user={user} gate={gate} feed />{i === 2 ? <AdSlot placement="sponsored_post" style={{ marginVertical: 6 }} /> : null}</View>}
+          ListFooterComponent={<View style={[col, { paddingTop: 14 }]}>{more ? <Pressable onPress={() => load(rows.length)} disabled={busy} style={{ alignSelf: 'center', borderRadius: 999, borderWidth: 1.5, borderColor: c.ink, paddingVertical: 11, paddingHorizontal: 26 }}><T weight="800">{busy ? 'Loading…' : 'Show more'}</T></Pressable> : null}</View>} />
+      ) : (
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: L.bottomPad }}>
         {header}
         <View style={{ padding: L.gutter, width: '100%', maxWidth: narrow ? COL : L.tablet ? 1000 : 640, alignSelf: 'center' }}>
           {L.tablet && !narrow ? <View style={{ flexDirection: 'row', gap: 20, alignItems: 'flex-start' }}><View style={{ flex: 1.7 }}>{feed}</View><View style={{ flex: 1 }}><Rail push={push} /></View></View> : feed}
         </View>
       </ScrollView>
+      )}
       {compose ? <Composer visible onClose={() => setCompose(null)} initialKind={compose.kind ?? 'wanted'} ad={compose.ad} onPosted={() => load(0)} /> : null}
       {sheets}
       {resumeApply ? <ResumeApply positionId={resumeApply} onDone={() => setResumeApply(null)} /> : null}

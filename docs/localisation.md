@@ -17,6 +17,7 @@ A standing requirement (see `CLAUDE.md`): every feature ships its text in all of
 
 ## Coverage today
 Translated: account sheet (appearance, language, log out), common actions, generic error/empty text, bottom navigation labels.
+Connected devices / wearables (`wr.*`, 64 keys, #583): translated in all 12 packs, machine-drafted and `reviewed: false`. API error messages for it remain English.
 English fallback: the rest of the screens (about 240 files) until they are moved to `t()`; error messages from the API (still English `message`; stable `code` is the hook for translation).
 
 ## Not done yet (gaps)

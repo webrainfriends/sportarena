@@ -21,6 +21,8 @@ export const DIMENSIONS = {
   team: { expr: 'f.team_id', table: 'teams', name: 'name' },
   month: { expr: "to_char(f.at, 'YYYY-MM')" },
   channel: { expr: 'f.channel' },
+  // where it happened: the venue's city, else the event's city. Free text in the source, so it is trimmed and capitalised to group "mumbai " with "Mumbai".
+  city: { expr: "initcap(btrim(coalesce((SELECT cv.city FROM venues cv WHERE cv.id = f.venue_id), (SELECT ce.city FROM events ce WHERE ce.id = f.event_id))))" },
   // census dimensions (#703): only the federation census metrics list them
   body: { expr: 'f.body_id', lookup: 'SELECT b.id::text AS id, o.name AS name FROM governing_bodies b JOIN organisations o ON o.id=b.organisation_id WHERE b.id = ANY($1::uuid[])' },
   club: { expr: 'f.org_id', table: 'organisations', name: 'name' },
@@ -29,7 +31,13 @@ export const DIMENSIONS = {
   gender: { expr: 'f.gender' },
   status: { expr: 'f.status' },
 };
-const CHANNELS = { venue_booking: 'Venue bookings', academy: 'Academy fees', team: 'Team dues', marketplace: 'Marketplace', services: 'Services', pos: 'Point of sale', other: 'Other' };
+const CHANNELS = { venue_booking: 'Venue bookings', academy: 'Academy fees', team: 'Team dues', marketplace: 'Marketplace', services: 'Services', pos: 'Point of sale', other: 'Other',
+  // how a person arrived (activation, first activity)
+  referral: 'Invited by a member', direct: 'Direct', search: 'Search', social: 'Social', partner: 'Partner', campaign: 'Campaign', email: 'Email', event: 'An event',
+  // payment purposes (payment failure rate, provider earnings)
+  coach_hire: 'Coaching sessions', marketplace_engagement: 'Marketplace engagements', shop_order: 'Shop orders', shop_checkout: 'Shop checkout', insurance_policy: 'Insurance', venue_invoice: 'Venue invoices', wallet_topup: 'Wallet top-ups',
+  gift_card: 'Gift cards', venue_plan: 'Venue plans', appointment: 'Appointments', physio_package: 'Physio packages', coach_package: 'Coach session packages', sponsorship_payment: 'Sponsorship', academy_charge: 'Academy fees', service_invoice: 'Service invoices',
+  media_rights_fee: 'Media rights', pos_sale: 'Point of sale', team_charge: 'Team dues', team_contribution: 'Team contributions', ad_funding: 'Advertising' };
 // Labels for dimensions whose values are codes. The gender value is a keyed blind index, so a census can group by it without decrypting anything.
 const genderLabels = () => ({ ...Object.fromEntries(GENDERS.map((g) => [blindIndex(`gender|${g.key}`), g.label])), not_stated: 'Not stated' });
 const labelsFor = (dim) => (dim === 'channel' ? CHANNELS : dim === 'age_band' ? AGE_BANDS : dim === 'status' ? STANDING_LABELS : dim === 'gender' ? genderLabels() : null);
@@ -86,7 +94,7 @@ const VENUE_FINANCE = ['manager'];
  * @returns {Promise<{type:string,id:string|null,label:string,filters:object}>}
  */
 export async function resolveScope(user, scope, metric) {
-  const none = { events: [], venues: [], teams: [], org: null, all: false, sponsors: [], bodies: [] };
+  const none = { events: [], venues: [], teams: [], org: null, all: false, sponsors: [], providers: [], bodies: [] };
   const type = scope?.type;
   if (!metric.scopes.includes(type)) throw unprocessable(`"${metric.label}" cannot be reported for a ${type ?? 'missing'} scope. It can be reported for: ${metric.scopes.join(', ')}.`, { scopes: metric.scopes });
   const roles = AUDIENCES[metric.audience];
@@ -95,7 +103,7 @@ export async function resolveScope(user, scope, metric) {
     if (!isAdmin(user)) throw forbidden('Platform-wide figures are limited to the platform administrators');
     return { type, id: null, label: 'Whole platform', filters: { ...none, all: true } };
   }
-  if (!scope.id) throw unprocessable(`Pick the ${type} to report on`);
+  if (!scope.id && type !== 'provider') throw unprocessable(`Pick the ${type} to report on`);
   if (type === 'organisation') {
     const org = await one('SELECT id, name FROM organisations WHERE id=$1', [scope.id]);
     const role = org ? await orgRole(user, org.id) : null;
@@ -126,6 +134,11 @@ export async function resolveScope(user, scope, metric) {
     const ok = metric.audience === 'squad' ? await canCoachTeam(user, t) : await canManageTeam(user, t);
     if (!ok) { if (await canCoachTeam(user, t)) throw narrow('team managers'); throw notFound('Team'); }
     return { type, id: t.id, label: t.name, filters: { ...none, teams: (await many('SELECT id FROM teams WHERE id=$1 OR parent_team_id=$1', [t.id])).map((r) => r.id) } };
+  }
+  if (type === 'provider') {
+    // a person's own earnings: the scope is always the caller, so there is nothing to look up and nothing to leak about anyone else
+    if (scope.id && scope.id !== user.id) throw notFound('Provider');
+    return { type, id: user.id, label: 'My earnings as a provider', filters: { ...none, providers: [user.id] } };
   }
   if (type === 'sponsor') {
     const sp = await one('SELECT * FROM sponsors WHERE id=$1', [scope.id]);
@@ -170,6 +183,8 @@ export async function listScopes(user) {
     `SELECT DISTINCT t.id, t.name FROM teams t LEFT JOIN team_members m ON m.team_id=t.id AND m.user_id=$1 AND m.status='active' AND m.role IN ('captain','manager','coach')
       WHERE t.archived_at IS NULL AND (t.owner_id=$1 OR m.user_id IS NOT NULL) ORDER BY t.name LIMIT 100`, [user.id]);
   for (const t of teams) out.push({ type: 'team', id: t.id, label: t.name, sub: 'Team' });
+  const earns = await one('SELECT 1 AS x FROM coach_hires WHERE coach_id=$1 UNION ALL SELECT 1 FROM marketplace_engagements WHERE provider_id=$1 LIMIT 1', [user.id]);
+  if (earns || user.roles?.some((r) => ['coach', 'physio', 'doctor', 'supplier', 'venue_manager'].includes(r))) out.push({ type: 'provider', id: user.id, label: 'My earnings as a provider', sub: 'Only you can see this' });
   const brands = await many('SELECT id, name FROM sponsors ORDER BY name LIMIT 500');
   for (const b of brands) {
     if (isAdmin(user)) { out.push({ type: 'sponsor', id: b.id, label: b.name, sub: 'Brand' }); continue; }
@@ -188,9 +203,11 @@ export async function listScopes(user) {
 }
 
 // ---------------------------------------------------------------- SQL
-const PRED = `($5::boolean OR f.event_id = ANY($1::uuid[]) OR f.venue_id = ANY($2::uuid[]) OR f.team_id = ANY($3::uuid[]) OR f.org_id = $4::uuid OR f.sponsor_id = ANY($9::uuid[]) OR f.body_id = ANY($10::uuid[]))
-  AND ($8::uuid[] IS NULL OR f.sport_id = ANY($8::uuid[])) AND $6::date IS NOT NULL AND $7::date IS NOT NULL`;
-const params = (scope, range, sportIds) => [scope.filters.events, scope.filters.venues, scope.filters.teams, scope.filters.org, scope.filters.all, range.from, range.to, sportIds?.length ? sportIds : null, scope.filters.sponsors, scope.filters.bodies];
+// $10 is the governing-body scope (census metrics); $11 the provider scope, used only by a metric whose facts carry provider_id (the provider's own earnings), so other metrics' SQL is unchanged.
+const PRED_BASE = `($5::boolean OR f.event_id = ANY($1::uuid[]) OR f.venue_id = ANY($2::uuid[]) OR f.team_id = ANY($3::uuid[]) OR f.org_id = $4::uuid OR f.sponsor_id = ANY($9::uuid[]) OR f.body_id = ANY($10::uuid[])`;
+const predFor = (m) => `${PRED_BASE}${m.facts().includes('AS provider_id') ? ' OR f.provider_id = ANY($11::uuid[])' : ''})
+  AND ($8::uuid[] IS NULL OR f.sport_id = ANY($8::uuid[])) AND $6::date IS NOT NULL AND $7::date IS NOT NULL AND $11::uuid[] IS NOT NULL`;
+const params = (scope, range, sportIds) => [scope.filters.events, scope.filters.venues, scope.filters.teams, scope.filters.org, scope.filters.all, range.from, range.to, sportIds?.length ? sportIds : null, scope.filters.sponsors, scope.filters.bodies, scope.filters.providers];
 /** Every metric's facts get a body_id column; only the census metrics fill it, so a body scope never reaches another metric's rows (and no existing definition changes). */
 const factsOf = (m) => (m.census ? m.facts() : `SELECT x.*, NULL::uuid AS body_id FROM (${m.facts()}) x`);
 
@@ -224,12 +241,13 @@ export async function computeKpi(user, key, q) {
   const scope = await resolveScope(user, q.scope, m);
   const range = m.pointInTime ? { from: today(), to: today() } : resolveRange(q.range, q.as_of);
   const sportIds = q.sport_ids ?? [];
+  if (m.noSportFilter && sportIds.length) throw unprocessable(`"${m.label}" cannot be limited to a sport: someone who has not yet played has no sport.`);
   const p = params(scope, range, sportIds);
   const g = q.group_by ? DIMENSIONS[q.group_by].expr : null;
   const money = m.aggregation === 'sum_money';
   const cur = money ? ', f.currency AS currency' : '';
   const agg = aggSql(m);
-  const sql = `WITH f AS MATERIALIZED (${factsOf(m)}), s AS MATERIALIZED (SELECT f.* FROM f WHERE ${PRED})
+  const sql = `WITH f AS MATERIALIZED (${factsOf(m)}), s AS MATERIALIZED (SELECT f.* FROM f WHERE ${predFor(m)})
     SELECT 'total' AS k, to_jsonb(x) AS j FROM (SELECT ${money ? 'currency, ' : ''}${agg}, count(*)::int AS records FROM s ${money ? 'GROUP BY currency' : ''}) x
     ${g ? `UNION ALL SELECT 'group', to_jsonb(y) FROM (SELECT ${g.replaceAll('f.', 's.')} AS g${money ? ', currency' : ''}, ${agg}, count(*)::int AS records FROM s GROUP BY 1${money ? ', 2' : ''}) y` : ''}
     UNION ALL SELECT 'src', to_jsonb(z) FROM (SELECT rec_kind, count(*)::int AS n, max(at) AS latest FROM s GROUP BY rec_kind) z
@@ -255,7 +273,7 @@ export async function computeKpi(user, key, q) {
     const byG = new Map();
     for (const r of of('group')) (byG.get(r.g ?? null) ?? byG.set(r.g ?? null, []).get(r.g ?? null)).push(r);
     const names = await nameOf(q.group_by, [...byG.keys()]), labels = labelsFor(q.group_by);
-    groups = [...byG.entries()].map(([k, rs]) => ({ key: k, label: k == null ? 'Not attributed' : labels ? labels[k] ?? 'Not stated' : q.group_by === 'month' || q.group_by === 'region' ? k : names.get(String(k)) ?? 'Unavailable', ...shape(rs) }))
+    groups = [...byG.entries()].map(([k, rs]) => ({ key: k, label: k == null ? 'Not attributed' : labels ? labels[k] ?? 'Not stated' : q.group_by === 'month' || q.group_by === 'region' || q.group_by === 'city' ? k : names.get(String(k)) ?? 'Unavailable', ...shape(rs) }))
       .sort((a, b) => (q.group_by === 'month' ? String(a.key).localeCompare(String(b.key)) : (b.value ?? b.amounts?.[0]?.cents ?? 0) - (a.value ?? a.amounts?.[0]?.cents ?? 0)));
   }
 
@@ -317,13 +335,13 @@ export async function kpiRecords(user, key, q, { limit = 25, offset = 0 } = {}) 
   const range = m.pointInTime ? { from: today(), to: today() } : resolveRange(q.range, q.as_of);
   const p = params(scope, range, q.sport_ids ?? []);
   const g = q.group_by ? DIMENSIONS[q.group_by].expr.replaceAll('f.', 's.') : null;
-  const where = [g && q.group_key !== undefined ? (q.group_key === null || q.group_key === '' ? `${g} IS NULL` : `${g}::text = $13`) : null, q.currency ? '(s.currency = $14)' : null].filter(Boolean);
+  const where = [g && q.group_key !== undefined ? (q.group_key === null || q.group_key === '' ? `${g} IS NULL` : `${g}::text = $14`) : null, q.currency ? '(s.currency = $15)' : null].filter(Boolean);
   const args = [...p, limit, offset, ...(g && q.group_key ? [q.group_key] : [null]), q.currency ?? null];
-  const sql = `WITH f AS MATERIALIZED (${factsOf(m)}), s AS MATERIALIZED (SELECT f.* FROM f WHERE ${PRED}), t AS (SELECT s.* FROM s ${where.length ? `WHERE ${where.join(' AND ')}` : ''})
-    SELECT 'row' AS k, to_jsonb(r) AS j FROM (SELECT rec_id, rec_kind, label, at, currency, amount, num, den, flag, channel, link_kind, link_id FROM t ORDER BY at DESC NULLS LAST, rec_id LIMIT $11 OFFSET $12) r
+  const sql = `WITH f AS MATERIALIZED (${factsOf(m)}), s AS MATERIALIZED (SELECT f.* FROM f WHERE ${predFor(m)}), t AS (SELECT s.* FROM s ${where.length ? `WHERE ${where.join(' AND ')}` : ''})
+    SELECT 'row' AS k, to_jsonb(r) AS j FROM (SELECT rec_id, rec_kind, label, at, currency, amount, num, den, flag, channel, link_kind, link_id FROM t ORDER BY at DESC NULLS LAST, rec_id LIMIT $12 OFFSET $13) r
     UNION ALL SELECT 'sum', to_jsonb(q) FROM (SELECT count(*)::int AS records, count(DISTINCT subject)::int AS distinct_subjects, sum(num)::float8 AS num, sum(den)::float8 AS den FROM t) q
     UNION ALL SELECT 'money', to_jsonb(c) FROM (SELECT currency, sum(amount)::bigint AS cents FROM t WHERE currency IS NOT NULL GROUP BY currency ORDER BY currency) c
-    UNION ALL SELECT 'arg', to_jsonb(a) FROM (SELECT $13::text AS a, $14::text AS b) a`;
+    UNION ALL SELECT 'arg', to_jsonb(a) FROM (SELECT $14::text AS a, $15::text AS b) a`;
   const rows = (await pool.query(sql, args)).rows;
   const sum = rows.find((r) => r.k === 'sum').j;
   return {

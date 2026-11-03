@@ -1,4 +1,6 @@
 import express from 'express';
+import { LANGUAGE_CODES } from '../comms-catalogue.js';
+import { aiConfigured } from '../ai.js';
 import rateLimit from 'express-rate-limit';
 import { createHash } from 'node:crypto';
 import { z } from 'zod';
@@ -59,7 +61,7 @@ cap({
   summary: 'What the capture tools can do on this server: evidence file types and limits, and whether voice notes can be turned into text. Voice-to-text is only available when the platform has a speech-to-text bridge configured.',
   handler: () => ({
     evidence: { types: ['image/jpeg', 'image/png', 'image/webp', 'image/gif', 'video/mp4', 'video/quicktime', 'video/webm', 'application/pdf'], max_bytes: DOC_LIMITS.bytes, per_note: PER_OBSERVATION },
-    voice_note: config.transcribe.url ? { available: true, max_bytes: 5 * 2 ** 20, note: 'The audio is sent to the configured speech-to-text service for this request only, is not stored, and you review the text before saving.' } : { available: false, reason: 'No speech-to-text service is configured on this server. Type the note instead.' },
+    voice_note: config.transcribe.url ? { available: true, languages: LANGUAGE_CODES, translate_available: aiConfigured(), max_bytes: 5 * 2 ** 20, note: 'The audio is sent to the configured speech-to-text service for this request only, is not stored, and you review the text before saving.' } : { available: false, reason: 'No speech-to-text service is configured on this server. Type the note instead.' },
   }),
 });
 
@@ -116,16 +118,20 @@ export function coachingEvidenceRouter() {
       const buf = await readBody(req);
       if (!buf.length) throw badRequest('Empty recording');
       if (buf.length > 5 * 2 ** 20) throw new AppError(413, 'too_large', 'Recordings can be up to 5 MB');
+      // the language the coach speaks (any of our 12, or 'auto'): passed to the speech service so Tamil, Hindi, Urdu and the rest are heard as themselves
+      const language = String(req.query.language ?? 'auto');
+      if (language !== 'auto' && !LANGUAGE_CODES.includes(language)) throw badRequest('Unknown language');
       let out;
       try {
-        const resp = await fetch(config.transcribe.url, { method: 'POST', signal: AbortSignal.timeout(25_000), headers: { 'content-type': String(req.headers['content-type'] ?? 'application/octet-stream'), ...(config.transcribe.secret ? { authorization: `Bearer ${config.transcribe.secret}` } : {}) }, body: buf });
+        const url = new URL(config.transcribe.url); url.searchParams.set('language', language);
+        const resp = await fetch(url, { method: 'POST', signal: AbortSignal.timeout(25_000), headers: { 'content-type': String(req.headers['content-type'] ?? 'application/octet-stream'), 'x-language': language, ...(config.transcribe.secret ? { authorization: `Bearer ${config.transcribe.secret}` } : {}) }, body: buf });
         if (!resp.ok) throw new Error(String(resp.status));
         out = await resp.json();
       } catch { throw new AppError(502, 'transcription_failed', 'The recording could not be turned into text. Type the note instead.'); }
-      const textOut = String(out?.text ?? '').trim().slice(0, 2000);
+      const textOut = String(out?.text ?? '').trim().slice(0, 3000);
       if (!textOut) throw new AppError(422, 'nothing_heard', 'No speech was found in the recording.');
       await audit(null, user.id, 'coaching_voice_note', 'users', user.id);
-      res.json({ transcript: textOut, saved: false, note: 'Review and edit this text, then save it as a note.' });
+      res.json({ transcript: textOut, language: LANGUAGE_CODES.includes(String(out?.language)) ? out.language : language, saved: false, note: 'Review and edit this text, then save it as a note.' });
     } catch (e) { fail(res, e); }
   });
   return r;

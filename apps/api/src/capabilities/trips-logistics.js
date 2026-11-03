@@ -1,6 +1,6 @@
 // Team & delegation travel operations (#485), part 3: transport segments, accommodation and rooming, equipment consignments and the link to
 // supplier orders (#458). Every booking reference is labelled for what it is: typed by the team (external) or taken from a supplier order. SportArena
-// has no airline or hotel inventory adapter, so nothing here is ever "verified" or implies live availability.
+// has no inventory of its own: a typed reference is never "verified"; only a booking confirmed by a connected travel partner (#704) is, and it says so.
 import { z } from 'zod';
 import { cap, id } from '../registry.js';
 import { many, pool, tx } from '../db.js';
@@ -14,7 +14,11 @@ const dt = z.string().datetime({ offset: true });
 const zone = z.string().min(1).max(64).refine(isZone, 'Not a valid IANA time zone, e.g. Asia/Kolkata');
 const DAY = 864e5;
 
-export const referenceLabel = (r) => (r.reference_source === 'supplier_order'
+export const referenceLabel = (r) => (r.reference_source === 'partner'
+  ? { source: 'partner', verified: r.status === 'booked' || r.status === 'changed', label: r.status === 'booked' || r.status === 'changed' ? 'Booked through the connected travel partner, which confirmed this reference.' : 'Held with the connected travel partner. Not confirmed yet.' }
+  : r.reference_source === 'room_block'
+    ? { source: 'room_block', verified: false, label: 'Rooms taken from the room block the event organiser published. The booking terms are the organiser\'s.' }
+  : r.reference_source === 'supplier_order'
   ? { source: 'supplier_order', verified: false, label: `Supplier order ${r.order_number ?? ''}${r.travel_confirmation === 'supplier_booking_confirmed' ? ': the supplier confirmed the booking' : r.travel_confirmation === 'third_party_reference_recorded' ? ': third-party reference recorded by the supplier' : ''}. Not a live availability check.`.replace(' :', ':') }
   : { source: 'external', verified: false, label: r.reference ? 'Reference typed by the team or taken from the provider. SportArena has not verified it.' : 'No reference recorded yet.' });
 
@@ -29,15 +33,15 @@ async function orderFor(c, user, orderId, category = null) {
   return o;
 }
 
-const within = (trip, a, b) => { if (Date.parse(a) < Date.parse(trip.depart_at) - 2 * DAY || Date.parse(b) > Date.parse(trip.return_at) + 2 * DAY) throw badRequest('That falls outside the trip window (two days of slack are allowed). Change the trip dates first.'); };
+export const within = (trip, a, b) => { if (Date.parse(a) < Date.parse(trip.depart_at) - 2 * DAY || Date.parse(b) > Date.parse(trip.return_at) + 2 * DAY) throw badRequest('That falls outside the trip window (two days of slack are allowed). Change the trip dates first.'); };
 
-const livePassengers = async (c, trip, ids) => {
+export const livePassengers = async (c, trip, ids) => {
   if (!ids.length) return [];
   const rows = (await c.query('SELECT id, user_id FROM trip_participants WHERE trip_id=$1 AND status = ANY($2) AND id = ANY($3::uuid[])', [trip.id, LIVE_PARTICIPANT, ids])).rows;
   if (rows.length !== new Set(ids).size) throw badRequest('Everyone on a segment must be a current traveller on this trip');
   return rows;
 };
-const setPassengers = async (c, segId, ids) => {
+export const setPassengers = async (c, segId, ids) => {
   await c.query('UPDATE trip_segment_passengers SET removed_at=now() WHERE segment_id=$1 AND removed_at IS NULL AND NOT (participant_id = ANY($2::uuid[]))', [segId, ids]);
   for (const p of ids) await c.query('INSERT INTO trip_segment_passengers(segment_id, participant_id) VALUES ($1,$2) ON CONFLICT DO NOTHING', [segId, p]);
 };

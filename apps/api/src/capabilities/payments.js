@@ -9,8 +9,9 @@ import { audit } from '../helpers.js';
 import { notify } from '../notify.js';
 import { provider } from '../payments/providers.js';
 import { refundableMinor } from '../ads/engine.js';
+import { coachCurrency } from '../coach-currency.js';
 
-const purposes = ['shop_order', 'coach_hire', 'insurance_policy', 'venue_invoice', 'wallet_topup', 'gift_card', 'venue_plan', 'appointment', 'shop_checkout', 'physio_package', 'academy_charge', 'media_rights_fee', 'team_charge', 'team_contribution', 'ad_funding', 'marketplace_engagement', 'commercial_subscription', 'registration_instalment', 'coach_class_seat', 'ticket_order', 'coach_subscription_period'];
+const purposes = ['shop_order', 'coach_hire', 'insurance_policy', 'venue_invoice', 'wallet_topup', 'gift_card', 'venue_plan', 'appointment', 'shop_checkout', 'physio_package', 'academy_charge', 'media_rights_fee', 'team_charge', 'team_contribution', 'ad_funding', 'marketplace_engagement', 'commercial_subscription', 'registration_instalment', 'coach_class_seat', 'ticket_order', 'coach_subscription_period', 'coach_package'];
 
 cap({
   name: 'list_payment_methods', method: 'GET', path: '/payments/methods', tag: 'Payments', auth: 'public',
@@ -21,7 +22,8 @@ cap({
     const m = await enabledMethods(country);
     // UPI needs a mobile number: tell the app whether the account already has one so it only asks when it must
     const contactKnown = user ? !!(await one('SELECT 1 AS x FROM users WHERE id=$1 AND phone_enc IS NOT NULL', [user.id])) : false;
-    return { country: m.country, providers: m.providers, methods: m.methods, currency: config.payments.currency, contact_known: contactKnown };
+    // local_currency: what this person's own country uses (their default address), for forms with no record yet; `currency` stays the platform default
+    return { country: m.country, providers: m.providers, methods: m.methods, currency: config.payments.currency, local_currency: user ? await coachCurrency(user.id) : config.payments.currency, contact_known: contactKnown };
   },
 });
 
@@ -29,6 +31,7 @@ cap({
   name: 'create_payment', method: 'POST', path: '/payments', tag: 'Payments', status: 201,
   summary: 'Start a checkout (Stripe, PayPal or Razorpay hosted pages, or Razorpay UPI collect / intent without leaving the app) for a shop order (or a whole shop cart: purpose_type shop_checkout with the checkout_id), coach hire, insurance policy or venue invoice you own. Venue invoices are charged in the invoice currency. The amount is read from the record, never from the client. Send the person to checkout_url; then call confirm_payment (or wait for the provider webhook).',
   input: z.object({ purpose_type: z.enum(purposes), purpose_id: id, provider: z.enum(['stripe', 'paypal', 'razorpay']), method: z.enum(METHOD_KEYS).optional().describe('card, paypal, upi, netbanking or wallet; must be switched on for the country'), country: z.string().length(2).transform((x) => x.toUpperCase()).optional().describe('ISO-2; normally worked out from the venue or your address'), return_url: z.string().url().optional().describe('where the provider sends the person back (must be an allowed origin)'),
+    client: z.enum(['app']).optional().describe("'app' from the phone apps: the provider returns to /api/v1/pay/return, which hands the person back to the app; the web leaves it out"),
     upi: z.object({ flow: z.enum(['collect', 'intent']), vpa: z.string().trim().regex(/^[A-Za-z0-9._-]{2,256}@[A-Za-z]{2,64}$/, 'Enter a UPI ID like name@bank').optional(), contact: z.string().trim().regex(/^\+?[0-9]{10,13}$/, 'Enter a mobile number').optional() }).refine((u) => u.flow !== 'collect' || !!u.vpa, 'A UPI ID is needed to collect').optional().describe('UPI only (razorpay): collect sends a request to the UPI ID, intent returns a upi:// link or QR to open in any UPI app') }),
   handler: ({ user }, i) => startCheckout(user, i),
 });

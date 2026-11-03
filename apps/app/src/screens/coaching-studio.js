@@ -1,5 +1,7 @@
 // Performance Studio (issue #269, slice 1): today's coaching work, the run-a-session screen and the coaching journal.
 // Everything links to canonical records through the /coaching/* capabilities; nothing here edits a booking, plan or score.
+import { ReportSections } from './report-sections';
+import { ReportShares } from './report-shares';
 import React, { useEffect, useState } from 'react';
 import { View } from 'react-native';
 import { api } from '../api';
@@ -566,8 +568,8 @@ export function CoachCopilot({ task: taskProp = 'player_progress', athlete_id, t
 }
 
 // Reports: choose an audience, see exactly what that audience will get, then publish a frozen version.
-const AUD = [['coach_private', t('cs.aud_me')], ['athlete', t('cs.aud_athlete')], ['guardian', t('cs.aud_guardian')], ['team_staff', t('cs.vis_staff')]];
-const KIND = ['athlete_progress', 'session', 'goal_review', 'team_training', 'match_debrief', 'period_review', 'action_summary'];
+const AUD = [['coach_private', t('cs.aud_me')], ['athlete', t('cs.aud_athlete')], ['guardian', t('cs.aud_guardian')], ['team_staff', t('cs.vis_staff')], ['organisation', t('rsh.aud_org')]];
+const KIND = ['athlete_progress', 'session', 'goal_review', 'team_training', 'match_debrief', 'period_review', 'action_summary', 'team_performance'];
 
 export function CoachReports({ athlete_id, team_id, name }) {
   const { push } = useNav();
@@ -619,18 +621,7 @@ export function CoachReport({ id }) {
       <T size={13} color={c.mute} style={{ marginTop: 6 }}>{snap.disclosure}</T>
       {prev.data.needs_ai_review ? <Card pad={10} color={c.cyanSoft} style={{ marginTop: 8 }}><T size={12} weight="700">{t('cs.ai_started')}</T><T size={12} color={c.mute}>{t('cs.ai_read_first')}</T></Card> : null}
       <Section title={t('cs.preview')}>
-        {snap.sections.map((sec) => (
-          <Card key={sec.key} pad={12} style={{ marginBottom: 8 }}>
-            <T weight="800">{sec.title}</T>
-            {sec.kind === 'text' ? <T size={13}>{sec.body}</T> : sec.items.map((it, n) => (
-              <View key={n} style={{ marginTop: 6 }}>
-                <View style={{ flexDirection: 'row', justifyContent: 'space-between', gap: 8 }}><T weight="700" size={13} style={{ flexShrink: 1 }}>{it.title}</T>{it.value ? <T weight="800" size={13}>{it.value}</T> : null}</View>
-                {it.meta ? <T size={11} color={c.mute}>{it.meta}</T> : null}
-                {it.body ? <T size={12}>{it.body}</T> : null}
-              </View>
-            ))}
-          </Card>
-        ))}
+        <ReportSections sections={snap.sections} cards />
         {!snap.sections.length ? <T size={13} color={c.mute}>{t('cs.nothing_selected')}</T> : null}
       </Section>
       <View style={{ flexDirection: 'row', gap: 8, flexWrap: 'wrap', marginTop: 8 }}>
@@ -640,6 +631,7 @@ export function CoachReport({ id }) {
           if (typeof window !== 'undefined' && window.open) { const url = URL.createObjectURL(await api.download(`/branded-documents/${d.id}/file`)); window.open(url, '_blank', 'noopener'); setTimeout(() => URL.revokeObjectURL(url), 120000); }
         }, t('cs.pdf_ready'))} /> : null}
       </View>
+      {r.latest_version && r.audience === 'organisation' ? <ReportShares report={r} /> : null}
       {r.versions.length ? <Section title={t('cs.published_versions')}>{r.versions.map((v) => <Row key={v.version} title={t('cs.version_n', { n: v.version })} sub={t('cs.version_line', { when: dateTimeIn(v.published_at, tz), aud: AUD.find(([x]) => x === v.audience)[1] })} />)}</Section> : null}
       <FormSheet visible={sure} onClose={() => setSure(false)} title={t('cs.publish_ai_q')} submitLabel={t('cs.publish_read')} fields={[]}
         onSubmit={async () => { await api.post(`/coaching/reports/${id}/publish`, { row_version: r.row_version, confirm_reviewed: true }); setSure(false); toast(t('cs.published')); rep.reload(); prev.reload(); }} />
@@ -658,17 +650,7 @@ export function CoachReportView({ id, version }) {
     <Screen>
       <H1>{s.title}</H1>
       <T size={13} color={c.mute}>{t('cs.view_line', { subject: s.subject, from: s.period.from, to: s.period.to, coach: s.coach_name, v: v.data.version })}</T>
-      {s.sections.map((sec) => (
-        <Section key={sec.key} title={sec.title}>
-          {sec.kind === 'text' ? <T size={14}>{sec.body}</T> : sec.items.map((it, n) => (
-            <Card key={n} pad={12} style={{ marginBottom: 8 }}>
-              <View style={{ flexDirection: 'row', justifyContent: 'space-between', gap: 8 }}><T weight="700" style={{ flexShrink: 1 }}>{it.title}</T>{it.value ? <T weight="800">{it.value}</T> : null}</View>
-              {it.meta ? <T size={11} color={c.mute}>{it.meta}</T> : null}
-              {it.body ? <T size={13}>{it.body}</T> : null}
-            </Card>
-          ))}
-        </Section>
-      ))}
+      <ReportSections sections={s.sections} />
     </Screen>
   );
 }
@@ -895,55 +877,8 @@ export function CoachProgrammes({ athlete_id, team_id, name }) {
   );
 }
 
-// Rubrics: the coach's own scales. The standard ones for the sports they coach arrive on their own; each can be edited
-// (dimensions added or removed, sports and positions changed) or archived, and one rubric can serve several sports.
-export function CoachRubrics() {
-  const { toast } = useSession();
-  const list = useLoad(() => api.get('/coaching/rubrics'), []);
-  const positions = useLoad(() => api.get('/coaching/positions'), []);
-  const sports = useLoad(() => api.get('/sports'), []);
-  const [form, setForm] = useState(null);   // null | 'new' | a rubric being edited
-  const edit = form && form !== 'new' ? form : null;
-  const slugOf = (sid) => sports.data?.find((x) => x.id === sid)?.slug;
-  const sportNames = (r) => (r.sport_ids?.length ? r.sport_ids.map((sid) => sports.data?.find((x) => x.id === sid)?.name).filter(Boolean).join(', ') : t('cs.all_sports_lc'));
-  const dimFields = (k) => [
-    { key: `n${k}`, label: t('cs.new_dim', { k }), optional: true, placeholder: k === 1 ? t('cs.dim_ph') : undefined },
-    { key: `max${k}`, label: t('cs.scale_to'), type: 'stepper', min: 3, max: 10, step: 1, default: 5, show: (v) => !!v[`n${k}`] },
-    { key: `dir${k}`, label: t('cs.better_when'), type: 'chips', options: [{ value: 'higher_is_better', label: t('cs.dir_higher') }, { value: 'lower_is_better', label: t('cs.dir_lower') }, { value: 'target_range', label: t('cs.dir_target') }], default: 'higher_is_better', show: (v) => !!v[`n${k}`] },
-  ];
-  const fields = [
-    { key: 'name', label: t('cs.rubric_name') },
-    { key: 'sports', label: t('cs.rubric_sports'), type: 'sports', optional: true },
-    ...(positions.data?.length ? [{ key: 'positions', label: t('cs.rubric_positions'), type: 'multi', optional: true, options: positions.data.map((p) => ({ value: p, label: p })) }] : []),
-    ...(edit ? [{ key: 'keep', label: t('cs.rubric_keep'), type: 'multi', options: edit.dimensions.map((d) => ({ value: d.key, label: `${d.name} 1–${d.scale_max}` })) }] : []),
-    ...[1, 2, 3].flatMap(dimFields),
-    ...(edit ? [{ key: 'archive', label: t('cs.rubric_archive'), type: 'switch', default: false }] : []),
-  ];
-  const initial = edit
-    ? { name: edit.name, sports: (edit.sport_ids ?? []).map(slugOf).filter(Boolean), positions: edit.positions ?? [], keep: edit.dimensions.map((d) => d.key) }
-    : {};
-  const save = async (v) => {
-    if (edit && v.archive) { await api.del(`/coaching/rubrics/${edit.id}`); toast(t('cs.rubric_archived')); list.reload(); return; }
-    const kept = edit ? edit.dimensions.filter((d) => v.keep?.includes(d.key)) : [];
-    const added = [1, 2, 3].filter((k) => v[`n${k}`]).map((k) => ({ key: v[`n${k}`].toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '').slice(0, 40) || `d${k}`, name: v[`n${k}`], scale_min: 1, scale_max: v[`max${k}`] ?? 5, direction: v[`dir${k}`] ?? 'higher_is_better' }));
-    const dimensions = [...kept, ...added.filter((d) => !kept.some((x) => x.key === d.key))];
-    if (!dimensions.length) throw new Error(t('cs.rubric_need_dim'));
-    await api.post('/coaching/rubrics', { rubric_id: edit?.id, name: v.name, sports: v.sports ?? [], positions: v.positions ?? [], dimensions });
-    toast(edit ? t('cs.rubric_saved') : t('cs.rubric_created')); list.reload();
-  };
-  return (
-    <Screen onRefresh={list.reload}>
-      <H1>{t('nav.title.CoachRubrics')}</H1>
-      <T size={13} color={c.mute}>{t('cs.rubrics_help')}</T>
-      <View style={{ marginTop: 10 }}><Btn small title={t('cs.new_rubric')} onPress={() => setForm('new')} /></View>
-      {list.loading && !list.data ? <Loading /> : list.error ? <ErrorBox error={list.error} onRetry={list.reload} /> : !list.data.length ? <Empty emoji="📏" title={t('cs.no_rubrics')} sub={t('cs.no_rubrics_sub')} /> :
-        list.data.map((r) => (
-          <Row key={r.id} title={r.name} onPress={() => setForm(r)}
-            sub={`${r.standard_source ? `${t('cs.std_source', { src: r.standard_source })} · ` : ''}v${r.version} · ${sportNames(r)} · ${r.dimensions.map((d) => `${d.name} 1–${d.scale_max}`).join(', ')} · ${r.positions.length ? r.positions.join(', ') : t('cs.all_positions')}`} />))}
-      <FormSheet visible={!!form} onClose={() => setForm(null)} title={edit ? t('cs.edit_rubric') : t('cs.new_rubric')} submitLabel={edit ? t('common.save') : t('cs.create')} fields={fields} initial={initial} onSubmit={save} />
-    </Screen>
-  );
-}
+// Rubrics are the coach's evaluation sheets: the editor (pillars, weights, anchors, targets) lives in evaluation-sheets.js, one place for sheets.
+export { CoachRubrics } from './evaluation-sheets';
 
 // Saved player groups (issue #580): reusable, named sets of people you already coach. Putting one on a session fills the roster and creates the
 // session's named group in one tap; the server re-checks every person's current relationship each time.

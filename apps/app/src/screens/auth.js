@@ -28,6 +28,8 @@ export default function Auth({ intent, initialMode, onClose } = {}) {
   const [busy, setBusy] = useState(false);
   const [info, setInfo] = useState(null);
   const [mfaToken, setMfaToken] = useState(null);
+  const [pending, setPending] = useState(null);       // a NEW Google/Apple person who has not chosen their role yet: { kind, credential, name, nonce }
+  const [pickRoles, setPickRoles] = useState([INTENT_ROLE[intent?.action] ?? 'athlete']);
   const [ssoParams, setSsoParams] = useState(null);   // callback values of an organisation sign-in that returned in-app (native)
 
   // Links from security emails open the app with ?reset_password=<code> or ?verify_email=<code>.
@@ -37,6 +39,7 @@ export default function Auth({ intent, initialMode, onClose } = {}) {
     const clean = () => { try { window.history.replaceState(null, '', location.pathname); } catch { /* ignore */ } };
     if (q.get('reset_password')) { setF((p) => ({ ...p, code: q.get('reset_password') })); setMode('reset'); clean(); }
     else if (q.get('apple_error')) { setErr(q.get('apple_error')); clean(); }
+    else if (q.get('apple_role')) { setPending({ kind: 'apple_web' }); clean(); }
     else if (q.get('apple_mfa')) { setMfaToken(q.get('apple_mfa')); setF((p) => ({ ...p, mfa: '' })); setMode('mfa'); clean(); }
     else if (q.get('verify_email')) {
       api.post('/auth/verify-email', { token: q.get('verify_email') }).then(() => setInfo(t('auth.email_confirmed')), (e) => setErr(e.message));
@@ -49,7 +52,8 @@ export default function Auth({ intent, initialMode, onClose } = {}) {
   const withGoogle = async (credential) => {
     setBusy(true); setErr(null); setInfo(null);
     try {
-      const res = await api.post('/auth/google', { credential });
+      const res = await api.post('/auth/google', { credential, require_role: true });
+      if (res.needs_role) { setPending({ kind: 'google', credential }); return; }
       if (res.mfa_required) { setMfaToken(res.mfa_token); setF((p) => ({ ...p, mfa: '' })); setMode('mfa'); return; }
       await signIn(res);
     } catch (e) { setErr(e.message); } finally { setBusy(false); }
@@ -58,11 +62,27 @@ export default function Auth({ intent, initialMode, onClose } = {}) {
   const withApple = async ({ credential, name, nonce }) => {
     setBusy(true); setErr(null); setInfo(null);
     try {
-      const res = await api.post('/auth/apple', { credential, name, nonce });
+      const res = await api.post('/auth/apple', { credential, name, nonce, require_role: true });
+      if (res.needs_role) { setPending({ kind: 'apple', credential, name, nonce }); return; }
       if (res.mfa_required) { setMfaToken(res.mfa_token); setF((p) => ({ ...p, mfa: '' })); setMode('mfa'); return; }
       await signIn(res);
     } catch (e) { setErr(e.message); } finally { setBusy(false); }
   };
+
+  // A new Google/Apple person has chosen their role(s): the account is created with them, then they are signed in.
+  const finishRole = async () => {
+    if (!pending || !pickRoles.length) return;
+    setBusy(true); setErr(null);
+    try {
+      const res = pending.kind === 'google' ? await api.post('/auth/google', { credential: pending.credential, roles: pickRoles })
+        : pending.kind === 'apple' ? await api.post('/auth/apple', { credential: pending.credential, name: pending.name, nonce: pending.nonce, roles: pickRoles })
+          : await api.post('/auth/apple/complete', { roles: pickRoles });
+      setPending(null);
+      if (res.mfa_required) { setMfaToken(res.mfa_token); setF((p) => ({ ...p, mfa: '' })); setMode('mfa'); return; }
+      await signIn(res);
+    } catch (e) { setErr(e.message); } finally { setBusy(false); }
+  };
+  const togglePick = (r) => setPickRoles((p) => (p.includes(r) ? p.filter((x) => x !== r) : [...p, r]));
 
   const submit = async () => {
     setBusy(true); setErr(null); setInfo(null);
@@ -92,6 +112,14 @@ export default function Auth({ intent, initialMode, onClose } = {}) {
 
   return (
     <Screen>
+      <Sheet visible={!!pending} onClose={() => setPending(null)} title={t('auth.choose_role')}>
+        <T size={13} color={c.mute}>{t('auth.choose_role_sub')}</T>
+        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginVertical: 12 }}>
+          {ROLES.map(([k, l]) => <Chip key={k} label={l} active={pickRoles.includes(k)} onPress={() => togglePick(k)} />)}
+        </View>
+        {err ? <T color={c.red} size={13} weight="600">{err}</T> : null}
+        <Btn title={t('auth.choose_role_continue')} onPress={finishRole} loading={busy} disabled={busy || !pickRoles.length} accessibilityLabel={t('auth.choose_role_continue')} />
+      </Sheet>
       {onClose ? <Pressable onPress={onClose} style={{ paddingTop: 14, paddingBottom: 2, alignSelf: 'flex-start' }}><T color={c.pink} weight="700">{t('auth.back_arena')}</T></Pressable> : null}
       {copy ? (
         <View style={{ backgroundColor: c.pinkSoft, borderRadius: 18, padding: 16, marginTop: 8, gap: 4 }}>

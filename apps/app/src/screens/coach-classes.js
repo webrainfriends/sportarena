@@ -11,6 +11,8 @@ import { Btn, Card, Empty, ErrorBox, H1, Loading, Screen, Seg, Sheet, T } from '
 import { FormSheet } from '../FormSheet';
 import { PaySheet } from '../PaySheet';
 import { Pill } from './marketplace';
+import { ClassPlanView } from './coach-class-plan';
+import { MenuField } from '../menu-field';
 import { t } from '../i18n';
 import { c, when } from '../theme';
 import { moneyIn } from '../vtime';
@@ -36,7 +38,7 @@ const levelText = (k) => (k.skill.min || k.skill.max ? [k.skill.min, k.skill.max
 
 export function ClassCard({ k, width, onOpen }) {
   return (
-    <Card pad={14} onPress={() => onOpen(k)} style={width ? { width } : undefined} accessibilityLabel={`${k.title}, ${when(k.starts_at)}, ${t('cls.open')}`}>
+    <Card pad={14} onPress={() => onOpen(k)} style={width ? { width } : undefined} accessibilityLabel={[k.title, when(k.starts_at), t('cls.open')].join(', ')}>
       <View style={{ gap: 8 }}>
         <View style={{ flexDirection: 'row', justifyContent: 'space-between', gap: 8, alignItems: 'flex-start' }}>
           <T weight="800" size={16} style={{ flex: 1 }}>{k.sport_emoji} {k.title}</T>
@@ -60,6 +62,7 @@ export function ClassCard({ k, width, onOpen }) {
 /** The class as the signed-in person sees it: join / leave / pay for athletes, seats + attendance + cancel for the coach. */
 export function ClassSheet({ id, onClose, onChanged }) {
   const { user, toast } = useSession();
+  const { push } = useNav();
   const d = useLoad(() => api.get(`/coach/classes/${id}`), [id]);
   const [busy, setBusy] = useState(false), [pay, setPay] = useState(null), [cancelling, setCancelling] = useState(false);
   const k = d.data;
@@ -69,6 +72,7 @@ export function ClassSheet({ id, onClose, onChanged }) {
   const seats = k.my.filter((m) => !['cancelled', 'declined'].includes(m.status));   // my own seat and, for a guardian, each linked child's
   const mine = seats.find((m) => m.user_id === user?.id);
   const started = new Date(k.starts_at) <= new Date();
+  const holdsSeat = seats.some((m) => m.status === 'confirmed');
   const payNow = (m) => setPay({ type: 'coach_class_seat', id: m.seat_id, label: k.title, amount: m.amount_cents, currency: k.currency });
   return (
     <Sheet visible onClose={onClose} title={k.title}>
@@ -83,6 +87,8 @@ export function ClassSheet({ id, onClose, onChanged }) {
         {k.notes ? <T size={14}>{k.notes}</T> : null}
         <T size={12} color={c.mute}>{t('cls.min_note', { n: k.min_participants })} · {t('cls.cancel_policy', { h: k.cancel_before_hours })}</T>
 
+        {k.can_manage && k.status !== 'cancelled' ? <Btn title={t('swk.open')} onPress={() => { onClose(); push('SessionWorkspace', { source_type: 'coach_class', source_id: k.id }); }} accessibilityLabel={t('swk.open')} /> : null}
+        {!k.can_manage && holdsSeat ? <ClassPlanView k={k} /> : null}
         {k.status === 'cancelled' ? <T weight="700" color={c.red}>{t('cls.cancelled')}{k.cancelled_reason ? `: ${k.cancelled_reason}` : ''}</T> : null}
         {k.online_url ? <Btn small title={t('cls.open_link')} color={c.violet} onPress={() => Linking.openURL(k.online_url)} /> : null}
 
@@ -139,7 +145,20 @@ export function ClassSheet({ id, onClose, onChanged }) {
   );
 }
 
-function PublishSheet({ cards, currency, onClose, onDone }) {
+function BookingPick({ v, set, onBook, minutes }) {
+  const l = useLoad(() => (v.starts_at ? api.get('/coach/class-bookings', { starts_at: v.starts_at, duration_minutes: minutes, limit: 50 }) : Promise.resolve([])), [v.starts_at, minutes]);
+  const fits = (l.data ?? []).filter((b) => b.covers);
+  return (
+    <View style={{ gap: 8 }}>
+      <MenuField label={t('cp.booking')} value={v.booking_id ?? ''} onChange={(x) => set('booking_id', x || undefined)} placeholder={v.starts_at ? t('cp.pick_booking') : t('cp.pick_time')} disabled={!v.starts_at || !fits.length}
+        options={fits.map((b) => ({ value: b.booking_id, label: `${b.venue_name} · ${b.court}`, sub: `${when(b.starts_at)} – ${when(b.ends_at)}` }))} hint={t('cp.booking_hint')} />
+      {v.starts_at && l.data && !fits.length ? <T size={13} color={c.sun} weight="700">{t('cp.no_booking')}</T> : null}
+      <Btn small title={t('cp.book_court')} color={c.paper} ink={c.ink} onPress={onBook} accessibilityLabel={t('cp.book_court')} style={{ alignSelf: 'flex-start' }} />
+    </View>
+  );
+}
+
+function PublishSheet({ cards, onClose, onDone, onBook }) {
   const byId = Object.fromEntries(cards.map((x) => [x.id, x]));
   return (
     <FormSheet visible onClose={onClose} title={t('cls.publish')} submitLabel={t('cls.publish')}
@@ -148,7 +167,7 @@ function PublishSheet({ cards, currency, onClose, onDone }) {
         { key: 'rate_card_id', label: t('cls.rate_card'), type: 'chips', options: cards.map((x) => ({ value: x.id, label: x.title })) },
         { key: 'starts_at', label: t('cls.starts'), type: 'datetime', min: new Date().toISOString(), step: 15 },
         { key: 'where', label: t('cls.where'), type: 'choice', options: [{ value: 'venue', label: t('cls.venue') }, { value: 'online', label: t('cls.online') }] },
-        { key: 'venue_id', label: t('cls.venue'), type: 'multimenu', max: 1, placeholder: t('cls.search_venue'), show: (v) => v.where === 'venue', load: async (q) => (await api.get('/venues', { q, limit: 20 })).map((x) => ({ value: x.id, label: x.name, sub: x.city })) },
+        { key: 'booking_id', label: t('cp.booking'), type: 'custom', show: (v) => v.where === 'venue', render: ({ v, set }) => <BookingPick v={v} set={set} onBook={onBook} minutes={byId[v.rate_card_id]?.duration_min ?? 60} /> },
         { key: 'online_url', label: t('cls.online_link'), show: (v) => v.where === 'online', hint: 'https://' },
         { key: 'max_participants', label: t('cls.seats'), type: 'stepper', min: 1, max: 500, default: 10 },
         { key: 'min_participants', label: t('cls.min_people'), type: 'stepper', min: 1, max: 500, default: 1 },
@@ -164,7 +183,7 @@ function PublishSheet({ cards, currency, onClose, onDone }) {
         await api.post('/coach/classes', {
           rate_card_id: v.rate_card_id, starts_at: v.starts_at, max_participants: v.max_participants, min_participants: Math.min(v.min_participants, v.max_participants), audience: v.audience,
           cancel_before_hours: v.cancel_before_hours, min_cutoff_hours: v.min_cutoff_hours, ...(card?.sport ? {} : {}),
-          ...(v.where === 'venue' ? { venue_id: v.venue_id?.[0] } : { online_url: v.online_url }), ...(lv.length ? { skill_min: lv[0], skill_max: lv[lv.length - 1] } : {}), ...(v.notes ? { notes: v.notes } : {}),
+          ...(v.where === 'venue' ? { booking_id: v.booking_id } : { online_url: v.online_url }), ...(lv.length ? { skill_min: lv[0], skill_max: lv[lv.length - 1] } : {}), ...(v.notes ? { notes: v.notes } : {}),
         });
         await onDone(); return t('cls.published');
       }} />
@@ -186,6 +205,7 @@ const Head = ({ eyebrow, title, sub, right }) => (
 /** The coach's "My classes" desk. */
 export function CoachClasses() {
   const { user } = useSession();
+  const { goTab } = useNav();
   const [tab, setTab] = useState('open'), [open, setOpen] = useState(null), [publish, setPublish] = useState(false);
   const list = useLoad(() => api.get('/coach/classes', { mine: true, status: tab, limit: 100 }), [tab]);
   const cards = useLoad(() => api.get('/coach/rate-cards'), []);
@@ -202,7 +222,7 @@ export function CoachClasses() {
         </View>
       )}
       {open ? <ClassSheet id={open} onClose={() => setOpen(null)} onChanged={list.reload} /> : null}
-      {publish ? <PublishSheet cards={groupCards} currency={user.currency} onClose={() => setPublish(false)} onDone={async () => { setPublish(false); await list.reload(); }} /> : null}
+      {publish ? <PublishSheet cards={groupCards} onBook={() => { setPublish(false); goTab('Schedule', { section: 'book' }); }} onClose={() => setPublish(false)} onDone={async () => { setPublish(false); await list.reload(); }} /> : null}
     </Screen>
   );
 }

@@ -5,6 +5,7 @@ import React, { useState } from 'react';
 import { Platform, Pressable, View } from 'react-native';
 import { api } from '../api';
 import { useLoad } from '../hooks';
+import { useMyCurrency } from '../my-currency';
 import { useSession } from '../session';
 import { useNav } from '../nav';
 import { Avatar, Btn, Card, Chip, Empty, ErrorBox, Loading, Screen, Section, Seg, T } from '../ui';
@@ -15,7 +16,7 @@ import { c } from '../theme';
 import { t } from '../i18n';
 import { addDays, moneyIn, todayIn, WEEKDAYS } from '../vtime';
 import { LoyaltyConsole } from './rewards';
-import { CoachLatePayments, CoachSubscribers } from './coach-subscriptions';
+import { CoachLatePayments, CoachPackageBuyers, CoachSubscribers, isRedeemablePack } from './coach-subscriptions';
 
 const deviceTz = (() => { try { return Intl.DateTimeFormat().resolvedOptions().timeZone; } catch { return 'UTC'; } })();
 const LEVELS = ['beginner', 'amateur', 'semi_pro', 'pro'].map((value) => ({ value, label: nice(value).replace(/^./, (x) => x.toUpperCase()) }));
@@ -29,7 +30,7 @@ function CardSheet({ card, specs, currency, onClose, onDone }) {
   const edit = !!card;
   return (
     <FormSheet visible onClose={onClose} title={edit ? 'Edit rate card' : 'New rate card'} submitLabel={edit ? 'Save changes' : 'Add rate card'}
-      initial={edit ? { ...card, block_discount_pct: Number(card.block_discount_pct ?? 0), sport: card.sport_slug ?? undefined, specialisation_id: card.specialisation_id ?? undefined, description: card.description ?? undefined } : { audience: 'individual', delivery: 'in_person', unit: 'hour', duration_min: 60, min_participants: 1, max_participants: 20, sessions_included: 5, active: true }}
+      initial={edit ? { ...card, pkg_expires: card.valid_days != null, block_discount_pct: Number(card.block_discount_pct ?? 0), sport: card.sport_slug ?? undefined, specialisation_id: card.specialisation_id ?? undefined, description: card.description ?? undefined } : { audience: 'individual', delivery: 'in_person', unit: 'hour', duration_min: 60, min_participants: 1, max_participants: 20, sessions_included: 5, active: true }}
       fields={[
         { key: 'title', label: 'Name of this service' },
         { key: 'audience', label: 'Who it is for', type: 'chips', hint: undefined, options: AUDIENCES.map(([value, label]) => ({ value, label })) },
@@ -43,6 +44,8 @@ function CardSheet({ card, specs, currency, onClose, onDone }) {
         { key: 'min_participants', label: 'Fewest people', type: 'stepper', min: 1, max: 500, default: 1, show: (v) => v.audience !== 'individual' },
         { key: 'max_participants', label: 'Most people', type: 'stepper', min: 1, max: 500, default: 20, show: (v) => v.audience !== 'individual' },
         { key: 'sessions_included', label: 'Sessions in the package', type: 'stepper', min: 1, max: 500, default: 5, show: (v) => v.unit === 'package' },
+        { key: 'pkg_expires', label: t('pkg.fieldExpires'), type: 'switch', default: true, show: (v) => v.unit === 'package' },
+        { key: 'valid_days', label: t('pkg.fieldDays'), type: 'stepper', min: 1, max: 1825, step: 7, default: 90, hint: t('pkg.fieldDaysHint'), show: (v) => v.unit === 'package' && v.pkg_expires !== false },
         { key: 'sessions_included', label: t('coachSub.fieldSessions'), type: 'stepper', min: 1, max: 100, default: 4, show: (v) => v.unit === 'month' },
         { key: 'rollover_max', label: t('coachSub.fieldRollover'), type: 'stepper', min: 0, max: 100, default: 0, hint: t('coachSub.fieldRolloverHint'), show: (v) => v.unit === 'month' },
         { key: 'grace_days', label: t('coachSub.fieldGrace'), type: 'stepper', min: 0, max: 30, default: 3, suffix: ' d', hint: t('coachSub.fieldGraceHint'), show: (v) => v.unit === 'month' },
@@ -58,7 +61,7 @@ function CardSheet({ card, specs, currency, onClose, onDone }) {
         const body = { title: v.title, audience: v.audience, delivery: v.delivery, unit: v.unit, price_cents: v.price_cents, per_person: v.unit !== 'month' && !!v.per_person && (v.audience === 'group' || v.audience === 'event'), is_intro: !!v.is_intro, ...(v.is_intro ? { intro_scope: v.intro_scope ?? 'coach' } : {}), active: v.active !== false,
           block_discount_pct: v.is_intro ? 0 : Number(v.block_discount_pct ?? 0), block_min_sessions: Number(v.block_min_sessions ?? 4), allow_pay_per_date: v.allow_pay_per_date !== false,
           ...(v.sport ? { sport: v.sport } : {}), ...(v.specialisation_id ? { specialisation_id: v.specialisation_id } : {}), ...(v.description ? { description: v.description } : {}),
-          ...(v.unit === 'session' || v.unit === 'day' ? { duration_min: v.duration_min } : {}), ...(v.unit === 'package' ? { sessions_included: v.sessions_included } : {}),
+          ...(v.unit === 'session' || v.unit === 'day' ? { duration_min: v.duration_min } : {}), ...(v.unit === 'package' ? { sessions_included: v.sessions_included, valid_days: v.pkg_expires === false ? null : Number(v.valid_days ?? 90) } : {}),
           ...(v.unit === 'month' ? { sessions_included: v.sessions_included ?? 4, rollover_max: v.rollover_max ?? 0, grace_days: v.grace_days ?? 3 } : {}),
           ...(v.audience !== 'individual' ? { min_participants: v.min_participants, max_participants: v.max_participants } : { min_participants: 1 }) };
         if (edit) await api.patch(`/coach/rate-cards/${card.id}`, body); else await api.post('/coach/rate-cards', body);
@@ -83,10 +86,12 @@ function SpecSheet({ spec, onClose, onDone }) {
 export function CoachRates() {
   const { toast } = useSession();
   const cards = useLoad(() => api.get('/coach/rate-cards'), []);
+  const sellsPacks = (cards.data ?? []).some(isRedeemablePack);
   const specs = useLoad(() => api.get('/coach/specialisations'), []);
   const [sheet, setSheet] = useState(null), [spec, setSpec] = useState(null), [retire, setRetire] = useState(null);
   const reload = () => Promise.all([cards.reload(), specs.reload()]);
-  const cur = cards.data?.[0]?.currency ?? 'INR';
+  const myCur = useMyCurrency();
+  const cur = myCur;   // new cards are priced in the coach's country currency; each existing card shows its own
   const toggle = async (k) => { try { await api.patch(`/coach/rate-cards/${k.id}`, { active: !k.active }); await reload(); toast(k.active ? 'Switched off — hidden from booking' : 'Live again'); } catch (e) { toast(e.message); } };
   return (
     <Screen onRefresh={reload}>
@@ -117,6 +122,7 @@ export function CoachRates() {
         ))}
       </View>
 
+      {sellsPacks ? <CoachPackageBuyers /> : null}
       {cards.data?.some((k) => k.unit === 'month') ? <><CoachSubscribers /><CoachLatePayments /></> : null}
 
       <Section title="Specialisations" action="+ Add" onAction={() => setSpec({})}>
@@ -134,7 +140,7 @@ export function CoachRates() {
           </Card>
         ))}
       </Section>
-      {sheet ? <CardSheet card={sheet.id ? sheet : null} specs={specs.data ?? []} currency={cur} onClose={() => setSheet(null)} onDone={reload} /> : null}
+      {sheet ? <CardSheet card={sheet.id ? sheet : null} specs={specs.data ?? []} currency={sheet.id ? sheet.currency : myCur} onClose={() => setSheet(null)} onDone={reload} /> : null}
       {spec ? <SpecSheet spec={spec.id ? spec : null} onClose={() => setSpec(null)} onDone={reload} /> : null}
       <Confirm visible={!!retire} title="Retire this rate card?" yes="Retire" danger onClose={() => setRetire(null)} body="It disappears from your profile and from booking. Sessions already booked on it stay on record."
         onYes={async () => { try { await api.patch(`/coach/rate-cards/${retire.id}`, { archive: true }); setRetire(null); await reload(); toast('Retired'); } catch (e) { toast(e.message); } }} />
@@ -179,7 +185,8 @@ export function CoachCommitments() {
   const when = (x) => `${x.weekdays.length ? x.weekdays.map((d) => WEEKDAYS[d]).join(', ') : dayText(x.starts_on)} · ${x.timezone === 'UTC' ? '' : ''}${String(Math.floor(x.start_min / 60)).padStart(2, '0')}:${String(x.start_min % 60).padStart(2, '0')} · ${x.duration_min} min`;
   const log = async (x, on_date, status) => { try { await api.post(`/coach/commitments/${x.id}/log`, { on_date, status }); await list.reload(); toast(status === 'delivered' ? 'Logged as delivered' : 'Marked as not held'); } catch (e) { toast(e.message); } };
   const move = async () => { try { await api.patch(`/coach/commitments/${act.x.id}`, { status: act.status }); setAct(null); await list.reload(); toast('Updated'); } catch (e) { toast(e.message); setAct(null); } };
-  const cur = list.data?.[0]?.currency ?? 'INR';
+  const myCur = useMyCurrency();
+  const cur = myCur;   // a new commitment is priced in the coach's country currency; each existing one shows its own
   return (
     <Screen onRefresh={list.reload}>
       <Head eyebrow="COACH" title="Contracts & commitments" sub="Seasons, retainers, events and blocked time. They fill your schedule and keep athletes from booking over them." right={<Btn small title="+ New" onPress={() => setAdd(true)} />} />
@@ -322,7 +329,8 @@ export function CoachAnalytics() {
   const [days, setDays] = useState(90);
   const to = todayIn(deviceTz), from = addDays(to, -(days - 1));
   const a = useLoad(() => api.get('/coach/analytics', { from, to }), [days]);
-  const d = a.data, cur = d?.currency ?? 'INR';
+  const myCur = useMyCurrency();
+  const d = a.data, cur = d?.currency ?? myCur;
   const money = (x) => moneyIn(Number(x ?? 0), cur);
   const download = async () => {
     try {

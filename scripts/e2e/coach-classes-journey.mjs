@@ -32,17 +32,27 @@ const wait = (p, ms = 1200) => p.waitForTimeout(ms);
 
 const R = Date.now().toString(36); // handles are unique per run: the throwaway database is never reset
 const inH = (h) => new Date(Date.now() + h * 36e5).toISOString();
+// a class at a venue runs on a court booked through the normal booking flow: open the venue, add a court, book it as the coach, return the booking
+const courtBooking = async (mgr, venue, coach, startsAt, hours = 2) => {
+  await call('POST', `/venues/${venue.id}/hours`, { token: mgr.token, body: { hours: [0, 1, 2, 3, 4, 5, 6].map((weekday) => ({ weekday, opens: '06:00', closes: '22:00' })) } });
+  const court = await call('POST', `/venues/${venue.id}/resources`, { token: mgr.token, body: { kind: 'court', name: 'Court 1', hourly_rate_cents: 50000, max_players: 10 } });
+  const res = await call('POST', '/reservations', { token: coach.token, body: { items: [{ resource_id: court.id, starts_at: startsAt, ends_at: new Date(+new Date(startsAt) + hours * 36e5).toISOString() }] } });
+  return (await call('GET', `/reservations/${res.id}`, { token: coach.token })).bookings[0].id;
+};
+const at10 = (days) => { const d = new Date(); d.setUTCDate(d.getUTCDate() + days); d.setUTCHours(10, 0, 0, 0); return d.toISOString(); };
+
 try {
   const coach = await reg(`cc_c${R}`, 'Coach Meera', ['coach']), mgr = await reg(`cc_m${R}`, 'Venue Admin', ['venue_manager']);
   const people = []; for (const [i, nm] of ['Asha Rao', 'Dev Patel', 'Isha Nair', 'Kabir Shah', 'Lena Roy'].entries()) people.push(await reg(`cc_p${i}${R}`, nm));
   const joiners = {}; for (const v of ['phone', 'tablet', 'desktop']) joiners[v] = await reg(`cc_j${v[0]}${R}`, 'Mira Kapoor');
   await call('POST', '/me/sport-profiles', { token: coach.token, body: { sport: 'badminton', role: 'coach', level: 'pro', hourly_rate_cents: 80000 } });
   await call('POST', '/me/sport-profiles', { token: coach.token, body: { sport: 'football', role: 'coach', level: 'pro', hourly_rate_cents: 80000 } });
-  const venue = await call('POST', '/venues', { token: mgr.token, body: { name: `Smash Arena ${R}`, city: 'Pune', timezone: 'Asia/Kolkata', latitude: 18.52, longitude: 73.85 } });
+  const venue = await call('POST', '/venues', { token: mgr.token, body: { name: `Smash Arena ${R}`, city: 'Pune', timezone: 'UTC', latitude: 18.52, longitude: 73.85 } });
   const card = (b) => call('POST', '/coach/rate-cards', { token: coach.token, body: { audience: 'group', unit: 'session', duration_min: 60, per_person: true, min_participants: 2, max_participants: 8, delivery: 'both', ...b } });
   const badm = await card({ title: 'Badminton footwork clinic', sport: 'badminton', price_cents: 45000 });
   const foot = await card({ title: 'Five-a-side passing', sport: 'football', price_cents: 0 });
-  const k1 = await call('POST', '/coach/classes', { token: coach.token, body: { rate_card_id: badm.id, starts_at: inH(30), venue_id: venue.id, max_participants: 6, min_participants: 3, skill_min: 'beginner', skill_max: 'amateur', notes: 'Bring non-marking shoes. Shuttles provided.' } });
+  const booking = await courtBooking(mgr, venue, coach, at10(2));
+  const k1 = await call('POST', '/coach/classes', { token: coach.token, body: { rate_card_id: badm.id, starts_at: at10(2), booking_id: booking, max_participants: 6, min_participants: 3, skill_min: 'beginner', skill_max: 'amateur', notes: 'Bring non-marking shoes. Shuttles provided.' } });
   const k2 = await call('POST', '/coach/classes', { token: coach.token, body: { rate_card_id: foot.id, starts_at: inH(76), online_url: 'https://meet.example.com/passing', max_participants: 8, min_participants: 2, title: 'Passing patterns (online walkthrough)' } });
   for (const p of people.slice(0, 5)) await call('POST', `/coach/classes/${k1.id}/join`, { token: p.token, body: {} });
   await call('POST', `/coach/classes/${k2.id}/join`, { token: people[0].token, body: {} });

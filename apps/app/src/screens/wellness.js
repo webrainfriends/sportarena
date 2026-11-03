@@ -12,6 +12,7 @@ import { todayIn } from '../vtime';
 import { saveDraft, saveMessage } from '../offline';
 import { ReadinessExplainer } from './readiness-explainer';
 import { LoadHistory } from './load-history';
+import { WearablesPanel } from './wearables';
 
 const deviceTz = (() => { try { return Intl.DateTimeFormat().resolvedOptions().timeZone; } catch { return 'UTC'; } })();
 const nice = (s) => String(s).replace(/_/g, ' ');
@@ -308,6 +309,7 @@ export function RecoveryPanel() {
       <WorkloadCard wl={wl} onChanged={all} />
       <LoadHistory version={ver} onChanged={all} />
       <Card pad={16}><T weight="800" size={16} style={{ marginBottom: 10 }}>Sleep & hydration</T><SleepHydration hist={hist} /></Card>
+      <WearablesPanel />
       <T size={12} color={c.mute}>Only you can see this. Notes are encrypted and every read is logged. Readiness is guidance, not medical advice; see a physio or doctor for pain that does not settle.</T>
       <QuickLogSheet visible={quick} onClose={() => setQuick(false)} onDone={all} />
     </View>

@@ -13,6 +13,7 @@ import { useLayout } from '../layout';
 import { MapLinks, placeIn, placeOut } from '../place-picker';
 import { openPdf } from '../open-file';
 import { useNav } from '../nav';
+import { TravelBookings } from './trip-booking';
 
 const uid = () => `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
 export const MODE = { air: '✈️ Air', rail: '🚆 Rail', coach: '🚌 Coach', car: '🚗 Car / van', ferry: '⛴️ Ferry', local_transfer: '🚕 Local transfer', other: '🧭 Other' };
@@ -193,6 +194,7 @@ export function ItineraryTab({ id, data, reload }) {
     <View style={{ gap: 12 }}>
       <Head title="Transport" sub={`Times are shown in the zone of each place. Trip zone: ${tz0.replace(/_/g, ' ')}.`} action={you.ops && open ? <Btn small title="＋ Add a leg" onPress={() => setAdd(true)} /> : null} />
       <SuppliersCard id={id} data={data} reload={reload} purpose="travel" />
+      <TravelBookings id={id} data={data} kind="air" reload={reload} />
       <Block state={st}>{(legs) => (!legs.length ? <Empty emoji="🧳" title="No transport yet" sub={you.ops ? 'Add each leg: flight, train, coach, ferry or local transfer.' : 'Nothing has been planned for you yet.'} /> : (
         <Grid>{legs.map((s) => (
           <Card key={s.id} pad={14} accessibilityLabel={`${MODE[s.mode]} from ${s.origin} to ${s.destination}, ${s.status}`}>
@@ -262,6 +264,7 @@ export function StayTab({ id, data, reload }) {
     <View style={{ gap: 12 }}>
       <Head title="Stay & rooming" sub={you.ops ? 'Staff see the full rooming list. Room numbers and roommates of young travellers are never shown to other travellers.' : 'You see your own room. Others\' rooms stay private.'} action={you.ops && open ? <Btn small title="＋ Add a stay" onPress={() => setAdd(true)} /> : null} />
       <SuppliersCard id={id} data={data} reload={reload} purpose="accommodation" />
+      <TravelBookings id={id} data={data} kind="stay" reload={reload} />
       <Block state={st}>{(stays) => (!stays.length ? <Empty emoji="🏨" title="No accommodation yet" sub={you.ops ? 'Add the hotel or lodging, then its rooms.' : 'Your stay has not been shared yet.'} /> : (
         <Grid>{stays.map((s) => (
           <Card key={s.id} pad={14}>

@@ -9,6 +9,7 @@ import { useSession } from '../session';
 import { useNav } from '../nav';
 import { Btn, Card, Chip, Empty, ErrorBox, H1, Loading, Screen, T, Tag } from '../ui';
 import { HScroll } from '../pickers';
+import { t } from '../i18n';
 import { useLayout } from '../layout';
 import { c } from '../theme';
 import { dateTimeIn } from '../vtime';
@@ -126,6 +127,7 @@ export function MyDevelopment({ child_id, name }) {
         {child_id ? 'Read-only. Only what their coach chose to share with them. Private notes never appear here.' : 'Everything your coach has set or shared with you, in one place. Each item shows who it is from and what kind of record it is. Private coach notes never appear.'}
       </T>
       <Btn small title={child_id ? 'Open assistant' : 'Ask the assistant'} accessibilityLabel={child_id ? 'Open assistant for this young person' : 'Ask the assistant'} onPress={() => push('PlayerAssistant', child_id ? { child_id, name } : {})} style={{ alignSelf: 'flex-start', marginTop: 10 }} />
+      <Btn small title={t('nav.title.MyEvaluations')} color={c.paper} ink={c.ink} onPress={() => push('MyEvaluations', child_id ? { athlete_id: child_id } : {})} accessibilityLabel={t('nav.title.MyEvaluations')} style={{ marginTop: 8, alignSelf: 'flex-start' }} />
       {d.loading && !data ? <Loading /> : d.error ? <ErrorBox error={d.error} onRetry={d.reload} /> : !data.consent ? (
         <>
           <Empty emoji="🔒" title="Coaching sharing is off" sub={data.note} />

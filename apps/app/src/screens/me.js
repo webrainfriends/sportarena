@@ -3,6 +3,8 @@ import { Platform, Pressable, View } from 'react-native';
 import { api, MCP_URL } from '../api';
 import { useLoad } from '../hooks';
 import { useSession } from '../session';
+import { MenuField } from '../menu-field';
+import { t } from '../i18n';
 import { useNav } from '../nav';
 import { Avatar, Btn, Card, Chip, GradCard, H1, Screen, Section, T, Tag } from '../ui';
 import { FormSheet } from '../FormSheet';
@@ -46,6 +48,13 @@ export function Me() {
       </View>
       <Section title="Your roles" color={c.cyan}>
         <T size={13} color={c.mute}>One login, several roles. Switch the role you are working as on Home; each role has its own Today, Actions, Calendar, Inbox, Work and Insights.</T>
+        {user.roles.filter(isEditableRole).length > 1 ? (
+          <View style={{ marginTop: 10 }}>
+            <MenuField label={t('me.default_role')} hint={t('me.default_role_hint')} value={user.default_role ?? ''}
+              options={user.roles.filter(isEditableRole).map((r) => ({ value: r, label: roleLabel(r) }))}
+              onChange={async (role) => { try { await api.patch('/me/default-role', { role }); await refresh(); toast(t('me.default_role')); } catch (e) { toast(e.message); } }} />
+          </View>
+        ) : null}
         <View style={{ flexDirection: 'row', gap: 8, flexWrap: 'wrap', marginTop: 10 }}>
           <Btn small title="Open my command centre" onPress={() => goTab('Home')} />
           <Btn small title="Add or remove roles" color={c.paper} ink={c.ink} onPress={() => setRolesForm(true)} />
@@ -93,7 +102,7 @@ export function Me() {
           // only roles the person manages themselves are sent; platform roles are never part of this form
           await api.patch('/me/roles', { add: next.filter((r) => isEditableRole(r) && !user.roles.includes(r)), remove: user.roles.filter((r) => isEditableRole(r) && !next.includes(r)) });
           const me = await refresh();
-          if (!me.roles.includes(activeRole)) setActiveRole(me.roles[0]);
+          if (!me.roles.includes(activeRole)) setActiveRole(me.default_role ?? me.roles[0]);
           if (next.includes('insurer') && !user.roles.includes('insurer')) { setActiveRole('insurer'); push('InsurerDesk'); return 'Insurer role added: set up your profile'; }
           return 'Roles updated';
         }} />

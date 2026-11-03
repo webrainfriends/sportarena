@@ -3,7 +3,8 @@ import { cap, id, page } from '../registry.js';
 import { one, many, query } from '../db.js';
 import { badRequest, conflict, forbidden, notFound } from '../errors.js';
 import { isSupportedCurrency } from '../currency.js';
-import { isAdmin, mustFind, mustOwn, PUBLIC_USER, sportBySlugOrId } from '../helpers.js';
+import { assertOrgCapacity } from '../commercial/engine.js';
+import { isAdmin, audit, mustFind, mustOwn, PUBLIC_USER, sportBySlugOrId } from '../helpers.js';
 import { hiddenYouth, requireConsent, YOUTH_SQL } from '../youth.js';
 import { hasOrgGrant, orgFor } from '../org-access.js';
 import { closeRosterStint, openRosterStint } from '../career.js';
@@ -35,11 +36,15 @@ cap({
   input: z.object({ name: z.string().min(2).max(60), sport: z.string(), emoji: z.string().max(8).optional(), color: color.optional(), city: z.string().max(80).optional(), description: z.string().max(500).optional(), currency: z.string().length(3).toUpperCase().optional().describe('settlement currency, default INR'), organisation_id: id.optional().describe('create it inside an organisation or academy you run (owner/admin); you stay the team owner') }),
   async handler({ user }, i) {
     if (i.currency && !isSupportedCurrency(i.currency)) throw badRequest('Unsupported currency');
-    if (i.organisation_id) await orgFor(user, i.organisation_id, ['owner', 'admin'], { write: true });
+    if (i.organisation_id) {
+      await orgFor(user, i.organisation_id, ['owner', 'admin'], { write: true });
+      await assertOrgCapacity(i.organisation_id, 'teams'); // the organisation's plan decides how many teams it may run
+    }
     const sport = await sportBySlugOrId(i.sport);
     if (!sport) throw notFound('Sport');
     const t = await one('INSERT INTO teams(name, sport_id, owner_id, emoji, color, city, currency, description, organisation_id) VALUES ($1,$2,$3,coalesce($4,\'🔥\'),coalesce($5,\'#7C4DFF\'),$6,coalesce($7,\'INR\'),$8,$9) RETURNING *', [i.name, sport.id, user.id, i.emoji, i.color, i.city, i.currency, i.description, i.organisation_id ?? null]);
     await query("INSERT INTO team_members(team_id, user_id, role) VALUES ($1,$2,'manager')", [t.id, user.id]);
+    await audit(null, user.id, 'create_team', 'teams', t.id);
     return t;
   },
 });

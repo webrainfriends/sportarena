@@ -106,7 +106,7 @@ cap({
        VALUES ($1,$2,$3,$4,$5, ${SECTION_FLAGS.map((_, n) => `$${n + 6}`).join(', ')}, now() + $${SECTION_FLAGS.length + 6} * interval '1 day', $${SECTION_FLAGS.length + 7}) RETURNING ${COLS}`,
       [owner, user.id, sha256(token), i.label || null, i.recipient_id ?? null, ...SECTION_FLAGS.map((k) => i[k]), i.expires_in_days, i.playlist_id ?? null]);
     const path = `/?passport=${encodeURIComponent(token)}`;
-    return { ...row, token, path, url: config.appUrl ? `${String(config.appUrl).replace(/\/$/, '')}${path}` : null };
+    return { ...row, token, path, url: `${String(config.appUrl ?? config.apiPublicUrl).replace(/\/$/, '')}${path}` };
   },
 });
 

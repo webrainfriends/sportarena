@@ -14,6 +14,9 @@
     "@expo/metro-runtime": "~57.0.16",
     "@mediapipe/tasks-vision": "^0.10.14",
     "@react-native-community/datetimepicker": "^9.1.0",
+    "@react-navigation/bottom-tabs": "^7.21.0",
+    "@react-navigation/native": "^7.5.1",
+    "@react-navigation/native-stack": "^7.21.0",
     "expo": "~57.0.27",
     "expo-apple-authentication": "~57.0.2",
     "expo-audio": "~57.0.5",
@@ -41,6 +44,7 @@
     "react-native": "0.86.3",
     "react-native-maps": "^1.29.11",
     "react-native-safe-area-context": "~5.7.0",
+    "react-native-screens": "~4.26.0",
     "react-native-svg": "^15.15.4",
     "react-native-web": "0.21.2"
   }

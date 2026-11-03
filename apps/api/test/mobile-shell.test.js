@@ -78,7 +78,7 @@ test('the device lock is native-only, asks for one successful check before turni
 test('every fast action is at least 44pt and labelled for screen readers', () => {
   const home = read('screens/role-home.js');
   assert.match(home, /minHeight: 88/);
-  assert.match(home, /accessibilityRole="button" accessibilityLabel=\{a\.label\}/);
+  assert.match(home, /accessibilityRole="button" accessibilityLabel=\{(a\.label|actionLabel\(role, a\))\}/);
   assert.match(home, /accessibilityLiveRegion="polite"/);
 });
 
@@ -90,7 +90,7 @@ test('Work is the role\'s one workspace: no "All tools" button, the swivel\'s Wo
   const { workspacesFor, orderedModules } = new Function(catalog)();
   assert.deepEqual(workspacesFor(['coach', 'sponsor', 'athlete']).map((w) => w[0]), ['coach', 'sponsor', 'athlete'], 'every held role has a workspace in the swivel');
   assert.deepEqual(workspacesFor([]), []);
-  assert.deepEqual(workspacesFor(['platform_admin']).map((w) => w[0]), ['platform_admin', 'platform_admin']); // the commercial console and the keys & audit console
+  assert.deepEqual(workspacesFor(['platform_admin']).map((w) => w[0]), ['platform_admin', 'platform_admin', 'platform_admin']); // the commercial console, integration requests and the keys & audit console
   assert.deepEqual(workspacesFor(['athlete'], true).map((w) => w[0]), ['venue_manager', 'athlete'], 'a front-desk cashier still reaches the desk, next to the workspace of the role they hold');
   assert.ok(orderedModules(['coach']).some((m) => m[0] === 'Workspace'));
   assert.ok(!orderedModules([]).some((m) => m[0] === 'Workspace'));

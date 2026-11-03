@@ -8,7 +8,7 @@ import { badgesFor } from './verification.js';
 import { commitmentBusy } from './coach-commitments.js';
 import { toLocal } from './booking/time.js';
 
-export const PERMS = ['schedule', 'attendance', 'roster', 'timesheets', 'payroll', 'safeguarding'];
+export const PERMS = ['schedule', 'attendance', 'roster', 'timesheets', 'payroll', 'safeguarding', 'suppliers'];
 export const ADMINS = ['owner', 'admin'];
 
 /** Job-title templates: a starting permission set. Access is only ever the stored permissions, so templates never proliferate roles. */
@@ -20,7 +20,7 @@ export const TEMPLATES = {
   assistant_coach: { title: 'Assistant coach', permissions: ['attendance'] },
   programme_lead: { title: 'Programme lead', permissions: ['schedule', 'attendance', 'roster'] },
   registrar: { title: 'Registrar / front desk', permissions: ['attendance', 'roster'] },
-  operations: { title: 'Operations manager', permissions: ['schedule', 'attendance', 'roster', 'timesheets'] },
+  operations: { title: 'Operations manager', permissions: ['schedule', 'attendance', 'roster', 'timesheets', 'suppliers'] },
   payroll: { title: 'Finance / payroll', permissions: ['timesheets', 'payroll'] },
   safeguarding: { title: 'Safeguarding / youth coordinator', permissions: ['roster', 'safeguarding'] },
   medical_liaison: { title: 'Medical liaison (operational cover only, no clinical records)', permissions: ['roster'] },

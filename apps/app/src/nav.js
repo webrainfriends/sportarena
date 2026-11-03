@@ -1,5 +1,7 @@
-import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
+import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import { BackHandler, Platform } from 'react-native';
+import { createNavigationContainerRef, StackActions } from '@react-navigation/native';
+import { FocusCtx } from './hooks';
 
 const Ctx = createContext(null);
 const LEGACY_TABS = { Play: 'Explore', Book: 'Schedule', Hub: 'Home' }; // Hub (the old More page) is now the wheel overlay
@@ -46,3 +48,62 @@ export function NavProvider({ children }) {
   const value = useMemo(() => ({ tab, tabParams, stack, menu, toggleMenu, closeMenu, push, back, goTab, replace }), [tab, tabParams, stack, menu, toggleMenu, closeMenu, push, back, goTab, replace]);
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
 }
+
+// ------------------------------------------------------------------------------------------------------------------------------------------------
+// The signed-in app runs on a native stack with tabs (React Navigation). Screens keep calling useNav(): push / back / goTab / replace work as they
+// always did, but now drive the navigators below through this ref, so they are stable functions (a screen does not re-render when someone navigates).
+// The tiny provider above still owns the More wheel and serves the signed-out public pages; NavBridge overrides it inside the navigators.
+export const navRef = createNavigationContainerRef();
+const waiting = []; // actions asked for before the navigators exist (a tapped notification on a cold start)
+const act = (fn) => { if (navRef.isReady()) fn(); else waiting.push(fn); };
+/** Called when the navigators are ready: runs what was asked for early. */
+export const flushNavigation = () => { while (waiting.length) waiting.shift()(); };
+const web = Platform.OS === 'web';
+
+export function NavBridge({ children }) {
+  const { menu, toggleMenu, closeMenu } = useContext(Ctx);
+  const push = useCallback((name, params = {}) => {
+    closeMenu();
+    act(() => { navRef.dispatch(StackActions.push(name, params)); if (web) history.pushState({ n: 1 }, ''); });
+  }, [closeMenu]);
+  const back = useCallback(() => act(() => { if (navRef.canGoBack()) navRef.goBack(); }), []);
+  // names the API or old links may still use: Play became Explore, Book became Schedule
+  const goTab = useCallback((t, params = {}) => {
+    closeMenu();
+    act(() => navRef.dispatch(StackActions.popTo('Tabs', { screen: LEGACY_TABS[t] ?? t, params: { ...params, _at: Date.now() } })));
+  }, [closeMenu]);
+  const replace = useCallback((name, params = {}) => {
+    act(() => {
+      // on a tab root there is nothing to replace: open it on top, as before
+      if (navRef.getRootState()?.routes?.[navRef.getRootState().index]?.name === 'Tabs') navRef.dispatch(StackActions.push(name, params));
+      else navRef.dispatch(StackActions.replace(name, params));
+    });
+  }, []);
+  // the browser's back button goes back one screen (the address bar never changes)
+  useEffect(() => {
+    if (!web) return undefined;
+    const onPop = () => { if (navRef.isReady() && navRef.canGoBack()) navRef.goBack(); };
+    window.addEventListener('popstate', onPop);
+    return () => window.removeEventListener('popstate', onPop);
+  }, []);
+  const value = useMemo(() => ({ menu, toggleMenu, closeMenu, push, back, goTab, replace, stack: [], tab: undefined, tabParams: {} }), [menu, toggleMenu, closeMenu, push, back, goTab, replace]);
+  return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
+}
+
+/** Wraps a screen so the data it loads refreshes when the person comes back to it (see useLoad). */
+export function FocusScope({ navigation, children }) {
+  const [tick, setTick] = useState(0);
+  useEffect(() => navigation.addListener('focus', () => setTick((n) => n + 1)), [navigation]);
+  return <FocusCtx.Provider value={tick}>{children}</FocusCtx.Provider>;
+}
+
+/** The tab that is showing, for the custom tab bar (it sits above the navigators). The container calls syncActiveTab on ready and on every change. */
+let activeTab = 'Home';
+const tabListeners = new Set();
+export function syncActiveTab() {
+  const root = navRef.isReady() ? navRef.getRootState() : null;
+  const tabs = root?.routes?.find((r) => r.name === 'Tabs');
+  const next = (tabs?.state ? tabs.state.routes[tabs.state.index]?.name : tabs?.params?.screen) ?? 'Home';
+  if (next !== activeTab) { activeTab = next; tabListeners.forEach((fn) => fn()); }
+}
+export const useActiveTab = () => useSyncExternalStore((fn) => { tabListeners.add(fn); return () => tabListeners.delete(fn); }, () => activeTab, () => 'Home');

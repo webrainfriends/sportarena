@@ -20,7 +20,7 @@ or a mismatch**; it is listed under `missing` with who can add it (`player` or `
 | eligibility | age band (`min_age`/`max_age`) with the player's age, registration deadline, and for sponsor calls: athlete targets, verified-only, minors not accepted | any failing eligibility rule makes the result `ineligible` |
 
 `score` = weight of matched rules / weight of known rules (sport 3, eligibility 3, position 2, level 2, region 1.5, availability 1.5, cost 1);
-`null` when nothing could be checked. `fit` is `strong` (>=75), `possible` (>=50), `weak`, `unknown` or `ineligible`.
+`null` (fit `unknown`) when no rule other than the sport could be checked: a matching sport alone is never a fit. `fit` is `strong` (>=75), `possible` (>=50), `weak`, `unknown` or `ineligible`.
 Order: fit group, score, soonest date, id. Each kind reads its newest 200 candidates; `pool_full` lists kinds that hit the cap.
 
 ## Endpoints (REST + OpenAPI + MCP, tag `Opportunities`; all read scope)

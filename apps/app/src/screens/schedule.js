@@ -65,13 +65,13 @@ export function EventsWorkspace() {
 }
 
 /** Schedule tab: create, book, track and manage in one place. `section` (via goTab) opens a specific part. */
-export function Schedule({ section }) {
+export function Schedule({ section, sport, _at }) {   // _at changes on every goTab, so choosing the same section again still resets it (the tab stays mounted)
   const { push } = useNav();
   const { gutter, contentMax } = useLayout();
   const [sec, setSec] = useState(section ?? lastSection);
   const [form, setForm] = useState(null);
   const [tick, setTick] = useState(0);
-  useEffect(() => { if (section) { lastSection = section; setSec(section); } }, [section]);
+  useEffect(() => { if (section) { lastSection = section; setSec(section); } }, [section, _at]);
   const pick = (v) => { lastSection = v; setSec(v); };
   const created = () => setTick((n) => n + 1);
 
@@ -90,7 +90,7 @@ export function Schedule({ section }) {
         <HScroll>{actions.map(([emoji, label, go]) => <Chip key={label} label={`${emoji} ${label}`} onPress={go} />)}</HScroll>
         <Seg options={SECTIONS.map(([value, label]) => ({ value, label }))} value={sec} onChange={pick} color={c.pink} />
       </View>
-      <View style={{ flex: 1 }}><Body key={`${sec}${tick}`} onCreate={() => setForm('event')} /></View>
+      <View style={{ flex: 1 }}><Body key={`${sec}${tick}${sport ?? ''}`} sport={sport} onCreate={() => setForm('event')} /></View>
       <StartTeamSheet visible={form === 'team'} onClose={() => setForm(null)} onCreated={created} />
       <CreateEvent visible={form === 'event'} onClose={() => setForm(null)} onCreated={(e) => { created(); push('EventCommand', { id: e.id }); }} />
     </View>

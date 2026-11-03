@@ -23,8 +23,11 @@ Other modules obtain a figure with `computeKpi` / `kpiValue` (same live access c
 | `sponsor_fulfilment` | accepted / due deliverables (cancelled and excepted removed) | + event, brand |
 | `venue_utilisation` | confirmed booked minutes / opening-hour minutes (venue time zone) | platform, organisation, venue |
 | `athlete_availability` | share of active squad players whose status is `available` now; groups under 5 hidden outside a team you manage; no clinical data read | platform, organisation, team |
+| `first_completed_activity`, `repeat_participants`, `activation_rate`, `vacancy_fill_rate`, `booking_failure_rate`, `payment_failure_rate`, `provider_earnings` | growth & participation metrics added in #73 | see [`growth-analytics.md`](growth-analytics.md) |
 
 A record belongs to a scope when its event, venue, team, organisation or brand is in that scope. Money is never summed across currencies.
+
+Experiments, consent-aware telemetry, attribution and data-quality indicators live in [`growth-analytics.md`](growth-analytics.md); they extend this layer rather than duplicate it. The new `provider` scope is always the caller (a provider's own earnings).
 
 ## API (tag *Analytics*; REST + OpenAPI + MCP from one definition)
 `list_kpi_catalogue`, `get_kpi_definition`, `list_kpi_scopes`, `get_kpi_value`, `list_kpi_records`, `create/list/get/update/archive_kpi_dashboard`,

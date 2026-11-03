@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { Platform, Pressable, Share, View } from 'react-native';
 import Svg, { Path, Rect } from 'react-native-svg';
 import qrcode from 'qrcode-generator';
-import { api } from '../api';
+import { api, API } from '../api';
 import { useLoad } from '../hooks';
 import { useSession } from '../session';
 import { Avatar, Btn, Card, Empty, ErrorBox, H1, H2, Loading, Screen, T, Tag } from '../ui';
@@ -46,7 +46,8 @@ const copyOrShare = async (text, toast) => {
     if (Platform.OS === 'web' && navigator.clipboard) { await navigator.clipboard.writeText(text); toast('Link copied'); } else await Share.share({ message: text });
   } catch { toast('Could not share the link'); }
 };
-const fullUrl = (l) => l.url ?? (Platform.OS === 'web' && typeof location !== 'undefined' ? `${location.origin}${l.path}` : l.path);
+// always an absolute link (a bare path cannot be sent or scanned): the API's own, else this site on web, else the API's origin on a phone
+const fullUrl = (l) => l.url ?? (Platform.OS === 'web' && typeof location !== 'undefined' ? `${location.origin}${l.path}` : `${API.replace(/\/api\/v1$/, '')}${l.path}`);
 
 const Stat = ({ value, label }) => (
   <View style={{ flex: 1, alignItems: 'center', paddingVertical: 10, borderRadius: 14, backgroundColor: c.bg }}>

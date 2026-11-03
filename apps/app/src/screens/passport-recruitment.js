@@ -1,6 +1,7 @@
-import React, { useState } from 'react';
-import { View } from 'react-native';
-import { api } from '../api';
+import React, { useEffect, useState } from 'react';
+import { Platform, View } from 'react-native';
+import { api, mediaUrl } from '../api';
+import { openPage } from '../video-player';
 import { openProtected } from '../open-file';
 import { useLoad } from '../hooks';
 import { useSession } from '../session';

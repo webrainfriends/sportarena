@@ -4,7 +4,7 @@ import { api } from '../api';
 import { useLoad } from '../hooks';
 import { useSession } from '../session';
 import { useNav } from '../nav';
-import { Avatar, Btn, Card, Empty, ErrorBox, H1, H2, Loading, Screen, Seg, T } from '../ui';
+import { Avatar, Btn, Card, Empty, ErrorBox, H1, H2, ListScreen, Loading, Screen, Seg, T } from '../ui';
 import { FormSheet } from '../FormSheet';
 import { Pill } from './marketplace';
 import { c, money, when } from '../theme';
@@ -70,14 +70,9 @@ export function RecruitmentPipeline({ id }) {
     setPaging(true);
     try { const r = await api.get(`/billboard/${id}/pipeline`, { stage: tab, limit: PAGE, offset: shown.length }); setMore((m) => [...m, ...r.candidates]); } catch (e) { toast(say(e)); } finally { setPaging(false); }
   };
-  return (
-    <Screen refreshing={q.loading} onRefresh={q.reload}>
-      <H1>{post.title}</H1>
-      <T size={13} color={c.mute}>{post.positions_needed} position{post.positions_needed > 1 ? 's' : ''} · {counts.accepted} filled · {counts.offered} offer{counts.offered === 1 ? '' : 's'} out</T>
-      <Seg value={tab} onChange={setTab} options={TABS.map((s) => ({ value: s, label: `${s === 'closed' ? 'Closed' : STAGE[s][0]} ${s === 'closed' ? closedN : counts[s] ?? 0}` }))} />
-      {q.loading && !shown.length ? <Loading /> : null}
-      {!q.loading && shown.length === 0 ? <Empty emoji="🧢" title="No one at this stage yet" sub="Candidates appear here as they move through the pipeline." /> : shown.map((x) => (
-        <Card key={x.response_id} pad={14}>
+  // The candidates are a virtualized list (only the ones on screen are built); the stage tabs are its header, and later pages load as it is scrolled.
+  const renderCandidate = ({ item: x }) => (
+      <Card pad={14}>
           {x.hidden ? (
             <View style={{ gap: 6 }}>
               <T weight="800">Young applicant (hidden)</T>
@@ -108,12 +103,22 @@ export function RecruitmentPipeline({ id }) {
               </View>
             </View>
           )}
-        </Card>
-      ))}
+      </Card>
+  );
+  return (
+    <ListScreen refreshing={q.loading} onRefresh={q.reload} data={shown} renderItem={renderCandidate} keyExtractor={(x) => String(x.response_id)} gap={10}
+      onEndReached={() => { if (!paging && !q.loading && shown.length < total) loadMore(); }}
+      empty={q.loading ? <Loading /> : <Empty emoji="🧢" title="No one at this stage yet" sub="Candidates appear here as they move through the pipeline." />}
+      header={<>
+      <H1>{post.title}</H1>
+      <T size={13} color={c.mute}>{post.positions_needed} position{post.positions_needed > 1 ? 's' : ''} · {counts.accepted} filled · {counts.offered} offer{counts.offered === 1 ? '' : 's'} out</T>
+      <Seg value={tab} onChange={setTab} options={TABS.map((s) => ({ value: s, label: `${s === 'closed' ? 'Closed' : STAGE[s][0]} ${s === 'closed' ? closedN : counts[s] ?? 0}` }))} />
+      </>}
+      footer={<>
       {shown.length < total ? <Btn small title={paging ? 'Loading…' : `Show more (${total - shown.length} left)`} color={c.paper} disabled={paging} onPress={loadMore} /> : null}
       <Btn small title="Export CSV" color={c.paper} onPress={async () => { try { const e = await api.get(`/billboard/${id}/pipeline/export`); saveCsv(e.filename, e.csv, setCsv); toast(`Exported ${e.rows} row${e.rows === 1 ? '' : 's'}${e.withheld ? `, ${e.withheld} withheld without guardian consent` : ''}. This download is logged.`); } catch (e) { toast(say(e)); } }} />
       {csv ? <T size={12} color={c.mute} selectable>{csv}</T> : null}
-    </Screen>
+      </>} />
   );
 }
 

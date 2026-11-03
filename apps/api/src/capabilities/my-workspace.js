@@ -2,6 +2,7 @@ import { z } from 'zod';
 import { cap, capabilities } from '../registry.js';
 import { one, many } from '../db.js';
 import { forbidden } from '../errors.js';
+import { resolveDefaultRole } from '../default-role.js';
 import { invoke } from '../invoke.js';
 
 // The role-driven mobile workspace (issue #599). The app opens on what the signed-in person does, not on the platform's modules:
@@ -67,12 +68,30 @@ async function athlete(user) {
 }
 
 async function coach(user) {
-  const h = await call('coach_home', user);
+  const [h, fb, policies, appts] = await Promise.all([
+    call('coach_home', user),
+    call('coach_feedback_overview', user, {}),
+    call('list_policies', user, { limit: 20 }),
+    call('list_appointments', user, { limit: 50 }),
+  ]);
   const inbox = h?.inbox ?? [];
-  const work = inbox.map((x) => item(x.kind, x.title, x.detail, x.link?.screen ? go(x.link.screen, x.link.params ?? {}) : go('CoachHome'), x.at, x.kind === 'hire_request' ? 'now' : 'soon'));
+  // Cover: the nearest end date among the coach's own active policies; a renewal is due 30 days out (same rule as list_policies and the reminder job).
+  const active = (policies ?? []).filter((p) => p.status === 'active' && !p.renewed_by);
+  const nearest = active.reduce((m, p) => (m === null || p.days_left < m.days_left ? p : m), null);
+  const upcomingAppts = (appts ?? []).filter((a) => ['requested', 'confirmed'].includes(a.status) && new Date(a.starts_at).getTime() > Date.now());
+  const coverWork = nearest && nearest.days_left <= 30
+    ? [item('insurance', nearest.days_left < 0 ? `Your cover has ended: ${nearest.plan_name}` : `Cover ends in ${nearest.days_left} day${nearest.days_left === 1 ? '' : 's'}: ${nearest.plan_name}`, 'Renew it to stay covered', go('Insurance'), nearest.ends_on, nearest.days_left <= 7 ? 'now' : 'soon')]
+    : [];
+  const fbWork = [
+    ...(fb?.evaluations?.waiting_on_me ?? []).filter((e) => e.status === 'responded').slice(0, 3).map((e) => item('evaluation_reply', `${e.athlete_name} responded to an evaluation`, e.title, go('Evaluations'), e.responded_at, 'soon')),
+    ...(fb?.session_feedback?.owed ? [item('session_feedback', `${fb.session_feedback.owed} session${fb.session_feedback.owed === 1 ? '' : 's'} need your feedback`, '', go('CoachFeedback'), null, 'soon')] : []),
+  ];
+  const work = [...coverWork, ...fbWork, ...inbox.map((x) => item(x.kind, x.title, x.detail, x.link?.screen ? go(x.link.screen, x.link.params ?? {}) : go('CoachHome'), x.at, x.kind === 'hire_request' ? 'now' : 'soon'))];
   const next = h?.next_session;
   return {
-    summary: [{ key: 'athletes', label: 'Athletes', value: h?.counts?.athletes ?? 0 }, { key: 'requests', label: 'Requests', value: h?.counts?.requests ?? 0 }, { key: 'revisions', label: 'Plan replies', value: h?.counts?.plans_needing_revision ?? 0 }],
+    summary: [{ key: 'athletes', label: 'Athletes', value: h?.counts?.athletes ?? 0 }, { key: 'requests', label: 'Requests', value: h?.counts?.requests ?? 0 }, { key: 'revisions', label: 'Plan replies', value: h?.counts?.plans_needing_revision ?? 0 },
+      { key: 'appointments', label: 'Appointments', value: upcomingAppts.length }, { key: 'evaluations', label: 'Evaluations (90d)', value: fb?.evaluations?.last_90_days ?? 0 },
+      { key: 'rating', label: 'Rating', value: fb?.reviews?.average ?? '–' }, { key: 'cover', label: 'Cover (days)', value: nearest ? nearest.days_left : '–' }],
     today: next && soon(next.starts_at, 24) ? [item('session', next.title ?? 'Coaching session', '', go('CoachCalendar'), next.starts_at, 'now')] : [],
     work: [...work, ...(h?.warnings ?? []).map((w) => item('warning', w.title, '', go(w.link?.screen ?? 'CoachHome', w.link?.params ?? {}), null, 'soon'))],
     actions: [
@@ -81,7 +100,7 @@ async function coach(user) {
       act('athletes', 'My athletes', 'people', go('CoachAthletes')),
       act('requests', 'Coaching requests', 'inbox', go('CoachBoard')),
     ],
-    unavailable: h ? [] : ['coach_home'],
+    unavailable: [h ? null : 'coach_home', fb ? null : 'coach_feedback_overview'].filter(Boolean),
   };
 }
 
@@ -164,11 +183,11 @@ const BUILD = { athlete, coach, organizer, referee, venue_manager: venueManager 
 cap({
   name: 'get_my_workspace', method: 'GET', path: '/me/role-workspace', tag: TAG,
   summary: 'Your role-driven mobile workspace: the roles and organisations you can switch between, then for the active role today\'s items, the queue of things waiting on you, headline numbers and the fast actions (each names the screen that does it). Read-only; it composes the role homes, so it shows only what those already let you see.',
-  input: z.object({ role: z.enum(Object.keys(ROLE_LABEL)).optional().describe('which of your roles to show; defaults to your first role') }),
+  input: z.object({ role: z.enum(Object.keys(ROLE_LABEL)).optional().describe('which of your roles to show; defaults to your default role (athlete unless you chose another)') }),
   async handler({ user }, i) {
     const held = ORDER.filter((r) => user.roles?.includes(r)); // admin / platform_admin are never offered
     if (i.role && !held.includes(i.role)) throw forbidden('You do not hold that role');
-    const role = i.role ?? held[0] ?? null;
+    const role = i.role ?? (held.includes(resolveDefaultRole(user.roles, user.default_role)) ? resolveDefaultRole(user.roles, user.default_role) : held[0]) ?? null;
     const [orgs, unread] = await Promise.all([
       many(`SELECT o.id, o.name, m.role AS my_role FROM organisation_members m JOIN organisations o ON o.id=m.organisation_id WHERE m.user_id=$1 AND m.status='active' ORDER BY o.name LIMIT 20`, [user.id]),
       one('SELECT count(*)::int AS n FROM notifications WHERE user_id=$1 AND read_at IS NULL', [user.id]),
