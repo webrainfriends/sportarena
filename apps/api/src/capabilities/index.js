@@ -328,6 +328,7 @@ import './upload-limits.js';
 import './role-copilots.js';
 import './ticketing.js';
 import './ticketing-commerce.js';
+import './ticketing-ops.js';
 import './integrations.js';
 import './wearables.js';
 import './integration-access.js';

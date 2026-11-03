@@ -11,6 +11,7 @@ import { pool } from './db.js';
 import { badRequest, conflict, forbidden, notFound } from './errors.js';
 import { blindIndex, encrypt } from './crypto.js';
 import { notify } from './notify.js';
+import { applyBundlePrices, planBundles } from './ticketing-bundles.js';
 import { isYouth } from './youth.js';
 import { addonsRefundDueForEvent, applyPromos, confirmAddons, firstFreeSeats, processAddonRefunds, promoteWaitlist, releaseAddons, reserveAddons, reverseRedemptions, sweepWaitlists } from './ticketing-commerce.js';
 
@@ -167,10 +168,10 @@ async function insertTicket(c, t) {
     try {
       return (await c.query(
         `INSERT INTO tickets(serial, short_code, entitlement_id, supersedes_id, event_id, product_id, order_id, line_id, allocation_id, holder_id, guest_name_enc, guest_email_enc, claim_hash, class, class_label,
-                             section_id, seat_label, price_minor, tax_minor, currency, status, hold_expires_at, issued_at, discount_minor, discount_tax_minor)
-         VALUES ($1,$2,coalesce($3, gen_random_uuid()),$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25) RETURNING *`,
+                             section_id, seat_label, price_minor, tax_minor, currency, status, hold_expires_at, issued_at, discount_minor, discount_tax_minor, bundle_order_id)
+         VALUES ($1,$2,coalesce($3, gen_random_uuid()),$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26) RETURNING *`,
         [newSerial(), newShortCode(), t.entitlement_id ?? null, t.supersedes_id ?? null, t.event_id, t.product_id, t.order_id, t.line_id ?? null, t.allocation_id ?? null, t.holder_id ?? null, t.guest_name_enc ?? null, t.guest_email_enc ?? null,
-          t.claim_hash ?? null, t.class, t.class_label ?? null, t.section_id ?? null, t.seat_label ?? null, t.price_minor, t.tax_minor, t.currency, t.status, t.hold_expires_at ?? null, t.issued_at ?? null, t.discount_minor ?? 0, t.discount_tax_minor ?? 0])).rows[0];
+          t.claim_hash ?? null, t.class, t.class_label ?? null, t.section_id ?? null, t.seat_label ?? null, t.price_minor, t.tax_minor, t.currency, t.status, t.hold_expires_at ?? null, t.issued_at ?? null, t.discount_minor ?? 0, t.discount_tax_minor ?? 0, t.bundle_order_id ?? null])).rows[0];
     } catch (e) { if (e.code !== '23505' || attempt > 5 || !/serial|short_code/.test(e.constraint ?? '')) throw e; }
   }
 }
@@ -196,9 +197,11 @@ export async function createOrder(c, who, ev, i, { channel = 'online', allocatio
     [ev.id, who.id, channel, i.idempotency_key ?? null, offerMinutes ?? settings.hold_minutes])).rows[0];
   let ticketCount = 0;
   const made = [];
+  const plan = await planBundles(c, ev, order, i.bundles, channel, now);   // bundles expand into ordinary lines and add-ons of this same order
+  const allLines = [...(i.lines ?? []), ...plan.lines];
   const wanted = new Map();
-  for (const l of i.lines) wanted.set(l.product_id, (wanted.get(l.product_id) ?? 0) + l.quantity);
-  for (const line of i.lines) {
+  for (const l of allLines) wanted.set(l.product_id, (wanted.get(l.product_id) ?? 0) + l.quantity);
+  for (const line of allLines) {
     const p = (await c.query('SELECT * FROM ticket_products WHERE id=$1 AND event_id=$2', [line.product_id, ev.id])).rows[0];
     if (!p) throw notFound('Ticket product');
     if (p.status !== 'active') throw conflict(p.status === 'paused' ? 'Sales of this ticket are paused' : 'This ticket is not on sale', { code: 'not_on_sale' });
@@ -207,34 +210,44 @@ export async function createOrder(c, who, ev, i, { channel = 'online', allocatio
     if (p.sale_ends_at && new Date(p.sale_ends_at) < now) throw conflict('Sales for this ticket have closed', { code: 'sale_ended' });
     if (orderCurrency.length && orderCurrency[0] !== p.currency) throw badRequest('One order can only hold tickets in one currency');
     orderCurrency[0] = p.currency;
-    if (['online', 'partner'].includes(channel) && line.quantity > p.per_order_limit) throw conflict(`At most ${p.per_order_limit} per order`, { code: 'order_limit' });
+    if (['online', 'partner'].includes(channel) && !line._bundle && line.quantity > p.per_order_limit) throw conflict(`At most ${p.per_order_limit} per order`, { code: 'order_limit' });
     if (channel === 'online' || channel === 'partner') {
       const have = (await c.query(`SELECT count(*)::int AS n FROM tickets t JOIN ticket_orders o ON o.id=t.order_id WHERE o.buyer_id=$1 AND t.product_id=$2 AND ${LIVE}`, [who.id, p.id])).rows[0].n;
       if (have + wanted.get(p.id) > p.per_account_limit) throw conflict(`At most ${p.per_account_limit} per account`, { code: 'account_limit', already_held: have });
     }
     if (channel === 'complimentary' && Number(p.price_minor) !== 0) throw badRequest('A complimentary ticket must be free');
     await assertRoom(c, ev, p, line.quantity);
-    const seats = p.seating === 'reserved' ? (autoSeats && !line.seats ? await autoPick(c, ev, p, line.quantity) : await chooseSeats(c, ev, p, line.seats, line.quantity)) : null;
+    const seats = p.seating === 'reserved' ? ((autoSeats || line._auto_seats) && !line.seats ? await autoPick(c, ev, p, line.quantity) : await chooseSeats(c, ev, p, line.seats, line.quantity)) : null;
     const { gross, tax: unitTax } = priced(p);
     const ol = (await c.query('INSERT INTO ticket_order_lines(order_id, product_id, qty, name, class, unit_minor, unit_tax_minor, currency) VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING *', [order.id, p.id, line.quantity, p.name, p.class, gross, unitTax, p.currency])).rows[0];
     for (let n = 0; n < line.quantity; n++) {
       const holder = recipients?.[ticketCount] ?? {};
       const t = await insertTicket(c, {
         event_id: ev.id, product_id: p.id, order_id: order.id, line_id: ol.id, allocation_id: allocation?.id ?? null, holder_id: holder.guest_name_enc ? null : (holder.user_id ?? who.id), guest_name_enc: holder.guest_name_enc, guest_email_enc: holder.guest_email_enc, claim_hash: holder.claim_hash,
-        class: p.class, class_label: p.class_label, section_id: seats?.section.id, seat_label: seats?.labels[n], price_minor: gross, tax_minor: unitTax, currency: p.currency, status: 'reserved', hold_expires_at: order.expires_at,
+        class: p.class, class_label: p.class_label, section_id: seats?.section.id, seat_label: seats?.labels[n], price_minor: gross, tax_minor: unitTax, currency: p.currency, status: 'reserved', hold_expires_at: order.expires_at, bundle_order_id: line._bundle ?? null,
       });
       await record(c, t.id, who.id, 'reserved', null, 'reserved', { order_id: order.id, channel });
-      made.push({ id: t.id, product_id: p.id, line_id: ol.id, price: gross, tax: unitTax });
+      made.push({ id: t.id, product_id: p.id, line_id: ol.id, price: gross, tax: unitTax, bundle_order_id: line._bundle ?? null });
       ticketCount++;
     }
   }
   if (!orderCurrency.length) throw badRequest('Choose at least one ticket');
-  const promo = await applyPromos(c, ev, who, order, i.promo_codes, made, orderCurrency[0]);
+  // promo codes apply to the tickets bought on their own; a bundle already carries its own saving
+  const promo = await applyPromos(c, ev, who, order, i.promo_codes, made.filter((t) => !t.bundle_order_id), orderCurrency[0]);
+  const addonValue = new Map();
+  const bundled = { total: 0, tax: 0 };
+  for (const bo of plan.orders) {
+    const a = await reserveAddons(c, ev, who, order, plan.addons.filter((x) => x._bundle === bo.id), orderCurrency[0]);
+    await c.query('UPDATE ticket_addon_items SET bundle_order_id=$2 WHERE order_id=$1 AND bundle_order_id IS NULL', [order.id, bo.id]);
+    addonValue.set(bo.id, a.total); bundled.total += a.total; bundled.tax += a.tax;
+  }
   const addons = await reserveAddons(c, ev, who, order, i.addons, orderCurrency[0]);
+  const saving = await applyBundlePrices(c, plan, made, addonValue);
+  addons.total += bundled.total; addons.tax += bundled.tax;
   const gross = made.reduce((n, t) => n + t.price, 0);
-  const total = gross - promo.total + addons.total;
-  const tax = made.reduce((n, t) => n + t.tax, 0) - promo.taxOff + addons.tax;
-  await c.query('UPDATE ticket_orders SET currency=$2, subtotal_minor=$3, tax_minor=$4, total_minor=$5, discount_minor=$6 WHERE id=$1', [order.id, orderCurrency[0], total - tax, tax, total, promo.total]);
+  const total = gross - promo.total - saving.total + addons.total;
+  const tax = made.reduce((n, t) => n + t.tax, 0) - promo.taxOff - saving.taxOff + addons.tax;
+  await c.query('UPDATE ticket_orders SET currency=$2, subtotal_minor=$3, tax_minor=$4, total_minor=$5, discount_minor=$6, addons_minor=$7 WHERE id=$1', [order.id, orderCurrency[0], total - tax, tax, total, promo.total + saving.total, addons.total]);
   if (total === 0 && !hold && !quote) await confirmOrder(c, order.id, who.id, { locked: true });
   return { order_id: order.id, replayed: false, promos: promo.applied };
 }
@@ -417,6 +430,7 @@ async function settleRefundLocked(ticketId) {
   if (!t || t.status !== 'refund_due') return { status: t?.status ?? 'missing' };
   const amount = Number(t.price_minor) - Number(t.discount_minor) - Number(t.refunded_minor);   // what the buyer actually paid: the promo share never comes back
   const pay = amount > 0 ? (await pool.query("SELECT * FROM payments WHERE purpose_type='ticket_order' AND purpose_id=$1 AND status IN ('paid','refunded') ORDER BY created_at LIMIT 1", [t.order_id])).rows[0] : null;
+  if (amount > 0 && !pay && (await pool.query("SELECT 1 FROM ticket_tenders WHERE order_id=$1 AND kind='sale' LIMIT 1", [t.order_id])).rowCount) return { status: 'refund_due', blocked: 'box_office' };   // paid at the desk: it is paid back at the desk
   if (amount > 0 && !pay) {
     await pool.query('INSERT INTO ticket_history(ticket_id, kind, detail) VALUES ($1,$2,$3)', [t.id, 'refund_blocked', { reason: 'no paid payment found for this order' }]);
     return { status: 'refund_due', blocked: 'no_payment' };
@@ -593,8 +607,8 @@ export async function scanOne(c, ev, op, i) {
   }
   if (!i.check_only) {
     const ins = await c.query(
-      `INSERT INTO ticket_scans(event_id, ticket_id, fixture_id, access_point_id, operator_id, direction, method, result, client_ref, scanned_at) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) ON CONFLICT (event_id, client_ref) WHERE client_ref IS NOT NULL DO NOTHING`,
-      [ev.id, t?.event_id === ev.id ? t.id : null, fixtureId, i.access_point_id ?? null, op.id, direction, i.method ?? 'camera', result, i.client_ref ?? null, at]);
+      `INSERT INTO ticket_scans(event_id, ticket_id, fixture_id, access_point_id, operator_id, direction, method, result, client_ref, scanned_at, session_id) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) ON CONFLICT (event_id, client_ref) WHERE client_ref IS NOT NULL DO NOTHING`,
+      [ev.id, t?.event_id === ev.id ? t.id : null, fixtureId, i.access_point_id ?? null, op.id, direction, i.method ?? 'camera', result, i.client_ref ?? null, at, i.session_id ?? null]);
     if (!ins.rowCount && i.client_ref) return { ...(await gateView(c, result, t)), replay: true };
   }
   return gateView(c, result, t && t.event_id === ev.id ? t : null);
