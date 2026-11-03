@@ -11,6 +11,7 @@ import { notify } from '../notify.js';
 import { requireRelationship, requireCoachingConsent } from '../coaching.js';
 import { hasConsent, isYouth } from '../youth.js';
 import { view, summarise, hashSnapshot } from '../coaching-evaluations.js';
+import { sessionAccess } from './coaching-journal.js';
 import { renderEvaluation, SECTIONS } from '../documents/evaluation-pdf.js';
 import { saveEncrypted } from '../doc-store.js';
 import { createHash } from 'node:crypto';
@@ -20,11 +21,11 @@ import { guardiansOf as verifiedGuardians } from '../youth.js';
 const TAG = 'Coaching evaluations';
 const COACH = ['coach'];
 const text = (n) => z.string().trim().max(n);
-const CONTEXTS = ['class', 'session', 'period', 'match', 'trial', 'custom'];
+const CONTEXTS = ['class', 'session', 'period', 'match', 'trial', 'custom', 'booking', 'academy', 'game'];
 const REACTIONS = ['agree', 'discuss', 'disagree'];
 const evidence = z.object({ type: z.enum(['note', 'link', 'clip']).default('note'), text: text(500).optional(), url: z.string().url().max(500).startsWith('https://').optional(), at: text(20).optional().describe('where in a clip, e.g. 12:40') });
 const scoreEntry = z.object({ score: z.number().nullable().optional(), comment: text(2000).nullable().optional(), evidence: z.array(evidence).max(10).optional() });
-const narrative = z.object({ strengths: text(3000).nullable().optional(), development: text(3000).nullable().optional(), cues: text(3000).nullable().optional(), next_steps: text(3000).nullable().optional(), private: text(4000).nullable().optional() });
+const narrative = z.object({ strengths: text(3000).nullable().optional(), development: text(3000).nullable().optional(), cues: text(3000).nullable().optional(), next_steps: text(3000).nullable().optional(), private: text(4000).nullable().optional(), ai_drafted: z.boolean().optional() });
 
 // ------------------------------------------------------------------ helpers
 
@@ -94,11 +95,8 @@ async function coachView(ev) {
 
 // ------------------------------------------------------------------ coach
 
-cap({
-  name: 'create_coaching_evaluation', method: 'POST', path: '/coaching/evaluations', tag: TAG, auth: COACH, status: 201,
-  summary: 'Start an evaluation of an athlete you coach on one of your evaluation sheets (rubrics). Context says what it is about: a class (scores already given in that class are carried in), a session, a period, a match or a trial. Optionally ask the athlete for a self-assessment first, so you can compare your view with theirs once you score.',
-  input: z.object({ athlete_id: id, rubric_id: id, context_type: z.enum(CONTEXTS).default('period'), class_id: id.optional(), title: text(160).min(2).optional(), period_from: z.string().date().optional(), period_to: z.string().date().optional(), request_self_assessment: z.boolean().default(false) }),
-  async handler({ user }, i) {
+/** Start an evaluation (shared by the single and the bulk capabilities): the same checks, the same prefilled scores. */
+export async function createEvaluation(user, i) {
     if (i.context_type === 'class' && !i.class_id) throw badRequest('Say which class');
     const rels = await requireRelationship(user, i.athlete_id);
     const sheet = await sheetVersion(i.rubric_id);
@@ -110,15 +108,34 @@ cap({
       rec = await one("SELECT id FROM coaching_session_records WHERE coach_id=$1 AND source_type='coach_class' AND source_id=$2", [user.id, k.id]);
       if (rec) for (const o of await many('SELECT DISTINCT ON (dimension_key) dimension_key, score::float AS score FROM coaching_observations WHERE coach_id=$1 AND athlete_id=$2 AND session_record_id=$3 AND rubric_id=$4 AND score IS NOT NULL ORDER BY dimension_key, observed_at DESC', [user.id, i.athlete_id, rec.id, sheet.id])) scores[o.dimension_key] = { score: o.score };
     }
-    const title = i.title ?? [sheet.name, k?.title ?? new Date().toISOString().slice(0, 10)].join(' · ');
+    let link = { hire_id: null, fixture_id: null, academy_session_id: null };
+    if (i.session_record_id && !rec) {
+      // the record decides the link, never the client: the coach must own it and the athlete must be one of its participants
+      const { rec: r } = await sessionAccess(user, i.session_record_id, 'view');
+      if (r.coach_id !== user.id) throw notFound('Coaching session');
+      if (!(await one('SELECT 1 FROM coaching_session_participants WHERE session_record_id=$1 AND athlete_id=$2', [r.id, i.athlete_id]))) throw notFound('Coaching session');
+      rec = r;
+      if (r.source_type === 'coach_class') k = await one('SELECT * FROM coach_classes WHERE id::text=$1', [r.source_id]);
+      if (r.source_type === 'coach_hire') link.hire_id = r.source_id;
+      if (r.source_type === 'fixture') link.fixture_id = r.source_id;
+      if (r.source_type === 'academy_session') link.academy_session_id = r.source_id;
+      for (const o of await many('SELECT DISTINCT ON (dimension_key) dimension_key, score::float AS score FROM coaching_observations WHERE coach_id=$1 AND athlete_id=$2 AND session_record_id=$3 AND rubric_id=$4 AND score IS NOT NULL ORDER BY dimension_key, observed_at DESC', [user.id, i.athlete_id, r.id, sheet.id])) scores[o.dimension_key] = { score: o.score };
+    }
+    const title = i.title ?? [sheet.name, k?.title ?? rec?.title ?? new Date().toISOString().slice(0, 10)].join(' · ');
     const ev = await one(
-      `INSERT INTO coaching_evaluations(coach_id, athlete_id, sport_id, rubric_id, rubric_version, context_type, class_id, session_record_id, title, period_from, period_to, self_requested, scores)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13) RETURNING *`,
-      [user.id, i.athlete_id, k?.sport_id ?? sheet.sport_id ?? rels[0].sport_id, sheet.id, sheet.version, i.context_type, k?.id ?? null, rec?.id ?? null, title, i.period_from ?? null, i.period_to ?? null, i.request_self_assessment, JSON.stringify(scores)]);
+      `INSERT INTO coaching_evaluations(coach_id, athlete_id, sport_id, rubric_id, rubric_version, context_type, class_id, session_record_id, title, period_from, period_to, self_requested, scores, hire_id, fixture_id, academy_session_id)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16) RETURNING *`,
+      [user.id, i.athlete_id, k?.sport_id ?? rec?.sport_id ?? sheet.sport_id ?? rels[0].sport_id, sheet.id, sheet.version, i.context_type, k?.id ?? null, rec?.id ?? null, title, i.period_from ?? null, i.period_to ?? null, i.request_self_assessment, JSON.stringify(scores), link.hire_id, link.fixture_id, link.academy_session_id]);
     await audit(null, user.id, 'create_coaching_evaluation', 'coaching_evaluations', ev.id);
     if (i.request_self_assessment) await tx((c) => tellAthlete(c, ev, { kind: 'evaluation_self_requested', title: 'Your coach asked for your self-assessment', body: `Before your coach shares "${ev.title}", please rate yourself on the same criteria.` }));
     return coachView(ev);
-  },
+  }
+
+cap({
+  name: 'create_coaching_evaluation', method: 'POST', path: '/coaching/evaluations', tag: TAG, auth: COACH, status: 201,
+  summary: 'Start an evaluation of an athlete you coach on one of your evaluation sheets (rubrics). Context says what it is about: a class (scores already given in that class are carried in), a session, a period, a match or a trial. Optionally ask the athlete for a self-assessment first, so you can compare your view with theirs once you score.',
+  input: z.object({ athlete_id: id, rubric_id: id, context_type: z.enum(CONTEXTS).default('period'), class_id: id.optional(), session_record_id: id.optional().describe('any of your coaching sessions: a class, a booking, an academy session, a game or a team session; the booking/academy/game links are derived from it'), title: text(160).min(2).optional(), period_from: z.string().date().optional(), period_to: z.string().date().optional(), request_self_assessment: z.boolean().default(false) }),
+  handler: ({ user }, i) => createEvaluation(user, i),
 });
 
 cap({
@@ -154,12 +171,12 @@ cap({
 cap({
   name: 'list_coaching_evaluations', method: 'GET', path: '/coaching/evaluations', tag: TAG, auth: COACH,
   summary: 'Your evaluations, newest first, with the athlete, status, overall score and what is waiting on whom (drafts to finish, shared and waiting for a response, responded and waiting for you). Filter by athlete, status, class or sheet.',
-  input: z.object({ athlete_id: id.optional(), status: z.enum(['draft', 'shared', 'responded', 'closed']).optional(), class_id: id.optional(), rubric_id: id.optional(), ...page }),
+  input: z.object({ athlete_id: id.optional(), status: z.enum(['draft', 'shared', 'responded', 'closed']).optional(), class_id: id.optional(), session_record_id: id.optional(), rubric_id: id.optional(), ...page }),
   async handler({ user }, i) {
     const rows = await many(
       `SELECT e.*, u.display_name AS athlete_name FROM coaching_evaluations e JOIN users u ON u.id=e.athlete_id
-        WHERE e.coach_id=$1 AND ($2::uuid IS NULL OR e.athlete_id=$2) AND ($3::text IS NULL OR e.status=$3) AND ($4::uuid IS NULL OR e.class_id=$4) AND ($5::uuid IS NULL OR e.rubric_id=$5)
-        ORDER BY e.updated_at DESC, e.id LIMIT $6 OFFSET $7`, [user.id, i.athlete_id ?? null, i.status ?? null, i.class_id ?? null, i.rubric_id ?? null, i.limit, i.offset]);
+        WHERE e.coach_id=$1 AND ($2::uuid IS NULL OR e.athlete_id=$2) AND ($3::text IS NULL OR e.status=$3) AND ($4::uuid IS NULL OR e.class_id=$4) AND ($5::uuid IS NULL OR e.rubric_id=$5) AND ($8::uuid IS NULL OR e.session_record_id=$8)
+        ORDER BY e.updated_at DESC, e.id LIMIT $6 OFFSET $7`, [user.id, i.athlete_id ?? null, i.status ?? null, i.class_id ?? null, i.rubric_id ?? null, i.limit, i.offset, i.session_record_id ?? null]);
     const out = [];
     for (const e of rows) {
       const sheet = await sheetVersion(e.rubric_id, e.rubric_version);
@@ -173,11 +190,12 @@ cap({
 cap({
   name: 'share_coaching_evaluation', method: 'POST', path: '/coaching/evaluations/:id/share', tag: TAG, auth: COACH,
   summary: 'Share the evaluation with the athlete (or a young person\'s guardian) as a new frozen version: the sheet as it is now, your scores, comments, evidence and written feedback (never your private note), with the computed scores. A young person needs a guardian\'s current coaching consent. Sharing again after edits publishes the next version and tells them once.',
-  input: z.object({ id, note: text(500).optional().describe('a short message that goes with it') }),
+  input: z.object({ id, note: text(500).optional().describe('a short message that goes with it'), confirm_reviewed: z.boolean().default(false).describe('required when the written feedback started as an AI draft') }),
   async handler({ user }, i) {
     return tx(async (c) => {
       const ev = await ownEval(user, i.id, c);
       if (ev.closed_at) throw conflict('This evaluation is closed');
+      if (ev.narrative?.ai_drafted && !i.confirm_reviewed) throw badRequest('The written feedback started as an AI draft. Read and edit it, then share with confirm_reviewed = true.', { code: 'ai_review_needed' });
       const sheet = await sheetVersion(ev.rubric_id, ev.rubric_version);
       if (!summarise(sheet.dimensions, ev.scores).coverage.scored) throw badRequest('Score at least one criterion first', { code: 'nothing_scored' });
       await requireRelationship(user, ev.athlete_id);
@@ -185,9 +203,9 @@ cap({
       const prev = await previousScores(ev);
       const v = ev.latest_version + 1;
       const snapshot = { title: ev.title, context_type: ev.context_type, period_from: ev.period_from, period_to: ev.period_to, sheet: { id: sheet.id, name: sheet.name, version: sheet.version }, dimensions: sheet.dimensions,
-        scores: ev.scores, narrative: { ...ev.narrative, private: undefined }, summary: view(ev, sheet.dimensions, { previous: prev, includeSelf: false }).summary, previous: prev?.scores ?? null, note: i.note ?? null, shared_by: user.id };
+        scores: ev.scores, narrative: { ...ev.narrative, private: undefined, ai_drafted: undefined }, summary: view(ev, sheet.dimensions, { previous: prev, includeSelf: false }).summary, previous: prev?.scores ?? null, note: i.note ?? null, shared_by: user.id };
       await c.query('INSERT INTO coaching_evaluation_versions(evaluation_id, version, snapshot, snapshot_sha256, published_by) VALUES ($1,$2,$3,$4,$5)', [ev.id, v, JSON.stringify(snapshot), hashSnapshot(snapshot), user.id]);
-      const row = (await c.query("UPDATE coaching_evaluations SET latest_version=$2, status=CASE WHEN status='draft' THEN 'shared' ELSE status END, shared_at=now(), row_version=row_version+1, updated_at=now() WHERE id=$1 RETURNING *", [ev.id, v])).rows[0];
+      const row = (await c.query("UPDATE coaching_evaluations SET latest_version=$2, narrative=narrative - 'ai_drafted', status=CASE WHEN status='draft' THEN 'shared' ELSE status END, shared_at=now(), row_version=row_version+1, updated_at=now() WHERE id=$1 RETURNING *", [ev.id, v])).rows[0];
       await audit(c, user.id, 'share_coaching_evaluation', 'coaching_evaluations', ev.id);
       await tellAthlete(c, row, { kind: 'evaluation_shared', title: v === 1 ? 'Your coach shared an evaluation' : 'Your coach updated an evaluation', body: `"${ev.title}"${i.note ? `: ${i.note}` : ''}. Read it, add your view and ask anything you like.` });
       return { id: ev.id, version: v, status: row.status };

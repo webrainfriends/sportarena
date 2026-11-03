@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { sharedOutputs } from '../coaching-workspace.js';
 import { cap, id, page } from '../registry.js';
 import { one, many, tx } from '../db.js';
 import { badRequest, conflict, forbidden, notFound } from '../errors.js';
@@ -248,7 +249,10 @@ cap({
   async handler({ user }, i) {
     const h = await mustFind('coach_hires', i.id, 'id, coach_id, hirer_id, status');
     if (h.coach_id !== user.id && h.hirer_id !== user.id) throw forbidden();
-    return { hire_id: h.id, status: h.status, entries: await timelineFor('hire', h.id, user.id, i) };
+    // what the coach shared from this booking's coaching record (plan, feedback, evaluations); the coach just gets the record id to open the workspace
+    const rec = await one("SELECT * FROM coaching_session_records WHERE source_type='coach_hire' AND source_id=$1 AND coach_id=$2", [h.id, h.coach_id]);
+    const workspace = !rec ? null : h.coach_id === user.id ? { record_id: rec.id } : await sharedOutputs(user, rec);
+    return { hire_id: h.id, status: h.status, entries: await timelineFor('hire', h.id, user.id, i), workspace };
   },
 });
 

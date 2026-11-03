@@ -1,5 +1,6 @@
 // Academy OS 2/3, the session level: one session (attendance, staff, venue, details & history), the coach's phone-first agenda and the
 // athlete / guardian view of their sessions. Every action calls the server, which re-checks the caller's access on every request.
+import { t } from '../i18n';
 import React, { useState } from 'react';
 import { Pressable, View } from 'react-native';
 import { api } from '../api';
@@ -269,7 +270,7 @@ export function AcademySession({ id, tab: want, find }) {
       {mine && ['lead', 'assistant'].includes(mine.role) && s.status !== 'draft' && s.status !== 'cancelled' ? (
         <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 10 }}>
           <Btn small title="Track a scrimmage or game" color={c.violet} onPress={() => nav.push('ScoringTool', { tab: 'start', contextType: 'academy_session', contextId: s.id })} />
-          <Btn small title="Open in Performance Studio" onPress={() => nav.push('CoachSession', { source_type: 'academy_session', source_id: s.id })} />
+          <Btn small title={t('swk.open')} onPress={() => nav.push('SessionWorkspace', { source_type: 'academy_session', source_id: s.id })} />
           <Btn small title="Clock in" color={c.paper} ink={c.ink} onPress={async () => { try { await api.post(`/academy/sessions/${s.id}/clock-in`); toast('Clocked in. This does not mark anyone present.'); } catch (e) { toast(explain(e)); } }} />
           <Btn small title="Can't make it: ask for cover" color={c.paper} ink={c.ink} onPress={() => setCover(true)} />
         </View>

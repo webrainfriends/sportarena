@@ -131,7 +131,7 @@ function Overview({ o, d, role, archived, reload, toast, go }) {
   const archive = async () => { try { await api.post(`/organisations/${o.id}/${archived ? 'restore' : 'archive'}`); toast(archived ? 'Organisation restored' : 'Organisation archived — data is kept'); reload(); } catch (e) { fail(toast)(e); } };
   return (
     <>
-      <View style={{ marginTop: 10, alignItems: 'flex-start' }}><Btn small title="360° view" color={c.paper} ink={c.ink} onPress={() => push('Organisation360', { id: o.id })} accessibilityLabel="Open the 360 view" /></View>
+      <View style={{ marginTop: 10, flexDirection: 'row', gap: 8, flexWrap: 'wrap' }}><Btn small title="360° view" color={c.paper} ink={c.ink} onPress={() => push('Organisation360', { id: o.id })} accessibilityLabel="Open the 360 view" />{['owner', 'admin'].includes(role) ? <Btn small title={t('rsh.inbox_title')} color={c.paper} ink={c.ink} onPress={() => push('SharedReports')} accessibilityLabel={t('rsh.inbox_title')} /> : null}</View>
       {STAFF.includes(role) || role === 'finance' ? <PlanCard o={o} archived={archived} /> : null}
       {['owner', 'admin', 'coach', 'finance'].includes(role) ? <CommandCentre o={o} role={role} archived={archived} go={go} toast={toast} reload={reload} /> : null}
       {STAFF.includes(role) && (o.legal_name || o.registration_no || o.tax_id || o.contact_email || o.contact_phone || o.website || o.description || o.founded_on) ? (
