@@ -18,13 +18,14 @@ import { saveFile } from '../contracts-ui';
 import { SwitchRow, Cols } from '../federation-bits';
 import { Banner, Metric, fmtDate, fmtRange } from '../federation-ui';
 import { useDo } from './console-utils';
+import { TransfersTab, DisciplineTab, ArchiveTab } from './governance';
 
 const STATUS = { draft: ['Draft', c.violetSoft], open: ['Registration open', c.cyanSoft], active: ['In play', c.limeSoft], completed: ['Completed', c.sunSoft], archived: ['Archived', c.violetSoft] };
 const MEMBER = { applied: ['Applied', c.sunSoft], invited: ['Invited', c.cyanSoft], accepted: ['In', c.limeSoft], waitlisted: ['Waitlist', c.orangeSoft], withdrawn: ['Withdrawn', c.violetSoft], removed: ['Removed', c.redSoft] };
 const LEVELS = ['elite', 'professional', 'semi_pro', 'amateur', 'recreational', 'school', 'youth'].map((v) => ({ value: v, label: v.replace('_', '-').replace(/^./, (x) => x.toUpperCase()) }));
 const GENDERS = [{ value: 'open', label: 'Open' }, { value: 'men', label: 'Men' }, { value: 'women', label: 'Women' }, { value: 'mixed', label: 'Mixed' }];
 const KINDS = [{ value: 'division', label: 'Division' }, { value: 'conference', label: 'Conference' }, { value: 'pool', label: 'Pool' }, { value: 'category', label: 'Category' }];
-const TABS = ['overview', 'seasons', 'divisions', 'teams', 'fixtures', 'standings', 'registration', 'rules', 'history', 'reports'].map((v) => ({ value: v, label: v[0].toUpperCase() + v.slice(1) }));
+const TABS = ['overview', 'seasons', 'divisions', 'teams', 'fixtures', 'standings', 'registration', 'transfers', 'discipline', 'rules', 'archive', 'history', 'reports'].map((v) => ({ value: v, label: v[0].toUpperCase() + v.slice(1) }));
 const MOVE = { champion: ['Champion', c.sunSoft], promotion: ['Promoted', c.limeSoft], relegation: ['Relegated', c.redSoft], playoff: ['Playoff', c.cyanSoft], qualification: ['Qualified', c.cyanSoft], stay: ['Stays', c.violetSoft] };
 const Pill = ({ map, k }) => <Tag label={(map[k] ?? [k])[0]} color={(map[k] ?? [])[1] ?? c.violetSoft} />;
 const Row = ({ children, style }) => <View style={[{ flexDirection: 'row', gap: 8, flexWrap: 'wrap', alignItems: 'center' }, style]}>{children}</View>;
@@ -130,7 +131,10 @@ function CompetitionHome({ id }) {
         {s && tab === 'fixtures' ? <FixturesTab {...P} /> : null}
         {s && tab === 'standings' ? <StandingsTab {...P} /> : null}
         {s && tab === 'registration' ? <RegistrationTab {...P} /> : null}
+        {s && tab === 'transfers' ? <TransfersTab {...P} /> : null}
+        {s && tab === 'discipline' ? <DisciplineTab {...P} /> : null}
         {s && tab === 'rules' ? <RulesTab {...P} /> : null}
+        {s && tab === 'archive' ? <ArchiveTab {...P} /> : null}
         {s && tab === 'reports' ? <ReportsTab {...P} /> : null}
       </View>
       <SeasonSheet visible={seasonSheet} onClose={() => setSeasonSheet(false)} compId={id} onDone={(x) => { setSeasonSheet(false); setSid(x.id); reloadAll(); }} />
