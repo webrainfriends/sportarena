@@ -133,10 +133,10 @@ test('player payout lines: approved runs are payables of the team organisation, 
   for (const [r, who] of [[o1, p1], [o2, p2]]) {
     assert.equal(r.kind, 'charge'); assert.equal(r.source_module, 'contracts'); assert.equal(r.payer_org_id, club.org.id); assert.equal(r.payee_id, who.id); assert.equal(r.team_id, team.id);
   }
-  assert.equal(o1.status, 'open'); assert.equal(Number(o1.gross_minor), 100000); assert.equal(Number(o1.tax_minor), 10000, 'tax = withheld');
-  assert.equal(o2.status, 'settled'); assert.equal(Number(o2.tax_minor), 5000);
+  assert.equal(o1.status, 'open'); assert.equal(Number(o1.gross_minor), 100000); assert.equal(Number(o1.tax_minor), 0, 'withholding is not tax'); assert.equal(Number(o1.withheld_minor), 10000, 'withheld is its own amount');
+  assert.equal(o2.status, 'settled'); assert.equal(Number(o2.tax_minor), 0); assert.equal(Number(o2.withheld_minor), 5000);
   const rc = await byKey(`receipt:player_payout_line:${paid.id}:50000`);
-  assert.ok(rc, 'the paid line posts a cumulative receipt'); assert.equal(rc.kind, 'payment'); assert.equal(rc.status, 'settled'); assert.equal(Number(rc.gross_minor), 50000); assert.equal(Number(rc.tax_minor), 5000);
+  assert.ok(rc, 'the paid line posts a cumulative receipt'); assert.equal(rc.kind, 'payment'); assert.equal(rc.status, 'settled'); assert.equal(Number(rc.gross_minor), 50000); assert.equal(Number(rc.tax_minor), 0); assert.equal(Number(rc.withheld_minor), 5000);
   assert.equal(await count("source_type='player_payout_line' AND kind='payment' AND source_id=$1", [open.id]), 0);
 
   let s = await sum(club);
