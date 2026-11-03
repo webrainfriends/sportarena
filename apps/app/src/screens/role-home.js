@@ -15,6 +15,8 @@ import { actionLabel, hintText, statLabel } from '../ws-text';
 import { api } from '../api';
 import { useLoad } from '../hooks';
 import { AthleteHub } from './athlete-hub';
+import { VenueHub } from './venue-hub';
+import { CoachHub } from './coach-hub';
 import { PlayerHero } from '../hero';
 import { EventTowerHome } from './event-tower';
 
@@ -54,12 +56,13 @@ function Context({ ws }) {
 
 function Tiles({ items, role }) {
   if (!items?.length) return null;
+  const many = items.length > 4; // a longer strip wraps instead of squeezing its labels; up to four tiles render exactly as before
   return (
-    <View style={{ flexDirection: 'row', gap: 10 }}>
+    <View style={{ flexDirection: 'row', gap: 10, flexWrap: many ? 'wrap' : 'nowrap' }}>
       {items.map((s) => (
-        <View key={s.key} accessible accessibilityLabel={`${statLabel(role, s)}: ${s.value}`} style={{ flex: 1, minHeight: 76, backgroundColor: c.paper, borderRadius: 16, borderWidth: 1, borderColor: c.line, padding: 12, justifyContent: 'center' }}>
+        <View key={s.key} accessible accessibilityLabel={`${statLabel(role, s)}: ${s.value}`} style={{ ...(many ? { flexGrow: 1, flexBasis: 120, minWidth: 120 } : { flex: 1 }), minHeight: 76, backgroundColor: c.paper, borderRadius: 16, borderWidth: 1, borderColor: c.line, padding: 12, justifyContent: 'center' }}>
           <T weight="800" size={26} style={{ letterSpacing: -0.8 }}>{s.value}</T>
-          <T size={12} weight="700" color={c.mute} numberOfLines={1}>{statLabel(role, s)}</T>
+          <T size={12} weight="700" color={c.mute} numberOfLines={many ? 2 : 1}>{statLabel(role, s)}</T>
         </View>
       ))}
     </View>
@@ -146,6 +149,7 @@ export function RoleHome() {
   if (early) return early;
   const top = d.work.slice(0, 3);
   const eventHome = d.role === 'organizer' && !!d.tower; // the event role's landing page is the event control tower
+  const venueHome = d.role === 'venue_manager'; // the venue owner's home is the wizard or the command centre, not the generic queue
   const athleteHome = d.role === 'athlete'; // the athlete's home leads with the nine hub cards; today and the queue come after
   // Order is chosen here, not with a reversed flex direction: a reversed container pushes its overflow out of the scrollable range on the web.
   const todayQueue = (
@@ -164,7 +168,10 @@ export function RoleHome() {
   );
   const side = (
           <View style={{ flex: tablet ? (athleteHome ? 1.5 : 0.9) : undefined, width: tablet ? undefined : '100%' }}>
-            {athleteHome ? <AthleteHub sport={main} /> : <>
+            {athleteHome ? <AthleteHub sport={main} /> : d.role === 'coach' ? <>
+            <Heading>{t('ch.quick')}</Heading>
+            <CoachHub />
+            </> : <>
             <Heading>{t('ws.quick_actions')}</Heading>
             <Actions actions={d.actions} cols={2} role={d.role} />
             <Heading>{t('ws.beyond')}</Heading>
@@ -182,12 +189,13 @@ export function RoleHome() {
             <H1 style={{ fontSize: 26 }}>{user.display_name}</H1>
             <T color={c.mute} weight="600">{roleLabel(d.role)}</T>
           </View>
-        ) : (
+        ) : venueHome ? null : (
           <View style={{ marginTop: 4, borderRadius: 24, overflow: 'hidden', borderWidth: 1, borderColor: c.line }}>
             <PlayerHero user={user} profile={main} pad={16} onAvatar={() => goTab('Me')} />
           </View>
         )}
         <View style={{ marginTop: 14 }}><Context ws={ws} /></View>
+        {venueHome ? <View style={{ marginTop: 14 }}><VenueHub /></View> : <>
         {athleteHome ? null : <SetupCard />}
         {eventHome ? (
           <View style={{ marginTop: 14 }}><EventTowerHome tower={d.tower} push={push} goTab={goTab} /></View>
@@ -199,6 +207,7 @@ export function RoleHome() {
             </View>
           </>
         )}
+        </>}
       </Screen>
   );
 }

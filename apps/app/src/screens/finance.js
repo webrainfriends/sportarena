@@ -13,10 +13,11 @@ import { MenuField, MultiMenuField } from '../menu-field';
 import { c, day } from '../theme';
 import { Bars, Kpi, Split, saveCsv } from './academy-ui';
 import { Obligations, Settlements, AccessAudit } from './finance-books';
+import { Tax } from './finance-tax';
 import { Detail, TxRow, atLeast, catLabel, kindLabel, modLabel, money } from './finance-parts';
 
 const FINANCE_ROLES = ['owner', 'admin', 'finance'];
-const TABS = ['overview', 'transactions', 'receivables', 'payables', 'settlements', 'reconciliation', 'access'];
+const TABS = ['overview', 'transactions', 'receivables', 'payables', 'settlements', 'reconciliation', 'tax', 'access'];
 const RECON_KINDS = ['payment_unrecorded', 'refund_drift', 'amount_drift', 'paid_without_ledger', 'amount_mismatch', 'refund_unrecorded', 'provider_dispute', 'payout_failed', 'ledger_drift', 'share_mismatch'];
 const iso = (d) => (d ? String(d).slice(0, 10) : undefined);
 const join = (v) => (v?.length ? v.join(',') : undefined);
@@ -90,7 +91,7 @@ export function Finance({ id: routeOrg }) {
           </View>
         ) : null}
       </View>
-      <View style={{ marginVertical: 12 }}><Seg options={TABS.map((value) => ({ value, label: value === 'reconciliation' && needs ? `${t(`fin.tab.${value}`)} (${needs})` : t(`fin.tab.${value}`) }))} value={tab} onChange={setTab} /></View>
+      <View style={{ marginVertical: 12 }}><Seg options={TABS.filter((value) => value !== 'tax' || atLeast(level, 'accountant')).map((value) => ({ value, label: value === 'reconciliation' && needs ? `${t(`fin.tab.${value}`)} (${needs})` : t(`fin.tab.${value}`) }))} value={tab} onChange={setTab} /></View>
       {!ready ? <Loading /> : sum.error ? <ErrorBox error={sum.error} onRetry={sum.reload} /> : sum.loading && !sum.data ? <Loading /> : (
         <>
           {tab === 'overview' ? <Overview shown={shown} head={head} needs={needs} onReview={() => setTab('reconciliation')} onCategory={(k) => { setDims({ ...dims, category: [k] }); setTab('transactions'); }} /> : null}
@@ -99,6 +100,7 @@ export function Finance({ id: routeOrg }) {
           {tab === 'payables' ? <Obligations direction="out" q={q} scope={scope} cur={cur} /> : null}
           {tab === 'settlements' ? <Settlements q={q} scope={scope} /> : null}
           {tab === 'reconciliation' ? <Reconciliation scope={scope} whole={whole} platform={platform} level={level} onChanged={() => { sum.reload(); everyCurrency.reload(); }} toast={toast} /> : null}
+          {tab === 'tax' && atLeast(level, 'accountant') ? <Tax scope={scope} whole={whole} level={level} q={q} toast={toast} /> : null}
           {tab === 'access' ? <AccessAudit scope={scope} whole={whole} level={level} toast={toast} onChanged={sum.reload} /> : null}
         </>
       )}

@@ -50,9 +50,9 @@ export function StartTeamSheet({ visible, onClose, onCreated }) {
 }
 
 /** Find things to join: events, teams and people. Creating and running your own lives under the Schedule tab. */
-export function Explore({ sport: initialSport } = {}) {
+export function Explore({ sport: initialSport, tab: initialTab } = {}) {
   const { push } = useNav();
-  const [tab, setTab] = useState('events');
+  const [tab, setTab] = useState(['events', 'teams', 'people', 'academies', 'suppliers'].includes(initialTab) ? initialTab : 'events');
   const [sport, setSport] = useState(initialSport ?? null);
   const [q, setQ] = useState('');
   const [dq, setDq] = useState('');

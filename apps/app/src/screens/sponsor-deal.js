@@ -146,7 +146,7 @@ export function SponsorDeal({ id }) {
               {x.status === 'scheduled' && !x.held && x.kind === 'endorsement' && d.role === x.promoter && can('evaluate') && !x.submissions.some((s) => s.status !== 'revision_requested') ? <Btn small title="Submit evidence" color={c.violet} style={{ alignSelf: 'flex-start', marginTop: 6 }} onPress={() => setForm({ kind: 'submit', o: x })} /> : null}
             </Card>)) : <Empty emoji="🗓️" title="Nothing scheduled" />}
           {d.obligations.some((x) => x.deliveries.length || x.returns.length || x.vouchers.length) && (recipient || can('export')) ? <Btn small title="Export deliveries, returns and vouchers (CSV)" color={c.paper} ink={c.ink} style={{ alignSelf: 'flex-start' }} onPress={exportFulfilment} accessibilityLabel="Export deliveries, returns and vouchers as a CSV file" /> : null}
-          <T size={12} color={c.mute}>Online payments are collected by Gotmygame through Stripe or PayPal, counted only once the provider verifies them, and paid out to the recipient after the hold period (see Earnings). Bank or cash payments you report stay unverified until the recipient confirms them.</T>
+          <T size={12} color={c.mute}>Online payments are collected by GotMyGame through Stripe or PayPal, counted only once the provider verifies them, and paid out to the recipient after the hold period (see Earnings). Bank or cash payments you report stay unverified until the recipient confirms them.</T>
         </Section>) : null}
       {d.obligations?.some((x) => x.kind === 'money') ? <Reconciliation id={d.id} /> : null}
       {['proposed', 'active', 'paused', 'ended', 'term_expired', 'completed'].includes(d.status) && (sponsor || recipient) ? <SponsorPerformance deal={d} /> : null}
@@ -230,7 +230,7 @@ function CheckoutSheet({ o, onClose, onChanged }) {
           </View>
           {pick === 'other' ? <Field label={`Amount in ${o.currency}`} value={other} onChangeText={(x) => setOther(x.replace(/[^0-9.,]/g, ''))} keyboardType="decimal-pad" hint={cents > due ? `At most ${fmt(due, o.currency)}` : undefined} /> : null}
           {['upi', 'card', 'netbanking', 'wallet', 'paypal'].filter((x) => (m.methods ?? []).includes(x)).map((x, i) => <Btn key={x} title={`${t(`pay.method.${x}`)}${bad ? '' : ` · ${fmt(cents, o.currency)}`}`} color={i === 0 ? undefined : c.paper} ink={i === 0 ? undefined : c.ink} onPress={() => go(x)} loading={busy} disabled={bad} />)}
-          <T size={12} color={c.mute}>You are charged in {o.currency} on the provider's secure page; card details never reach Gotmygame. The payment counts only after the provider confirms it.</T>
+          <T size={12} color={c.mute}>You are charged in {o.currency} on the provider's secure page; card details never reach GotMyGame. The payment counts only after the provider confirms it.</T>
         </View>)}
       {err ? <T color={c.red} weight="700" accessibilityRole="alert">{err}</T> : null}
     </Sheet>

@@ -67,6 +67,7 @@ export function targetFor(data = {}) {
   if (data.spectator && data.fixture_id) return ['LiveCentre', { id: data.fixture_id }]; // an alert for a game you follow
   if (data.screen === 'PlayerFunding') return ['PlayerFunding', data.athlete_id ? { athlete_id: data.athlete_id } : {}]; // an athlete shared their funding with a coach
   if (data.screen === 'Health') return ['Health', {}]; // a device alert the athlete set up themself (carries no readings)
+  if (data.policy_id) return ['Insurance', {}]; // a renewal reminder or a change to one of your policies
   if (data.assessment_id) return ['OfficialAssessment', { id: data.assessment_id }]; // an assessment published, corrected, voided or appealed (private development record)
   if (data.observation_id) return ['OfficialsDevelopment', { tab: 'assessor' }];
   if (data.mentorship_id || data.item_id) return ['OfficialsDevelopment', { tab: 'growth' }];

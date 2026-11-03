@@ -9,6 +9,7 @@ import { Avatar, Btn, Card, Empty, ErrorBox, H1, H2, Loading, Screen, T, Tag } f
 import { FormSheet } from '../FormSheet';
 import { c, day, toneFor } from '../theme';
 import { useNav } from '../nav';
+import { Wordmark } from '../wordmark';
 import { CredentialList } from './pathways';
 import { PortfolioJourney } from './journey-ui';
 import { SkillLevelCard } from '../skill-level';
@@ -97,7 +98,7 @@ export function PassportCard({ data, own = false }) {
               <View style={{ flexDirection: 'row', gap: 8 }}><Stat value={cr.matches} label="MATCHES" /><Stat value={`${cr.wins}-${cr.draws}-${cr.losses}`} label="W-D-L" /><Stat value={cr.official_matches} label="OFFICIAL" /></View>
             </View>
           )) : <T size={13} color={c.mute} style={{ marginTop: 6 }}>No matches yet.</T>}
-          <T size={11} color={c.mute} style={{ marginTop: 10 }}>“Official” counts games played in Gotmygame events. The rest were logged by the athlete.</T>
+          <T size={11} color={c.mute} style={{ marginTop: 10 }}>“Official” counts games played in GotMyGame events. The rest were logged by the athlete.</T>
         </Card>
       ) : null}
 
@@ -262,7 +263,7 @@ export function PassportPublic({ token }) {
   const p = useLoad(() => api.get(`/passport/${encodeURIComponent(token)}`), [token]);
   return (
     <Screen>
-      <T weight="800" size={16} color={c.pink} style={{ letterSpacing: -0.3 }}>Gotmygame · Player passport</T>
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}><Wordmark width={104} /><T weight="800" size={16} color={c.pink}>· Player passport</T></View>
       <View style={{ marginTop: 12 }}>
         {p.error ? <Empty emoji="🔒" title="This link is not available" sub="It may have expired or been turned off. If it was sent to you personally, sign in with that account and open it again." /> : !p.data ? <Loading /> : <PassportCard data={p.data} />}
       </View>

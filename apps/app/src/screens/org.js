@@ -251,7 +251,7 @@ function InviteSheet({ visible, onClose, o, roles, depts, done }) {
     <Sheet visible={visible} onClose={close} title="Invite to this organisation">
       <View style={{ gap: 12 }}>
         <EntityPicker label="Person" value={who} onChange={setWho} />
-        <T size={12} color={c.mute}>They need a Gotmygame account. Nothing is shared until they accept.</T>
+        <T size={12} color={c.mute}>They need a GotMyGame account. Nothing is shared until they accept.</T>
         <T color={c.mute}>Role</T>
         <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>{roles.map(([k, l]) => <Chip key={k} label={l} active={role === k} onPress={() => setRole(k)} />)}</View>
         {role ? <T size={12} color={c.mute}>{ROLE_HELP[role]}</T> : null}

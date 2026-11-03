@@ -2,6 +2,7 @@
 // repeated headers across pages, and page numbers. Everything printed comes from an immutable snapshot; nothing is recalculated here.
 import PDFDocument from 'pdfkit';
 import { assertGlyphs, fonts } from '../documents/render.js';
+import { drawWordmark } from '../documents/brand-font.js';
 
 const hex = (c, d) => (/^#[0-9A-Fa-f]{6}$/.test(c ?? '') ? c : d);
 const MARGIN = 42;
@@ -26,7 +27,7 @@ export async function renderTenderDocument(doc) {
   const text = (t, x, y, w, o = {}) => pdf.font(o.bold ? f.bold : f.regular).fontSize(o.size ?? 9).fillColor(o.color ?? '#181A2F').text(String(t ?? ''), x, y, { width: w, align: o.align ?? 'left', lineGap: o.gap ?? 1.5 });
 
   pdf.rect(0, 0, pdf.page.width, 8).fill(accent);
-  text(doc.kit?.display_name ?? 'Sportarena', left, MARGIN - 8, width - 150, { bold: true, size: 14, color: accent });
+  if (doc.kit?.display_name) text(doc.kit.display_name, left, MARGIN - 8, width - 150, { bold: true, size: 14, color: accent }); else drawWordmark(pdf, left, MARGIN - 10, { size: 22 });
   const sub = [doc.kit?.legal_name, doc.kit?.address].filter(Boolean).join(' · ');
   if (sub) text(sub, left, pdf.y + 1, width - 150, { size: 8, color: '#5B6480' });
   text(`${doc.stamp ?? 'ISSUED'}\n${doc.reference}`, left + width - 150, MARGIN - 8, 150, { bold: true, size: 10, align: 'right', color: doc.stamp === 'DRAFT' ? '#8A5A00' : '#181A2F' });
