@@ -184,7 +184,43 @@ const executors = new Map();
 export const registerMandateExecutor = (provider, fn) => (fn ? executors.set(provider, fn) : executors.delete(provider));
 const executorFor = () => executors.values().next().value ?? null;
 
+// Work a mandate executor wants done after the case's transaction commits (settling takes the same row lock the case holds). Drained by runCollections.
+const deferred = [];
+export async function drainDeferred() {
+  while (deferred.length) { try { await deferred.shift()(); } catch (e) { console.error('[collections] deferred step failed', e.message); } }
+}
+
+/** Is another automatic attempt due for this case under the policy's retry cadence? Returns the attempt number (0-based) or null. */
+async function nextAttempt(c, cs, policy, today) {
+  const past = (await c.query("SELECT count(*)::int AS n, max(created_at) AS last FROM collection_events WHERE case_id=$1 AND kind IN ('auto_debit_started','auto_debit_failed')", [cs.id])).rows[0];
+  const k = past.n;
+  if (k > policy.retry_days.length) return null;
+  if (k > 0 && daysBetween(new Date(past.last).toISOString().slice(0, 10), today) < policy.retry_days[k - 1]) return null;
+  return k;
+}
+
+/** A coach subscription month with a saved card (#680): same retry cadence and events as any mandate; the executor registered for the mandate's provider charges it. */
+async function coachAutoDebit(c, cs, f, policy, today) {
+  const m = (await c.query("SELECT * FROM payment_mandates WHERE subject_kind='coach_subscription' AND subject_id=$1 AND provider='stripe' AND status='active'", [f.cp.subscription_id])).rows[0];
+  if (!m) return;
+  const k = await nextAttempt(c, cs, policy, today);
+  if (k === null) return;
+  const run = executors.get(`${m.provider}-coach`);   // coach months have their own executor, so the academy hook (first registered adapter) never picks it up
+  if (!run) { await addEvent(c, cs.id, 'auto_debit_unavailable', { data: { reason: 'no provider adapter is connected' }, dedupe: 'ad_unavailable' }); return; }
+  let res;
+  try { res = await run({ mandateRef: m.id, chargeId: null, amountMinor: f.balance, currency: f.cp.currency, idempotencyKey: `coachsub:${f.cp.subscription_id}:${f.cp.period_no}:${k}`, coachPeriod: { client: c, mandate: m, period: f.cp, attempt: k } }); } catch (e) { res = { ok: false, reason: String(e.message).slice(0, 160) }; }
+  if (res?.skip) return;                       // the mandate was not usable (stopped, revoked, price changed): nothing was charged, the payer is asked to pay below
+  if (res?.ok) {
+    await addEvent(c, cs.id, 'auto_debit_started', { data: { provider_ref: res.ref ?? null }, dedupe: `ad:${k}` });
+    if (res.after) deferred.push(res.after);
+  } else {
+    await addEvent(c, cs.id, 'auto_debit_failed', { data: { reason: res?.reason ?? 'declined' }, dedupe: `ad:${k}` });
+    await c.query('UPDATE collection_cases SET attempts=attempts+1, failed_attempts=failed_attempts+1, last_attempt_at=now(), had_trouble=true WHERE id=$1', [cs.id]);
+  }
+}
+
 async function autoDebit(c, cs, f, policy, today) {
+  if (f.cp) return coachAutoDebit(c, cs, f, policy, today);
   if (!f.ch) return;
   const s = (await c.query('SELECT s.* FROM billing_schedule_periods p JOIN billing_schedules s ON s.id=p.schedule_id WHERE p.charge_id=$1', [f.ch.id])).rows[0];
   if (!s || !s.mandate_ref || s.mandate_status !== 'active') return;
@@ -371,7 +407,7 @@ export async function runCollections({ today = todayStr(), limit = 300, ownerId 
   for (const o of owners) await tx((c) => ensureCases(c, o.t, o.id));
   const open = await many('SELECT id FROM collection_cases WHERE state = ANY($1) AND ($3::uuid IS NULL OR owner_id=$3) ORDER BY due_on, id LIMIT $2', [OPEN_STATES, limit, ownerId]);
   let n = 0;
-  for (const cs of open) { await tx((c) => advanceCase(c, cs.id, { today })); n++; }
+  for (const cs of open) { await tx((c) => advanceCase(c, cs.id, { today })); await drainDeferred(); n++; }
   return n;
 }
 

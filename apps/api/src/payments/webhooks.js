@@ -5,6 +5,7 @@ import { settle } from './service.js';
 import { onProviderDispute, onProviderRefund } from '../settlement.js';
 import { stripe, paypal, razorpay } from './providers.js';
 import { onMandateEvent } from './mandates.js';
+import { onCardSetupCompleted, onCardIntent } from './card-autopay.js';
 import { onStripeTransfer } from '../payouts.js';
 
 const byRef = (provider, ref) => (ref ? one('SELECT id FROM payments WHERE provider=$1 AND provider_ref=$2', [provider, ref]) : null);
@@ -26,7 +27,11 @@ export function webhookRouter() {
     if (!stripe.verifyWebhook(body, req.headers['stripe-signature'])) return res.status(400).json({ error: 'bad_signature' });
     const event = JSON.parse(body);
     if (await seen('stripe', event.id)) return res.json({ received: true, duplicate: true });
-    if (event.type === 'checkout.session.completed' || event.type === 'checkout.session.async_payment_succeeded') {
+    if (event.type === 'checkout.session.completed' && event.data.object.mode === 'setup') {
+      await onCardSetupCompleted(event.data.object);      // a saved card for automatic coach subscription payment (#680)
+    } else if (event.type === 'payment_intent.succeeded' || event.type === 'payment_intent.payment_failed') {
+      await onCardIntent(event.data.object, event.type === 'payment_intent.succeeded');   // an off-session charge we made (#680); anything else is not ours
+    } else if (event.type === 'checkout.session.completed' || event.type === 'checkout.session.async_payment_succeeded') {
       const p = await byRef('stripe', event.data.object.id);
       if (p) await settle(p.id, stripe.fromSession(event.data.object));
     } else if (event.type === 'charge.refunded') {
