@@ -35,6 +35,14 @@ export const block = z.object({
   scope: z.array(id).max(60).optional().describe('athlete ids this block is for; omit for everyone'),
   unit: text(40).optional().describe('name of one of the session\'s groups (e.g. defenders) this block is for'),
   coach_notes: text(1000).optional().describe('shown only to the coach, never shared'),
+  drill_id: z.string().uuid().optional().describe('the drill (library template) this block was taken from; set when a drill is added, kept so you can see where it was used'),
+  drill_version: z.number().int().min(1).optional().describe('version of that drill when it was added; later edits to the drill do not change this block'),
+  trains: z.array(text(40)).max(10).optional().describe('keys of the evaluation-sheet criteria this block works on'),
+  area: text(120).optional().describe('space and format, e.g. "20x20 m grid, 4v2"'),
+  equipment: z.array(text(60)).max(15).optional().describe('kit needed for this block'),
+  work_rest: text(60).optional().describe('work to rest structure, e.g. "40 s on / 20 s off x 6"'),
+  progression: text(300).optional().describe('how to make it harder'),
+  regression: text(300).optional().describe('how to make it easier'),
 });
 
 const activeCoachOf = (uid, teamId) => one("SELECT 1 FROM team_members WHERE team_id=$1 AND user_id=$2 AND status='active' AND role='coach'", [teamId, uid]);

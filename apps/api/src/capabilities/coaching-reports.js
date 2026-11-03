@@ -1,4 +1,6 @@
 import { z } from 'zod';
+import { buildTeamPerformance } from '../team-report.js';
+import { resolveScope } from '../team-performance.js';
 import { createHash } from 'node:crypto';
 import { cap, id, page } from '../registry.js';
 import { one, many, tx } from '../db.js';
@@ -18,10 +20,10 @@ const TAG = 'Coaching reports';
 const COACH = ['coach'];
 const day = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
 const text = (n) => z.string().trim().max(n);
-const KINDS = ['session', 'athlete_progress', 'goal_review', 'team_training', 'match_debrief', 'period_review', 'action_summary'];
-const AUDIENCES = ['coach_private', 'athlete', 'guardian', 'team_staff'];
+const KINDS = ['session', 'athlete_progress', 'goal_review', 'team_training', 'match_debrief', 'period_review', 'action_summary', 'team_performance'];
+const AUDIENCES = ['coach_private', 'athlete', 'guardian', 'team_staff', 'organisation'];
 const selection = z.object({
-  goals: z.boolean().default(true), metrics: z.boolean().default(true), actions: z.boolean().default(true),
+  goals: z.boolean().default(true), metrics: z.boolean().default(true), actions: z.boolean().default(true), findings: z.boolean().default(true),
   observation_ids: z.array(id).max(60).default([]), session_record_ids: z.array(id).max(40).default([]),
 });
 const fields = {
@@ -29,11 +31,16 @@ const fields = {
 };
 
 /** What each audience may be shown. A private note can never be selected for anyone but the coach. */
-const NOTE_VISIBILITY = { coach_private: ['coach_private', 'staff', 'player', 'team'], team_staff: ['staff', 'player', 'team'], athlete: ['player'], guardian: ['player'] };
+const NOTE_VISIBILITY = { coach_private: ['coach_private', 'staff', 'player', 'team'], team_staff: ['staff', 'player', 'team'], athlete: ['player'], guardian: ['player'], organisation: [] };
 
 async function authorise(user, r) {
+  if (r.kind === 'team_performance') {
+    if (r.athlete_id) throw badRequest('A team performance report is about a team or a batch, not one athlete');
+    await resolveScope(user, { team_id: r.team_id ?? undefined, cohort_id: r.cohort_id ?? undefined });   // you must really run this team or batch
+  } else if (r.cohort_id) throw badRequest('A batch can only be used for a team performance report');
+  if (r.audience === 'organisation' && r.kind !== 'team_performance') throw badRequest('Only a team performance report can be addressed to an organisation');
   if (r.athlete_id) await requireRelationship(user, r.athlete_id);
-  if (r.team_id) await requireTeam(user, r.team_id);
+  if (r.team_id && r.kind !== 'team_performance') await requireTeam(user, r.team_id);
   if (r.athlete_id && r.team_id && !(await one("SELECT 1 FROM team_members WHERE team_id=$1 AND user_id=$2 AND status='active'", [r.team_id, r.athlete_id]))) throw badRequest('That athlete is not on this team');
   if ((r.audience === 'athlete' || r.audience === 'guardian') && r.athlete_id) await requireCoachingConsent(r.athlete_id, 'sharing coaching reports');
   if (r.audience === 'guardian') {
@@ -44,6 +51,7 @@ async function authorise(user, r) {
 /** Reject a selection the audience may not see (and say which notes), before anything is stored. */
 async function checkSelection(user, r) {
   const sel = r.selection;
+  if (r.audience === 'organisation' && (sel.observation_ids.length || sel.session_record_ids.length)) throw badRequest('A report for an organisation is aggregate only: it cannot include individual notes or sessions', { code: 'aggregate_only' });
   if (sel.observation_ids.length) {
     const rows = await many('SELECT id, visibility, athlete_id, team_id FROM coaching_observations WHERE id = ANY($1::uuid[]) AND coach_id=$2', [sel.observation_ids, user.id]);
     if (rows.length !== new Set(sel.observation_ids).size) throw badRequest('Some selected notes are not yours');
@@ -62,6 +70,7 @@ const shortDate = (d) => (d ? new Date(d).toISOString().slice(0, 10) : null);
 
 /** Build the audience-safe sections from live records. Used for the preview and, at publish time, for the frozen snapshot. */
 async function build(user, r) {
+  if (r.kind === 'team_performance') return buildTeamPerformance(user, r, { coachName: (await one('SELECT display_name FROM users WHERE id=$1', [user.id])).display_name, shortDate });
   const priv = r.audience === 'coach_private';
   const to = `${shortDate(r.period_to)}T23:59:59Z`, from = shortDate(r.period_from);
   const sel = r.selection;
@@ -130,41 +139,41 @@ async function narrativeFromDraft(user, r, draftId) {
 cap({
   name: 'create_coaching_report', method: 'POST', path: '/coaching/reports', tag: TAG, auth: COACH, status: 201,
   summary: 'Start a report for an athlete or team you coach: choose the audience (just you, the athlete, a verified guardian, or the team\'s coaching staff), the period and what goes in. Only notes already visible to that audience can be selected. Optionally start the summary from an AI draft written for the same audience; you must confirm you reviewed it before publishing.',
-  input: z.object({ athlete_id: id.optional(), team_id: id.optional(), ...fields, ai_draft_id: id.optional() }),
+  input: z.object({ athlete_id: id.optional(), team_id: id.optional(), cohort_id: id.optional().describe('an academy batch; team performance reports only'), rubric_id: id.optional().describe('the evaluation sheet a team performance report summarises'), ...fields, ai_draft_id: id.optional(), narrative_ai: z.boolean().default(false).describe('true when the summary text came from AI suggestions: publishing then needs confirm_reviewed') }),
   async handler({ user }, i) {
-    if (!i.athlete_id && !i.team_id) throw badRequest('Name an athlete or a team');
+    if (!i.athlete_id && !i.team_id && !i.cohort_id) throw badRequest('Name an athlete, a team or a batch');
     if (i.to < i.from) throw badRequest('to is before from');
-    const r = { athlete_id: i.athlete_id ?? null, team_id: i.team_id ?? null, kind: i.kind, title: i.title, audience: i.audience, period_from: i.from, period_to: i.to, selection: selection.parse(i.selection ?? {}), narrative: i.narrative ?? null };
+    const r = { athlete_id: i.athlete_id ?? null, team_id: i.team_id ?? null, cohort_id: i.cohort_id ?? null, rubric_id: i.rubric_id ?? null, kind: i.kind, title: i.title, audience: i.audience, period_from: i.from, period_to: i.to, selection: selection.parse(i.selection ?? {}), narrative: i.narrative ?? null };
     if (i.audience === 'athlete' && !i.athlete_id) throw badRequest('An athlete report needs an athlete');
     if (i.audience === 'guardian' && !i.athlete_id) throw badRequest('A guardian report needs an athlete');
     if (i.audience === 'team_staff' && !i.team_id) throw badRequest('A staff report needs the team');
     await authorise(user, r); await checkSelection(user, r);
-    let fromAi = false;
+    let fromAi = i.narrative_ai && !!r.narrative;
     if (i.ai_draft_id) { r.narrative = await narrativeFromDraft(user, r, i.ai_draft_id); fromAi = true; }
     return one(
-      `INSERT INTO coaching_reports(coach_id, athlete_id, team_id, kind, title, audience, period_from, period_to, selection, narrative, narrative_from_ai, ai_draft_id) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) RETURNING *`,
-      [user.id, r.athlete_id, r.team_id, r.kind, r.title, r.audience, r.period_from, r.period_to, JSON.stringify(r.selection), r.narrative, fromAi, i.ai_draft_id ?? null]);
+      `INSERT INTO coaching_reports(coach_id, athlete_id, team_id, cohort_id, rubric_id, kind, title, audience, period_from, period_to, selection, narrative, narrative_from_ai, ai_draft_id) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14) RETURNING *`,
+      [user.id, r.athlete_id, r.team_id, r.cohort_id, r.rubric_id, r.kind, r.title, r.audience, r.period_from, r.period_to, JSON.stringify(r.selection), r.narrative, fromAi, i.ai_draft_id ?? null]);
   },
 });
 
 cap({
   name: 'update_coaching_report', method: 'PATCH', path: '/coaching/reports/:id', tag: TAG, auth: COACH,
   summary: 'Change a report\'s definition (title, audience, period, what is included, your summary). Needs the row_version you loaded. Versions already published are never changed; the next publish makes a new one.',
-  input: z.object({ id, row_version: z.number().int().min(1), title: fields.title.optional(), kind: fields.kind.optional(), audience: fields.audience.optional(), from: day.optional(), to: day.optional(), selection: selection.optional(), narrative: text(6000).optional(), ai_draft_id: id.optional() }),
+  input: z.object({ id, row_version: z.number().int().min(1), title: fields.title.optional(), kind: fields.kind.optional(), audience: fields.audience.optional(), from: day.optional(), to: day.optional(), selection: selection.optional(), narrative: text(6000).optional(), ai_draft_id: id.optional(), rubric_id: id.nullable().optional(), narrative_ai: z.boolean().optional() }),
   async handler({ user }, i) {
     const cur = await load(user, i.id);
-    const n = { ...cur, title: i.title ?? cur.title, kind: i.kind ?? cur.kind, audience: i.audience ?? cur.audience, period_from: i.from ?? shortDate(cur.period_from), period_to: i.to ?? shortDate(cur.period_to), selection: i.selection ?? cur.selection, narrative: i.narrative ?? cur.narrative };
+    const n = { ...cur, title: i.title ?? cur.title, kind: i.kind ?? cur.kind, audience: i.audience ?? cur.audience, period_from: i.from ?? shortDate(cur.period_from), period_to: i.to ?? shortDate(cur.period_to), selection: i.selection ?? cur.selection, narrative: i.narrative ?? cur.narrative, rubric_id: i.rubric_id === undefined ? cur.rubric_id : i.rubric_id };
     if (shortDate(n.period_to) < shortDate(n.period_from)) throw badRequest('to is before from');
     if (n.audience === 'athlete' && !n.athlete_id) throw badRequest('An athlete report needs an athlete');
     if (n.audience === 'guardian' && !n.athlete_id) throw badRequest('A guardian report needs an athlete');
     if (n.audience === 'team_staff' && !n.team_id) throw badRequest('A staff report needs the team');
     await authorise(user, n); await checkSelection(user, n);
-    let fromAi = cur.narrative_from_ai;
+    let fromAi = cur.narrative_from_ai || (i.narrative_ai === true && !!n.narrative);
     if (i.ai_draft_id) { n.narrative = await narrativeFromDraft(user, n, i.ai_draft_id); fromAi = true; }
     else if (n.audience !== cur.audience && cur.narrative_from_ai && cur.ai_draft_id) throw badRequest('The summary came from an AI draft for another audience. Rewrite it or import a draft for this audience.');
     const row = await one(
-      `UPDATE coaching_reports SET title=$3, kind=$4, audience=$5, period_from=$6, period_to=$7, selection=$8, narrative=$9, narrative_from_ai=$10, ai_draft_id=coalesce($11, ai_draft_id), row_version=row_version+1, updated_at=now()
-        WHERE id=$1 AND row_version=$2 RETURNING *`, [cur.id, i.row_version, n.title, n.kind, n.audience, n.period_from, n.period_to, JSON.stringify(n.selection), n.narrative, fromAi, i.ai_draft_id ?? null]);
+      `UPDATE coaching_reports SET title=$3, kind=$4, audience=$5, period_from=$6, period_to=$7, selection=$8, narrative=$9, narrative_from_ai=$10, ai_draft_id=coalesce($11, ai_draft_id), rubric_id=$12, row_version=row_version+1, updated_at=now()
+        WHERE id=$1 AND row_version=$2 RETURNING *`, [cur.id, i.row_version, n.title, n.kind, n.audience, n.period_from, n.period_to, JSON.stringify(n.selection), n.narrative, fromAi, i.ai_draft_id ?? null, n.rubric_id ?? null]);
     if (!row) throw conflict('This report was changed elsewhere - reload it first');
     return row;
   },
@@ -212,7 +221,7 @@ cap({
   name: 'list_coaching_reports', method: 'GET', path: '/coaching/reports', tag: TAG, auth: COACH,
   summary: 'Your reports, most recently changed first.', input: z.object({ athlete_id: id.optional(), team_id: id.optional(), ...page }),
   handler: ({ user }, i) => many(
-    `SELECT id, kind, title, audience, athlete_id, team_id, period_from, period_to, latest_version, row_version, updated_at FROM coaching_reports WHERE coach_id=$1 AND ($2::uuid IS NULL OR athlete_id=$2) AND ($3::uuid IS NULL OR team_id=$3) ORDER BY updated_at DESC, id LIMIT $4 OFFSET $5`, [user.id, i.athlete_id ?? null, i.team_id ?? null, i.limit, i.offset]),
+    `SELECT id, kind, title, audience, athlete_id, team_id, cohort_id, period_from, period_to, latest_version, row_version, updated_at FROM coaching_reports WHERE coach_id=$1 AND ($2::uuid IS NULL OR athlete_id=$2) AND ($3::uuid IS NULL OR team_id=$3) ORDER BY updated_at DESC, id LIMIT $4 OFFSET $5`, [user.id, i.athlete_id ?? null, i.team_id ?? null, i.limit, i.offset]),
 });
 
 cap({

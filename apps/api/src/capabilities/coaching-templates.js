@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { cap, id } from '../registry.js';
-import { one, tx } from '../db.js';
+import { one, many, tx } from '../db.js';
 import { badRequest, conflict, forbidden, notFound } from '../errors.js';
 import { sportBySlugOrId } from '../helpers.js';
 import { hasOrgGrant } from '../org-access.js';
@@ -14,7 +14,7 @@ const COACH = ['coach'];
 const text = (n) => z.string().trim().max(n);
 
 /** Remove everything that points at a person or is for the coach's eyes only. */
-const scrub = (b) => ({ id: undefined, kind: b.kind, title: b.title, objective: b.objective, duration_min: b.duration_min, instructions: b.instructions, setup: b.setup, cues: b.cues ?? [], success_criteria: b.success_criteria, target_rpe: b.target_rpe, tags: b.tags ?? [] });
+const scrub = (b) => ({ id: undefined, kind: b.kind, title: b.title, objective: b.objective, duration_min: b.duration_min, instructions: b.instructions, setup: b.setup, cues: b.cues ?? [], success_criteria: b.success_criteria, target_rpe: b.target_rpe, tags: b.tags ?? [], trains: b.trains, area: b.area, equipment: b.equipment, work_rest: b.work_rest, progression: b.progression, regression: b.regression, drill_id: b.drill_id, drill_version: b.drill_version });
 const clean = (blocks) => blocks.map(scrub).map((b) => JSON.parse(JSON.stringify(b)));
 
 /** A template the coach may read: their own, or one shared with a team they coach or an organisation where they hold a coaching grant. */
@@ -98,7 +98,9 @@ cap({
     if (t.scope === 'drill' || !t.blocks?.length) throw badRequest('That template has no session blocks');
     const rec = await ownRecord(user, i.id);
     const cur = await one('SELECT blocks FROM coaching_session_plan_versions WHERE session_record_id=$1 AND version=$2', [rec.id, rec.plan_version]);
-    const blocks = i.mode === 'replace' || !cur ? t.blocks : [...cur.blocks, ...t.blocks];
+    // a drill (one-block library item) is remembered on the block it becomes, so its use can be traced; a whole-session template is traced on the plan version only
+    const added = t.scope === 'block' ? t.blocks.map((b) => ({ ...b, drill_id: t.id, drill_version: t.version })) : t.blocks;
+    const blocks = i.mode === 'replace' || !cur ? added : [...cur.blocks, ...added];
     return savePlan(user, rec.id, blocks, { template: { id: t.id, version: t.version } });
   },
 });
@@ -116,5 +118,21 @@ cap({
     const plan = await one('SELECT blocks FROM coaching_session_plan_versions WHERE session_record_id=$1 AND version=$2', [from.id, from.plan_version]);
     if (plan?.blocks.length && created.plan_version === 0) await savePlan(user, created.id, clean(plan.blocks));
     return one('SELECT * FROM coaching_session_records WHERE id=$1', [created.id]);
+  },
+});
+
+cap({
+  name: 'get_drill_usage', method: 'GET', path: '/coaching/drills/:id/usage', tag: TAG, auth: COACH,
+  summary: 'Where one of your drills has been used: the sessions (classes, bookings, academy sessions, games, team sessions) whose current plan includes it, with the version it was added at and how many people were in each. Drills added before this existed are not traced.',
+  input: z.object({ id }),
+  async handler({ user }, i) {
+    const t = await one("SELECT id, title, version, scope FROM coach_templates WHERE id=$1 AND coach_id=$2 AND scope='block'", [i.id, user.id]);
+    if (!t) throw notFound('Drill');
+    const uses = await many(
+      `SELECT r.id AS record_id, r.title, r.source_type, r.scheduled_at, r.status, (b->>'drill_version')::int AS drill_version,
+              (SELECT count(*)::int FROM coaching_session_participants p WHERE p.session_record_id=r.id) AS people
+         FROM coaching_session_records r JOIN coaching_session_plan_versions v ON v.session_record_id=r.id AND v.version=r.plan_version, jsonb_array_elements(v.blocks) b
+        WHERE r.coach_id=$1 AND b->>'drill_id'=$2 ORDER BY coalesce(r.scheduled_at, r.created_at) DESC, r.id LIMIT 200`, [user.id, t.id]);
+    return { drill: { id: t.id, title: t.title, version: t.version }, sessions: uses.length, last_used: uses[0]?.scheduled_at ?? null, uses };
   },
 });

@@ -143,7 +143,7 @@ export async function renderInvoice({ layout, kit, logo, invoice, sample = false
 export async function renderCoachingReport({ layout, kit, logo, snapshot, version }) {
   const f = fonts();
   const strings = [kit?.display_name, kit?.legal_name, kit?.address, kit?.footer_text, snapshot.title, snapshot.subject, snapshot.coach_name, snapshot.disclosure, ...layout.blocks.map((b) => b.text)];
-  for (const sec of snapshot.sections) strings.push(sec.title, sec.body, ...(sec.items ?? []).flatMap((x) => [x.title, x.meta, x.body, x.value]));
+  for (const sec of snapshot.sections) strings.push(sec.title, sec.body, ...(sec.items ?? []).flatMap((x) => [x.title, x.meta, x.body, x.value]), ...(sec.rows ?? []).flatMap((x) => [x.label, x.note]));
   assertGlyphs(strings, f);
   const accent = hex(kit?.primary_color, '#0F6E56'), ink = hex(kit?.secondary_color, '#444441');
   const doc = new PDFDocument({
@@ -177,6 +177,20 @@ export async function renderCoachingReport({ layout, kit, logo, snapshot, versio
         room(48);
         label(sec.title.toUpperCase(), left, doc.y, width, { bold: true, size: 9, color: accent }); doc.y += 4;
         if (sec.kind === 'text') { label(sec.body, left, doc.y, width, { size: 10 }); doc.y += 10; continue; }
+        if (sec.kind === 'bars') {
+          // a horizontal bar per row: the label, the bar scaled between the row's own min and max, and the value with its note
+          const labelW = Math.min(150, width * 0.28), noteW = Math.min(170, width * 0.3), barW = width - labelW - noteW - 16;
+          for (const row of sec.rows) {
+            room(18);
+            const y = doc.y, min = row.min ?? 0, frac = row.value == null ? 0 : Math.max(0, Math.min(1, (row.value - min) / ((row.max - min) || 1)));
+            label(row.label, left, y, labelW, { size: 9 });
+            doc.rect(left + labelW + 8, y + 1, barW, 9).fill('#E5E7EB');
+            if (frac > 0) doc.rect(left + labelW + 8, y + 1, Math.max(1.5, barW * frac), 9).fill(accent);
+            label(`${row.value ?? '-'}${row.note ? `  ${row.note}` : ''}`, left + labelW + barW + 16, y, noteW, { size: 8 });
+            doc.y = y + 16;
+          }
+          doc.y += 6; continue;
+        }
         for (const it of sec.items) {
           doc.font(f.bold).fontSize(10); const h = doc.heightOfString(`${it.title}${it.value ? `  ${it.value}` : ''}`, { width }) + (it.meta ? 12 : 0) + (it.body ? doc.font(f.regular).fontSize(9).heightOfString(it.body, { width }) : 0);
           room(Math.min(h + 10, 120));
