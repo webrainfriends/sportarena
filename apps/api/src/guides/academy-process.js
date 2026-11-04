@@ -62,6 +62,13 @@ export const ACADEMY_STEPS = [
     modules: ['academy-admissions.js', 'academy-trials.js', 'academy-letters.js'], sources: ['apps/app/src/screens/academy-admissions.js', 'apps/app/src/screens/academy-families.js'],
   },
   {
+    id: 'scouting', title: 'Scout and recruit talent',
+    why: 'Find athletes before they apply: run a scouting campaign with scouts, a committee that votes in the open, and an invitation straight into your admissions, with the source and the guardian\'s consent kept.',
+    steps: ['Open Academy, then Scouting, and tap New campaign. Work through the eight steps: brief, player profile, territory, scouting team, evaluation rubric, safeguarding, committee and review. Every step is saved as a draft.', 'Fix anything the review step lists, then launch. Scouts must be verified recruiters linked to your academy; committee members must belong to it.', 'Scouts save athletes they hold access to in their Talent CRM list, add them to the campaign, evaluate them and submit them to the committee.', 'The committee votes (a safeguarding officer can stop an advance for a young person), the chair or an admin records the decision, and you invite the athlete into a programme as a trial or an offer. They appear in Admissions with their source.', 'Open Outcomes for the funnel, conversion, referral sources, regions and scout capacity. Reports show counts only, never names.'],
+    target: { academy: 'scouting' },
+    modules: ['academy-scouting.js', 'academy-scouting-pipeline.js'], sources: ['apps/app/src/screens/academy-scouting.js', 'apps/app/src/screens/academy-scouting-wizard.js', 'apps/app/src/screens/academy-scouting-entry.js'],
+  },
+  {
     id: 'development', title: 'Plan athlete development',
     why: 'Give every athlete one season plan that coordinates coaches, conditioning, psychology, school and family, without copying their private records.',
     steps: ['Open Academy, then Progress, then Development plans, and tap New plan for an enrolled athlete.', 'Name the accountable lead, the season dates and the pathway it serves, then add the specialists who work on it.', 'Add objectives with the guided builder: pick the domain and the sport-specific competency, check the athlete\'s current figure and the anonymised peer benchmark, set the target, and tick the usual tasks.', 'Set the season phases (pre-season, competition, exams, recovery) so clashes are flagged, then activate the plan.', 'Run a review each cycle: specialists add their view, the lead signs off and can share it with the athlete and guardians, who acknowledge it.', 'Use the Squad board to see who needs attention across all six domains, with the reasons spelled out.'],

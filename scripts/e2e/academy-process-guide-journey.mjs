@@ -64,6 +64,12 @@ try {
   const tt = await call('POST', `/cohorts/${u12.id}/academy/timetable`, { token: owner.token, body: { idempotency_key: `g-${stamp}`, starts_on: monday, ends_on: end, weekdays: [1, 3], start_time: '17:00', duration_min: 60, delivery_type: 'training', lead_id: coach.id } });
   if (tt?.created) await call('POST', `/organisations/${org.id}/academy/sessions/publish`, { token: owner.token, body: { session_ids: tt.created.map((x) => x.id), acknowledge_warnings: true } });
 
+  // a real scouting campaign (a draft with its brief) so the guide step photographs live figures, not an empty screen
+  const sports = await call('GET', '/sports', { token: owner.token });
+  const football = (sports ?? []).find((x) => x.slug === 'football');
+  const progs = await call('GET', `/organisations/${org.id}/academy/programmes`, { token: owner.token, body: undefined });
+  if (football && progs?.length) await call('POST', `/organisations/${org.id}/academy/scouting/campaigns`, { token: owner.token, body: { name: 'U12 Football Pune 2027', objective: 'build_intake', sport_ids: [football.id], programme_ids: [progs[0].id], target_places: 12, pipeline_target: 60, birth_year_min: new Date().getUTCFullYear() - 12, birth_year_max: new Date().getUTCFullYear() - 10, regions: ['Pune'] } });
+
   // a student linked to a school, with the academics the guide step photographs (everything through the public API)
   const student = await reg('guide_student', 'Aarav Mehta', ['athlete']);
   await call('POST', `/cohorts/${u12.id}/enrolments`, { token: owner.token, body: { csv: `handle,consent\n${student.handle},yes` } });
@@ -114,6 +120,7 @@ try {
     coaches: async (p) => { await navTo(p, 'Manage', { id: venue.id, tab: 'coaches' }); await p.getByText('Tie-ups', { exact: true }).first().scrollIntoViewIfNeeded(); await wait(p, 600); },
     development: (p) => inOrg(p, async () => { await click(p, 'Academy'); await click(p, 'Progress'); await click(p, 'Development plans'); }),
     students: (p) => inOrg(p, async () => { await click(p, 'Academy'); await click(p, 'Admissions'); }),
+    scouting: (p) => inOrg(p, async () => { await click(p, 'Academy'); await click(p, 'Scouting'); }),
     classes: (p) => inOrg(p, async () => { await click(p, 'Academy'); await click(p, 'Operations'); }),
     tax: async (p) => { await navTo(p, 'Finance', { id: org.id }); await click(p, 'Tax').catch(() => {}); },
     revenue: (p) => inOrg(p, async () => { await click(p, 'Academy'); await click(p, 'Finance'); await click(p, 'Costs'); }),
