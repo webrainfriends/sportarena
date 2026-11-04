@@ -16,7 +16,7 @@ export function CameraScan({ onCode, onClose }) {
   const { CameraView } = CameraMod;
   return (
     <View style={{ borderRadius: 24, overflow: 'hidden', height: 280, backgroundColor: '#000' }}>
-      <CameraView style={{ flex: 1 }} facing="back" barcodeScannerSettings={{ barcodeTypes: ['qr'] }} accessibilityLabel="Camera view for scanning a QR code"
+      <CameraView style={{ flex: 1 }} facing="back" barcodeScannerSettings={{ barcodeTypes: ['qr', 'ean13', 'ean8', 'upc_a', 'upc_e', 'code128', 'code39', 'itf14'] }} accessibilityLabel="Camera view for scanning a QR code or barcode"
         onBarcodeScanned={({ data }) => { const now = Date.now(); if (data === last.current.code && now - last.current.at < 3000) return; last.current = { code: data, at: now }; onCode(data); }} />
       <Pressable onPress={onClose} accessibilityRole="button" accessibilityLabel="Close camera" style={{ position: 'absolute', top: 10, right: 10, minWidth: 44, minHeight: 44, borderRadius: 22, backgroundColor: 'rgba(0,0,0,0.55)', alignItems: 'center', justifyContent: 'center' }}><T color="#fff" weight="800">✕</T></Pressable>
     </View>

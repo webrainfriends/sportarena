@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-11-04T13:57:37.124Z",
+  "generated_at": "2026-11-04T14:38:58.898Z",
   "steps": {
     "create": {
       "desktop": "6eeca6aae4abed35",
@@ -68,6 +68,10 @@
     "safety": {
       "desktop": "0f888db92c851aea",
       "phone": "42c7bbfebc52db33"
+    },
+    "kit": {
+      "desktop": "4bc276623d73a24d",
+      "phone": "bb43a9aee64a0380"
     },
     "wellbeing": {
       "desktop": "27c4865fe1a66231",

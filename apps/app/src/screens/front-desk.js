@@ -13,6 +13,8 @@ import { QrCode } from './passport';
 import { c } from '../theme';
 import { localToIso, moneyIn, timeIn, dateTimeIn, todayIn } from '../vtime';
 import { DeskDrawer, DeskRentals, DeskReport, DeskRules, DeskStock } from './front-desk-ops';
+import { KitIssueDesk } from './academy-kit-desk';
+import { t } from '../i18n';
 import { askApproval, digitsOf, shareText, toMinor, uid, useApproval } from './front-desk-kit';
 
 const EMOJI = { merch: '🏷️', apparel: '👕', equipment: '🏸', nutrition: '🥤', food_beverage: '🥤', medical: '🩹', other: '📦' };
@@ -25,10 +27,12 @@ const MANAGER_TABS = [['stock', 'Stock & prices'], ['report', 'Report'], ['rules
 export function FrontDesk({ v }) {
   const desk = useLoad(() => api.get(`/venues/${v.id}/front-desk`), [v.id]);
   const [tab, setTab] = useState('sell');
+  const { toast } = useSession();
   if (desk.loading && !desk.data) return <Loading />;
   if (desk.error) return <ErrorBox error={desk.error} onRetry={desk.reload} />;
   const d = desk.data;
-  const tabs = d.role === 'manager' ? [...TABS, ...MANAGER_TABS] : TABS;
+  const academyKit = d.venue?.organisation_id ? [['kit', t('kit.tab_desk')]] : [];   // an academy venue also hands out the academy's kit (#798): same component as Academy > Kit, no second console
+  const tabs = d.role === 'manager' ? [...TABS, ...academyKit, ...MANAGER_TABS] : [...TABS, ...academyKit];
   const P = { v, desk: d, reloadDesk: desk.reload };
   return (
     <View style={{ gap: 12, marginTop: 4 }}>
@@ -39,6 +43,7 @@ export function FrontDesk({ v }) {
       </View>
       <Seg options={tabs.map(([value, label]) => ({ value, label }))} value={tab} onChange={setTab} color={c.violet} />
       {tab === 'sell' ? <Sell {...P} /> : tab === 'sales' ? <Sales {...P} /> : tab === 'drawer' ? <DeskDrawer {...P} /> : tab === 'rentals' ? <DeskRentals {...P} />
+        : tab === 'kit' ? <KitIssueDesk orgId={d.venue.organisation_id} venueId={v.id} toast={toast} />
         : tab === 'stock' ? <DeskStock {...P} /> : tab === 'report' ? <DeskReport {...P} /> : <DeskRules {...P} />}
     </View>
   );

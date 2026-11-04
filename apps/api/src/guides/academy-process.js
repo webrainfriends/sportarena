@@ -132,7 +132,14 @@ export const ACADEMY_STEPS = [
     modules: ['academy-pickup.js'], sources: ['apps/app/src/screens/academy-safety.js'],
   },
   {
-    id: 'wellbeing', title: 'Support student wellbeing and development',
+    id: 'kit', title: 'Issue uniforms and kit',
+    why: 'Give every programme, group and squad the kit it is owed, in the right size, and keep stock, deposits and reorders in one place instead of a spreadsheet.',
+    steps: ['Open Academy, then Kit, then Stock, and add each product with its sizes, barcode and opening quantity at the venue that holds it.', 'Open Entitlements and say what each programme, group or squad is owed: included in the fee, charged on top, or loaned against a refundable deposit, and when it is due.', 'Open Issue & return, record each athlete\'s size, then hand the kit over (scan its barcode or serial number on a phone, or type it at the desk). A fee or deposit is raised on the family\'s account and the receipt can be shared.', 'Take kit back, exchange sizes, and report damaged or lost kit: a manager approves it under Approvals before anything is written off or a deposit is kept.', 'Open Replenishment to see what is short by size and order it from your supplier. Parents and athletes see their own kit, where to collect it and their receipts under My academy.'],
+    target: { academy: 'kit' },
+    modules: ['academy-kit.js'], sources: ['apps/app/src/screens/academy-kit.js', 'apps/app/src/screens/academy-kit-desk.js'],
+  },
+  {
+id: 'wellbeing', title: 'Support student wellbeing and development',
     why: 'Offer mentoring, check-ins, development goals and optional tracks with the family\'s consent, and see what is due without ever seeing what was said.',
     steps: ['Open Academy, then Wellbeing, then Tracks, and create optional tracks in values, leadership, life skills, nutrition education or study skills, with an age band and ordered modules.', 'In Staff & leave, give mentors the Mentor template (the wellbeing permission). Then open People, ask families for their choices, and assign a mentor once the family has chosen mentoring.', 'Mentors schedule check-ins from People, record what was agreed (never what was said) and close follow-ups. A concern goes privately to safeguarding staff, and counselling or clinical wording is refused in notes.', 'Families see their choices, mentor, check-ins, goals and who has opened the record under My academy, then Wellbeing, and can withdraw any choice at any time. Overview shows what is due and participation counts, never content or a score about a person.'],
     target: { academy: 'wellbeing' },
