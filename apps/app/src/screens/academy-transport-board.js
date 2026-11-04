@@ -1,5 +1,5 @@
 import React, { useState, useRef } from 'react';
-import { View, Pressable } from 'react-native';
+import { View } from 'react-native';
 import { api } from '../api';
 import { useLoad } from '../hooks';
 import { c } from '../theme';
@@ -49,6 +49,20 @@ function StopCard({ stop, athletes, direction, onAction, onContact, busy }) {
     <Block title={`${stop.sequence}. ${stop.name}`}>
       {mine.map((a) => <AthleteBoardCard key={a.athlete_id} athlete={a} onAction={onAction} onContact={onContact} busy={busy} />)}
     </Block>
+  );
+}
+
+function ContactSheet({ contact, onClose }) {
+  const contacts = useLoad(() => contact ? api.get(`/youth/children/${contact.athlete_id}/pickup-contacts`) : Promise.resolve(null), [contact?.athlete_id]);
+  const all = [...(contacts.data?.guardians ?? []), ...(contacts.data?.emergency ?? [])];
+  return (
+    <Sheet visible={!!contact} onClose={onClose} title={contact ? `${t('transport.emergencyContact')}: ${contact.display_name}` : ''}>
+      {contact ? (
+        !contacts.data ? <Loading /> : all.length ? all.map((p, i) => (
+          <Row key={i} title={p.name ?? 'Unknown'} sub={[p.relationship, p.phone].filter(Boolean).join(' · ')} />
+        )) : <T size={14} color={c.mute}>No emergency contacts on file.</T>
+      ) : null}
+    </Sheet>
   );
 }
 
@@ -138,10 +152,10 @@ export function TransportBoardTab({ o, toast }) {
       </Block>
 
       {scheduleId && athletes.length ? (
-        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10 }}>
-          <Kpi label={t('transport.boarded_n', { n: boarded })} value={boarded} />
-          <Kpi label={t('transport.remaining_n', { n: remaining })} value={remaining} />
-          {noShows ? <Kpi label={t('transport.noShow_n', { n: noShows })} value={noShows} tone="alert" /> : null}
+        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+          <Kpi label={t('transport.boarded')} value={boarded} />
+          <Kpi label={t('transport.remaining')} value={remaining} />
+          {noShows ? <Kpi label={t('transport.noShow')} value={noShows} tone="alert" /> : null}
         </View>
       ) : null}
 
@@ -151,9 +165,7 @@ export function TransportBoardTab({ o, toast }) {
         ))
       )}
 
-      <Sheet visible={!!contact} onClose={() => setContact(null)} title={contact ? `${t('transport.emergencyContact')}: ${contact.display_name}` : ''}>
-        {contact ? <T size={14}>Contact details are loaded from the athlete's guardian profile. Navigate to their profile for full emergency contacts.</T> : null}
-      </Sheet>
+      <ContactSheet contact={contact} onClose={() => setContact(null)} />
     </View>
   );
 }

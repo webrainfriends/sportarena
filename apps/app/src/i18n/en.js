@@ -9047,6 +9047,7 @@ export default {
   'transport.noRoutes': 'No transport routes configured yet.',
   'transport.noRoutesSub': 'Add a route to manage school runs and training commutes.',
   'transport.noBookings': 'No athletes booked on this run.',
+  'transport.remaining': 'Remaining',
   'transport.boardEmpty': 'No transport runs active right now.',
   'guide.transport.title': 'Set up daily transport routes',
   'guide.transport.why': 'Manage school runs, training commutes and event shuttles. Assign vehicles, record guardian approvals, track boarding at every stop and connect operator invoices to your academy finance.',

@@ -397,7 +397,7 @@ export function Operations({ o, role, toast }) {
     ...(has('schedule', 'attendance', 'roster') ? [['today', 'Today'], ['week', 'Week']] : []),
     ...(has('schedule', 'timesheets') ? [['staff', 'Staff & leave']] : []),
     ['pay', 'Time & pay'], ...(has('schedule') ? [['insights', 'Insights']] : []),
-    ...(admin || has('suppliers') ? [['transport', 'Transport']] : []),
+    ...(admin || has('suppliers') ? [['transport', t('transport.title')]] : []),
   ];
   const cur = tabs.some(([k]) => k === tab) ? tab : tabs[0][0];
   return (

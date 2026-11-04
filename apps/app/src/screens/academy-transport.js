@@ -4,19 +4,16 @@ import { api } from '../api';
 import { useLoad } from '../hooks';
 import { c } from '../theme';
 import { t } from '../i18n';
-import { T, Btn, Chip, Card, Row, Loading, LoadError, Empty, Tag, Field, FormSheet, Sheet, MenuField } from '../ui';
-import { Kpi, Block, Fact } from './academy-ui';
+import { T, Btn, Chip, Card, Row, Loading, LoadError, Empty, Tag, Field, FormSheet, Sheet } from '../ui';
+import { Kpi, Block } from './academy-ui';
 import { explain } from '../errors';
 
 const KIND_LABELS = { school_run: () => t('transport.kind.schoolRun'), training_commute: () => t('transport.kind.trainingCommute'), event_shuttle: () => t('transport.kind.eventShuttle'), other: () => t('transport.kind.other') };
 const DIR_LABELS = { outbound: () => t('transport.direction.outbound'), return: () => t('transport.direction.return'), both: () => t('transport.direction.both') };
 const STATUS_COLOR = { active: c.lime, paused: c.sun, archived: c.mute };
 
-function RouteStops({ routeId, orgId, canWrite, toast }) {
-  const d = useLoad(() => api.get(`/academy/transport/routes/${routeId}`), [routeId]);
+function RouteStops({ stops, routeId, canWrite, onReload }) {
   const [add, setAdd] = useState(false);
-  if (!d.data) return <Loading />;
-  const stops = d.data.stops ?? [];
   return (
     <Block title={t('transport.stops')}>
       {stops.length ? stops.map((s) => (
@@ -32,18 +29,15 @@ function RouteStops({ routeId, orgId, canWrite, toast }) {
         ]}
         onSubmit={async (v) => {
           await api.post(`/academy/transport/routes/${routeId}/stops`, { sequence: v.sequence, name: v.name, address: v.address || undefined, gps_allowed: !!v.gps_allowed });
-          d.reload();
+          onReload();
           return 'Stop added';
         }} />
     </Block>
   );
 }
 
-function RouteVehicles({ routeId, canWrite, toast }) {
-  const d = useLoad(() => api.get(`/academy/transport/routes/${routeId}`), [routeId]);
+function RouteVehicles({ vehicles, routeId, canWrite, onReload }) {
   const [add, setAdd] = useState(false);
-  if (!d.data) return <Loading />;
-  const vehicles = d.data.vehicles ?? [];
   return (
     <Block title={t('transport.vehicles')}>
       {vehicles.length ? vehicles.map((v) => (
@@ -62,19 +56,16 @@ function RouteVehicles({ routeId, canWrite, toast }) {
         ]}
         onSubmit={async (v) => {
           await api.post(`/academy/transport/routes/${routeId}/vehicles`, { ...v, capacity: Number(v.capacity) });
-          d.reload();
+          onReload();
           return 'Vehicle assigned';
         }} />
     </Block>
   );
 }
 
-function RouteSchedules({ routeId, orgId, canWrite, toast }) {
-  const d = useLoad(() => api.get(`/academy/transport/routes/${routeId}`), [routeId]);
+function RouteSchedules({ schedules, vehicles, routeId, canWrite, onReload }) {
   const [add, setAdd] = useState(false);
-  if (!d.data) return <Loading />;
-  const schedules = d.data.schedules ?? [];
-  const vehicles = (d.data.vehicles ?? []).map((v) => ({ value: v.id, label: v.description ?? t('transport.vehicle') }));
+  const vehicleOpts = vehicles.map((v) => ({ value: v.id, label: v.description ?? t('transport.vehicle') }));
   return (
     <Block title={t('transport.schedules')}>
       {schedules.length ? schedules.map((s) => (
@@ -87,36 +78,63 @@ function RouteSchedules({ routeId, orgId, canWrite, toast }) {
           { key: 'return_depart_time', label: t('transport.returnTime'), type: 'time' },
           { key: 'schedule_date', label: 'Single date (optional)', type: 'date' },
           { key: 'seats_total', label: t('transport.seatLimit'), type: 'number', min: 1 },
-          ...(vehicles.length ? [{ key: 'vehicle_id', label: t('transport.vehicle'), type: 'menu', options: vehicles }] : []),
+          ...(vehicleOpts.length ? [{ key: 'vehicle_id', label: t('transport.vehicle'), type: 'menu', options: vehicleOpts }] : []),
         ]}
         onSubmit={async (v) => {
           await api.post(`/academy/transport/routes/${routeId}/schedules`, { outbound_depart_time: v.outbound_depart_time || undefined, return_depart_time: v.return_depart_time || undefined, schedule_date: v.schedule_date || undefined, seats_total: v.seats_total ? Number(v.seats_total) : undefined, vehicle_id: v.vehicle_id || undefined });
-          d.reload();
+          onReload();
           return 'Schedule created';
         }} />
     </Block>
   );
 }
 
-function RouteDetail({ route, orgId, canWrite, toast, onClose, onUpdate }) {
+// Detail content — no Sheet wrapper; shared by phone (inside Sheet) and tablet (inline Card)
+function RouteDetailContent({ route, orgId, canWrite, toast }) {
+  const d = useLoad(() => api.get(`/academy/transport/routes/${route.id}`), [route.id]);
   const [sub, setSub] = useState('stops');
+  if (!d.data) return <Loading />;
+  const stops = d.data.stops ?? [];
+  const vehicles = d.data.vehicles ?? [];
+  const schedules = d.data.schedules ?? [];
+  return (
+    <View style={{ gap: 12 }}>
+      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
+        <Tag label={KIND_LABELS[route.kind]?.()} />
+        <Tag label={DIR_LABELS[route.direction]?.()} />
+        <Tag label={route.status} color={STATUS_COLOR[route.status]} />
+        {route.supplier_name ? <Tag label={route.supplier_name} /> : route.operator_name ? <T size={13} color={c.mute}>{route.operator_name}</T> : null}
+        <T size={12} color={c.mute}>{route.stop_count} stops · {route.active_schedules} active schedules</T>
+      </View>
+      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }} accessibilityRole="tablist">
+        {[['stops', t('transport.stops')], ['vehicles', t('transport.vehicles')], ['schedules', t('transport.schedules')]].map(([k, l]) => (
+          <Chip key={k} label={l} active={sub === k} onPress={() => setSub(k)} />
+        ))}
+      </View>
+      {sub === 'stops' ? <RouteStops stops={stops} routeId={route.id} canWrite={canWrite} onReload={d.reload} /> :
+       sub === 'vehicles' ? <RouteVehicles vehicles={vehicles} routeId={route.id} canWrite={canWrite} onReload={d.reload} /> :
+       <RouteSchedules schedules={schedules} vehicles={vehicles} routeId={route.id} canWrite={canWrite} onReload={d.reload} />}
+    </View>
+  );
+}
+
+// Phone: bottom Sheet. Tablet: inline Card panel (never a modal).
+function RouteDetail({ route, tablet, orgId, canWrite, toast, onClose }) {
+  if (tablet) {
+    if (!route) return null;
+    return (
+      <Card pad={14} style={{ gap: 10 }}>
+        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
+          <T weight="800" size={16} style={{ flex: 1 }}>{route.name}</T>
+          <Btn small title={t('common.close')} color={c.paper} ink={c.ink} onPress={onClose} accessibilityLabel={t('common.close')} />
+        </View>
+        <RouteDetailContent route={route} orgId={orgId} canWrite={canWrite} toast={toast} />
+      </Card>
+    );
+  }
   return (
     <Sheet visible={!!route} onClose={onClose} title={route?.name ?? ''}>
-      {route ? (
-        <View style={{ gap: 12 }}>
-          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
-            <Tag label={KIND_LABELS[route.kind]?.()} /><Tag label={DIR_LABELS[route.direction]?.()} /><Tag label={route.status} color={STATUS_COLOR[route.status]} />
-            {route.supplier_name ? <Tag label={route.supplier_name} /> : route.operator_name ? <T size={13} color={c.mute}>{route.operator_name}</T> : null}
-            <T size={12} color={c.mute}>{route.stop_count} stops · {route.active_schedules} active schedules</T>
-          </View>
-          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }} accessibilityRole="tablist">
-            {[['stops', t('transport.stops')], ['vehicles', t('transport.vehicles')], ['schedules', t('transport.schedules')]].map(([k, l]) => (
-              <Chip key={k} label={l} active={sub === k} onPress={() => setSub(k)} />
-            ))}
-          </View>
-          {sub === 'stops' ? <RouteStops routeId={route.id} orgId={orgId} canWrite={canWrite} toast={toast} /> : sub === 'vehicles' ? <RouteVehicles routeId={route.id} canWrite={canWrite} toast={toast} /> : <RouteSchedules routeId={route.id} orgId={orgId} canWrite={canWrite} toast={toast} />}
-        </View>
-      ) : null}
+      {route ? <RouteDetailContent route={route} orgId={orgId} canWrite={canWrite} toast={toast} /> : null}
     </Sheet>
   );
 }
@@ -143,7 +161,7 @@ export function TransportTab({ o, toast, admin, perms }) {
 
   const list = (
     <View style={{ gap: 12 }}>
-      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10 }}>
+      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
         <Kpi label={t('transport.activeRoutes')} value={totalRoutes} />
         <Kpi label={t('transport.todayRuns')} value={todayRuns} />
         {unapproved ? <Kpi label={t('transport.unapproved')} value={unapproved} tone="alert" /> : null}
@@ -164,11 +182,11 @@ export function TransportTab({ o, toast, admin, perms }) {
         <View style={{ flexDirection: 'row', gap: 16, alignItems: 'flex-start' }}>
           <View style={{ flex: 1 }}>{list}</View>
           <View style={{ width: 360 }}>
-            <RouteDetail route={selected} orgId={o.id} canWrite={canWrite} toast={toast} onClose={() => setSelected(null)} onUpdate={routes.reload} />
+            <RouteDetail route={selected} tablet orgId={o.id} canWrite={canWrite} toast={toast} onClose={() => setSelected(null)} />
           </View>
         </View>
       ) : list}
-      {!tablet ? <RouteDetail route={selected} orgId={o.id} canWrite={canWrite} toast={toast} onClose={() => setSelected(null)} onUpdate={routes.reload} /> : null}
+      {!tablet ? <RouteDetail route={selected} orgId={o.id} canWrite={canWrite} toast={toast} onClose={() => setSelected(null)} /> : null}
       <FormSheet visible={add} onClose={() => setAdd(false)} title={t('transport.addRoute')} submitLabel={t('common.save')}
         fields={[
           { key: 'name', label: t('transport.routeName') },
