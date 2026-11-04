@@ -36,7 +36,7 @@ export const ACADEMY_STEPS = [
   {
     id: 'suppliers', title: 'Add suppliers',
     why: 'Keep maintenance contractors and kit suppliers in one place, linked to the venues they serve, with requests tracked to done.',
-    steps: ['Open Academy, then Partners, then Suppliers.', 'Tap the add button, choose the kind (maintenance, sporting goods and so on) and enter the details.', 'Pick one, several or all venues the supplier serves.', 'Use Request on a supplier to ask for a quote or delivery and follow it through to done.'],
+    steps: ['Open Academy, then Partners, then Suppliers.', 'Tap the add button, choose the kind (maintenance, sporting goods and so on) and enter the details.', 'Pick one, several or all venues the supplier serves.', 'Use Request on a supplier to ask for a quote or delivery and follow it through to done.', 'When you mark a request delivered or done, enter its final cost and invoice reference: that cost reaches the academy profit and loss once, and the Reconciliation tab reminds you if it is missing.'],
     target: { academy: 'partners' },
     modules: ['academy-suppliers.js'], sources: ['apps/app/src/screens/academy-suppliers.js', 'apps/app/src/screens/academy-partners.js'],
   },
@@ -78,9 +78,9 @@ export const ACADEMY_STEPS = [
   {
     id: 'revenue', title: 'Share revenue',
     why: 'Agree how money is shared with coaches and how shared costs are spread across programmes.',
-    steps: ['For coaches: in the venue workspace, Coaches tab, choose Revenue share as the pay model and set the percentage.', 'For shared costs: in Academy, Finance, open Costs, add a cost and choose how it is spread (participants, revenue share or evenly).', 'Open Profit & loss to review the result per programme; staff cost is read from approved payroll and venue cost from confirmed bookings.'],
+    steps: ['For coaches: in the venue workspace, Coaches tab, choose Revenue share as the pay model and set the percentage.', 'For shared costs: in Academy, Finance, open Costs, add a cost and choose how it is spread (participants, revenue share or evenly).', 'Open Profit & loss to review the result per programme, branch and cohort; staff cost is read from approved payroll, venue cost from confirmed bookings, supplier cost from delivered supplier requests and payment fees from the Finance ledger. The strip at the top shows the basis, currency, cut-off time and cost-allocation version.', 'Open Reconciliation: it lists every cost or charge with no programme, delivered supplier work with no cost, and records that could be counted twice. Decide each one with a reason (attribute, keep the canonical record, record the final cost, dispute or accept); the canonical record is never changed and every decision is audited.'],
     target: { academy: 'billing' },
-    modules: ['academy-finance.js', 'academy-payroll.js'], sources: ['apps/app/src/screens/academy-books.js'],
+    modules: ['academy-finance.js', 'academy-payroll.js', 'academy-reconciliation.js'], sources: ['apps/app/src/screens/academy-books.js', 'apps/app/src/screens/academy-reconciliation.js'],
   },
   {
     id: 'reports', title: 'Read reports',
