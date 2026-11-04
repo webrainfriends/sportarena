@@ -8183,4 +8183,5 @@ export default {
   'family.scope.pickup': 'Collect and confirm pickups',
   'guide.safety.title': 'Run pickup and daily safety',
   'guide.safety.why': 'Know who arrived, who is in your care and who took each young athlete home. Guardians decide who may collect, staff hand over with checks, and late pickups and no-shows escalate on your timings.',
+  'pk.r_too_many': 'Too many wrong passphrases. Stop and call the guardian.',
 };

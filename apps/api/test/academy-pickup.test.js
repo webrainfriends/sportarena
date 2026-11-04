@@ -392,3 +392,16 @@ test('every pickup capability is a REST route, in the OpenAPI document and an MC
   const ids = new Set(Object.values(spec.paths ?? {}).flatMap((p) => Object.values(p).map((o) => o.operationId)));
   for (const x of names) assert.ok(ids.has(x), `${x} in OpenAPI`);
 });
+
+test('five wrong passphrases lock the collector out, even for the right phrase, and are recorded', async () => {
+  const a = await academy(); const [kid] = a.kids, [mum] = a.parents; const sid = await session(a);
+  const uncle = await signup(['athlete'], { dob: yearsAgo(35) });
+  await addCollector(mum, kid, { delegate_user_id: uncle.id, relationship: 'relative', passphrase: 'blue heron' });
+  await mark(a, sid, kid);
+  for (let i = 0; i < 5; i++) assert.equal((await handover(a, sid, { athlete_id: kid.id, collector_user_id: uncle.id, passphrase: `wrong ${i}` })).status, 403);
+  const locked = await handover(a, sid, { athlete_id: kid.id, collector_user_id: uncle.id, passphrase: 'blue heron' });
+  assert.equal(locked.status, 403, 'locked out');
+  assert.match(JSON.stringify(locked.body), /too_many_attempts/);
+  const n = (await pool.query("SELECT count(*)::int n FROM academy_handover_events WHERE kind='passphrase_failed'")).rows[0].n;
+  assert.ok(n >= 1, 'failed attempts are recorded in the handover log');
+});
