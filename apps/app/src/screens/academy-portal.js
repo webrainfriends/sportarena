@@ -15,6 +15,7 @@ import { moneyIn } from '../vtime';
 import { explain } from '../access';
 import { useLayout } from '../layout';
 import { FamilyProgress } from './academy-progress';
+import { FamilyCurriculum } from './academy-curriculum-session';
 import { MySessions } from './academy-session';
 import { Block, TrialSlots, FORMATS, FOCUS, Initials, Meter, StageBadge, StageTrack, Timeline, STAGE, hoursLeft, lab, openEnrolmentLetter, openInvoicePdf, priceLine, when } from './academy-ui';
 
@@ -127,7 +128,7 @@ export function AcademyFamily() {
         </View>
       ) : null}
       <TrialSlots app={slots} onClose={() => setSlots(null)} onBooked={fam.reload} toast={toast} />
-      {tab === 'progress' ? <FamilyProgress key={p.athlete.id} athlete={p.athlete} toast={toast} /> : null}
+      {tab === 'progress' ? <><FamilyProgress key={p.athlete.id} athlete={p.athlete} toast={toast} /><FamilyCurriculum key={`c${p.athlete.id}`} athlete={p.athlete} /></> : null}
       {tab === 'browse' ? <Browse people={people} who={who} onApply={(prog, athlete) => setApply({ prog, athlete })} /> : null}
       {tab === 'payments' ? (
         <View style={{ gap: 14, marginTop: 12 }}>

@@ -12,6 +12,7 @@ import { fromLocal, hhmm, validTimezone } from '../booking/time.js';
 import { guardiansOf, isYouth } from '../youth.js';
 import { badgesFor } from '../verification.js';
 import { opsAccess, sessionFor, staffIssues, cohortIssues, checkSession, heldVenue, evaluateSession, ADMINS } from '../academy-ops.js';
+import { academicClashes } from '../academics.js';
 import { placeBasket } from './reservations.js';
 import { reservationView } from '../booking/engine.js';
 import { releaseTrialBookings } from '../academy-trials.js';
@@ -92,7 +93,8 @@ async function plan(c, a, cohort, i) {
   for (const date of dates) {
     const starts_at = fromLocal(date, start, tz), ends_at = new Date(+starts_at + i.duration_min * 60000);
     const exists = (await c.query("SELECT id FROM academy_sessions WHERE cohort_id=$1 AND starts_at=$2 AND status<>'cancelled'", [cohort.id, starts_at])).rows[0];
-    const issues = exists ? [] : [...(await cohortIssues(c, { cohort_id: cohort.id, starts_at, ends_at }))];
+    // the preview also shows school exam / lesson / tutoring clashes of athletes who shared their timetable, so they are seen before anything is saved (#783)
+    const issues = exists ? [] : [...(await cohortIssues(c, { cohort_id: cohort.id, starts_at, ends_at })), ...(await academicClashes(c, { cohort_id: cohort.id, organisation_id: cohort.organisation_id, starts_at, ends_at }))];
     const staff = [];
     for (const t of team) staff.push({ ...t, issues: exists ? [] : await staffIssues(c, cohort.organisation_id, t.user_id, starts_at, ends_at, { tz }) });
     rows.push({ date, starts_at: starts_at.toISOString(), ends_at: ends_at.toISOString(), existing_session_id: exists?.id ?? null, cohort_issues: issues, staff });
