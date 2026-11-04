@@ -44,3 +44,9 @@ No role grants clinical access; finance never sees rosters or coaching notes; co
 - Projection of #90 venue duty shifts (reserved columns only; #90 is not built).
 - Assistant coaches see athlete coaching data in Performance Studio only through existing coaching relationships.
 - Fee consequences of no-shows or make-ups stay with Academy billing; attendance creates no financial rows.
+
+## Academic permissions and the school clash check (#783)
+Staff engagements can hold two more permissions: `academics` (link schools, record school data the athlete shared, coordinate) and `academics_detail`
+(read subject-level grades, only with the athlete's detail consent). Owners and admins hold `academics` implicitly but **not** `academics_detail`; use the
+`academic_lead` template. The pre-publish check (`checkSession`) also reports school exam / lesson / tutoring clashes for athletes who shared their
+timetable with the academy. See `docs/academics.md`.

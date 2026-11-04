@@ -14,7 +14,7 @@ import { ensureCases } from '../collections.js';
 
 const CC_ROLES = ['owner', 'admin', 'coach', 'finance'];
 const STAFF = ['owner', 'admin'];
-const DOMAINS = ['admissions', 'registrations', 'staff', 'compliance', 'procurement', 'finance', 'sponsors', 'documents', 'tasks'];
+const DOMAINS = ['admissions', 'registrations', 'curriculum', 'staff', 'compliance', 'procurement', 'finance', 'sponsors', 'documents', 'tasks'];
 const DAY = 864e5;
 const num = (n) => Number(n ?? 0);
 const sev = (bad, warn) => (bad ? 'bad' : warn ? 'warn' : 'ok');
@@ -255,6 +255,14 @@ async function queueItems(org, role, user, only) {
           WHERE e.status='pending' AND ev.organisation_id=$1 ORDER BY e.created_at LIMIT 50`, [orgId]);
       for (const r of ent) items.push({ key: `registrations:entry:${r.id}`, domain: 'registrations', title: `${r.team ?? r.person ?? 'Entry'} · ${r.event}`, sub: 'Entry request', at: ago(r.created_at), can_act: true, record: rec('EventCommand', { id: r.event_id, tab: 'teams' }), actions: [
         act('Accept', 'decide_entry', 'PATCH', `/entries/${r.id}`, { status: 'accepted' }, { tone: 'primary' }), act('Reject', 'decide_entry', 'PATCH', `/entries/${r.id}`, { status: 'rejected' }, { tone: 'danger' })] });
+    });
+    await run('curriculum', async () => {
+      const rows = await many(
+        `SELECT v.id, v.version, v.submitted_at, k.title, u.display_name AS submitter FROM academy_curriculum_versions v JOIN academy_curricula k ON k.id=v.curriculum_id LEFT JOIN users u ON u.id=v.submitted_by
+          WHERE k.organisation_id=$1 AND v.status='submitted' ORDER BY v.submitted_at LIMIT 50`, [orgId]);
+      for (const r of rows) items.push({ key: `curriculum:${r.id}`, domain: 'curriculum', title: `${r.title} · version ${r.version}`, sub: `Curriculum waiting for Technical Director approval${r.submitter ? ` · from ${r.submitter}` : ''}`, at: ago(r.submitted_at), can_act: true, record: orgTab(org, 'academy', 'curriculum'), actions: [
+        act('Approve', 'decide_academy_curriculum_version', 'POST', `/academy/curriculum-versions/${r.id}/decision`, { decision: 'approve' }, { tone: 'primary' }),
+        act('Reject', 'decide_academy_curriculum_version', 'POST', `/academy/curriculum-versions/${r.id}/decision`, { decision: 'reject' }, { tone: 'danger', ask: [{ ...F.reason, key: 'note' }] })] });
     });
     await run('staff', async () => {
       const off = await many(
