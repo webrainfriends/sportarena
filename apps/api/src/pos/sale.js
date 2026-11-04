@@ -42,9 +42,19 @@ async function takeStock(c, venueId, wants, { saleId, actor }) {
   return items;
 }
 
-export async function restoreStock(c, venueId, itemId, qty, { saleId, rentalId = null, reason, actor, note = null }) {
+export async function restoreStock(c, venueId, itemId, qty, { saleId = null, rentalId = null, kitIssueId = null, reason, actor, note = null }) {
   await c.query('UPDATE inventory_items SET quantity = quantity + $2 WHERE id=$1', [itemId, qty]);
-  await c.query('INSERT INTO pos_stock_moves(venue_id, item_id, sale_id, rental_id, delta, reason, actor_id, note) VALUES ($1,$2,$3,$4,$5,$6,$7,$8)', [venueId, itemId, saleId, rentalId, qty, reason, actor.id, note]);
+  await c.query('INSERT INTO pos_stock_moves(venue_id, item_id, sale_id, rental_id, kit_issue_id, delta, reason, actor_id, note) VALUES ($1,$2,$3,$4,$8,$5,$6,$7,$9)', [venueId, itemId, saleId, rentalId, qty, reason, actor.id, kitIssueId, note]);
+}
+
+/** Take `qty` of one stock row for something other than a sale (academy kit issue). Same promise as takeStock: the row is locked, checked and decremented in one transaction, so two desks can never hand out the same last unit. */
+export async function drawStock(c, venueId, itemId, qty, { reason, actor, kitIssueId = null, note = null }) {
+  const it = (await c.query('SELECT * FROM inventory_items WHERE id=$1 AND venue_id=$2 FOR UPDATE', [itemId, venueId])).rows[0];
+  if (!it || it.archived_at) throw notFound('Item');
+  if (it.quantity < qty) throw conflict(`Not enough ${it.name} in stock (${it.quantity} left)`, { item_id: itemId, available: it.quantity });
+  await c.query('UPDATE inventory_items SET quantity = quantity - $2 WHERE id=$1', [itemId, qty]);
+  await c.query('INSERT INTO pos_stock_moves(venue_id, item_id, kit_issue_id, delta, reason, actor_id, note) VALUES ($1,$2,$3,$4,$5,$6,$7)', [venueId, itemId, kitIssueId, -qty, reason, actor.id, note]);
+  return it;
 }
 
 const buyerBlob = (b) => encrypt(JSON.stringify({ name: b.name ?? null, address: b.address ?? null, tax_id: b.tax_id ?? null }), 'invoices.buyer');

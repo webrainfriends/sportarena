@@ -8,6 +8,7 @@ import { EntityPicker } from '../entity-picker';
 import { FormSheet } from '../FormSheet';
 import { Field, Loading } from '../ui';
 import { useDo } from './console-utils';
+import { AcademyPlanStrip } from './academy-plan-strip';
 
 function TeamRow({ team, seed, rating, maxRating = 1, note, right }) {
   return (
@@ -46,6 +47,7 @@ export function TeamsTab({ id, e, accepted, inv, seeds, reload }) {
   const room = e.capacity ? Math.max(e.capacity - accepted.length - open.length, 1) : items.length;
   return (
     <>
+      <AcademyPlanStrip eventId={id} />
       <ASection title={`Teams in · ${accepted.length}${e.capacity ? `/${e.capacity}` : ''}`} />
       {accepted.length ? accepted.map((t) => { const s = seedOf.get(t.team_id); return <TeamRow key={t.entry_id} team={t} seed={s?.seed} rating={s?.rating ?? undefined} maxRating={max} note={s ? `${s.source} seed` : 'Not seeded yet'} />; }) : <AEmpty emoji="👥" title="No teams yet" sub="Invite teams below. They appear here once they accept." />}
       <View style={{ flexDirection: 'row', gap: 8, flexWrap: 'wrap' }}>
