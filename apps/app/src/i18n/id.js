@@ -8874,4 +8874,5 @@ export default {
   'family.scope.pickup': 'Menjemput dan mengonfirmasi penjemputan',
   'guide.safety.title': 'Kelola penjemputan anak dan keselamatan harian',
   'guide.safety.why': 'Ketahui siapa yang sudah hadir, siapa yang berada dalam pengawasan Anda, dan siapa yang membawa pulang setiap atlet muda. Wali menentukan siapa yang boleh menjemput, staf menyerahkan anak setelah pemeriksaan, dan keterlambatan penjemputan maupun ketidakhadiran dieskalasi sesuai waktu yang Anda tetapkan.',
+  'pk.r_too_many': 'Frasa sandi salah terlalu sering. Berhenti dan hubungi wali.',
 };
