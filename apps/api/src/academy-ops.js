@@ -9,7 +9,7 @@ import { commitmentBusy } from './coach-commitments.js';
 import { toLocal } from './booking/time.js';
 import { academicClashes } from './academics.js';
 
-export const PERMS = ['schedule', 'attendance', 'roster', 'timesheets', 'payroll', 'safeguarding', 'suppliers', 'academics', 'academics_detail'];
+export const PERMS = ['schedule', 'attendance', 'roster', 'timesheets', 'payroll', 'safeguarding', 'suppliers', 'curriculum', 'academics', 'academics_detail'];
 /** Subject-level academic records are never implied by seniority: owners and admins manage the academic side, but only an explicit grant reads grades (#783). */
 export const IMPLIED = PERMS.filter((p) => p !== 'academics_detail');
 export const ADMINS = ['owner', 'admin'];
@@ -18,7 +18,7 @@ export const ADMINS = ['owner', 'admin'];
 export const TEMPLATES = {
   director: { title: 'Academy director', permissions: IMPLIED },
   administrator: { title: 'Academy administrator', permissions: ['schedule', 'attendance', 'roster', 'timesheets'] },
-  head_coach: { title: 'Head coach / technical director', permissions: ['schedule', 'attendance', 'roster', 'timesheets'] },
+  head_coach: { title: 'Head coach / technical director', permissions: ['schedule', 'attendance', 'roster', 'timesheets', 'curriculum'] },
   coach: { title: 'Coach', permissions: ['attendance', 'roster'] },
   assistant_coach: { title: 'Assistant coach', permissions: ['attendance'] },
   programme_lead: { title: 'Programme lead', permissions: ['schedule', 'attendance', 'roster'] },
@@ -47,7 +47,7 @@ export async function opsAccess(user, orgId, { write = false, c } = {}) {
   const perms = new Set(), broad = new Set();      // broad = organisation-wide; the coach role alone only covers sessions the coach is part of
   const admin = ADMINS.includes(role);
   if (admin) IMPLIED.forEach((p) => { perms.add(p); broad.add(p); });
-  else if (role === 'auditor') ['schedule', 'attendance', 'roster', 'timesheets', 'payroll'].forEach((p) => { perms.add(p); broad.add(p); });
+  else if (role === 'auditor') ['schedule', 'attendance', 'roster', 'timesheets', 'payroll', 'curriculum'].forEach((p) => { perms.add(p); broad.add(p); });
   else if (!eng || live) {
     if (role === 'coach') ['attendance', 'roster'].forEach((p) => perms.add(p));
     if (role === 'finance') ['timesheets', 'payroll'].forEach((p) => { perms.add(p); broad.add(p); });
