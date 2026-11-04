@@ -94,7 +94,7 @@ CREATE TABLE academy_transport_check_ins (
   captured_at     timestamptz,
   idempotency_key text,
   notes_enc       text,
-  UNIQUE (idempotency_key) NULLS NOT DISTINCT
+  UNIQUE NULLS NOT DISTINCT (idempotency_key)
 );
 CREATE INDEX ON academy_transport_check_ins (schedule_id, athlete_id, recorded_at DESC);
 CREATE TRIGGER academy_transport_check_ins_guard BEFORE UPDATE OR DELETE
