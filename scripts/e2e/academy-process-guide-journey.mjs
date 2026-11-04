@@ -71,6 +71,8 @@ try {
     const exam = new Date(Date.now() + 5 * 864e5).toISOString().slice(0, 10);
     await call('POST', `/academics/links/${alink.id}/items`, { token: owner.token, body: { items: [{ kind: 'exam', starts_at: `${exam}T04:00:00Z`, ends_at: `${exam}T07:00:00Z`, timezone: 'Asia/Kolkata', high_stakes: true }] } });
   }
+  // the academy opts in to campuses (one default campus, no record changed) so the guide step photographs real figures
+  await call('POST', `/organisations/${org.id}/campuses/adopt`, { token: owner.token, body: { name: 'Pune Campus', country: 'IN' } });
 
   // ------------------------------------------------------------------ the browser
   const browser = await chromium.launch({ executablePath: process.env.E2E_CHROMIUM ?? fs.globSync('/opt/pw-browsers/chromium-*/chrome-linux*/chrome')[0], args: ['--no-sandbox'] });
@@ -109,6 +111,7 @@ try {
     revenue: (p) => inOrg(p, async () => { await click(p, 'Academy'); await click(p, 'Finance'); await click(p, 'Costs'); }),
     reports: (p) => inOrg(p, async () => { await click(p, 'Academy'); }),
     academics: (p) => inOrg(p, async () => { await click(p, 'Academy'); await click(p, 'Academics'); await click(p, 'Athletes'); }),   // the Academy tab opens on its Home (executive view)
+    campuses: (p) => inOrg(p, async () => { await click(p, 'Campuses'); }),   // the Academy tab opens on its Home (executive view)
   };
   const manifest = { generated_at: new Date().toISOString(), steps: {} };
   for (const [size, viewport] of Object.entries(SHOT_SIZES)) {

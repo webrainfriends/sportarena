@@ -14,6 +14,8 @@ import './teams.js';
 import './organisations.js';
 import './academy-academics.js';
 import './academy-attainment.js';
+import './org-campuses.js';
+import './org-campus-transfers.js';
 import './migrations.js';
 import './launch-checklist.js';
 import './education-catalogue.js';

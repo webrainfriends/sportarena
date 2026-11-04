@@ -10,6 +10,7 @@ import { Btn, Card, Empty, ErrorBox, H1, Loading, Row, Screen, Section, Sheet, T
 import { GuardianSponsors } from './sponsor-youth';
 import { FamilyDashboard } from './family-dashboard';
 import { MyStudy } from './academics';
+import { MyTransferAcknowledgements } from './campus-transfers';
 import { c } from '../theme';
 import { locale } from '../locale';
 
@@ -227,6 +228,7 @@ export function Family() {
         </Card>
       ) : null}
       {!status?.is_youth ? <MyStudy /> : null}
+      {!status?.is_youth ? <MyTransferAcknowledgements /> : null}
       {!status?.is_youth ? <FamilyDashboard onConsents={setConsents} /> : null}
       <View style={{ flexDirection: 'row', gap: 8, flexWrap: 'wrap', marginVertical: 10 }}>
         {status?.is_youth

@@ -14,6 +14,7 @@ import { moneyIn } from '../vtime';
 import { Admissions } from './admissions';
 import { AcademyDesk } from './academy';
 import { SchoolDesk } from './academics';
+import { Campuses } from './campuses';
 import { MyAcademyCard } from './academy-portal';
 import { IncomingSponsorship } from './sponsor-beneficiaries';
 import { HandOverBrand } from './sponsor-ownership';
@@ -91,6 +92,7 @@ export function Org({ id, tab: first = 'overview', focus: firstFocus = null }) {
   const [focus, setFocus] = useState(firstFocus);   // a record to open inside the tab (for example an academy application)
   const org = useLoad(() => api.get(`/organisations/${id}`), [id]);
   const dash = useLoad(() => api.get(`/organisations/${id}/dashboard`), [id]);
+  const campusRole = useLoad(() => (dash.data && !STAFF.includes(dash.data.role) ? api.get(`/organisations/${id}/campuses`).then(() => true).catch(() => false) : Promise.resolve(false)), [id, dash.data?.role]); // a plain member only sees Campuses when the server gives them a branch role
   const brands = useLoad(() => api.get(`/organisations/${id}/assets`, { kind: 'sponsor' }).catch(() => []), [id]); // a coach has no sponsor access: treated as none
   if (org.error || dash.error) return <Screen><LoadError error={dash.error ?? org.error} onRetry={() => { org.reload(); dash.reload(); }} /></Screen>;
   if (!org.data || !dash.data) return <Screen><Loading /></Screen>;
@@ -103,7 +105,7 @@ export function Org({ id, tab: first = 'overview', focus: firstFocus = null }) {
   };
   const P = { o, d, role, archived, toast, brands, go, reload: () => { org.reload(); dash.reload(); brands.reload(); } };
   const teaching = !SPONSOR_ONLY.includes(role) && role !== 'finance' && role !== 'staff';
-  const tabs = [['overview', ['owner', 'admin', 'coach', 'finance'].includes(role) ? 'Command centre' : 'Overview'], ...(teaching ? [['cohorts', 'Cohorts']] : []), ['people', 'People'], ...(brands.data?.length && role !== 'coach' ? [['sponsor', 'Sponsor']] : []), ...(teaching ? [['assets', 'Teams, events & venues']] : []), ...(['school', 'college', 'university'].includes(o.kind) && ['owner', 'admin', 'coach', 'staff'].includes(role) ? [['study', 'Study partners']] : []), ...(STAFF.includes(role) && o.kind !== 'academy' ? [['agreements', 'Agreements']] : []), ...(['owner', 'admin', 'finance'].includes(role) && o.kind !== 'academy' ? [['collections', 'Collections']] : []), ...(['owner', 'admin', 'finance'].includes(role) ? [['rewards', 'Rewards'], ['comms', 'Communication']] : []), ...(STAFF.includes(role) ? [['compliance', 'Compliance'], ['signin', 'Sign-in & access']] : []), ...(STAFF.includes(role) || (o.kind === 'academy' && ['finance', 'coach', 'staff', 'auditor'].includes(role)) ? [[o.kind === 'academy' ? 'academy' : 'admissions', o.kind === 'academy' ? 'Academy' : 'Admissions']] : [])];
+  const tabs = [['overview', ['owner', 'admin', 'coach', 'finance'].includes(role) ? 'Command centre' : 'Overview'], ...(teaching ? [['cohorts', 'Cohorts']] : []), ['people', 'People'], ...(STAFF.includes(role) || campusRole.data ? [['campuses', 'Campuses']] : []), ...(['school', 'college', 'university'].includes(o.kind) && ['owner', 'admin', 'coach', 'staff'].includes(role) ? [['study', 'Study partners']] : []), ...(brands.data?.length && role !== 'coach' ? [['sponsor', 'Sponsor']] : []), ...(teaching ? [['assets', 'Teams, events & venues']] : []), ...(STAFF.includes(role) && o.kind !== 'academy' ? [['agreements', 'Agreements']] : []), ...(['owner', 'admin', 'finance'].includes(role) && o.kind !== 'academy' ? [['collections', 'Collections']] : []), ...(['owner', 'admin', 'finance'].includes(role) ? [['rewards', 'Rewards'], ['comms', 'Communication']] : []), ...(STAFF.includes(role) ? [['compliance', 'Compliance'], ['signin', 'Sign-in & access']] : []), ...(STAFF.includes(role) || (o.kind === 'academy' && ['finance', 'coach', 'staff', 'auditor'].includes(role)) ? [[o.kind === 'academy' ? 'academy' : 'admissions', o.kind === 'academy' ? 'Academy' : 'Admissions']] : [])];
   return (
     <Screen wide>
       <GradCard colors={[c.violet, c.ink]}>
@@ -113,7 +115,7 @@ export function Org({ id, tab: first = 'overview', focus: firstFocus = null }) {
       {STAFF.includes(role) || role === 'finance' ? <PlanBanner o={o} /> : null}
       {archived ? <View style={{ marginTop: 10 }}><Empty emoji="🗄️" title="This organisation is archived" sub="Everything is kept and readable. Ask an owner to restore it to make changes." /></View> : null}
       <View style={{ marginTop: 10 }}><Seg options={tabs.map(([value, label]) => ({ value, label }))} value={tab} onChange={setTab} color={c.violet} /></View>
-      {tab === 'overview' ? <Overview {...P} /> : tab === 'cohorts' ? <Cohorts {...P} /> : tab === 'people' ? <People {...P} /> : tab === 'admissions' ? <Admissions {...P} /> : tab === 'study' ? <SchoolDesk {...P} /> : tab === 'academy' ? <AcademyDesk key={JSON.stringify(focus)} {...P} focus={focus} /> : tab === 'collections' ? <Collections target={{ organisation_id: o.id }} archived={archived} /> : tab === 'rewards' ? <LoyaltyConsole ownerKind="organisation" ownerId={o.id} /> : tab === 'sponsor' ? <SponsorTab {...P} /> : tab === 'agreements' ? <Agreements {...P} /> : tab === 'comms' ? <Communications organisationId={o.id} organisationName={o.name} archived={archived} /> : tab === 'compliance' ? <ComplianceWorkspace scope={{ kind: 'organisation', id: o.id }} own={{ subject: { kind: 'organisation', id: o.id }, title: `${o.name}: our own requirements` }} /> : tab === 'signin' ? <OrgIdentity {...P} /> : <Assets {...P} />}
+      {tab === 'overview' ? <Overview {...P} /> : tab === 'cohorts' ? <Cohorts {...P} /> : tab === 'people' ? <People {...P} /> : tab === 'admissions' ? <Admissions {...P} /> : tab === 'campuses' ? <Campuses {...P} /> : tab === 'study' ? <SchoolDesk {...P} /> : tab === 'academy' ? <AcademyDesk key={JSON.stringify(focus)} {...P} focus={focus} /> : tab === 'collections' ? <Collections target={{ organisation_id: o.id }} archived={archived} /> : tab === 'rewards' ? <LoyaltyConsole ownerKind="organisation" ownerId={o.id} /> : tab === 'sponsor' ? <SponsorTab {...P} /> : tab === 'agreements' ? <Agreements {...P} /> : tab === 'comms' ? <Communications organisationId={o.id} organisationName={o.name} archived={archived} /> : tab === 'compliance' ? <ComplianceWorkspace scope={{ kind: 'organisation', id: o.id }} own={{ subject: { kind: 'organisation', id: o.id }, title: `${o.name}: our own requirements` }} /> : tab === 'signin' ? <OrgIdentity {...P} /> : <Assets {...P} />}
     </Screen>
   );
 }
