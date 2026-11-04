@@ -135,3 +135,42 @@ calling the new capabilities; the tables can stay (they hold decisions and entri
 - Receivables as-of reconstruction uses charge terms as they stand now.
 - Machine-drafted translations of the new text are in all eleven packs and stay unreviewed until a native speaker signs them off; the academy screens still carry some older hard-coded English (tracked by the i18n baseline).
 - Not run: native iOS / Android devices. The web build is exercised at phone, tablet and desktop widths; the native bundles are exported to confirm they compile.
+
+## Capacity, progression & workforce scenarios (#805)
+
+Finance → Forecast → **Capacity & workforce** (owner/admin only). A read-only what-if over the academy's own records. It lives in the **same scenario store and list as the #395 commercial scenarios** (`academy_scenarios`, `kind = 'capacity'`), so there is one list, one snapshot model and one archive. Nothing was duplicated: no second console, table of forecasts or calendar.
+
+### Capabilities (REST + OpenAPI + MCP from one definition each)
+| Capability | Purpose |
+|---|---|
+| `get_academy_capacity_baseline` | Sourced starting point (programmes, coaches, venues, pathway levels, costs) with the formulas |
+| `create_academy_capacity_scenario` | Run and save (idempotent, audited snapshot); `preview: true` runs the maths only, saving nothing |
+| `suggest_academy_capacity_slots` | Ranks conflict-free start times; books nothing |
+| `get_academy_capacity_scenario` | Frozen baseline + result + recorded decisions |
+| `compare_academy_capacity_scenarios` | 2–4 scenarios side by side; says whether they share a baseline |
+| `decide_academy_capacity_candidate` | Append-only record of a person's decision on a recommendation |
+| `list_academy_scenarios` (extended) | `kind` filter; finance still sees commercial scenarios only |
+
+### Requested feature → source of truth → gap → extension
+| Requested | Existing source of truth | Gap | Extension |
+|---|---|---|---|
+| Enrolment mix | `org_enrolments`, `academy_programmes`, `academy_applications` | no operational what-if | `enrolment_mix` input, congestion = projected / capacity |
+| Next-stage promotions | `academy_pathways`, latest `academy_progression_decisions` | no seat view per level | `promotions` input; counts only, never an athlete |
+| Venue slots | `bookings`, `resources`, `session_venue_links` | no forward conflict check | per-meeting check of confirmed bookings |
+| Coach capacity | `academy_staff_availability`, `academy_session_staff`, `staffIssues` | no load / requirement view | required coaches, hours, load % |
+| School timetable | `academic_items` via `academicClashes` (consent-gated) | not used in planning | clashes counted from consented blocks; "not assessed" without a source cohort |
+| Operating cost | approved payroll + confirmed venue bookings (`academy-cost-sources`) | not per cohort | cost per coach-hour and per session, budget ceiling |
+
+### Formulas
+Shown in every response (`formulas`) and on screen: demand, congestion, required coaches `max(1, ceil(athletes / ratio))`, coach hours, coach load %, staff cost per hour (approved payroll / timesheeted hours, last 90 days), venue cost per session, pathway bottleneck, conflicts.
+
+### Guarantees
+- **Missing is not zero:** unknown inputs make the scenario `incomplete` with the gaps listed; cost is `null` until approved payroll exists.
+- **Impossible is not forecast:** `impossible` returns reasons and no projection.
+- **No mutation:** a test compares row counts of sessions, bookings, enrolments, staffing, costs and programmes before and after.
+- **Human approval:** recommendations are candidates; a decision is an append-only record. No athlete is selected or excluded.
+- **Security:** owner/admin only, 404 for outsiders, audit on every read and write, no athlete names in any result.
+- **Data:** migration `157` is additive. Rollback is deploying the previous release; nothing is dropped.
+
+### Sports
+The engine is sport-agnostic (sessions, staff, venues and pathways are generic; sport is only a programme label). `academy-capacity.test.js` creates a programme for every sport in the catalogue and forecasts it. No sport is blocked or on a silent default, and no sport has a sport-specific model here because none is needed.
