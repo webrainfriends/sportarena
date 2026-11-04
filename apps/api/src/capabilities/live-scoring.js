@@ -2,6 +2,7 @@
 // a spectator-safe projection, an advisory scorer lease, and the same append-only live log for heats / finals / field flights.
 // Nothing here is a second scoring database: match_events and session_events are logs, official results still go through the
 // score-sheet workflow (fixtures) and recordSessionResults (sessions), and every total is derived by the sport plugin.
+import { flagSourceCorrection } from '../discipline-live.js';
 import { z } from 'zod';
 import { cap, id } from '../registry.js';
 import { tx, pool } from '../db.js';
@@ -68,6 +69,7 @@ cap({
         [m.fixture_id, x.f.event_id, next.seq, i.client_key ?? null, next.kind, next.side, next.side ? x.f[`${next.side}_team_id`] : null, next.player_id, next.period, next.clock_seconds,
           JSON.stringify(next.payload ?? {}), user.id, cur.id, next.position_seq, authority])).rows[0];
       await c.query('UPDATE match_events SET voided_at=now(), voided_by=$2, void_reason=$3 WHERE id=$1', [cur.id, user.id, `Corrected: ${i.reason}`]);
+      await flagSourceCorrection(c, { sourceType: 'match_event', sourceId: cur.id, reason: `The match event was corrected: ${i.reason}`, actorId: user.id }); // disciplinary cases raised from it are re-evaluated (#479)
       await c.query("INSERT INTO match_event_revisions(fixture_id, match_event_id, replacement_id, action, authority, reason, before, after, actor_id) VALUES ($1,$2,$3,'correct',$4,$5,$6,$7,$8)",
         [m.fixture_id, cur.id, rep.id, authority, i.reason, JSON.stringify(cur), JSON.stringify(rep), user.id]);
       return rep;

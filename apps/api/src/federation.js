@@ -173,7 +173,7 @@ export const POLICY_KINDS = {
   registration: { label: 'Player registration rules', enforced: false, params: z.object({ max_active_clubs: z.number().int().min(1).max(10).default(1), requires_guardian_consent_under_18: z.boolean().default(true), note: z.string().trim().max(500).optional() }).strict() },
   transfer: { label: 'Transfer-window rules', enforced: false, params: z.object({ max_transfers_per_window: z.number().int().min(0).max(20).optional(), fee_cap_minor: z.number().int().min(0).optional(), note: z.string().trim().max(500).optional() }).strict() },
   discipline: { label: 'Disciplinary accumulation rules', enforced: false, params: z.object({ points_threshold: z.number().int().min(1).max(1000).optional(), suspension_matches: z.number().int().min(1).max(100).optional(), reset_after_days: z.number().int().min(1).max(3650).optional(), note: z.string().trim().max(500).optional() }).strict() },
-  para_classification: { label: 'Para-classification requirements', enforced: false, params: z.object({ classification_required: z.boolean().default(true), classes: labels, valid_for_months: z.number().int().min(1).max(120).optional(), note: z.string().trim().max(500).optional() }).strict() },
+  para_classification: { label: 'Para-classification requirements', enforced: true, params: z.object({ classification_required: z.boolean().default(true), classes: labels, valid_for_months: z.number().int().min(1).max(120).optional(), note: z.string().trim().max(500).optional() }).strict() },
 };
 
 /**

@@ -10,12 +10,15 @@
 // Nationality, residency, sex/gender category and classification are NEVER inferred: they are declared by the registrar or recorded as dependencies.
 import { z } from 'zod';
 import { many } from './db.js';
+import { outcomeAt, verifiedExternalAt } from './para.js';
 import { decrypt } from './crypto.js';
 import { audit } from './helpers.js';
 import { hasConsent, isYouth } from './youth.js';
 import { conflict } from './errors.js';
 import { activeSportingSanction } from './integrity.js';
+import { blockingSanction } from './discipline-live.js';
 import { gate, hasObligations } from './compliance.js';
+import { LIC_STATUS } from './federation.js';
 
 export const LISTS = ['active', 'reserve', 'development'];
 export const LIVE = ['submitted', 'under_review', 'registered', 'suspended'];
@@ -30,6 +33,10 @@ export const RULES = z.object({
   check_division_age: z.boolean().default(true),
   require_team_affiliation: z.boolean().default(true),
   required_clearances: z.array(z.enum(['licence', 'classification'])).max(2).default([]),
+  // para classification (#488): 'governed' = only the authorised classification outcome counts; 'external_reference' (default, keeps existing set-ups working) also
+  // accepts a second-officer-verified external reference and, last, the manual audited dependency. An organiser can never type an athlete into a class.
+  classification_mode: z.enum(['governed', 'external_reference']).default('external_reference'),
+  allowed_classes: z.array(z.string().trim().min(1).max(20)).max(60).default([]),
   require_contract: z.boolean().default(false),
   require_guardian_consent: z.boolean().default(true),
   require_compliance: z.boolean().default(true), // obligations of the compliance rulebook (#595) that block registration; no obligations configured = no effect
@@ -61,7 +68,26 @@ async function waiver(c, eventId, userId, rule, at) {
     [eventId, userId, rule, at])).rows[0] ?? null;
 }
 
-const check = (rule, status, reason, source) => ({ rule, status, reason, ...(source ? { source } : {}) });
+const PARA_SRC = (kind, o) => ({ kind, id: o.id, class_code: o.class_code, class_status: o.status, label: o.authority, ...(o.version ? { version: o.version } : {}), ...(o.decision_ref ? { decision_ref: o.decision_ref } : {}) });
+async function paraCheck(c, rules, event, userId, at, manual) {
+  const allowed = (rules.allowed_classes ?? []).map((x) => x.toUpperCase());
+  const judge = (o, kind) => {
+    const src = PARA_SRC(kind, o);
+    if (o.status === 'not_eligible') return check('classification', 'fail', 'Classification: not eligible for this sport', src);
+    if (o.status === 'review_required' || (o.review_by && o.review_by < dayOf(at))) return check('classification', 'pending', `Classification ${o.class_code ?? ''} needs review`.replace('  ', ' '), src);
+    if (allowed.length && !allowed.includes(String(o.class_code).toUpperCase())) return check('classification', 'fail', `Class ${o.class_code} is not a class of this competition`, src);
+    return check('classification', 'pass', `Class ${o.class_code}${o.status === 'temporary' ? ' (temporary)' : ''} confirmed by ${o.authority}`, src);
+  };
+  const o = await outcomeAt(q(c), userId, event.sport_id, at);
+  if (o) return judge(o, 'para_outcome');
+  if ((rules.classification_mode ?? 'external_reference') === 'governed') return check('classification', 'fail', 'No authorised classification on record', null);
+  const x = await verifiedExternalAt(q(c), userId, event.sport_id, at);
+  if (x) return judge(x, 'para_external_reference');
+  return null; // fall through to the audited manual dependency, then "none on record"
+}
+
+// `code` is the stable, machine-readable reason (rule + status); `reason` stays the human sentence. Additive: existing consumers keep reading rule/status/reason.
+const check = (rule, status, reason, source) => ({ rule, status, code: `${rule}.${status}`, reason, ...(source ? { source } : {}) });
 
 /**
  * The match-day (or any-day) decision for one person in one team of one competition.
@@ -135,10 +161,26 @@ export async function evaluate(c, ctx, teamId, userId) {
   // an active sporting sanction recorded by a governing body is read live, never copied: it says only that the person is suspended and until when
   const sanction = await activeSportingSanction(q(c), userId, event.sport_id, day);
   if (sanction) byKind.set('disciplinary', { id: sanction.id, kind: 'disciplinary', status: 'blocked', valid_until: sanction.valid_until, source_label: 'Sporting sanction' });
+  // a governing-body disciplinary sanction (#479) is read live too: suspended, with the matches still to serve
+  const disc = await blockingSanction(q(c), userId, event, day);
+  if (disc) byKind.set('disciplinary', { id: disc.id, kind: 'disciplinary', status: 'blocked', valid_until: disc.valid_until, source_label: disc.remaining != null ? `Disciplinary sanction (${disc.remaining} match${disc.remaining === 1 ? '' : 'es'} to serve)` : 'Disciplinary sanction' });
+  // a federation licence (#475) is read live: a suspended, expired or revoked licence for this sport blocks; an active one clears
+  const lic = (await q(c).query(
+    `SELECT l.id, l.status AS raw, l.licence_no, l.expires_on, ${LIC_STATUS('l')} AS status FROM fed_licences l JOIN governing_bodies b ON b.id=l.body_id JOIN governing_body_sports gs ON gs.body_id=b.id AND gs.sport_id=$2 AND gs.ended_on IS NULL
+      WHERE l.holder_id=$1 AND l.status IN ('active','suspended','expired','revoked') AND (l.issued_on IS NULL OR l.issued_on <= $3::date) ORDER BY l.expires_on DESC NULLS LAST LIMIT 1`, [userId, event.sport_id, day])).rows[0];
+  if (lic && (rules.required_clearances ?? []).includes('licence') && !byKind.has('licence')) byKind.set('licence', { id: lic.id, kind: 'licence', status: lic.status === 'active' ? 'clear' : 'blocked', valid_until: lic.expires_on, source_label: `Federation licence ${lic.licence_no ?? ''}`.trim() });
+  // an approved transfer whose movement is due but not yet completed is surfaced as pending, never copied (#478)
+  const mv = (await q(c).query("SELECT id FROM tr_transfers WHERE player_id=$1 AND sport_id=$2 AND status='approved' AND effective_on <= $3::date LIMIT 1", [userId, event.sport_id, day])).rows[0];
+  if (mv && !byKind.has('transfer')) byKind.set('transfer', { id: mv.id, kind: 'transfer', status: 'pending', source_label: 'Approved transfer awaiting completion' });
   const NAME = { licence: 'Licence', transfer: 'Transfer clearance', loan: 'Loan clearance', classification: 'Classification', disciplinary: 'Disciplinary status' };
   for (const kind of DEP_KINDS) {
-    const d = byKind.get(kind);
-    const required = (rules.required_clearances ?? []).includes(kind);
+    let d = byKind.get(kind);
+    const required = (rules.required_clearances ?? []).includes(kind) || (kind === 'classification' && (rules.allowed_classes ?? []).length > 0);
+    if (kind === 'classification' && required) {
+      // para classification (#488): the authorised outcome in force at `at`, read live; its identity is kept in the check source so the lock snapshot reproduces it
+      const r = await paraCheck(c, rules, event, userId, when, d);
+      if (r) { checks.push(await withWaiver('classification', r)); continue; }
+    }
     const src = d ? { kind: 'dependency', id: d.id, label: d.source_label ?? undefined } : null;
     let r = null;
     if (d?.status === 'blocked') r = check(kind === 'disciplinary' ? 'suspension' : kind, 'fail', kind === 'disciplinary' ? `Suspended${d.valid_until ? ` until ${dayOf(d.valid_until)}` : ''}` : `${NAME[kind]} is blocked`, src);

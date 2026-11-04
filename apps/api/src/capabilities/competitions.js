@@ -267,6 +267,7 @@ cap({
       const r = (await c.query('UPDATE comp_seasons SET status=$2 WHERE id=$1 RETURNING *', [s.id, i.status])).rows[0];
       const ev = { draft: 'draft', open: 'open', active: 'ongoing' }[i.status];
       if (ev) await c.query('UPDATE events SET status=$2 WHERE id=$1', [s.event_id, ev]);
+      if (i.status === 'archived') await (await import('./season-archive.js')).sealSeason(c, { ...s, ...r }, user.id); // archiving seals the season's record (#563)
       await audit(c, user.id, `competition.season_${i.status}`, 'competition_season', s.id);
       return dates(r);
     });

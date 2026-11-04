@@ -15,6 +15,8 @@ import { t } from '../i18n';
 // see come back as { available: false } and are simply not drawn. The API orders the cards for the event's phase (before, during, after).
 // Text is built from the structured kinds the API returns, so every language pack renders it.
 const SEV = { critical: c.red, high: c.sun, medium: c.cyan, low: c.mute };
+/** Joins an icon or a name with its translated text for labels (no inline literals: every visible word comes from t()). */
+const lab = (a, b, sep = ' ') => `${a}${sep}${b}`;
 const ok = (x) => !!x && x.available !== false;
 const n0 = (x) => Number(x ?? 0);
 
@@ -156,7 +158,7 @@ function Operations({ d, open, cols, wide }) {
           ['🎫', t('tw.m_checkedin'), d.access.checked_in], ['⛔', t('tw.m_refused'), d.access.refused], ['🧱', t('tw.k.task_blocked'), d.tasks.blocked],
           ['⏰', t('tw.k.task_overdue'), d.tasks.overdue], ['🧩', t('tw.m_crew'), d.crew.active],
         ].map(([ic, label, v]) => (
-          <View key={label} accessible accessibilityLabel={`${label}: ${v}`} style={{ minWidth: 170, flexDirection: 'row', alignItems: 'center', gap: 8, flex: 1 }}>
+          <View key={label} accessible accessibilityLabel={lab(label, v, ': ')} style={{ minWidth: 170, flexDirection: 'row', alignItems: 'center', gap: 8, flex: 1 }}>
             <T size={16}>{ic}</T><T size={13} color={c.mute} style={{ flex: 1 }} numberOfLines={2}>{label}</T><T weight="800">{v}</T>
           </View>
         ))}
@@ -188,9 +190,9 @@ function Finance({ d, open, cols }) {
         <Big value={m(d.cost_cents)} sub={t('tw.f_cost')} />
         <Big value={m(d.net_cents)} sub={t('tw.f_net')} color={d.net_cents < 0 ? c.red : c.ink} />
       </View>
-      <Row label={`🎟️ ${t('tw.f_entry')}`} value={m(d.split.entry_cents)} />
-      <Row label={`💎 ${t('tw.f_sponsors')}`} value={m(d.split.sponsor_cents)} />
-      <Row label={`🛍️ ${t('tw.f_vendors')}`} value={m(d.split.vendor_cents)} />
+      <Row label={lab('🎟️', t('tw.f_entry'))} value={m(d.split.entry_cents)} />
+      <Row label={lab('💎', t('tw.f_sponsors'))} value={m(d.split.sponsor_cents)} />
+      <Row label={lab('🛍️', t('tw.f_vendors'))} value={m(d.split.vendor_cents)} />
       {d.budget_used_pct != null ? <><Bar pct={d.budget_used_pct} color={d.budget_used_pct > 90 ? c.red : c.pink} /><T size={12.5} color={c.mute}>{t('tw.f_budget', { pct: Math.round(d.budget_used_pct) })}</T></> : null}
     </Cd>
   );
@@ -292,8 +294,8 @@ function Media({ d, open, cols }) {
   if (!ok(d)) return null;
   return (
     <Cd icon="📣" title={t('tw.c.media')} cols={cols} onPress={() => open({ tab: d.published ? 'broadcast' : 'public' })}>
-      <Row label={`🌐 ${t('tw.me_public')}`} value={d.published ? t('tw.me_published') : t('tw.me_unpublished')} color={d.published ? c.lime : c.sun} />
-      <Row label={`📡 ${t('tw.me_streams')}`} value={d.streams} />
+      <Row label={lab('🌐', t('tw.me_public'))} value={d.published ? t('tw.me_published') : t('tw.me_unpublished')} color={d.published ? c.lime : c.sun} />
+      <Row label={lab('📡', t('tw.me_streams'))} value={d.streams} />
       {d.live_streams ? <Row label={t('tw.me_live')} value={d.live_streams} color={c.red} /> : null}
     </Cd>
   );
@@ -407,7 +409,7 @@ export function EventTower({ id, onOpen, onPlan, onPreview, onCommand, embedded 
 export function EventsStrip({ tower }) {
   if (!tower) return null;
   const Cell = ({ n, label, color }) => (
-    <View accessible accessibilityLabel={`${label}: ${n}`} style={{ flex: 1, minHeight: 64, backgroundColor: c.paper, borderRadius: 16, borderWidth: 1, borderColor: c.line, padding: 12, justifyContent: 'center' }}>
+    <View accessible accessibilityLabel={lab(label, n, ': ')} style={{ flex: 1, minHeight: 64, backgroundColor: c.paper, borderRadius: 16, borderWidth: 1, borderColor: c.line, padding: 12, justifyContent: 'center' }}>
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}><Dot color={color} /><T size={24} weight="800">{n}</T></View>
       <T size={12} weight="700" color={c.mute} numberOfLines={2}>{label}</T>
     </View>
@@ -455,7 +457,7 @@ export function EventTowerHome({ tower, push, goTab }) {
           options={evs.map((e) => ({ value: e.id, label: `${e.emoji ?? '🏆'} ${e.name}`, sub: [t(`tw.st.${e.status}`), e.readiness_percent != null ? t('tw.ready_pct', { pct: e.readiness_percent }) : null, dayCount(e.days_to_go)].filter(Boolean).join(' · ') }))} />
       ) : null}
       {needs.map((e) => (
-        <Card key={e.id} onPress={() => setSel(e.id)} pad={14} accessibilityLabel={`${e.name}. ${t(BUCKET[e.bucket][1])}`}>
+        <Card key={e.id} onPress={() => setSel(e.id)} pad={14} accessibilityLabel={lab(e.name, t(BUCKET[e.bucket][1]), '. ')}>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, minHeight: 44 }}>
             <Dot color={BUCKET[e.bucket][0]} />
             <View style={{ flex: 1 }}><T weight="700" numberOfLines={1}>{e.emoji ?? '🏆'} {e.name}</T><T size={12.5} color={c.mute}>{[t(BUCKET[e.bucket][1]), e.readiness_percent != null ? t('tw.ready_pct', { pct: e.readiness_percent }) : null, dayCount(e.days_to_go)].filter(Boolean).join(' · ')}</T></View>
