@@ -264,6 +264,7 @@ import './guardian-pickup.js';
 import './academy-payroll.js';
 import './academy-ops-board.js';
 import './academy-curriculum.js';
+import './academy-competition.js';
 import './academy-scouting.js';
 import './academy-scouting-pipeline.js';
 import './collections.js';
