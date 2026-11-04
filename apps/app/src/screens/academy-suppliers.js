@@ -21,6 +21,7 @@ export function Suppliers({ o, archived, toast }) {
   const reqs = useLoad(() => api.get(`/organisations/${o.id}/academy/supplier-requests`, { open_only: true }).catch(() => []), [o.id]);
   const [form, setForm] = useState(null);      // { supplier? } add or edit
   const [ask, setAsk] = useState(null);        // the supplier a request is for
+  const [finish, setFinish] = useState(null);  // a request being marked delivered / done: its final cost and invoice reach the academy P&L (#787)
   if (list.error) return <ErrorBox error={list.error} onRetry={list.reload} />;
   if (!list.data) return <Loading />;
   const venueOpts = (venues.data ?? []).map((v) => ({ value: v.id, label: v.name, sub: v.city }));
@@ -48,10 +49,13 @@ export function Suppliers({ o, archived, toast }) {
           {reqs.data.map((r) => (
             <Row key={r.id} title={`${r.title} · ${r.supplier}`} sub={`${r.venue ?? t('sup.r.venue_all')} · ${t(`sup.pri.${r.priority}`)}${r.due_on ? ` · ${when(r.due_on)}` : ''}`}
               right={<View style={{ alignItems: 'flex-end', gap: 4 }}><Tag label={t(`sup.st.${r.status}`)} />{NEXT[r.status] && !archived ? <Btn small title={t('sup.mark', { status: t(`sup.st.${NEXT[r.status]}`) })} color={c.paper} ink={c.ink}
-                onPress={async () => { try { await api.patch(`/academy/supplier-requests/${r.id}`, { row_version: r.row_version, status: NEXT[r.status] }); reqs.reload(); } catch (e) { toast?.(e.message); } }} /> : null}</View>} />
+                onPress={async () => { if (['delivered', 'done'].includes(NEXT[r.status])) { setFinish(r); return; } try { await api.patch(`/academy/supplier-requests/${r.id}`, { row_version: r.row_version, status: NEXT[r.status] }); reqs.reload(); } catch (e) { toast?.(e.message); } }} /> : null}</View>} />
           ))}
         </View>
       ) : null}
+      <FormSheet visible={!!finish} onClose={() => setFinish(null)} title={finish ? `${finish.title} · ${t('sup.mark', { status: t(`sup.st.${NEXT[finish.status]}`) })}` : ''} submitLabel={t('common.save')} initial={{ currency: finish?.currency ?? undefined, amount_minor: finish?.estimated_cost_minor != null ? Number(finish.estimated_cost_minor) : undefined }}
+        fields={[{ key: 'currency', label: t('arc.f.currency'), type: 'currency', optional: true }, { key: 'amount_minor', label: t('arc.f.amount'), type: 'money', currency: (v) => v.currency ?? finish?.currency ?? 'INR', optional: true, hint: t('arc.sup.final_hint') }, { key: 'invoice_ref', label: t('arc.f.invoice'), optional: true }]}
+        onSubmit={async (v) => { await api.patch(`/academy/supplier-requests/${finish.id}`, { row_version: finish.row_version, status: NEXT[finish.status], ...(v.amount_minor ? { actual_cost_minor: v.amount_minor, currency: v.currency ?? finish.currency ?? undefined } : {}), ...(v.invoice_ref ? { invoice_ref: v.invoice_ref } : {}) }); reqs.reload(); return t('arc.sup.saved'); }} />
       <FormSheet visible={!!form} onClose={() => setForm(null)} title={edit ? edit.name : t('sup.title')} submitLabel={t('common.save')}
         initial={edit ? { ...edit, venue_ids: (edit.venues ?? []).map((v) => v.id) } : { kind: 'maintenance', all_venues: venueOpts.length <= 1 }}
         fields={[

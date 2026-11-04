@@ -11,6 +11,7 @@ import { c } from '../theme';
 import { Block, Fact, Initials, Origin, Split, Timeline, when } from './academy-ui';
 import { t as tr } from '../i18n';
 import { FollowThrough, PackButton } from './academy-closeout';
+import { DevPlans, FamilyDevPlans } from './academy-dev-plan';
 
 const Panel = ({ children }) => <View style={{ backgroundColor: c.paper, borderRadius: 20, padding: 16, gap: 10, borderWidth: 1, borderColor: c.line }}>{children}</View>;
 const WHY = { not_placed: ['🆕', 'Not placed on a level'], assessment_due: ['🗓️', 'Assessment due'], assessment_awaiting_review: ['🔎', 'Assessment awaiting review'], assessment_awaiting_decision: ['⚖️', 'Assessment approved, no decision yet'] };
@@ -28,7 +29,7 @@ export function Progress({ o, role, archived, toast }) {
   const asm = useLoad(() => api.get(`/organisations/${o.id}/academy/assessments`, { limit: 100 }), [o.id]);
   const refresh = () => { paths.reload(); queue.reload(); asm.reload(); };
   const review = async (a, action) => { try { await api.post(`/academy/assessments/${a.id}/review`, { row_version: a.row_version, action }); toast(action === 'approve' ? 'Assessment approved' : 'Sent for reassessment'); refresh(); } catch (e) { toast(e.message); } };
-  const opts = [{ value: 'queue', label: `Review queue${queue.data?.length ? ` (${queue.data.length})` : ''}` }, { value: 'assessments', label: 'Assessments' }, ...(staff ? [{ value: 'pathways', label: 'Pathways' }] : [])];
+  const opts = [{ value: 'queue', label: `Review queue${queue.data?.length ? ` (${queue.data.length})` : ''}` }, { value: 'assessments', label: 'Assessments' }, { value: 'plans', label: tr('dp.tab') }, ...(staff ? [{ value: 'pathways', label: 'Pathways' }] : [])];
   const list = (
     <View style={{ gap: 12 }}>
       <Seg value={tab} onChange={setTab} color={c.violet} options={opts} />
@@ -59,6 +60,7 @@ export function Progress({ o, role, archived, toast }) {
           </Block>
         </Panel>
       ) : null}
+      {tab === 'plans' ? <DevPlans o={o} role={role} archived={archived} toast={toast} onOpenPathway={(pathway_id, athlete_id) => { setTab('queue'); setOpen({ pathway_id, athlete_id }); }} /> : null}
       {tab === 'pathways' && staff ? <Pathways o={o} data={paths} archived={archived} toast={toast} reload={refresh} /> : null}
     </View>
   );
@@ -233,6 +235,7 @@ export function FamilyProgress({ athlete, toast }) {
   return (
     <View style={{ gap: 14, marginTop: 12 }}>
       {d.data.is_youth && !d.data.coaching_consent ? <Panel><T size={13}>Coaching assessments are hidden because a guardian has not allowed coaching material to be shared. Your level and decisions are still shown.</T></Panel> : null}
+      <Panel><Block title={tr('dp.title')}><T size={12} color={c.mute}>{tr('dp.family_subtitle')}</T><FamilyDevPlans athlete={athlete} toast={toast} /></Block></Panel>
       {d.data.academies.map((a) => (
         <Panel key={a.organisation.id}>
           <Block title={a.organisation.name}>
