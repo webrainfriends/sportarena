@@ -23,6 +23,7 @@ import './education-enquiries.js';
 import './education-discovery.js';
 import './pathway-planning.js';
 import './academy-dev-plan.js';
+import './academy-video.js';
 import './opportunity-matching.js';
 import './marketplace.js';
 import './marketplace-engagements.js';
