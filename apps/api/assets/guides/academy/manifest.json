@@ -1,0 +1,16 @@
+{
+  "generated_at": "2026-11-04T03:12:55.284Z",
+  "steps": {
+    "create": "98d37045cc0fbb32",
+    "venues": "b909a5109091bad5",
+    "staff": "b5f32aa2f935e7cd",
+    "suppliers": "0ced122a257369a9",
+    "programmes": "15e0a2506777d9c2",
+    "coaches": "5f5b1e1912ff4673",
+    "students": "7c80dcb830ed8843",
+    "classes": "a81d695699677c95",
+    "tax": "e8c1a239959f1ce4",
+    "revenue": "8aa5b050d315aff0",
+    "reports": "6c85a1f12a373cc6"
+  }
+}

@@ -28,6 +28,7 @@ import { LoyaltyConsole } from './rewards';
 import { FederationLinks } from './federation-club';
 import { OrgIdentity } from './org-identity';
 import { CommandCentre } from './org-command-centre';
+import { ProcessCard, useOpenTarget } from './process-card';
 import { ComplianceWorkspace } from './compliance';
 import { PlanBanner, PlanCard } from './org-plan';
 
@@ -119,6 +120,7 @@ export function Org({ id, tab: first = 'overview', focus: firstFocus = null }) {
 // ------------------------------------------------------------------ overview
 function Overview({ o, d, role, archived, reload, toast, go }) {
   const { push } = useNav();
+  const openTarget = useOpenTarget({ o, academy: (tab) => go('academy', { tab }), org: (tab) => go(tab) });
   const [edit, setEdit] = useState(false);
   const a = d.attendance_30d;
   const exportCsv = async (section) => {
@@ -133,6 +135,7 @@ function Overview({ o, d, role, archived, reload, toast, go }) {
     <>
       <View style={{ marginTop: 10, flexDirection: 'row', gap: 8, flexWrap: 'wrap' }}><Btn small title="360° view" color={c.paper} ink={c.ink} onPress={() => push('Organisation360', { id: o.id })} accessibilityLabel="Open the 360 view" />{['owner', 'admin'].includes(role) ? <Btn small title={t('rsh.inbox_title')} color={c.paper} ink={c.ink} onPress={() => push('SharedReports')} accessibilityLabel={t('rsh.inbox_title')} /> : null}</View>
       {STAFF.includes(role) || role === 'finance' ? <PlanCard o={o} archived={archived} /> : null}
+      {o.kind === 'academy' && STAFF.includes(role) ? <View style={{ marginTop: 10 }}><ProcessCard open={openTarget} toast={toast} /></View> : null}
       {['owner', 'admin', 'coach', 'finance'].includes(role) ? <CommandCentre o={o} role={role} archived={archived} go={go} toast={toast} reload={reload} /> : null}
       {STAFF.includes(role) && (o.legal_name || o.registration_no || o.tax_id || o.contact_email || o.contact_phone || o.website || o.description || o.founded_on) ? (
         <Section title="Profile" color={c.violet}>
