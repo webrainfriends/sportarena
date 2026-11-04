@@ -14,7 +14,7 @@ const day = z.string().date();
 const year = z.number().int().min(1990).max(2200);
 const KIND = z.enum(Object.keys(POLICY_KINDS));
 const DATE_KINDS = ['registration_window', 'transfer_window', 'congress', 'administrative', 'official_development', 'assessment', 'deadline'];
-export const DATE_LABEL = { registration_window: 'Registration window', transfer_window: 'Transfer window', congress: 'Congress', administrative: 'Administrative date', official_development: 'Official development', assessment: 'Assessment', deadline: 'Deadline', sanctioned_competition: 'Sanctioned competition', licence_renewal: 'Licence expiries', affiliation_renewal: 'Affiliation expiries' };
+export const DATE_LABEL = { registration_window: 'Registration window', transfer_window: 'Transfer window', congress: 'Congress', administrative: 'Administrative date', official_development: 'Official development', assessment: 'Assessment', deadline: 'Deadline', sanctioned_competition: 'Sanctioned competition', season_registration: 'Season registration window', season_transfer: 'Season transfer window', licence_renewal: 'Licence expiries', affiliation_renewal: 'Affiliation expiries' };
 
 // ------------------------------------------------------------------ policies
 const POL_COLS = 'p.id, p.body_id, p.kind, p.title, p.sport_id, s.name AS sport_name, p.category, p.season_year, p.status, p.local_override, p.created_at';
@@ -168,7 +168,7 @@ cap({
     if ((new Date(i.to) - new Date(i.from)) / 864e5 > 400) throw badRequest('Ask for at most about a year at a time');
     const ids = i.include_descendants ? await subtree(i.id) : [i.id];
     const keep = i.kinds ? new Set(i.kinds.split(',').map((x) => x.trim())) : null;
-    const [comps, dates, lic, aff] = await Promise.all([
+    const [comps, dates, lic, aff, seasonWins] = await Promise.all([
       many(`SELECT s.id, s.event_id, e.name AS title, s.approved_starts_on::text AS starts_on, s.approved_ends_on::text AS ends_on, s.status, s.sanction_no, s.body_id, b.abbreviation, sp.name AS sport_name,
                    (e.status='cancelled' OR e.starts_on < s.approved_starts_on OR e.ends_on > s.approved_ends_on) AS drift
               FROM fed_sanctions s JOIN events e ON e.id=s.event_id JOIN governing_bodies b ON b.id=s.body_id JOIN sports sp ON sp.id=e.sport_id
@@ -177,12 +177,21 @@ cap({
              WHERE d.body_id = ANY($1) AND d.status='active' AND d.starts_on <= $3 AND d.ends_on >= $2`, [ids, i.from, i.to]),
       many(`SELECT l.expires_on::text AS day, count(*)::int AS n, l.body_id, b.abbreviation FROM fed_licences l JOIN governing_bodies b ON b.id=l.body_id WHERE l.body_id = ANY($1) AND l.status IN ('active','suspended') AND l.expires_on BETWEEN $2 AND $3 GROUP BY 1, 3, 4`, [ids, i.from, i.to]),
       many(`SELECT a.effective_to::text AS day, count(*)::int AS n, a.body_id, b.abbreviation FROM fed_affiliations a JOIN governing_bodies b ON b.id=a.body_id WHERE a.body_id = ANY($1) AND a.status IN ('approved','suspended') AND a.effective_to BETWEEN $2 AND $3 GROUP BY 1, 3, 4`, [ids, i.from, i.to]),
+      // season windows of competitions run by these bodies are read live from the season (a reference, never a copy into a second calendar)
+      many(`SELECT cs.id, cs.label, cm.name AS comp_name, cm.id AS comp_id, cs.status, b.id AS body_id, b.abbreviation, sp.name AS sport_name,
+                   cs.registration_opens_on::text AS reg_from, cs.registration_closes_on::text AS reg_to, cs.transfer_opens_on::text AS tr_from, cs.transfer_closes_on::text AS tr_to
+              FROM comp_seasons cs JOIN comp_competitions cm ON cm.id=cs.competition_id JOIN governing_bodies b ON b.organisation_id=cm.organisation_id JOIN sports sp ON sp.id=cm.sport_id
+             WHERE b.id = ANY($1) AND cs.status <> 'draft'`, [ids]),
     ]);
     const items = [
       ...comps.map((r) => ({ kind: 'sanctioned_competition', title: r.title, starts_on: r.starts_on, ends_on: r.ends_on, status: r.status, body_id: r.body_id, body: r.abbreviation, sport_name: r.sport_name, source: { type: 'event', id: r.event_id, sanction_id: r.id }, meta: r.sanction_no, flag: r.drift ? 'dates_moved' : null })),
       ...dates.map((r) => ({ kind: r.kind, title: r.title, starts_on: r.starts_on, ends_on: r.ends_on, status: 'active', body_id: r.body_id, body: r.abbreviation, sport_name: r.sport_name, source: { type: 'federation_date', id: r.id }, meta: r.note, flag: null })),
       ...lic.map((r) => ({ kind: 'licence_renewal', title: `${r.n} licence${r.n === 1 ? '' : 's'} expire`, starts_on: r.day, ends_on: r.day, status: 'due', body_id: r.body_id, body: r.abbreviation, sport_name: null, source: { type: 'licences', id: null, expires_on: r.day }, meta: String(r.n), count: r.n, flag: null })),
       ...aff.map((r) => ({ kind: 'affiliation_renewal', title: `${r.n} affiliation${r.n === 1 ? '' : 's'} expire`, starts_on: r.day, ends_on: r.day, status: 'due', body_id: r.body_id, body: r.abbreviation, sport_name: null, source: { type: 'affiliations', id: null, expires_on: r.day }, meta: String(r.n), count: r.n, flag: null })),
+      ...seasonWins.flatMap((r) => [
+        r.reg_from && r.reg_to ? { kind: 'season_registration', title: `${r.comp_name} ${r.label}`, starts_on: r.reg_from, ends_on: r.reg_to, status: r.status, body_id: r.body_id, body: r.abbreviation, sport_name: r.sport_name, source: { type: 'competition_season', id: r.id, competition_id: r.comp_id }, meta: null, flag: null } : null,
+        r.tr_from && r.tr_to ? { kind: 'season_transfer', title: `${r.comp_name} ${r.label}`, starts_on: r.tr_from, ends_on: r.tr_to, status: r.status, body_id: r.body_id, body: r.abbreviation, sport_name: r.sport_name, source: { type: 'competition_season', id: r.id, competition_id: r.comp_id }, meta: null, flag: null } : null,
+      ].filter(Boolean)).filter((x) => x.starts_on <= i.to && x.ends_on >= i.from),
     ].filter((x) => !keep || keep.has(x.kind)).map((x) => ({ ...x, kind_label: DATE_LABEL[x.kind] })).sort((a, b) => a.starts_on.localeCompare(b.starts_on) || a.title.localeCompare(b.title));
     return { from: i.from, to: i.to, kinds: Object.entries(DATE_LABEL).map(([kind, label]) => ({ kind, label })), items };
   },

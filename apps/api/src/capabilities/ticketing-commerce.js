@@ -107,9 +107,10 @@ cap({
   name: 'quote_ticket_order', method: 'POST', path: '/events/:id/ticket-orders/quote', tag: TAG,
   summary: 'Price an order without reserving anything: the same maths as create_ticket_order (promo codes, add-ons, tax) run and rolled back, so the quote is exactly what the order would charge. Use it to show a total, or to check that a promo code is valid, before buying.',
   input: z.object({
-    id, lines: z.array(z.object({ product_id: id, quantity: z.number().int().min(1).max(100), seats: z.array(z.string().trim().min(2).max(6)).max(100).optional() })).min(1).max(10),
+    id, lines: z.array(z.object({ product_id: id, quantity: z.number().int().min(1).max(100), seats: z.array(z.string().trim().min(2).max(6)).max(100).optional() })).max(10).default([]),
+    bundles: z.array(z.object({ bundle_id: id, quantity: z.number().int().min(1).max(100) })).max(5).optional(),
     promo_codes: z.array(z.string().trim().min(2).max(40)).max(5).optional(), addons: z.array(z.object({ addon_id: id, quantity: z.number().int().min(1).max(100) })).max(10).optional(),
-  }),
+  }).refine((v) => v.lines.length + (v.bundles?.length ?? 0) > 0, 'Choose at least one ticket or package'),
   async handler({ user }, i) {
     let out = null;
     try {

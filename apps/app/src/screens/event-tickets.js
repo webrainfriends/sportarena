@@ -22,6 +22,7 @@ import { QrCode } from './passport';
 import { PRICE_POINTS, POINT_COLOUR } from './venue-seating';
 import { CameraScan, hasCamera } from '../camera-scan';
 import { makeStore } from '../offline-store';
+import { AnalyticsPanel, BoxOfficePanel, BundlePanel, BundlePicker, FansPanel, ReconcilePanel, ScannerSession, TillsPanel } from './event-tickets-ops';
 import { AddonPanel, AddonPicker, CommerceReport, MyAddons, MyWaitlist, PolicyHistory, PromoBox, PromoPanel, WaitlistJoin, WaitlistPanel, resaleLine, ruleBody, ruleFields, ruleInitial } from './event-tickets-commerce';
 
 const stamp = (d) => (d ? new Date(d).toLocaleString(locale, { weekday: 'short', day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' }) : '');
@@ -111,7 +112,7 @@ export function TicketShop({ id }) {
   const offer = useLoad(() => api.get(`/public/events/${id}/tickets`), [id]);
   const plan = useLoad(() => api.get(`/public/events/${id}/tickets/seat-map`).catch(() => ({ zones: [] })), [id]);
   const [qty, setQty] = useState({}), [seats, setSeats] = useState({}), [zone, setZone] = useState(null), [pay, setPay] = useState(null), [busy, setBusy] = useState(false);
-  const [addonQty, setAddonQty] = useState({}), [codes, setCodes] = useState([]), [promoError, setPromoError] = useState(''), [quote, setQuote] = useState(null), [checking, setChecking] = useState(false);
+  const [bundleQty, setBundleQty] = useState({}), [addonQty, setAddonQty] = useState({}), [codes, setCodes] = useState([]), [promoError, setPromoError] = useState(''), [quote, setQuote] = useState(null), [checking, setChecking] = useState(false);
   const idem = useRef(key());
   const zones = plan.data?.zones ?? [];
   const seated = new Set(zones.flatMap((z) => z.products.map((p) => p.id)));
@@ -119,15 +120,17 @@ export function TicketShop({ id }) {
   const products = (offer.data?.products ?? []).filter((p) => !seated.has(p.id));   // seated tickets are sold from the seat map
   const byId = Object.fromEntries(all.map((p) => [p.id, p]));
   const lines = [...Object.keys(qty).filter((k) => qty[k] > 0 && !seated.has(k)).map((k) => ({ p: byId[k], n: qty[k], seats: undefined })), ...Object.keys(seats).filter((k) => seats[k].length).map((k) => ({ p: byId[k], n: seats[k].length, seats: seats[k] }))].filter((l) => l.p);
-  const cur = lines[0]?.p.currency;
+  const bundleLines = Object.keys(bundleQty).filter((k) => bundleQty[k] > 0).map((k) => ({ bundle_id: k, quantity: bundleQty[k] }));
+  const anything = lines.length > 0 || bundleLines.length > 0;
+  const cur = lines[0]?.p.currency ?? quote?.currency;
   const total = lines.reduce((n, l) => n + l.p.price_minor * l.n, 0);
   const addons = (offer.data?.addons ?? []).filter((a) => !cur || a.currency === cur);
   const addonLines = Object.keys(addonQty).filter((k) => addonQty[k] > 0).map((k) => ({ addon_id: k, quantity: addonQty[k] }));
-  const orderBody = () => ({ lines: lines.map((l) => ({ product_id: l.p.id, quantity: l.n, seats: l.seats })), promo_codes: codes.length ? codes : undefined, addons: addonLines.length ? addonLines : undefined });
+  const orderBody = () => ({ lines: lines.map((l) => ({ product_id: l.p.id, quantity: l.n, seats: l.seats })), promo_codes: codes.length ? codes : undefined, addons: addonLines.length ? addonLines : undefined, bundles: bundleLines.length ? bundleLines : undefined });
   // the total shown is the server's own quote (same maths as the order, rolled back), so the price on screen is the price charged
-  const sig = JSON.stringify([lines.map((l) => [l.p.id, l.n, l.seats]), codes, addonLines]);
+  const sig = JSON.stringify([lines.map((l) => [l.p.id, l.n, l.seats]), codes, addonLines, bundleLines]);
   useEffect(() => {
-    if (!lines.length) { setQuote(null); return undefined; }
+    if (!anything) { setQuote(null); return undefined; }
     let live = true;
     const h = setTimeout(async () => {
       setChecking(true);
@@ -186,10 +189,12 @@ export function TicketShop({ id }) {
           </Card>
         );
       })}
-      {lines.length ? <AddonPicker addons={addons} qty={addonQty} onChange={setAddon} /> : null}
-      {lines.length ? <PromoBox applied={codes} error={promoError} busy={checking} onApply={addCode} onRemove={(code) => { idem.current = key(); setCodes((x) => x.filter((y) => y !== code)); }} /> : null}
-      {lines.length ? (
+      <BundlePicker id={id} qty={bundleQty} setQty={(q) => { idem.current = key(); setBundleQty(q); }} />
+      {anything ? <AddonPicker addons={addons} qty={addonQty} onChange={setAddon} /> : null}
+      {anything ? <PromoBox applied={codes} error={promoError} busy={checking} onApply={addCode} onRemove={(code) => { idem.current = key(); setCodes((x) => x.filter((y) => y !== code)); }} /> : null}
+      {anything ? (
         <Card style={{ gap: 8 }}>
+          {bundleLines.length ? <T size={13}>{t('pro.in_basket', { n: bundleLines.reduce((n, b) => n + b.quantity, 0) })}</T> : null}
           {lines.map((l) => <View key={l.p.id} style={{ flexDirection: 'row', justifyContent: 'space-between', gap: 8 }}><T size={13} style={{ flex: 1 }}>{l.n} × {l.p.name}{l.seats ? ` (${l.seats.join(', ')})` : ''}</T><T size={13} weight="700">{moneyIn(l.p.price_minor * l.n, l.p.currency)}</T></View>)}
           {(quote?.addons ?? []).map((a) => <View key={a.addon_id} style={{ flexDirection: 'row', justifyContent: 'space-between', gap: 8 }}><T size={13} style={{ flex: 1 }}>{a.quantity} × {a.name}</T><T size={13} weight="700">{moneyIn(a.price_minor * a.quantity, cur)}</T></View>)}
           {(quote?.promos ?? []).map((p) => <View key={p.code} style={{ flexDirection: 'row', justifyContent: 'space-between', gap: 8 }}><T size={13} color={c.lime} style={{ flex: 1 }}>{t('tix2.discount', { code: p.code })}</T><T size={13} weight="700" color={c.lime}>−{moneyIn(p.amount_minor, cur)}</T></View>)}
@@ -199,7 +204,7 @@ export function TicketShop({ id }) {
         </Card>
       ) : null}
       <ZoneSheet zone={zone} value={seats} onChange={pick} onClose={() => setZone(null)} />
-      {pay ? <PaySheet target={pay} onClose={() => { setPay(null); offer.reload(); plan.reload(); }} onDone={() => { setQty({}); setSeats({}); setAddonQty({}); setCodes([]); push('MyTickets', {}); }} /> : null}
+      {pay ? <PaySheet target={pay} onClose={() => { setPay(null); offer.reload(); plan.reload(); }} onDone={() => { setQty({}); setSeats({}); setBundleQty({}); setAddonQty({}); setCodes([]); push('MyTickets', {}); }} /> : null}
     </Screen>
   );
 }
@@ -290,7 +295,7 @@ export function MyTickets() {
 
 // ---- organiser: the Tickets tab ---------------------------------------------------------------------------------------------------------------
 
-const SUBS = ['overview', 'products', 'promos', 'addons', 'waitlist', 'rules', 'comps', 'find'];
+const SUBS = ['overview', 'products', 'bundles', 'promos', 'addons', 'waitlist', 'boxoffice', 'reconcile', 'fans', 'rules', 'comps', 'find'];
 
 function ProductForm({ visible, onClose, p, id, e, fixtures, sections, onDone }) {
   const edit = !!p?.id;
@@ -362,7 +367,7 @@ export function TicketsTab({ id, e, isOrg }) {
   const S = settings.data, R = report.data;
   return (
     <>
-      <ATabs value={sub} onChange={setSub} tabs={SUBS.map((k) => ({ key: k, label: t(k === 'promos' || k === 'addons' || k === 'waitlist' ? `tix2.sub.${k}` : `tix.sub.${k}`) }))} />
+      <ATabs value={sub} onChange={setSub} tabs={SUBS.map((k) => ({ key: k, label: t(k === 'promos' || k === 'addons' || k === 'waitlist' ? `tix2.sub.${k}` : ['bundles', 'boxoffice', 'reconcile', 'fans'].includes(k) ? `pro.sub.${k}` : `tix.sub.${k}`) }))} />
 
       {sub === 'overview' ? (
         <>
@@ -425,6 +430,11 @@ export function TicketsTab({ id, e, isOrg }) {
         </>
       ) : null}
 
+      {sub === 'overview' && R?.analytics ? <AnalyticsPanel analytics={R.analytics} /> : null}
+      {sub === 'bundles' ? <BundlePanel id={id} products={products.data} /> : null}
+      {sub === 'boxoffice' ? <TillsPanel id={id} /> : null}
+      {sub === 'reconcile' ? <ReconcilePanel id={id} /> : null}
+      {sub === 'fans' ? <FansPanel id={id} /> : null}
       {sub === 'promos' ? <PromoPanel id={id} products={products.data} /> : null}
       {sub === 'addons' ? <AddonPanel id={id} products={products.data} /> : null}
       {sub === 'waitlist' ? <WaitlistPanel id={id} /> : null}
@@ -522,7 +532,7 @@ function TicketDetail({ k, onVoid }) {
 const VERDICT_TONE = { collected: 'ok', already_collected: 'warn', valid: 'ok', re_entry: 'ok', exit: 'ok', duplicate: 'warn', replaced: 'warn', wrong_date: 'warn', wrong_gate: 'warn', wrong_fixture: 'warn', not_issued: 'warn', no_reentry: 'warn', not_inside: 'warn', transferred: 'warn' };
 const toneColor = (r) => ({ ok: A.green, warn: A.sun }[VERDICT_TONE[r]] ?? A.red);
 const gateStore = makeStore({ db: 'sa_gate', prefix: 'sa_gt' });
-const OFFLINE_KEY = (id) => `tm_${id}`, QUEUE_KEY = (id) => `tq_${id}`;
+const OFFLINE_KEY = (id) => `tm_${id}`, QUEUE_KEY = (id) => `tq_${id}`, SESSION_KEY = (id) => `ts_${id}`;
 const offlineVerdict = (manifest, seen, token) => {
   const m = /^GT1\.(TKT-[A-Z0-9]{10})\.(\d{1,6})\./.exec(String(token).trim());
   const tk = m && manifest?.get(m[1]);
@@ -540,13 +550,16 @@ export function TicketGatePanel({ id }) {
   const fixtures = useLoad(() => api.get('/fixtures', { event_id: id, limit: 100 }).catch(() => []), [id]);
   const [mode, setMode] = useState('ticket');
   const [gate, setGate] = useState(''), [fixture, setFixture] = useState(''), [dir, setDir] = useState('in'), [code, setCode] = useState(''), [res, setRes] = useState(null), [busy, setBusy] = useState(false), [cam, setCam] = useState(false), [recent, setRecent] = useState([]);
-  const [manifest, setManifest] = useState(null), [queue, setQueue] = useState([]), [offline, setOffline] = useState(false);
+  const [manifest, setManifest] = useState(null), [queue, setQueue] = useState([]), [offline, setOffline] = useState(false), [session, setSessionState] = useState(null);
+  const setSession = (s) => { setSessionState(s); gateStore.write({ id: SESSION_KEY(id), session: s }).catch(() => {}); };
+  const tally = (r) => { if (session) setSession({ ...session, scans: session.scans + 1, admitted: session.admitted + (r?.admitted ? 1 : 0) }); };
   const seen = useRef(new Set());
   const input = useRef(null);
   React.useEffect(() => {
     (async () => {
       const all = await gateStore.readAll().catch(() => []);
-      const m = all.find((d) => d.id === OFFLINE_KEY(id)), q = all.find((d) => d.id === QUEUE_KEY(id));
+      const m = all.find((d) => d.id === OFFLINE_KEY(id)), q = all.find((d) => d.id === QUEUE_KEY(id)), ss = all.find((d) => d.id === SESSION_KEY(id));
+      if (ss?.session) setSessionState(ss.session);
       if (m) setManifest({ at: m.at, map: new Map(m.tickets.map((x) => [x.serial, x])) });
       if (q) { setQueue(q.scans ?? []); (q.scans ?? []).forEach((s) => { const mm = /^GT1\.(TKT-[A-Z0-9]{10})/.exec(s.token ?? ''); if (mm) seen.current.add(mm[1]); }); }
     })();
@@ -556,7 +569,7 @@ export function TicketGatePanel({ id }) {
     setBusy(true);
     try {
       let all = [], offset = 0, total = 0;
-      do { const page = await api.get(`/events/${id}/tickets/gate-manifest`, { limit: 2000, offset }); all = all.concat(page.tickets); total = page.total; offset += 2000; } while (all.length < total);
+      do { const page = await api.get(`/events/${id}/tickets/gate-manifest`, { limit: 2000, offset, session_id: session?.id }); all = all.concat(page.tickets); total = page.total; offset += 2000; } while (all.length < total);
       const at = new Date().toISOString();
       await gateStore.write({ id: OFFLINE_KEY(id), at, tickets: all.map((x) => ({ serial: x.serial, token_version: x.token_version, class: x.class, section: x.section, seat_label: x.seat_label })) });
       setManifest({ at, map: new Map(all.map((x) => [x.serial, x])) });
@@ -585,7 +598,7 @@ export function TicketGatePanel({ id }) {
       } catch (x) { toast('' + x.message); } finally { setBusy(false); setTimeout(() => input.current?.focus?.(), 50); }
       return;
     }
-    const body = { ...(v.startsWith('GT1.') ? { token: v } : { code: v }), fixture_id: fixture || undefined, access_point_id: gate || undefined, direction: dir, method: v.startsWith('GT1.') ? 'camera' : 'manual', client_ref: ref };
+    const body = { ...(v.startsWith('GT1.') ? { token: v } : { code: v }), fixture_id: fixture || undefined, access_point_id: gate || undefined, direction: dir, method: v.startsWith('GT1.') ? 'camera' : 'manual', client_ref: ref, session_id: session?.id };
     try {
       let r;
       try { r = await api.post(`/events/${id}/tickets/scan`, body); setOffline(false); }
@@ -595,10 +608,10 @@ export function TicketGatePanel({ id }) {
         if (!manifest || !v.startsWith('GT1.')) { toast(manifest ? t('tix.gate_offline_code') : t('tix.gate_offline_no_list')); return; }
         setOffline(true);
         r = offlineVerdict(manifest.map, seen.current, v);
-        if (r.result === 'valid') { seen.current.add(r.ticket_id); saveQueue([...queue, { token: v, client_ref: ref, scanned_at: new Date().toISOString(), fixture_id: fixture || undefined, access_point_id: gate || undefined, direction: dir }]); }
+        if (r.result === 'valid') { seen.current.add(r.ticket_id); saveQueue([...queue, { token: v, client_ref: ref, scanned_at: new Date().toISOString(), fixture_id: fixture || undefined, access_point_id: gate || undefined, direction: dir, session_id: session?.id }]); }
         r = { ...r, offline: true };
       }
-      setRes(r); setRecent((p) => [{ ...r, at: new Date().toISOString() }, ...p].slice(0, 8)); setCode('');
+      setRes(r); tally(r); setRecent((p) => [{ ...r, at: new Date().toISOString() }, ...p].slice(0, 8)); setCode('');
     } catch (x) { toast('' + x.message); } finally { setBusy(false); setTimeout(() => input.current?.focus?.(), 50); }
   };
   const lookup = async () => {
@@ -614,7 +627,9 @@ export function TicketGatePanel({ id }) {
         <Chip label={t('tix.any_gate')} active={!gate} onPress={() => setGate('')} />
         {gates.map((g) => <Chip key={g.id} label={g.name} active={gate === g.id} onPress={() => setGate(g.id)} />)}
       </View>
-      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}><Chip label={t('tix2.mode_tickets')} active={mode === 'ticket'} onPress={() => setMode('ticket')} /><Chip label={t('tix2.mode_addons')} active={mode === 'addon'} onPress={() => setMode('addon')} /></View>
+      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}><Chip label={t('tix2.mode_tickets')} active={mode === 'ticket'} onPress={() => setMode('ticket')} /><Chip label={t('tix2.mode_addons')} active={mode === 'addon'} onPress={() => setMode('addon')} /><Chip label={t('pro.mode_boxoffice')} active={mode === 'boxoffice'} onPress={() => setMode('boxoffice')} /></View>
+      {mode === 'boxoffice' ? <BoxOfficePanel id={id} /> : (<>
+      <ScannerSession id={id} gate={gate} fixture={fixture} session={session} queued={queue.length} onStart={setSession} onEnd={() => setSession(null)} />
       <T size={13} weight="800" color={c.mute}>{t('tix.gate_match')}</T>
       <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
         <Chip label={t('tix.auto_match')} active={!fixture} onPress={() => setFixture('')} />
@@ -661,6 +676,7 @@ export function TicketGatePanel({ id }) {
           <View style={{ width: 10, height: 10, borderRadius: 5, backgroundColor: toneColor(r.result) }} /><T size={14} weight="700" style={{ flex: 1 }}>{r.ticket_id ?? t('tix.unknown_code')} · {t(`tix.v.${r.result}`)}</T><T size={12} color={c.mute}>{stamp(r.at)}</T>
         </View>)}
       </> : null}
+      </>)}
     </View>
   );
 }
