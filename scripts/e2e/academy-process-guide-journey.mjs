@@ -60,6 +60,17 @@ try {
   const tt = await call('POST', `/cohorts/${u12.id}/academy/timetable`, { token: owner.token, body: { idempotency_key: `g-${stamp}`, starts_on: monday, ends_on: end, weekdays: [1, 3], start_time: '17:00', duration_min: 60, delivery_type: 'training', lead_id: coach.id } });
   if (tt?.created) await call('POST', `/organisations/${org.id}/academy/sessions/publish`, { token: owner.token, body: { session_ids: tt.created.map((x) => x.id), acknowledge_warnings: true } });
 
+  // a student linked to a school, with the academics the guide step photographs (everything through the public API)
+  const student = await reg('guide_student', 'Aarav Mehta', ['athlete']);
+  await call('POST', `/cohorts/${u12.id}/enrolments`, { token: owner.token, body: { csv: `handle,consent\n${student.handle},yes` } });
+  const school = await call('POST', '/organisations', { token: owner.token, body: { name: 'Greenfield International School', kind: 'school', city: 'Pune' } });
+  const enrolmentId = (await call('GET', `/cohorts/${u12.id}/enrolments`, { token: owner.token })).find((e) => e.handle === student.handle).enrolment_id;
+  const alink = await call('POST', `/organisations/${org.id}/academics/links`, { token: owner.token, body: { enrolment_id: enrolmentId, school_org_id: school.id, curriculum: 'cbse', year_group: 'Grade 10' } });
+  if (alink) {
+    for (const party of [org.id, school.id]) await call('POST', '/academics/consents', { token: student.token, body: { athlete_id: student.id, party_org_id: party, scopes: ['timetable', 'attendance', 'attainment'], detail: 'summary' } });
+    const exam = new Date(Date.now() + 5 * 864e5).toISOString().slice(0, 10);
+    await call('POST', `/academics/links/${alink.id}/items`, { token: owner.token, body: { items: [{ kind: 'exam', starts_at: `${exam}T04:00:00Z`, ends_at: `${exam}T07:00:00Z`, timezone: 'Asia/Kolkata', high_stakes: true }] } });
+  }
   // the academy opts in to campuses (one default campus, no record changed) so the guide step photographs real figures
   await call('POST', `/organisations/${org.id}/campuses/adopt`, { token: owner.token, body: { name: 'Pune Campus', country: 'IN' } });
 
@@ -99,6 +110,7 @@ try {
     tax: async (p) => { await navTo(p, 'Finance', { id: org.id }); await click(p, 'Tax').catch(() => {}); },
     revenue: (p) => inOrg(p, async () => { await click(p, 'Academy'); await click(p, 'Finance'); await click(p, 'Costs'); }),
     reports: (p) => inOrg(p, async () => { await click(p, 'Academy'); }),
+    academics: (p) => inOrg(p, async () => { await click(p, 'Academy'); await click(p, 'Academics'); await click(p, 'Athletes'); }),   // the Academy tab opens on its Home (executive view)
     campuses: (p) => inOrg(p, async () => { await click(p, 'Campuses'); }),   // the Academy tab opens on its Home (executive view)
   };
   const manifest = { generated_at: new Date().toISOString(), steps: {} };

@@ -1,8 +1,8 @@
 # Academy Process card and PDF guide
 
-A new academy owner sees a **Process card** on the Organisation Command centre and the Academy Home. It walks the 11 steps from an empty
+A new academy owner sees a **Process card** on the Organisation Command centre and the Academy Home. It walks the 12 steps from an empty
 account to the first reports (create the academy, venues, staff, suppliers, programmes, hiring coaches, inviting students, tracking
-classes, taxation, revenue sharing, reports), each with the instructions, a screenshot of the real screen (phone or desktop), an
+classes, taxation, revenue sharing, reports, and connecting schools and studies), each with the instructions, a screenshot of the real screen (phone or desktop), an
 **Open this screen** button, and a **Download PDF** of the whole guide with screenshots. It complements Guided setup (`setup.js`), which
 ticks steps from your records: the Process card is the "how", Guided setup is the "what is left".
 

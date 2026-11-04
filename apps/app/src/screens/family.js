@@ -9,6 +9,7 @@ import { FormSheet } from '../FormSheet';
 import { Btn, Card, Empty, ErrorBox, H1, Loading, Row, Screen, Section, Sheet, T, Tag } from '../ui';
 import { GuardianSponsors } from './sponsor-youth';
 import { FamilyDashboard } from './family-dashboard';
+import { MyStudy } from './academics';
 import { MyTransferAcknowledgements } from './campus-transfers';
 import { c } from '../theme';
 import { locale } from '../locale';
@@ -226,6 +227,7 @@ export function Family() {
           <T size={13} color={c.mute}>{status.active_guardians ? `${status.active_guardians} verified guardian${status.active_guardians > 1 ? 's' : ''}.` : 'You need a verified guardian before you can join teams or share health information.'}</T>
         </Card>
       ) : null}
+      {!status?.is_youth ? <MyStudy /> : null}
       {!status?.is_youth ? <MyTransferAcknowledgements /> : null}
       {!status?.is_youth ? <FamilyDashboard onConsents={setConsents} /> : null}
       <View style={{ flexDirection: 'row', gap: 8, flexWrap: 'wrap', marginVertical: 10 }}>
