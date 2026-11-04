@@ -110,6 +110,13 @@ export const ACADEMY_STEPS = [
     target: { org: 'campuses' },
     modules: ['org-campuses.js', 'org-campus-transfers.js'], sources: ['apps/app/src/screens/campuses.js', 'apps/app/src/screens/campus-transfers.js'],
   },
+  {
+    id: 'safety', title: 'Run pickup and daily safety',
+    why: 'Know who arrived, who is in your care and who took each young athlete home. Guardians decide who may collect, staff hand over with checks, and late pickups and no-shows escalate on your timings.',
+    steps: ['Open Academy, then Safety & pickup, then Settings, and set when guardians, the second guardian with emergency contacts, and the safeguarding officer are alerted.', 'Ask families to open Family & guardians, then Pickup & safety, to list who may collect, with days, times, a passphrase and emergency contacts.', 'On session day, open the session and its Pickup & handover tab. Check the collector by QR, passphrase or ID, then tap Confirm handover. The guardian confirms on their phone, and the athlete stays in your care until they do.', 'Follow late pickups, no-shows and concerns under Safety & pickup. Details are shown only to staff with the safeguarding permission, and every read is audit-logged.'],
+    target: { academy: 'safety' },
+    modules: ['academy-pickup.js'], sources: ['apps/app/src/screens/academy-safety.js'],
+  },
 ];
 
 /** Org/academy API modules with no step of their own, and why. Anything not here and not in a step fails the guard test. */

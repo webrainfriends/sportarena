@@ -17,6 +17,7 @@ import { canManageTeam } from './capabilities/teams.js';
 import { isSuspended } from './collections.js';
 import { eligible as onAcademyRoster, markAttendance, LATE_AFTER_MIN, PRESENT } from './capabilities/academy-attendance.js';
 import { sessionFor } from './academy-ops.js';
+import { liveDelegateSql, lockHandover } from './pickup.js';
 import { isGateOperator, judge, tokenFor } from './accreditation.js';
 import { providerOf } from './access-providers.js';
 
@@ -101,12 +102,27 @@ const hasStaff = async (c, venueId, userId) => !!(await c.query('SELECT 1 FROM v
 const SOURCE = { qr: 'qr', rfid: 'rfid', nfc: 'nfc', geo: 'geo', manual: 'staff' };
 
 /** Who may collect a young person: verified guardians and delegates that are live right now. Names only. */
-export async function releaseCandidates(c, childId) {
-  const g = (await c.query("SELECT l.guardian_id AS user_id, u.display_name, 'guardian' AS relation FROM guardian_links l JOIN users u ON u.id=l.guardian_id WHERE l.child_id=$1 AND l.status='active' AND l.revoked_at IS NULL AND (l.expires_at IS NULL OR l.expires_at > now())", [childId])).rows;
-  const d = (await c.query("SELECT d.delegate_user_id AS user_id, u.display_name, 'delegate' AS relation FROM pickup_delegates d JOIN users u ON u.id=d.delegate_user_id WHERE d.child_id=$1 AND d.delegate_user_id IS NOT NULL AND d.revoked_at IS NULL AND d.valid_from <= now() AND d.expires_at > now()", [childId])).rows;
+export async function releaseCandidates(c, childId, orgId = null) {
+  const g = (await c.query("SELECT l.guardian_id AS user_id, u.display_name, 'guardian' AS relation FROM guardian_links l JOIN users u ON u.id=l.guardian_id WHERE l.child_id=$1 AND l.status='active' AND l.revoked_at IS NULL AND (l.expires_at IS NULL OR l.expires_at > now()) AND 'pickup' = ANY(l.scopes)", [childId])).rows;
+  const d = (await c.query(`SELECT d.delegate_user_id AS user_id, u.display_name, 'delegate' AS relation FROM pickup_delegates d JOIN users u ON u.id=d.delegate_user_id WHERE d.child_id=$1 AND d.delegate_user_id IS NOT NULL AND ${liveDelegateSql('d')} AND (d.organisation_id IS NULL OR d.organisation_id=$2)`, [childId, orgId])).rows;
   return [...g, ...d];
 }
-const mayCollect = async (c, childId, collectorId) => !!collectorId && (await releaseCandidates(c, childId)).some((r) => r.user_id === collectorId);
+const mayCollect = async (c, childId, collectorId, orgId = null) => !!collectorId && (await releaseCandidates(c, childId, orgId)).some((r) => r.user_id === collectorId);
+
+/** A young person released through the access gate also gets a handover fact, so the Pickup & handover board is the single place to see who took custody. Policy-driven confirmation applies there; this only records the release the gate already verified. */
+async function bridgeHandover(c, s, personId, ctx) {
+  if (!ctx.releasedTo) return;      // adults leave without a handover record
+  const h = await lockHandover(c, s, personId);
+  if (h.state === 'handed_over') return;
+  const g = (await c.query("SELECT 1 FROM guardian_links WHERE guardian_id=$1 AND child_id=$2 AND status='active' AND revoked_at IS NULL", [ctx.releasedTo, personId])).rowCount > 0;
+  const checks = ctx.method === 'qr' ? ['qr'] : [];
+  const done = g && checks.length > 0;
+  await c.query(
+    `UPDATE academy_handovers SET state=$2, departure_mode='collected', collector_user_id=$3, collector_kind=$4, checks=$5, recorded_by=$6, recorded_at=$7, received_at=now(), guardian_confirmed_by=$8, guardian_confirmed_at=$9, confirm_method=$10,
+        handed_over_at=$11, row_version=row_version+1, updated_at=now() WHERE id=$1`,
+    [h.id, done ? 'handed_over' : 'pending_confirmation', ctx.releasedTo, g ? 'guardian' : 'delegate', checks, ctx.actorId, ctx.at, done ? ctx.releasedTo : null, done ? ctx.at : null, done ? 'guardian_qr' : null, done ? ctx.at : null]);
+  await c.query("INSERT INTO academy_handover_events(organisation_id, session_id, athlete_id, handover_id, kind, actor_id, detail) VALUES ($1,$2,$3,$4,'recorded',$5,$6)", [s.organisation_id, s.id, personId, h.id, ctx.actorId, `access_gate:${ctx.method}`]);
+}
 
 const academy = {
   async load(c, ref) {
@@ -130,7 +146,7 @@ const academy = {
     return null;
   },
   async youth(c, sub, personId, direction, ctx) {
-    if (direction === 'out' && !(await mayCollect(c, personId, ctx.releasedTo))) return { verdict: 'denied', reason: 'pickup_authorisation_required', release_candidates: await releaseCandidates(c, personId) };
+    if (direction === 'out' && !(await mayCollect(c, personId, ctx.releasedTo, sub.organisation_id))) return { verdict: 'denied', reason: 'pickup_authorisation_required', release_candidates: await releaseCandidates(c, personId, sub.organisation_id) };
     return null;
   },
   async apply(c, sub, personId, direction, ctx) {
@@ -149,10 +165,12 @@ const academy = {
       if (!cur || !PRESENT.includes(cur.status)) return { deny: 'not_checked_in' };
       if (ctx.at.getTime() < new Date(s.ends_at).getTime() - 10 * 60000 && cur.status !== 'left_early') {
         const r = await markAttendance(c, s, personId, 'left_early', { source, actor: ctx.actorId, key, reason: ctx.reasonText ?? `${ctx.method} check-out`, at: ctx.at });
+        await bridgeHandover(c, s, personId, ctx);
         return { changed: r.changed, ref: `academy_attendance:${r.row.id}`, status: r.row.status };
       }
       await c.query('UPDATE academy_attendance SET left_at=coalesce(left_at,$3), row_version=row_version+1 WHERE session_id=$1 AND user_id=$2', [s.id, personId, ctx.at]);
       await c.query('INSERT INTO academy_attendance_log(session_id, user_id, from_status, to_status, source, actor_id, reason) VALUES ($1,$2,$3,$3,$4,$5,$6)', [s.id, personId, cur.status, source, ctx.actorId, 'check-out']);
+      await bridgeHandover(c, s, personId, ctx);
       return { changed: true, ref: `academy_attendance:${cur.id}`, status: cur.status };
     } catch (e) { if (e instanceof AppError && (e.status === 409 || e.status === 400)) return { deny: 'session_not_open', message: e.message }; throw e; }
   },
@@ -248,7 +266,7 @@ const venueAccess = {
     return 'no_current_booking';
   },
   async youth(c, sub, personId, direction, ctx) {
-    if (direction === 'out' && !(await mayCollect(c, personId, ctx.releasedTo))) return { verdict: 'denied', reason: 'pickup_authorisation_required', release_candidates: await releaseCandidates(c, personId) };
+    if (direction === 'out' && !(await mayCollect(c, personId, ctx.releasedTo, sub.organisation_id))) return { verdict: 'denied', reason: 'pickup_authorisation_required', release_candidates: await releaseCandidates(c, personId, sub.organisation_id) };
     return null;
   },
   provider: (sub) => sub.point,

@@ -8,7 +8,11 @@ import http from 'node:http';
 import fs from 'node:fs';
 import path from 'node:path';
 import { spawn, execFileSync } from 'node:child_process';
-import { chromium } from 'playwright-core';
+import { createRequire } from 'node:module';
+const req = createRequire(import.meta.url);
+const { chromium } = (() => { for (const n of [process.env.PLAYWRIGHT_PATH, 'playwright-core', 'playwright']) { if (!n) continue; try { return req(n); } catch {} } throw new Error('playwright is not installed'); })();
+import pg from 'pg';
+import { seedPickup } from './lib/pickup-fixture.mjs';
 import { ACADEMY_STEPS, SHOT_SIZES, shotFile, sourcesHash, MANIFEST_FILE } from '../../apps/api/src/guides/academy-process.js';
 
 const API_DIR = new URL('../../apps/api/', import.meta.url).pathname;
@@ -39,7 +43,7 @@ const call = async (method, p, { token, body } = {}) => {
   return j;
 };
 const stamp = Date.now().toString(36);
-const reg = async (h, name, roles) => { const r = await call('POST', '/auth/register', { body: { handle: `${h}_${stamp}`, display_name: name, email: `${h}_${stamp}@example.com`, password: 'correct-horse-battery', roles } }); return { ...r.user, token: r.token, email: `${h}_${stamp}@example.com` }; };
+const reg = async (h, name, roles, extra = {}) => { const r = await call('POST', '/auth/register', { body: { handle: `${h}_${stamp}`, display_name: name, email: `${h}_${stamp}@example.com`, password: 'correct-horse-battery', roles, ...extra } }); return { ...r.user, token: r.token, email: `${h}_${stamp}@example.com` }; };
 const wait = (p, ms = 1500) => p.waitForTimeout(ms);
 const click = async (p, text, opts = {}) => { await p.getByText(text, { exact: true, ...opts }).first().click({ timeout: 8000 }); await wait(p, 1500); };
 let failures = 0;
@@ -71,6 +75,9 @@ try {
     const exam = new Date(Date.now() + 5 * 864e5).toISOString().slice(0, 10);
     await call('POST', `/academics/links/${alink.id}/items`, { token: owner.token, body: { items: [{ kind: 'exam', starts_at: `${exam}T04:00:00Z`, ends_at: `${exam}T07:00:00Z`, timezone: 'Asia/Kolkata', high_stakes: true }] } });
   }
+  // young athletes, guardians, one session in the past and its handovers, so the Safety & pickup step photographs real figures
+  const db = new pg.Pool({ connectionString: DB });
+  await seedPickup({ call, reg, org, owner, coach, cohort: u12, db, apiDir: API_DIR, env: E, log });
   // the academy opts in to campuses (one default campus, no record changed) so the guide step photographs real figures
   await call('POST', `/organisations/${org.id}/campuses/adopt`, { token: owner.token, body: { name: 'Pune Campus', country: 'IN' } });
 
@@ -112,7 +119,8 @@ try {
     revenue: (p) => inOrg(p, async () => { await click(p, 'Academy'); await click(p, 'Finance'); await click(p, 'Costs'); }),
     reports: (p) => inOrg(p, async () => { await click(p, 'Academy'); }),
     academics: (p) => inOrg(p, async () => { await click(p, 'Academy'); await click(p, 'Academics'); await click(p, 'Athletes'); }),   // the Academy tab opens on its Home (executive view)
-    campuses: (p) => inOrg(p, async () => { await click(p, 'Campuses'); }),   // the Academy tab opens on its Home (executive view)
+    campuses: (p) => inOrg(p, async () => { await click(p, 'Campuses'); }),
+    safety: (p) => inOrg(p, async () => { await click(p, 'Academy'); await click(p, 'Safety & pickup'); }),   // the Academy tab opens on its Home (executive view)
   };
   const manifest = { generated_at: new Date().toISOString(), steps: {} };
   for (const [size, viewport] of Object.entries(SHOT_SIZES)) {
