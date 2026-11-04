@@ -89,6 +89,13 @@ export const ACADEMY_STEPS = [
     target: { academy: 'home' },
     modules: ['academy-executive.js', 'academy-athlete360.js', 'org-command-centre.js', 'academy-insights.js', 'academy-packs.js'], sources: ['apps/app/src/screens/academy-home.js', 'apps/app/src/screens/academy-executive.js', 'apps/app/src/screens/academy-overview.js', 'apps/app/src/screens/academy-elite.js'],
   },
+  {
+    id: 'academics', title: 'Connect schools and studies',
+    why: 'Sport-plus-study academies run on both calendars. Link each athlete to their school, let the athlete or guardian choose what to share, and clashes appear before a session is published.',
+    steps: ['Open Academy, then Academics, and tap Link an athlete to a school. Pick the athlete and the school already on the platform.', 'The athlete, or a minor\u2019s guardian, is asked what to share (timetable, attendance, progress), with whom and for how long. Nothing is shared until they decide.', 'The school adds exams, lesson blocks and attendance summaries, or sends them by file or API. A school exam that clashes with a session is flagged and blocks publishing.', 'Open an athlete to see sport progress and academic progress side by side as separate blocks, each with its source. Grades are only read with the academics_detail permission and the athlete\u2019s consent.'],
+    target: { academy: 'academics' },
+    modules: ['academy-academics.js', 'academy-attainment.js'], sources: ['apps/app/src/screens/academics.js'],
+  },
 ];
 
 /** Org/academy API modules with no step of their own, and why. Anything not here and not in a step fails the guard test. */

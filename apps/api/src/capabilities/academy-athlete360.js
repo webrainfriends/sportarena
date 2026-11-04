@@ -3,7 +3,8 @@
 // the only things persisted are a provider business association and the athlete's consent to share a minimal clearance status.
 import { z } from 'zod';
 import { cap, id } from '../registry.js';
-import { one, many, tx } from '../db.js';
+import { one, many, tx, pool } from '../db.js';
+import { academicSection } from '../academics.js';
 import { badRequest, conflict, forbidden, notFound } from '../errors.js';
 import { audit } from '../helpers.js';
 import { orgFor } from '../org-access.js';
@@ -54,6 +55,7 @@ cap({
       `SELECT e.id, e.status, e.enrolled_at, k.name AS group_name, pr.id AS programme_id, pr.title AS programme, pr.sport FROM org_enrolments e JOIN org_cohorts k ON k.id=e.cohort_id LEFT JOIN academy_programmes pr ON pr.id=e.programme_id
         WHERE k.organisation_id=$1 AND e.user_id=$2 AND ($3 <> 'coach' OR k.coach_id=$4) ORDER BY e.enrolled_at DESC, e.id`, [i.id, i.athlete_id, role, user.id]) };
     sections.attendance = !COACHING.includes(role) ? denied : { access: 'ok', source: 'org_attendance', data: await attendanceEvidence(i.id, i.athlete_id, from, to) };
+    sections.academic = await academicSection(pool, user, i.id, i.athlete_id);   // separate from the sport sections, with its own source label (#783)
     sections.pathway = !COACHING.includes(role) ? denied : { access: 'ok', source: 'academy_progression_decisions', data: await many(
       `SELECT DISTINCT ON (d.pathway_id) d.pathway_id, p.title AS pathway, coalesce(d.to_level, d.from_level) AS level, d.decision, d.created_at,
               (SELECT a.outcome FROM academy_assessments a WHERE a.pathway_id=d.pathway_id AND a.athlete_id=d.athlete_id AND a.status='approved' ORDER BY a.created_at DESC LIMIT 1) AS latest_approved_assessment
