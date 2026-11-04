@@ -8,6 +8,7 @@ const { createApp } = await import('../src/http.js');
 const { capabilities } = await import('../src/registry.js');
 const { expireAcademyContent, fulfilContentLicencePaid } = await import('../src/academy-content.js');
 const { describePurpose } = await import('../src/payments/service.js');
+const addDays = (d, k) => new Date(new Date(`${d}T00:00:00Z`).getTime() + k * 864e5).toISOString().slice(0, 10);
 
 let server, base, n = 0;
 const api = async (method, path, { token, body, query } = {}) => {
@@ -29,7 +30,7 @@ const LIB = {
   philosophy: { statement: 'Play with courage.', values: [{ key: 'respect', title: 'Respect' }] }, stages: [{ key: 'foundation', title: 'Foundation', age_min: 8, age_max: 10, hours_per_week: 4 }],
   game_model: [{ key: 'build', phase: 'in_possession', title: 'Build from the back' }], standards: { session_minutes: 75 },
   competencies: [{ key: 'first_touch', pillar: 'technical', title: 'First touch' }, { key: 'speed', pillar: 'physical', title: 'Speed' }],
-  outcomes: [], drills: [{ key: 'rondo', title: 'Rondo 4v2', kind: 'skill_drill', competency_keys: ['first_touch'], duration_min: 15 }],
+  outcomes: [], drills: [{ key: 'rondo', title: 'Rondo 4v2', kind: 'skill_drill', competency_keys: ['first_touch'], duration_min: 15, instructions: 'Keep the ball moving; two touches maximum.', area: '10x10 m' }],
 };
 const OBJ = [{ key: 'touch', title: 'Receive on the back foot', competency_key: 'first_touch', sessions_target: 1, drill_keys: ['rondo'], success_criteria: '8 of 10 controlled' }];
 
@@ -277,4 +278,81 @@ test('every sport in the catalogue can be packaged natively (pack sport is the c
   const caps = capabilities.filter((c) => /content_(pack|licence|item|case|overview|telemetry|finance|offline|seat|marketplace)|my_content/.test(c.name));
   assert.ok(caps.length >= 25, `only ${caps.length}`);
   for (const c of caps) assert.ok(c.path && c.method && c.summary && c.tag === 'Academy content licensing', c.name);
+});
+
+/** A session in the buyer's own academy that `coach` leads (the coaching workflow the licensed content must reach). */
+async function buyerSession(w) {
+  const cohort = ok(await api('POST', `/organisations/${w.buyerOrg.id}/cohorts`, { token: w.buyer.token, body: { name: 'U12 Football', coach_id: w.coach.id } }), 201);
+  const start = addDays(new Date().toISOString().slice(0, 10), 3), dow = new Date(`${start}T00:00:00Z`).getUTCDay();
+  const gen = ok(await api('POST', `/cohorts/${cohort.id}/academy/timetable`, { token: w.buyer.token, body: { idempotency_key: `ac${Date.now()}${Math.random()}`, starts_on: start, ends_on: addDays(start, 14), weekdays: [dow], start_time: '17:00', duration_min: 60, timezone: 'UTC', lead_id: w.coach.id } }), 201);
+  const sid = gen.created[0].id;
+  await pool.query("UPDATE academy_sessions SET status='published' WHERE id=$1", [sid]);   // the coaching record opens for published sessions (as for \"Load drills\")
+  return sid;
+}
+const coachToken = (w) => w.coach.token;
+
+test('coaching workflow: a licensed item is linked to the academy session, loaded into the coach’s own plan, and stops once the licence ends', async () => {
+  const w = await world();
+  const pack = await publishedPack(w, { offline_allowed: true });
+  const { l } = await licensed(w, pack, { propose: { offline_allowed: true } });
+  const syl = ok(await api('GET', '/me/academy/content', { token: w.coach.token }))[0].syllabus;
+  const [cur, , drill, mod] = syl;
+  const sid = await buyerSession(w);
+  // nothing linked yet; an outsider cannot see the session at all
+  assert.deepEqual(ok(await api('GET', `/academy/sessions/${sid}/content`, { token: w.coach.token })), []);
+  assert.equal((await api('GET', `/academy/sessions/${sid}/content`, { token: w.outsider.token })).status, 404);
+  assert.equal((await api('GET', `/academy/sessions/${sid}/content`, { token: w.td.token })).status, 404);   // the publisher's staff have no business in the buyer's session
+  for (const it of [cur, drill, mod]) ok(await api('POST', `/academy/content/licences/${l.id}/items/${it.id}/use`, { token: w.coach.token, body: { session_id: sid } }), 201);
+  const linked = ok(await api('GET', `/academy/sessions/${sid}/content`, { token: w.coach.token }));
+  assert.equal(linked.length, 3); assert.ok(linked.every((x) => x.state === 'active' && x.locked === false)); assert.equal(linked[0].publisher_name.startsWith('Publisher Academy'), true);
+  assert.ok(!JSON.stringify(linked).includes('Scan before the ball arrives'), 'the list never carries licensed text');
+  // load into the coach's own plan: licence allows offline copies, so the text is copied into the block
+  const r = ok(await api('POST', `/academy/sessions/${sid}/content/plan`, { token: w.coach.token, body: {} }), 201);
+  assert.ok(r.added.length >= 3, JSON.stringify(r));
+  const rec = (await pool.query("SELECT id, plan_version FROM coaching_session_records WHERE source_type='academy_session' AND source_id=$1", [sid])).rows[0];
+  const blocks = (await pool.query('SELECT blocks FROM coaching_session_plan_versions WHERE session_record_id=$1 AND version=$2', [rec.id, rec.plan_version])).rows[0].blocks;
+  assert.ok(blocks.every((b) => b.tags.includes('licensed') && b.tags.some((t) => t.startsWith('licence:'))));
+  assert.ok(blocks.every((b) => Number.isInteger(b.duration_min) && b.duration_min >= 1), 'every block has a duration so the plan timeline can be drawn');
+  assert.ok(blocks.find((b) => b.title === 'Rondo 4v2').instructions.includes('Keep the ball'), 'the drill’s own instructions were copied');
+  assert.ok(blocks.some((b) => /Scan before the ball arrives/.test(b.instructions ?? '')), 'copied text is in the block');
+  // idempotent
+  assert.deepEqual(ok(await api('POST', `/academy/sessions/${sid}/content/plan`, { token: w.coach.token, body: {} }), 201).added, []);
+  // revoke: the list shows locked, loading is refused, history stays
+  ok(await api('POST', `/academy/content/licences/${l.id}/manage`, { token: w.td.token, body: { action: 'revoke', reason_code: 'breach' } }));
+  const after = ok(await api('GET', `/academy/sessions/${sid}/content`, { token: w.coach.token }));
+  assert.ok(after.every((x) => x.locked === true && x.state === 'revoked'));
+  const refused = await api('POST', `/academy/sessions/${sid}/content/plan`, { token: w.coach.token, body: {} });
+  assert.equal(refused.status, 402);
+  assert.equal((await pool.query('SELECT count(*)::int AS n FROM coaching_session_plan_versions WHERE session_record_id=$1', [rec.id])).rows[0].n >= 1, true);
+  ok(await api('GET', `/organisations/${w.buyerOrg.id}/academy/methodologies`, { token: w.buyer.token }));   // the buyer's own academy is untouched
+  // unlinking is soft
+  ok(await api('DELETE', `/academy/sessions/${sid}/content/${cur.id}`, { token: w.coach.token }));
+  assert.equal(ok(await api('GET', `/academy/sessions/${sid}/content`, { token: w.coach.token })).length, 2);
+  assert.equal((await pool.query('SELECT count(*)::int AS n FROM academy_content_uses WHERE unlinked_at IS NOT NULL')).rows[0].n, 1);
+  assert.equal((await api('DELETE', `/academy/sessions/${sid}/content/${cur.id}`, { token: w.coach.token })).status, 404);
+});
+
+test('coaching workflow: without offline rights the plan block is a reference (no licensed text), youth footage and documents are never blocks, a non-coach cannot load', async () => {
+  const w = await world();
+  const pack = await publishedPack(w, {}, [{ kind: 'video', title: 'U10 footage', external_url: 'https://video.example.com/u10', youth_footage: true }]);
+  const { l } = await licensed(w, pack);   // offline not allowed
+  const syl = ok(await api('GET', '/me/academy/content', { token: w.coach.token }))[0].syllabus;
+  const sid = await buyerSession(w);
+  for (const it of syl) ok(await api('POST', `/academy/content/licences/${l.id}/items/${it.id}/use`, { token: w.coach.token, body: { session_id: sid } }), 201);
+  const r = ok(await api('POST', `/academy/sessions/${sid}/content/plan`, { token: w.coach.token, body: {} }), 201);
+  assert.ok(r.skipped.some((x) => x.title === 'U10 footage' && x.reason === 'not_a_plan_block'));
+  const rec = (await pool.query("SELECT id, plan_version FROM coaching_session_records WHERE source_type='academy_session' AND source_id=$1", [sid])).rows[0];
+  const blocks = (await pool.query('SELECT blocks FROM coaching_session_plan_versions WHERE session_record_id=$1 AND version=$2', [rec.id, rec.plan_version])).rows[0].blocks;
+  assert.ok(blocks.length >= 3);
+  assert.ok(blocks.every((b) => !/Scan before the ball arrives|Keep the ball/.test(JSON.stringify(b))), 'no licensed text copied without offline rights');
+  assert.ok(blocks.every((b) => /Licensed content/.test(b.instructions)));
+  // the buyer's administrator (not a session coach) cannot load into a plan; an outsider gets 404
+  assert.ok([403, 404].includes((await api('POST', `/academy/sessions/${sid}/content/plan`, { token: w.buyer.token, body: {} })).status));
+  assert.equal((await api('POST', `/academy/sessions/${sid}/content/plan`, { token: w.outsider.token, body: {} })).status, 404);
+  // a seat is needed to link: coach2 holds none
+  const sid2 = sid;
+  assert.equal((await api('POST', `/academy/content/licences/${l.id}/items/${syl[0].id}/use`, { token: w.coach2.token, body: { session_id: sid2 } })).status, 404);
+  // all three coaching-workflow capabilities are registered (REST/OpenAPI/MCP come from the registry)
+  const caps = capabilities.filter((c) => ['list_academy_session_content', 'load_licensed_content_into_plan', 'unlink_content_item'].includes(c.name));
+  assert.equal(caps.length, 3);
 });

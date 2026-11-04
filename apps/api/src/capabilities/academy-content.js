@@ -3,13 +3,14 @@
 // organisation; readers need an assigned seat. Everything is read live (revocation is immediate) and non-eligible callers get 404, never 403.
 import { z } from 'zod';
 import { cap, id, page } from '../registry.js';
-import { tx } from '../db.js';
+import { many, one, pool, tx } from '../db.js';
 import { AppError, badRequest, conflict, forbidden, notFound } from '../errors.js';
 import { decrypt, encrypt } from '../crypto.js';
 import { audit } from '../helpers.js';
 import { notify } from '../notify.js';
-import { opsAccess } from '../academy-ops.js';
-import { CASE_KINDS, ELIGIBILITY, ITEM_KINDS, LICENCE_ACTIONS, REASONS, activateLicence, buyerAccess, endAccess, entitlement, logLicence, orgCountry, publisherAccess, resolveReference, seatsUsed, stageNow, termEnd, whyNotEligible, ymd } from '../academy-content.js';
+import { opsAccess, sessionFor } from '../academy-ops.js';
+import { openSession, savePlan } from './coaching-journal.js';
+import { CASE_KINDS, ELIGIBILITY, ITEM_KINDS, LICENCE_ACTIONS, REASONS, activateLicence, buyerAccess, endAccess, entitlement, logLicence, orgCountry, publisherAccess, resolveReference, seatsUsed, stageNow, termEnd, whyNotEligible, ymd, planBlocks } from '../academy-content.js';
 import { territoryWithin, terr } from '../media-rights.js';
 
 const TAG = 'Academy content licensing';
@@ -604,7 +605,7 @@ cap({
       if (!s || s.organisation_id !== e.licence.licensee_org_id) throw notFound('Session');
       const a = await opsAccess(user, s.organisation_id, { write: true, c });
       if (!a.has('attendance') && !a.has('schedule')) throw forbidden('You cannot plan sessions in this academy');
-      await c.query('INSERT INTO academy_content_uses(licence_id, item_id, user_id, session_id) VALUES ($1,$2,$3,$4) ON CONFLICT DO NOTHING', [i.id, i.item_id, user.id, i.session_id]);
+      await c.query('INSERT INTO academy_content_uses(licence_id, item_id, user_id, session_id) VALUES ($1,$2,$3,$4) ON CONFLICT (licence_id, item_id, session_id) DO UPDATE SET unlinked_at=NULL, user_id=EXCLUDED.user_id', [i.id, i.item_id, user.id, i.session_id]);
       await audit(c, user.id, 'use_content_item', 'academy_sessions', i.session_id);
       return { linked: true, session_id: i.session_id, item_id: i.item_id };
     });
@@ -786,6 +787,80 @@ cap({
       const r = (await c.query("UPDATE academy_content_cases SET status=$2, resolution_enc=coalesce($3,resolution_enc), resolved_by=CASE WHEN $2='resolved' THEN $4::uuid END, resolved_at=CASE WHEN $2='resolved' THEN now() END WHERE id=$1 RETURNING id, kind, status, resolved_at", [cs.id, i.status, i.resolution ? encrypt(i.resolution, 'academy_content_cases.resolution_enc') : null, user.id])).rows[0];
       await audit(c, user.id, `resolve_content_case_${i.takedown}`, 'academy_content_cases', cs.id);
       return r;
+    });
+  },
+});
+
+// ================================================================================================================== the coaching workflow (academy session)
+/** Items linked to a session, each with the live state of its licence. Nothing licensed is returned here, only titles and state. */
+async function linkedItems(c, sessionId, userId) {
+  const rows = (await c.query(`SELECT u.licence_id, u.item_id, u.user_id AS linked_by, lu.display_name AS linked_by_name, u.created_at AS linked_at, it.title, it.kind, it.minutes, it.youth_footage, p.title AS pack_title, po.name AS publisher_name,
+      l.stage, l.effective_to, l.grace_days, l.offline_allowed, l.pack_id,
+      EXISTS (SELECT 1 FROM academy_content_takedowns t WHERE t.item_id=it.id AND t.lifted_at IS NULL) AS withdrawn,
+      EXISTS (SELECT 1 FROM academy_content_seats s WHERE s.licence_id=l.id AND s.user_id=$2 AND s.status='active') AS i_hold_seat
+    FROM academy_content_uses u JOIN academy_content_pack_items it ON it.id=u.item_id JOIN academy_content_licences l ON l.id=u.licence_id JOIN academy_content_packs p ON p.id=l.pack_id
+    JOIN organisations po ON po.id=p.organisation_id JOIN users lu ON lu.id=u.user_id WHERE u.session_id=$1 AND u.unlinked_at IS NULL ORDER BY u.created_at, it.position`, [sessionId, userId])).rows;
+  return rows.map((r) => { const state = stageNow(r); return { ...r, state, locked: !['active', 'grace'].includes(state) || r.withdrawn }; });
+}
+
+cap({
+  name: 'list_academy_session_content', method: 'GET', path: '/academy/sessions/:id/content', tag: TAG,
+  summary: 'The licensed items linked to an academy session (session staff), with the live state of each licence: active, in its grace period, or locked (revoked, expired, suspended, withdrawn). Titles and state only; the content itself is read through open_content_item with a seat.',
+  input: z.object({ id }),
+  async handler({ user }, i) {
+    return tx(async (c) => {
+      await sessionFor(user, i.id, 'view', { c }).catch((e) => { throw e.status === 403 ? notFound('Session') : e; });
+      const items = await linkedItems(c, i.id, user.id);
+      return items.map(({ stage, effective_to, grace_days, pack_id, ...x }) => x);
+    });
+  },
+});
+
+cap({
+  name: 'load_licensed_content_into_plan', method: 'POST', path: '/academy/sessions/:id/content/plan', tag: TAG, auth: ['coach'], status: 201,
+  summary: 'Coach: put the licensed drills, curriculum objectives and micro-modules linked to this session into your own coaching plan as tagged blocks (the same coaching session record and plan versions as "Load drills"). Needs a seat and a live licence for each item. The text is copied into the block only when the licence allows offline copies; otherwise the block is a titled reference whose text stays behind the licence. Footage and documents are never plan blocks. Repeating adds nothing twice. A revoked, expired or suspended licence is refused with 402.',
+  input: z.object({ id, item_ids: z.array(id).max(30).optional() }),
+  async handler({ user }, i) {
+    const acc = await sessionFor(user, i.id, 'view').catch((e) => { throw e.status === 403 ? notFound('Session') : e; });
+    if (!acc.mine) throw forbidden('Only the session’s coaches can plan it');
+    const linked = (await linkedItems(pool, i.id, user.id)).filter((x) => !i.item_ids || i.item_ids.includes(x.item_id));
+    if (!linked.length) throw badRequest('Link at least one licensed item to the session first');
+    const built = [], skipped = [];
+    let firstBlock = null;
+    for (const x of linked) {
+      if (['video', 'document', 'methodology'].includes(x.kind)) { skipped.push({ item_id: x.item_id, title: x.title, reason: 'not_a_plan_block' }); continue; }
+      try {
+        const e = await entitlement(pool, user, x.licence_id, x.item_id);
+        const ref = await resolveReference(pool, e.item);
+        const copy = !!e.licence.offline_allowed && !e.item.youth_footage;
+        built.push(...planBlocks(e.item, ref, x.licence_id, { copy }));
+      } catch (err) { if (err.status === 402 || err.status === 404 || err.status === 410) { firstBlock ??= err; skipped.push({ item_id: x.item_id, title: x.title, reason: err.code ?? 'unavailable' }); } else throw err; }
+    }
+    if (!built.length && firstBlock) throw firstBlock;
+    const rec = await openSession(user, { source_type: 'academy_session', source_id: i.id });
+    const plan = await one('SELECT blocks FROM coaching_session_plan_versions WHERE session_record_id=$1 AND version=$2', [rec.id, rec.plan_version]);
+    const blocks = plan?.blocks ?? [];
+    const has = (b) => blocks.some((x) => (x.tags ?? []).includes(b.tags[0]) && (x.tags ?? []).includes(b.tags[1]));
+    const fresh = built.filter((b) => !has(b));
+    if (!fresh.length) return { record_id: rec.id, plan_version: rec.plan_version, added: [], skipped };
+    if (blocks.length + fresh.length > 30) throw badRequest('The plan would exceed 30 blocks; remove some before loading more');
+    const saved = await savePlan(user, rec.id, [...blocks, ...fresh], { expected_version: rec.plan_version });
+    await audit(null, user.id, 'load_licensed_content_into_plan', 'academy_sessions', i.id);
+    return { record_id: rec.id, plan_version: saved.plan.version, added: fresh.map((b) => b.title), skipped };
+  },
+});
+
+cap({
+  name: 'unlink_content_item', method: 'DELETE', path: '/academy/sessions/:id/content/:item_id', tag: TAG,
+  summary: 'Unlink a licensed item from a session (the person who linked it, or academy curriculum staff). The link is kept as history; blocks already in a coaching plan are not touched.',
+  input: z.object({ id, item_id: id }),
+  async handler({ user }, i) {
+    return tx(async (c) => {
+      const { a } = await sessionFor(user, i.id, 'view', { write: true, c }).catch((e) => { throw e.status === 403 ? notFound('Session') : e; });
+      const r = await c.query('UPDATE academy_content_uses SET unlinked_at=now() WHERE session_id=$1 AND item_id=$2 AND unlinked_at IS NULL AND (user_id=$3 OR $4::boolean)', [i.id, i.item_id, user.id, a.has('curriculum') || a.admin]);
+      if (!r.rowCount) throw notFound('Link');
+      await audit(c, user.id, 'unlink_content_item', 'academy_sessions', i.id);
+      return { unlinked: true };
     });
   },
 });

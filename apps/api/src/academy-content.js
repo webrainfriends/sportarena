@@ -153,6 +153,30 @@ export async function expireAcademyContent(c = pool) {
   return { expired: due.length, offline_lapsed: offline.rowCount };
 }
 
+
+// ------------------------------------------------------------------------------------------------------------------ the coaching workflow
+/** The text of a licensed item as plan blocks for the coach's own coaching record (the same record "Load drills" writes to, #782).
+ *  `copy` writes the instructions into the block (only when the licence lets the coach keep an offline copy); otherwise the block is a titled
+ *  reference whose text is read live through the licence. Footage and documents are never plan blocks. */
+export function planBlocks(item, ref, licenceId, { copy }) {
+  const tags = (n) => [`item:${item.id}`, `i:${n}`, `licence:${licenceId}`, 'licensed'];
+  const live = 'Licensed content: open it from the session’s Licensed content panel.';
+  const clip = (v, n) => (v == null ? undefined : String(v).slice(0, n));
+  const out = [];
+  if (item.kind === 'drill' && ref?.drill) {
+    const d = ref.drill;
+    out.push({ kind: d.kind ?? 'skill_drill', title: clip(d.title ?? item.title, 120), duration_min: d.duration_min ?? item.minutes ?? 10, tags: tags(0),
+      ...(copy ? { instructions: clip(d.instructions, 2000), setup: clip(d.setup, 500), cues: (d.cues ?? []).slice(0, 10).map((x) => clip(x, 200)), success_criteria: clip(d.success_criteria, 500), area: clip(d.area, 120), equipment: (d.equipment ?? []).slice(0, 15).map((x) => clip(x, 60)), work_rest: clip(d.work_rest, 60), progression: clip(d.progression, 300), regression: clip(d.regression, 300) } : { instructions: live }) });
+  } else if (item.kind === 'curriculum' && ref?.objectives) {
+    ref.objectives.slice(0, 12).forEach((o, n) => out.push({ kind: 'custom', title: clip(o.title, 120), objective: clip(o.title, 500), duration_min: 10, trains: o.competency_key ? [String(o.competency_key).slice(0, 40)] : undefined, tags: tags(n),
+      ...(copy ? { success_criteria: clip(o.success_criteria, 500), target_rpe: o.rpe_target >= 1 && o.rpe_target <= 10 ? Math.round(o.rpe_target) : undefined } : { instructions: live }) }));
+  } else if (item.kind === 'module') {
+    const text = (item.body?.blocks ?? []).map((b) => b.text).join('\n\n');
+    out.push({ kind: 'custom', title: clip(item.title, 120), duration_min: item.minutes ?? 10, tags: tags(0), instructions: copy ? clip(text, 2000) : live });
+  }
+  return out.map((b) => Object.fromEntries(Object.entries(b).filter(([, v]) => v !== undefined && v !== null)));
+}
+
 export const termEnd = (from, months) => addMonths(from, months);
 export const dayStart = today;
 export { territoryWithin, terr, audit, encrypt, decrypt, conflict, forbidden, notFound };
