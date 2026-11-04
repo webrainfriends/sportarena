@@ -7,6 +7,7 @@ import { badRequest, conflict, notFound } from '../errors.js';
 import { audit } from '../helpers.js';
 import { orgFor } from '../org-access.js';
 import { STAFF, STAFF_MONEY } from '../academy.js';
+import { createCampusForBranch, syncBranchVenues, syncBranchManager, archiveBranchCampus, placeProgrammeOnBranch } from '../campuses.js';
 
 const venueIds = z.array(id).max(30);
 const profile = { code: z.string().regex(/^[A-Za-z0-9-]{2,12}$/, 'Use 2-12 letters, digits or dashes').optional(), manager_id: id.optional(), address: z.string().max(200).optional(), opened_on: z.string().date().optional(), athlete_target: z.number().int().min(1).max(100000).optional() };
@@ -33,8 +34,10 @@ cap({
     await checkManager(c, i.id, i.manager_id);
     if ((await c.query('SELECT 1 FROM academy_branches WHERE organisation_id=$1 AND lower(name)=lower($2) AND archived_at IS NULL', [i.id, i.name])).rows.length) throw conflict('A branch with that name already exists');
     const r = (await c.query('INSERT INTO academy_branches(organisation_id, name, city, venue_ids, code, manager_id, address, opened_on, athlete_target, created_by, idempotency_key) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) RETURNING *', [i.id, i.name, i.city ?? null, i.venue_ids, i.code ?? null, i.manager_id ?? null, i.address ?? null, i.opened_on ?? null, i.athlete_target ?? null, user.id, i.idempotency_key])).rows[0];
+    const unit = await createCampusForBranch(c, r, user.id);   // a branch is a campus: the campus tree always has it
+    await syncBranchVenues(c, r, unit, user.id); await syncBranchManager(c, r, unit, user.id);
     await audit(c, user.id, 'create_academy_branch', 'academy_branches', r.id);
-    return r;
+    return { ...r, unit_id: unit.id };
   }),
 });
 
@@ -71,6 +74,9 @@ cap({
               code=CASE WHEN $6::boolean THEN $7 ELSE code END, manager_id=CASE WHEN $8::boolean THEN $9 ELSE manager_id END, address=CASE WHEN $10::boolean THEN $11 ELSE address END,
               opened_on=CASE WHEN $12::boolean THEN $13 ELSE opened_on END, athlete_target=CASE WHEN $14::boolean THEN $15 ELSE athlete_target END WHERE id=$1 RETURNING *`,
       [b.id, i.name ?? null, has('city'), i.city ?? null, i.venue_ids ?? null, has('code'), i.code ?? null, has('manager_id'), i.manager_id ?? null, has('address'), i.address ?? null, has('opened_on'), i.opened_on ?? null, has('athlete_target'), i.athlete_target ?? null])).rows[0];
+    const unit = await createCampusForBranch(c, r, user.id);
+    await c.query('UPDATE org_units SET name=$2, city=$3, code=CASE WHEN $4::text IS NULL THEN code ELSE $4 END WHERE id=$1 AND NOT EXISTS (SELECT 1 FROM org_units o WHERE o.organisation_id=$5 AND lower(o.code)=lower($4) AND o.archived_at IS NULL AND o.id<>$1)', [unit.id, r.name, r.city, r.code, r.organisation_id]);
+    await syncBranchVenues(c, r, unit, user.id); await syncBranchManager(c, r, unit, user.id);
     await audit(c, user.id, 'update_academy_branch', 'academy_branches', b.id);
     return r;
   }),
@@ -86,6 +92,7 @@ cap({
     await orgFor(user, b.organisation_id, STAFF, { write: true, c });
     if (b.archived_at) return b;
     const r = (await c.query('UPDATE academy_branches SET archived_at=now(), archived_by=$2 WHERE id=$1 RETURNING *', [b.id, user.id])).rows[0];
+    await archiveBranchCampus(c, r, user.id);
     await audit(c, user.id, 'archive_academy_branch', 'academy_branches', b.id);
     return r;
   }),
@@ -105,6 +112,7 @@ cap({
       if (b.archived_at) throw conflict('That branch is archived');
     }
     await c.query('UPDATE academy_programmes SET branch_id=$2 WHERE id=$1', [p.id, i.branch_id]);
+    await placeProgrammeOnBranch(c, p.id, i.branch_id, p.organisation_id, user.id);   // the same placement on the campus tree, kept as dated history
     await audit(c, user.id, 'set_academy_programme_branch', 'academy_programmes', p.id);
     return { programme_id: p.id, branch_id: i.branch_id, previous_branch_id: p.branch_id };
   }),

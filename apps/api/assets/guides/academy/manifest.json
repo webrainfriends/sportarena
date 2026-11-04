@@ -1,9 +1,9 @@
 {
-  "generated_at": "2026-11-04T05:31:20.247Z",
+  "generated_at": "2026-11-04T07:29:12.266Z",
   "steps": {
-    "create": "98d37045cc0fbb32",
+    "create": "67c52c6973596dd7",
     "venues": "59e5e6d76e2e7f48",
-    "staff": "b5f32aa2f935e7cd",
+    "staff": "60b0e3fe0ca8eaaa",
     "suppliers": "0ced122a257369a9",
     "programmes": "15e0a2506777d9c2",
     "coaches": "5f5b1e1912ff4673",
@@ -11,6 +11,7 @@
     "classes": "a81d695699677c95",
     "tax": "e8c1a239959f1ce4",
     "revenue": "7454085a018f1758",
-    "reports": "fff65d7b70854d83"
+    "reports": "fff65d7b70854d83",
+    "campuses": "d5cb91ed7050b13c"
   }
 }

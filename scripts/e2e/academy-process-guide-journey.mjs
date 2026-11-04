@@ -60,6 +60,9 @@ try {
   const tt = await call('POST', `/cohorts/${u12.id}/academy/timetable`, { token: owner.token, body: { idempotency_key: `g-${stamp}`, starts_on: monday, ends_on: end, weekdays: [1, 3], start_time: '17:00', duration_min: 60, delivery_type: 'training', lead_id: coach.id } });
   if (tt?.created) await call('POST', `/organisations/${org.id}/academy/sessions/publish`, { token: owner.token, body: { session_ids: tt.created.map((x) => x.id), acknowledge_warnings: true } });
 
+  // the academy opts in to campuses (one default campus, no record changed) so the guide step photographs real figures
+  await call('POST', `/organisations/${org.id}/campuses/adopt`, { token: owner.token, body: { name: 'Pune Campus', country: 'IN' } });
+
   // ------------------------------------------------------------------ the browser
   const browser = await chromium.launch({ executablePath: process.env.E2E_CHROMIUM ?? fs.globSync('/opt/pw-browsers/chromium-*/chrome-linux*/chrome')[0], args: ['--no-sandbox'] });
   const open = async (viewport) => {
@@ -95,7 +98,8 @@ try {
     classes: (p) => inOrg(p, async () => { await click(p, 'Academy'); await click(p, 'Operations'); }),
     tax: async (p) => { await navTo(p, 'Finance', { id: org.id }); await click(p, 'Tax').catch(() => {}); },
     revenue: (p) => inOrg(p, async () => { await click(p, 'Academy'); await click(p, 'Finance'); await click(p, 'Costs'); }),
-    reports: (p) => inOrg(p, async () => { await click(p, 'Academy'); }),   // the Academy tab opens on its Home (executive view)
+    reports: (p) => inOrg(p, async () => { await click(p, 'Academy'); }),
+    campuses: (p) => inOrg(p, async () => { await click(p, 'Campuses'); }),   // the Academy tab opens on its Home (executive view)
   };
   const manifest = { generated_at: new Date().toISOString(), steps: {} };
   for (const [size, viewport] of Object.entries(SHOT_SIZES)) {
