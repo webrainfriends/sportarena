@@ -12,3 +12,4 @@
 - [ ] No secrets, `.env` files or real personal data committed
 - [ ] New/changed personal-identification fields are encrypted (`*_enc`) and audit-logged on read
 - [ ] New features are added as capabilities in `apps/api/src/capabilities` (so REST, OpenAPI and MCP stay in sync)
+- [ ] Organisation / academy / venue / coach / tax / reporting change: the Process card step and screenshots are updated (`npm run guide:shots`, `docs/academy-process-guide.md`)
