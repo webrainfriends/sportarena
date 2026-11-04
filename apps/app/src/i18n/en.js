@@ -8183,7 +8183,6 @@ export default {
   'family.scope.pickup': 'Collect and confirm pickups',
   'guide.safety.title': 'Run pickup and daily safety',
   'guide.safety.why': 'Know who arrived, who is in your care and who took each young athlete home. Guardians decide who may collect, staff hand over with checks, and late pickups and no-shows escalate on your timings.',
-  // WB-TEMP-START
   'wb.nav': 'Wellbeing',
   'wb.title': 'Wellbeing & development',
   'wb.subtitle': 'Mentoring, check-ins, development goals and optional tracks, with the family\'s consent. This page shows what is due and how participation is going, never what was said.',
@@ -8465,7 +8464,7 @@ export default {
   'wb.f_empty_title': 'Nothing here yet',
   'wb.f_empty_sub': 'When your academy offers mentoring, check-ins or development tracks, you will choose what to take part in here.',
   'wb.f_attention': 'Waiting for your answer',
-  'wb.f_attention_sub': '{n} things need a yes or a no.',
+  'wb.f_attention_sub': 'Needs your answer: {n}.',
   'wb.f_choices': 'Your choices',
   'wb.f_choices_n': '{n} choices on',
   'wb.f_no_choices': 'No choices yet',
@@ -8551,5 +8550,6 @@ export default {
   'wb.ev_module_undone': 'Module unticked',
   'wb.ev_update_sent': 'Update sent to the family',
   'wb.ev_viewed': 'A member of staff opened this record',
-  // WB-TEMP-END
+  'guide.wellbeing.title': 'Support student wellbeing and development',
+  'guide.wellbeing.why': 'Offer mentoring, check-ins, development goals and optional tracks with the family\'s consent, and see what is due without ever seeing what was said.',
 };

@@ -17,6 +17,7 @@ import { SCOPE_LIST, TOPIC_LIST, scopeLabel, topicLabel, settingLabel, outcomeLa
 
 const TABS = () => [['overview', t('wb.tab_overview')], ['people', t('wb.tab_people')], ['checkins', t('wb.tab_checkins')], ['goals', t('wb.tab_goals')], ['tracks', t('wb.tab_tracks')], ['referrals', t('wb.tab_referrals')]];
 const TAB_OF = { checkin_to_record: 'checkins', follow_up_due: 'checkins', checkin_not_booked: 'people', goal_review_due: 'goals', goal_awaiting_family: 'goals', referral_waiting: 'referrals', needs_mentor: 'people', consent_expiring: 'people', mentor_review_due: 'people' };
+const lineOf = (a, b) => `${a} · ${b}`;
 const pc = (v) => (v == null ? '–' : `${v}%`);
 
 export function WellbeingDesk({ o, role, toast }) {
@@ -27,6 +28,7 @@ export function WellbeingDesk({ o, role, toast }) {
   if (!ov.data) return <Loading />;
   const d = ov.data, k = d.kpis, oversight = d.scope === 'organisation', admin = role === 'owner' || role === 'admin';
   const P = { o, toast, oversight, admin, reload: ov.reload };
+  const hasTrend = d.trend.some((x) => x.checkins_held);
   const weeks = d.trend.map((x) => ({ label: x.week, value: x.checkins_held, text: String(x.checkins_held) }));
   return (
     <View style={{ gap: 12 }}>
@@ -57,7 +59,7 @@ export function WellbeingDesk({ o, role, toast }) {
               </Card>
               <Card>
                 <Block title={t('wb.trend_title', { n: d.trend.length })}>
-                  {d.trend.some((x) => x.checkins_held) ? <Bars label={t('wb.trend_title', { n: d.trend.length })} rows={weeks} /> : <Empty emoji="📈" title={t('wb.trend_empty_title')} sub={t('wb.trend_empty_sub')} />}
+                  {hasTrend ? <Bars label={t('wb.trend_title', { n: d.trend.length })} rows={weeks} /> : <Empty emoji="📈" title={t('wb.trend_empty_title')} sub={t('wb.trend_empty_sub')} />}
                 </Block>
               </Card>
             </View>
@@ -192,7 +194,7 @@ function Checkins({ o, toast, oversight, reload }) {
     <Card>
       <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginBottom: 8 }}>{[['scheduled', t('wb.f_upcoming')], ['overdue', t('wb.f_overdue')], ['open_follow_up', t('wb.f_follow')], ['completed', t('wb.f_done')], ['missed', t('wb.st_missed')]].map(([k, l]) => <Chip key={k} label={l} active={st === k} onPress={() => setSt(k)} />)}</View>
       {d.error ? <LoadError error={d.error} onRetry={d.reload} /> : !d.data ? <Loading /> : !rows.length ? <Empty emoji="🗓️" title={t('wb.ck_empty_title')} sub={t('wb.ck_empty_sub')} /> : rows.map((k) => (
-        <Row key={k.id} title={`${k.athlete_name} · ${dateTimeText(k.scheduled_for)}`} sub={`${t('wb.with', { name: k.mentor_name })} · ${settingLabel(k.setting)}${k.follow_up_status === 'open' ? ` · ${t('wb.follow_by', { date: dayText(k.follow_up_due) })}` : ''}`}
+        <Row key={k.id} title={lineOf(k.athlete_name, dateTimeText(k.scheduled_for))} sub={`${t('wb.with', { name: k.mentor_name })} · ${settingLabel(k.setting)}${k.follow_up_status === 'open' ? ` · ${t('wb.follow_by', { date: dayText(k.follow_up_due) })}` : ''}`}
           onPress={() => setOpen(k)} right={<Tag label={statusLabel(k.status)} color={k.status === 'completed' ? c.limeSoft : k.status === 'missed' ? c.orangeSoft : undefined} />} />
       ))}
       <CheckinSheet k={open} oversight={oversight} onClose={() => setOpen(null)} toast={toast} onDone={done} />
@@ -283,7 +285,7 @@ function Referrals({ o, toast, reload }) {
       <Card color={c.violetSoft} pad={12}><T size={13}>{t('wb.ref_note')}</T></Card>
       {d.error ? <LoadError error={d.error} onRetry={d.reload} /> : !d.data ? <Loading /> : !rows.length ? <Empty emoji="🤝" title={t('wb.ref_empty_title')} sub={t('wb.ref_empty_sub')} /> : rows.map((r) => (
         <View key={r.id} style={{ gap: 6, paddingVertical: 6 }}>
-          <Row title={`${r.athlete_name} · ${specialtyLabel(r.specialty)}`} sub={`${r.reason ? `${reasonLabel(r.reason)} · ` : ''}${dayText(r.created_at)}${r.urgency === 'soon' ? ` · ${t('wb.soon')}` : ''}`} right={<Tag label={statusLabel(r.status)} color={r.status === 'consented' ? c.limeSoft : r.status === 'proposed' ? c.sunSoft : undefined} />} />
+          <Row title={lineOf(r.athlete_name, specialtyLabel(r.specialty))} sub={`${r.reason ? `${reasonLabel(r.reason)} · ` : ''}${dayText(r.created_at)}${r.urgency === 'soon' ? ` · ${t('wb.soon')}` : ''}`} right={<Tag label={statusLabel(r.status)} color={r.status === 'consented' ? c.limeSoft : r.status === 'proposed' ? c.sunSoft : undefined} />} />
           <View style={{ flexDirection: 'row', gap: 8, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
             {r.status === 'consented' ? <Btn small title={t('wb.hand_over')} onPress={() => act(r, 'hand_over')} /> : null}
             {['proposed', 'consented'].includes(r.status) ? <Btn small title={t('wb.withdraw')} color={c.paper} ink={c.red} onPress={() => act(r, 'withdraw')} /> : null}

@@ -341,3 +341,15 @@ test('migrations are additive: the new tables exist, nothing is cascaded on user
   const { PERMS, TEMPLATES } = await import('../src/academy-ops.js');
   assert.ok(PERMS.includes('wellbeing') && TEMPLATES.mentor.permissions.includes('wellbeing') && !TEMPLATES.coach.permissions.includes('wellbeing'));
 });
+
+test('mentor list: the director sees every live assignment with rhythm, a mentor only their own, ended ones by filter', async () => {
+  const a = await mentored();
+  const all = ok(await api('GET', `${a.W}/mentors`, { token: a.owner.token }));
+  assert.equal(all.length, 1); assert.equal(all[0].mentor_id, a.mentor.id); assert.equal(all[0].consent_live, true); assert.equal(all[0].on_rhythm, true);
+  assert.equal(ok(await api('GET', `${a.W}/mentors`, { token: a.officer.token })).length, 1);          // safeguarding staff oversee
+  assert.equal(ok(await api('GET', `${a.W}/mentors`, { token: a.mentor.token })).length, 1);
+  ok(await api('PATCH', `/academy/wellbeing/mentors/${all[0].id}`, { token: a.owner.token, body: { action: 'end', reason: 'mentor_change' } }));
+  assert.equal(ok(await api('GET', `${a.W}/mentors`, { token: a.owner.token })).length, 0);
+  assert.equal(ok(await api('GET', `${a.W}/mentors`, { token: a.owner.token, query: { status: 'ended' } })).length, 1);
+  assert.equal((await api('GET', `${a.W}/mentors`, { token: a.coach.token })).status, 403);
+});

@@ -13,6 +13,7 @@ const req = createRequire(import.meta.url);
 const { chromium } = (() => { for (const n of [process.env.PLAYWRIGHT_PATH, 'playwright-core', 'playwright']) { if (!n) continue; try { return req(n); } catch {} } throw new Error('playwright is not installed'); })();
 import pg from 'pg';
 import { seedPickup } from './lib/pickup-fixture.mjs';
+import { seedWellbeing } from './lib/wellbeing-fixture.mjs';
 import { ACADEMY_STEPS, SHOT_SIZES, shotFile, sourcesHash, MANIFEST_FILE } from '../../apps/api/src/guides/academy-process.js';
 
 const API_DIR = new URL('../../apps/api/', import.meta.url).pathname;
@@ -119,6 +120,7 @@ try {
     reports: (p) => inOrg(p, async () => { await click(p, 'Academy'); }),
     academics: (p) => inOrg(p, async () => { await click(p, 'Academy'); await click(p, 'Academics'); await click(p, 'Athletes'); }),   // the Academy tab opens on its Home (executive view)
     campuses: (p) => inOrg(p, async () => { await click(p, 'Campuses'); }),
+    wellbeing: (p) => inOrg(p, async () => { await click(p, 'Academy'); await click(p, 'Wellbeing'); }),
     safety: (p) => inOrg(p, async () => { await click(p, 'Academy'); await click(p, 'Safety & pickup'); }),   // the Academy tab opens on its Home (executive view)
   };
   const manifest = { generated_at: new Date().toISOString(), steps: {} };

@@ -110,6 +110,13 @@ export const ACADEMY_STEPS = [
     target: { academy: 'safety' },
     modules: ['academy-pickup.js'], sources: ['apps/app/src/screens/academy-safety.js'],
   },
+  {
+    id: 'wellbeing', title: 'Support student wellbeing and development',
+    why: 'Offer mentoring, check-ins, development goals and optional tracks with the family\'s consent, and see what is due without ever seeing what was said.',
+    steps: ['Open Academy, then Wellbeing, then Tracks, and create optional tracks in values, leadership, life skills, nutrition education or study skills, with an age band and ordered modules.', 'In Staff & leave, give mentors the Mentor template (the wellbeing permission). Then open People, ask families for their choices, and assign a mentor once the family has chosen mentoring.', 'Mentors schedule check-ins from People, record what was agreed (never what was said) and close follow-ups. A concern goes privately to safeguarding staff, and counselling or clinical wording is refused in notes.', 'Families see their choices, mentor, check-ins, goals and who has opened the record under My academy, then Wellbeing, and can withdraw any choice at any time. Overview shows what is due and participation counts, never content or a score about a person.'],
+    target: { academy: 'wellbeing' },
+    modules: ['academy-wellbeing.js', 'academy-wellbeing-family.js', 'academy-wellbeing-overview.js'], sources: ['apps/app/src/screens/academy-wellbeing.js', 'apps/app/src/screens/academy-wellbeing-tracks.js', 'apps/app/src/screens/wellbeing-family.js'],
+  },
 ];
 
 /** Org/academy API modules with no step of their own, and why. Anything not here and not in a step fails the guard test. */

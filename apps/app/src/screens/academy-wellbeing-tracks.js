@@ -15,6 +15,8 @@ import { c } from '../theme';
 import { Initials } from './academy-ui';
 import { CATEGORY_LIST, catLabel, deliveryLabel, opts, skipLabel, statusLabel } from './wellbeing-words';
 
+const tick = (done, i) => `${done ? '✓ ' : ''}${i + 1}`;
+
 export function Tracks({ o, toast, oversight, admin, reload }) {
   const [archived, setArchived] = useState(false), [edit, setEdit] = useState(null), [open, setOpen] = useState(null);
   const d = useLoad(() => api.get(`/organisations/${o.id}/academy/wellbeing/tracks`, { status: archived ? 'archived' : undefined }), [o.id, archived]);
@@ -102,7 +104,7 @@ function TrackSheet({ o, track, admin, onClose, toast, onChanged, onEdit }) {
   const people = useLoad(() => (track ? api.get(`/organisations/${o.id}/academy/wellbeing/athletes`, { limit: 100 }) : Promise.resolve([])), [track?.id]);
   const [enrol, setEnrol] = useState(false);
   const f = full.data;
-  const tick = async (m, i, on) => { try { await api.post(`/academy/wellbeing/tracks/${track.id}/members/${m.athlete_id}`, { action: on ? 'module_undone' : 'module_done', module_index: i }); full.reload(); onChanged(); } catch (e) { toast(explain(e)); } };
+  const toggle = async (m, i, on) => { try { await api.post(`/academy/wellbeing/tracks/${track.id}/members/${m.athlete_id}`, { action: on ? 'module_undone' : 'module_done', module_index: i }); full.reload(); onChanged(); } catch (e) { toast(explain(e)); } };
   const member = async (m, action) => { try { await api.post(`/academy/wellbeing/tracks/${track.id}/members/${m.athlete_id}`, { action }); full.reload(); onChanged(); } catch (e) { toast(explain(e)); } };
   return (
     <Sheet visible={!!track} onClose={onClose} title={track?.title ?? ''}>
@@ -122,7 +124,7 @@ function TrackSheet({ o, track, admin, onClose, toast, onChanged, onEdit }) {
               <View style={{ flexDirection: 'row', gap: 10, alignItems: 'center' }}><Initials name={m.display_name} user={m} size={34} /><View style={{ flex: 1 }}><T weight="800">{m.display_name}</T><T size={12} color={c.mute}>{statusLabel(m.status)} · {t('wb.tr_progress', { a: m.modules_done.length, b: f.modules.length })}</T></View></View>
               {m.status === 'enrolled' ? (
                 <View style={{ flexDirection: 'row', gap: 6, flexWrap: 'wrap', marginTop: 8 }}>
-                  {f.modules.map((mod, i) => <Chip key={i} label={`${m.modules_done.includes(i) ? '✓ ' : ''}${i + 1}`} active={m.modules_done.includes(i)} onPress={() => tick(m, i, m.modules_done.includes(i))} />)}
+                  {f.modules.map((mod, i) => <Chip key={i} label={tick(m.modules_done.includes(i), i)} active={m.modules_done.includes(i)} onPress={() => toggle(m, i, m.modules_done.includes(i))} />)}
                   <Btn small title={t('wb.tr_complete')} color={c.paper} ink={c.ink} onPress={() => member(m, 'complete')} />
                 </View>
               ) : null}
