@@ -9,6 +9,7 @@ import { c } from '../theme';
 import { moneyIn } from '../vtime';
 import { explain } from '../access';
 import { useLayout } from '../layout';
+import { t } from '../i18n';
 import { Block, Fact, Initials, Split, StageBadge, StageTrack, Timeline, TrialSlots, STAGE, ago, hoursLeft, when } from './academy-ui';
 
 const COLUMNS = [
@@ -21,7 +22,7 @@ const COLUMNS = [
 ];
 const CLOSED = ['declined', 'withdrawn', 'expired', 'cancelled'];
 
-export function Admissions({ o, archived, toast, openId, setOpenId }) {
+export function Admissions({ o, archived, toast, openId, setOpenId, onOpenScouting }) {
   const [view, setView] = useState('board');
   const [programme, setProgramme] = useState(null);
   const [q, setQ] = useState('');
@@ -49,7 +50,7 @@ export function Admissions({ o, archived, toast, openId, setOpenId }) {
   );
   return (
     <Split open={!!open} onClose={() => sel(null)} detailTitle="Application" list={body}
-      detail={open ? <Review id={open} archived={archived} toast={toast} onChanged={list.reload} onClose={() => sel(null)} onOpenAthlete={null} /> : null} />
+      detail={open ? <Review id={open} archived={archived} toast={toast} onChanged={list.reload} onClose={() => sel(null)} onOpenAthlete={null} onOpenScouting={onOpenScouting} /> : null} />
   );
 }
 
@@ -117,7 +118,7 @@ function Table({ apps, open, onOpen }) {
 }
 
 /** The review panel: everything staff need to decide, in one place. */
-export function Review({ id, archived, toast, onChanged, onClose }) {
+export function Review({ id, archived, toast, onChanged, onClose, onOpenScouting }) {
   const app = useLoad(() => api.get(`/academy/applications/${id}`), [id]);
   const desk = useLoad(() => (app.data ? api.get(`/academy/programmes/${app.data.programme_id}`) : Promise.resolve(null)), [app.data?.programme_id]);
   const bill = useLoad(() => (app.data ? api.get(`/academy/programmes/${app.data.programme_id}/agreements`, { athlete_id: app.data.athlete_id }).catch(() => []) : Promise.resolve([])), [app.data?.athlete_id, app.data?.programme_id]);
@@ -144,6 +145,16 @@ export function Review({ id, archived, toast, onChanged, onClose }) {
         <StageBadge stage={a.stage} />
       </View>
       <StageTrack stage={a.stage} />
+      {a.source ? (
+        <Block title={t('scout.source.title')} right={<Tag label={t('scout.source.badge')} color={c.pinkSoft} />}>
+          <Fact k={t('scout.source.campaign')} v={a.source.campaign} />
+          <Fact k={t('scout.source.referral')} v={a.source.referral_source} />
+          <Fact k={t('scout.source.region')} v={a.source.region} />
+          {a.source.committee ? <Fact k={t('scout.source.committee')} v={t('scout.source.committee_tally', { a: a.source.committee.advance, h: a.source.committee.hold, d: a.source.committee.decline })} /> : null}
+          <Fact k={t('scout.source.consent')} v={a.source.consent?.guardian_consent ? t('scout.source.consent_guardian') : t('scout.source.consent_athlete')} />
+          {onOpenScouting ? <Btn small title={t('scout.source.open')} color={c.paper} ink={c.ink} onPress={() => onOpenScouting(a.source.campaign_id)} style={{ alignSelf: 'flex-start' }} /> : null}
+        </Block>
+      ) : null}
       <Block title="Application">
         <Fact k="Programme" v={desk.data?.title ?? '…'} />
         <Fact k="Seats" v={seats ? (seats.capacity ? `${seats.seats_taken}/${seats.capacity} taken${seats.waitlisted ? ` · ${seats.waitlisted} waiting` : ''}` : 'No limit') : null} />

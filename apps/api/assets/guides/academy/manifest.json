@@ -1,20 +1,77 @@
 {
-  "generated_at": "2026-11-04T13:39:38.281Z",
+  "generated_at": "2026-11-04T13:57:37.124Z",
   "steps": {
-    "create": "d8eedc6cfcf50f98",
-    "venues": "59e5e6d76e2e7f48",
-    "staff": "40a3da439f125def",
-    "suppliers": "0ced122a257369a9",
-    "programmes": "15e0a2506777d9c2",
-    "coaches": "5f5b1e1912ff4673",
-    "students": "7c80dcb830ed8843",
-    "classes": "a81d695699677c95",
-    "tax": "e8c1a239959f1ce4",
-    "revenue": "7454085a018f1758",
-    "reports": "fff65d7b70854d83",
-    "academics": "177a4b476d93d737",
-    "campuses": "d5cb91ed7050b13c",
-    "safety": "dc7f1854f7b4ca93",
-    "wellbeing": "dbfa0e67af4e847e"
+    "create": {
+      "desktop": "6eeca6aae4abed35",
+      "phone": "c6de4f2d09bb6fc0"
+    },
+    "venues": {
+      "desktop": "e7eb3e152fed1594",
+      "phone": "17b976920d1e81f8"
+    },
+    "staff": {
+      "desktop": "d9e213115206284d",
+      "phone": "8cdba33239eaece7"
+    },
+    "suppliers": {
+      "desktop": "a9f639fd4c3e588c",
+      "phone": "592c285301f50996"
+    },
+    "programmes": {
+      "desktop": "81cd3379d3511f61",
+      "phone": "edbd41abdb184a3b"
+    },
+    "coaches": {
+      "desktop": "2db90f607777d9c3",
+      "phone": "c1f1be6ae8c33d7b"
+    },
+    "students": {
+      "desktop": "74c4ae6aaffd7654",
+      "phone": "7811cdfeb559632c"
+    },
+    "scouting": {
+      "desktop": "d5c252f7669c41b2",
+      "phone": "479e12f00cc2a146"
+    },
+    "development": {
+      "desktop": "edc6be9a23bf5019",
+      "phone": "471f876e2add1d10"
+    },
+    "classes": {
+      "desktop": "be23bbbe2e50615b",
+      "phone": "390ffc138870b7f0"
+    },
+    "tax": {
+      "desktop": "16aecb0959c8ecf2",
+      "phone": "dad499d143596032"
+    },
+    "revenue": {
+      "desktop": "ee21776f1026bd85",
+      "phone": "57a07881a02b1861"
+    },
+    "reports": {
+      "desktop": "bd5f74e9ab6021d1",
+      "phone": "4a70a34e4577d1fa"
+    },
+    "academics": {
+      "desktop": "8b852850aff670cd",
+      "phone": "c359cdbd6ff43117"
+    },
+    "competition": {
+      "desktop": "8a60cb006f6ce2fe",
+      "phone": "334479480bbd3f74"
+    },
+    "campuses": {
+      "desktop": "acf6968159a8d028",
+      "phone": "6c3fa436432b4883"
+    },
+    "safety": {
+      "desktop": "0f888db92c851aea",
+      "phone": "42c7bbfebc52db33"
+    },
+    "wellbeing": {
+      "desktop": "27c4865fe1a66231",
+      "phone": "91aa4f5a44a8cb31"
+    }
   }
 }

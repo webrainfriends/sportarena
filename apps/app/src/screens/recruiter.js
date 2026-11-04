@@ -6,6 +6,7 @@ import { useSession } from '../session';
 import { Btn, Card, Chip, Empty, ErrorBox, Field, H1, H2, Loading, Screen, Seg, Sheet, T, Tag } from '../ui';
 import { HScroll } from '../pickers';
 import { FormSheet } from '../FormSheet';
+import { CampaignBlock } from './academy-scouting-entry';
 import { c } from '../theme';
 
 const nice = (s) => String(s ?? '').replace(/_/g, ' ');
@@ -228,6 +229,7 @@ function EntrySheet({ entry, onClose, onChanged, openThread, openDossier }) {
           {live ? <Btn small title="Edit" color={c.paper} onPress={() => setForm({ type: 'eval', item: x })} style={{ alignSelf: 'flex-start', marginTop: 6 }} /> : null}
         </Card>
       ))}
+      <CampaignBlock entry={e} evaluations={d.data?.evaluations ?? []} live={live} toast={toast} onChanged={reload} />
       <H2>Contact log</H2>
       {!d.data?.contacts.length ? <T size={13} color={c.mute}>Nothing logged.</T> : d.data.contacts.map((k) => (
         <Card key={k.id} pad={12}>
