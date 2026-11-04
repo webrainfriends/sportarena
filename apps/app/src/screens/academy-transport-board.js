@@ -6,7 +6,7 @@ import { c } from '../theme';
 import { t } from '../i18n';
 import { T, Btn, Chip, Card, Row, Loading, LoadError, Empty, Tag, Sheet } from '../ui';
 import { Initials, Kpi, Block } from './academy-ui';
-import { explain } from '../errors';
+import { explain } from '../access';
 
 const uid = () => `tc-${Math.random().toString(36).slice(2)}-${Date.now()}`;
 

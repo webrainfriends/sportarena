@@ -6,7 +6,7 @@ import { c } from '../theme';
 import { t } from '../i18n';
 import { T, Btn, Chip, Card, Row, Loading, LoadError, Empty, Tag, Field, FormSheet, Sheet } from '../ui';
 import { Kpi, Block } from './academy-ui';
-import { explain } from '../errors';
+import { explain } from '../access';
 
 const KIND_LABELS = { school_run: () => t('transport.kind.schoolRun'), training_commute: () => t('transport.kind.trainingCommute'), event_shuttle: () => t('transport.kind.eventShuttle'), other: () => t('transport.kind.other') };
 const DIR_LABELS = { outbound: () => t('transport.direction.outbound'), return: () => t('transport.direction.return'), both: () => t('transport.direction.both') };
