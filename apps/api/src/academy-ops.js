@@ -9,7 +9,7 @@ import { commitmentBusy } from './coach-commitments.js';
 import { toLocal } from './booking/time.js';
 import { academicClashes } from './academics.js';
 
-export const PERMS = ['schedule', 'attendance', 'roster', 'timesheets', 'payroll', 'safeguarding', 'suppliers', 'curriculum', 'academics', 'academics_detail', 'kit', 'kit_admin'];
+export const PERMS = ['schedule', 'attendance', 'roster', 'timesheets', 'payroll', 'safeguarding', 'suppliers', 'curriculum', 'academics', 'academics_detail', 'kit', 'kit_admin', 'wellbeing'];
 /** Subject-level academic records are never implied by seniority: owners and admins manage the academic side, but only an explicit grant reads grades (#783). */
 export const IMPLIED = PERMS.filter((p) => p !== 'academics_detail');
 export const ADMINS = ['owner', 'admin'];
@@ -26,7 +26,8 @@ export const TEMPLATES = {
   operations: { title: 'Operations manager', permissions: ['schedule', 'attendance', 'roster', 'timesheets', 'suppliers', 'kit', 'kit_admin'] },
   payroll: { title: 'Finance / payroll', permissions: ['timesheets', 'payroll'] },
   academic_lead: { title: 'Academic lead / education officer (reads consented grades)', permissions: ['academics', 'academics_detail', 'schedule', 'roster', 'attendance'] },
-  safeguarding: { title: 'Safeguarding / youth coordinator', permissions: ['roster', 'safeguarding'] },
+  safeguarding: { title: 'Safeguarding / youth coordinator', permissions: ['roster', 'safeguarding', 'wellbeing'] },
+  mentor: { title: 'Mentor / player-care lead (own mentees only; no clinical or safeguarding records)', permissions: ['roster', 'wellbeing'] },
   medical_liaison: { title: 'Medical liaison (operational cover only, no clinical records)', permissions: ['roster'] },
   partnerships: { title: 'Sponsor / partnership manager', permissions: [] },
   communications: { title: 'Marketing / communications', permissions: [] },

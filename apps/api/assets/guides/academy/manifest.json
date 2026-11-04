@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-11-04T13:57:39.682Z",
+  "generated_at": "2026-11-04T14:38:58.898Z",
   "steps": {
     "create": {
       "desktop": "6eeca6aae4abed35",
@@ -10,8 +10,8 @@
       "phone": "17b976920d1e81f8"
     },
     "staff": {
-      "desktop": "f33b020ffe1edc8c",
-      "phone": "a58ee61a33653203"
+      "desktop": "d9e213115206284d",
+      "phone": "8cdba33239eaece7"
     },
     "suppliers": {
       "desktop": "a9f639fd4c3e588c",
@@ -66,12 +66,16 @@
       "phone": "6c3fa436432b4883"
     },
     "safety": {
-      "desktop": "9cb2f43b3d851bf5",
-      "phone": "a514e2ab601eccd7"
+      "desktop": "0f888db92c851aea",
+      "phone": "42c7bbfebc52db33"
     },
     "kit": {
       "desktop": "4bc276623d73a24d",
       "phone": "bb43a9aee64a0380"
+    },
+    "wellbeing": {
+      "desktop": "27c4865fe1a66231",
+      "phone": "91aa4f5a44a8cb31"
     }
   }
 }

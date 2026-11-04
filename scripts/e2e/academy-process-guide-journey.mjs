@@ -14,6 +14,7 @@ const { chromium } = (() => { for (const n of [process.env.PLAYWRIGHT_PATH, 'pla
 import pg from 'pg';
 import { seedPickup } from './lib/pickup-fixture.mjs';
 import { seedKit } from './lib/kit-fixture.mjs';
+import { seedWellbeing } from './lib/wellbeing-fixture.mjs';
 import { ACADEMY_STEPS, SHOT_SIZES, shotFile, sourcesHash, MANIFEST_FILE } from '../../apps/api/src/guides/academy-process.js';
 
 const API_DIR = new URL('../../apps/api/', import.meta.url).pathname;
@@ -148,6 +149,8 @@ academics: (p) => inOrg(p, async () => { await click(p, 'Academy'); await click(
     campuses: (p) => inOrg(p, async () => { await click(p, 'Campuses'); }),
     safety: (p) => inOrg(p, async () => { await click(p, 'Academy'); await click(p, 'Safety & pickup'); }),
     kit: (p) => inOrg(p, async () => { await click(p, 'Academy'); await click(p, 'Kit'); }),   // the Academy tab opens on its Home (executive view)
+    wellbeing: (p) => inOrg(p, async () => { await click(p, 'Academy'); await click(p, 'Wellbeing'); }),
+    safety: (p) => inOrg(p, async () => { await click(p, 'Academy'); await click(p, 'Safety & pickup'); }),   // the Academy tab opens on its Home (executive view)
   };
   const manifest = { generated_at: new Date().toISOString(), steps: {} };
   for (const [size, viewport] of Object.entries(SHOT_SIZES)) {

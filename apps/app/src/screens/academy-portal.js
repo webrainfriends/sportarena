@@ -18,6 +18,8 @@ import { useLayout } from '../layout';
 import { FamilyProgress } from './academy-progress';
 import { FamilyCurriculum } from './academy-curriculum-session';
 import { MySessions } from './academy-session';
+import { WellbeingFamily } from './wellbeing-family';
+import { t } from '../i18n';
 import { Block, TrialSlots, FORMATS, FOCUS, Initials, Meter, StageBadge, StageTrack, Timeline, STAGE, hoursLeft, lab, openEnrolmentLetter, openInvoicePdf, priceLine, when } from './academy-ui';
 
 const Panel = ({ children, tone }) => <View style={{ backgroundColor: tone ?? c.paper, borderRadius: 20, padding: 16, gap: 10, borderWidth: 1, borderColor: c.line }}>{children}</View>;
@@ -60,7 +62,7 @@ export function AcademyFamily() {
           ))}
         </ScrollView>
       ) : null}
-      <View style={{ marginTop: 6 }}><Seg value={tab} onChange={setTab} color={c.violet} options={[{ value: 'overview', label: 'Overview' }, { value: 'sessions', label: 'Sessions' }, { value: 'browse', label: 'Find a programme' }, { value: 'progress', label: 'Progress' }, { value: 'payments', label: `Payments${due.length ? ` (${due.length})` : ''}` }]} /></View>
+      <View style={{ marginTop: 6 }}><Seg value={tab} onChange={setTab} color={c.violet} options={[{ value: 'overview', label: 'Overview' }, { value: 'sessions', label: 'Sessions' }, { value: 'browse', label: 'Find a programme' }, { value: 'progress', label: 'Progress' }, { value: 'wellbeing', label: t('wb.nav') }, { value: 'payments', label: `Payments${due.length ? ` (${due.length})` : ''}` }]} /></View>
       {tab === 'sessions' ? <View style={{ marginTop: 10 }}><MySessions key={p.athlete.id} athleteId={p.athlete.is_me ? undefined : p.athlete.id} toast={toast} /></View> : null}
       {tab === 'overview' ? (
         <View style={{ gap: 14, marginTop: 12 }}>
@@ -131,6 +133,7 @@ export function AcademyFamily() {
       ) : null}
       <TrialSlots app={slots} onClose={() => setSlots(null)} onBooked={fam.reload} toast={toast} />
       {tab === 'progress' ? <><FamilyProgress key={p.athlete.id} athlete={p.athlete} toast={toast} /><FamilyCurriculum key={`c${p.athlete.id}`} athlete={p.athlete} /></> : null}
+      {tab === 'wellbeing' ? <View style={{ marginTop: 12 }}><WellbeingFamily key={p.athlete.id} athleteId={p.athlete.is_me ? undefined : p.athlete.id} toast={toast} /></View> : null}
       {tab === 'browse' ? <Browse people={people} who={who} onApply={(prog, athlete) => setApply({ prog, athlete })} /> : null}
       {tab === 'payments' ? (
         <View style={{ gap: 14, marginTop: 12 }}>
