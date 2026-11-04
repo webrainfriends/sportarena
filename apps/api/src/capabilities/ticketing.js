@@ -19,6 +19,8 @@ import {
   settingsOf, settleRefund, succeed, ticketView, transferRule, priced,
 } from '../ticketing.js';
 import { ADDON_LIVE, addonView, promoteWaitlist, salesReport } from '../ticketing-commerce.js';
+import { bundleOrderView } from '../ticketing-bundles.js';
+import { analytics } from '../ticketing-ops.js';
 
 const TAG = 'Spectator ticketing';
 const POLICY_FIELDS = ['transfer_allowed', 'transfer_cutoff_hours', 'refund_policy', 'refund_cutoff_hours', 'resale_mode', 'resale_cap_bp', 'resale_fee_bp', 'waitlist_enabled', 'waitlist_offer_minutes', 'sales_open', 'hold_minutes'];
@@ -396,18 +398,20 @@ export const orderView = async (c, orderId) => {
   const tickets = (await c.query('SELECT id, serial, status, seat_label, class, discount_minor FROM tickets WHERE order_id=$1 AND supersedes_id IS NULL ORDER BY created_at, id', [orderId])).rows.map((t) => ({ ...t, discount_minor: Number(t.discount_minor) }));
   const addons = (await c.query('SELECT * FROM ticket_addon_items WHERE order_id=$1 ORDER BY name, created_at', [orderId])).rows.map((i) => addonView(i));
   const promos = (await c.query('SELECT d.code, d.kind, d.value, x.amount_cents FROM discount_redemptions x JOIN discounts d ON d.id=x.discount_id WHERE x.ticket_order_id=$1 AND x.reversed_at IS NULL ORDER BY d.created_at', [orderId])).rows.map((r) => ({ code: r.code, kind: r.kind, value: r.value, amount_minor: Number(r.amount_cents) }));
-  return { ...o, subtotal_minor: Number(o.subtotal_minor), tax_minor: Number(o.tax_minor), total_minor: Number(o.total_minor), discount_minor: Number(o.discount_minor), addons_minor: Number(o.addons_minor), lines, tickets, addons, promos, pay: o.status === 'pending_payment' && Number(o.total_minor) > 0 ? { purpose_type: 'ticket_order', purpose_id: o.id, amount_minor: Number(o.total_minor), currency: o.currency } : null };
+  const bundles = (await c.query('SELECT * FROM ticket_bundle_orders WHERE order_id=$1 ORDER BY created_at, id', [orderId])).rows.map(bundleOrderView);
+  return { ...o, bundles, subtotal_minor: Number(o.subtotal_minor), tax_minor: Number(o.tax_minor), total_minor: Number(o.total_minor), discount_minor: Number(o.discount_minor), addons_minor: Number(o.addons_minor), lines, tickets, addons, promos, pay: o.status === 'pending_payment' && Number(o.total_minor) > 0 ? { purpose_type: 'ticket_order', purpose_id: o.id, amount_minor: Number(o.total_minor), currency: o.currency } : null };
 };
 
 cap({
   name: 'create_ticket_order', method: 'POST', path: '/events/:id/ticket-orders', tag: TAG, status: 201,
-  summary: 'Buy tickets: choose products and quantities (and seats for reserved seating), optionally promo codes and parking / merchandise add-ons. The total is tickets less promos plus add-ons, and is exactly what the payment charges. The tickets are reserved for a short hold under a per-event lock so allocation and capacity can never be oversold; pay with POST /payments (purpose_type ticket_order) to issue them. Free orders are issued immediately. Send an idempotency_key to make a retry safe. Box-office and partner staff sell through the other channels.',
+  summary: 'Buy tickets: choose products and quantities (and seats for reserved seating), optionally promo codes and parking / merchandise add-ons. The total is tickets less promos plus add-ons, and is exactly what the payment charges. The tickets are reserved for a short hold under a per-event lock so allocation and capacity can never be oversold; pay with POST /payments (purpose_type ticket_order) to issue them. Free orders are issued immediately. Send an idempotency_key to make a retry safe. Box-office and partner staff sell through the other channels (the box office takes payment at the desk with POST /events/:id/box-office/sales).',
   input: z.object({
     id, channel: z.enum(['online', 'box_office', 'partner']).default('online'), idempotency_key: z.string().trim().min(8).max(80).optional(),
-    lines: z.array(z.object({ product_id: id, quantity: z.number().int().min(1).max(100), seats: z.array(z.string().trim().min(2).max(6)).max(100).optional() })).min(1).max(10),
+    lines: z.array(z.object({ product_id: id, quantity: z.number().int().min(1).max(100), seats: z.array(z.string().trim().min(2).max(6)).max(100).optional() })).max(10).default([]),
+    bundles: z.array(z.object({ bundle_id: id, quantity: z.number().int().min(1).max(100) })).max(5).optional().describe('bundles / hospitality packages: tickets and add-ons at one price'),
     promo_codes: z.array(z.string().trim().min(2).max(40)).max(5).optional().describe('promo codes to apply; each is checked and a code that cannot be combined is refused'),
     addons: z.array(z.object({ addon_id: id, quantity: z.number().int().min(1).max(100) })).max(10).optional().describe('parking / merchandise add-ons for the same order and payment'),
-  }),
+  }).refine((v) => v.lines.length + (v.bundles?.length ?? 0) > 0, 'Choose at least one ticket or package'),
   handler: ({ user }, i) => tx(async (c) => {
     const ev = await eventOf(i.id, c);
     if (i.channel === 'online') {
@@ -711,10 +715,12 @@ cap({
 const scanInput = z.object({
   token: z.string().trim().max(120).optional(), code: z.string().trim().max(40).optional(), fixture_id: id.optional(), access_point_id: id.optional(), direction: z.enum(['in', 'out']).default('in'),
   method: z.enum(['camera', 'manual', 'search', 'offline']).default('camera'), client_ref: z.string().trim().min(8).max(80).optional(), scanned_at: when.optional(),
+  session_id: id.optional().describe('the scanner session (device shift) this scan belongs to, so offline scans can be reconciled'),
 });
 async function checkGate(c, ev, i) {
   if (i.access_point_id && !(await c.query("SELECT 1 FROM access_points WHERE id=$1 AND event_id=$2 AND status='active'", [i.access_point_id, ev.id])).rowCount) throw badRequest('That gate does not belong to this event');
   if (i.fixture_id && !(await c.query('SELECT 1 FROM fixtures WHERE id=$1 AND event_id=$2', [i.fixture_id, ev.id])).rowCount) throw badRequest('That fixture does not belong to this event');
+  if (i.session_id && !(await c.query("SELECT 1 FROM ticket_scan_sessions WHERE id=$1 AND event_id=$2 AND operator_id=$3", [i.session_id, ev.id, i.operator_id])).rowCount) throw badRequest('That scanner session is not yours or not for this event');
 }
 
 cap({
@@ -723,7 +729,7 @@ cap({
   input: scanInput.extend({ id }).refine((i) => !!i.token !== !!i.code, 'Give either token or code'),
   handler: ({ user }, i) => tx(async (c) => {
     const ev = await operatorOf(user, i.id, c);
-    await checkGate(c, ev, i);
+    await checkGate(c, ev, { ...i, operator_id: user.id });
     return scanOne(c, ev, user, i);
   }),
 });
@@ -736,7 +742,7 @@ cap({
     const ev = await operatorOf(user, i.id, c);
     const out = [];
     for (const s of [...i.scans].sort((a, b) => +new Date(a.scanned_at) - +new Date(b.scanned_at))) {
-      await checkGate(c, ev, s);
+      await checkGate(c, ev, { ...s, operator_id: user.id });
       out.push({ client_ref: s.client_ref, ...(await scanOne(c, ev, user, { ...s, method: 'offline' })) });
     }
     return { results: out, admitted: out.filter((r) => r.admitted).length, duplicates: out.filter((r) => r.result === 'duplicate').length };
@@ -757,7 +763,7 @@ cap({
 cap({
   name: 'ticket_gate_manifest', method: 'GET', path: '/events/:id/tickets/gate-manifest', tag: TAG,
   summary: `Gate: the list of currently valid tickets for offline checking (serial, token version, class, seat; no names or contact details), with the generated time. A scanner caches it, checks tokens against it while offline and replays the scans with scan_tickets_batch. Limits: it is a snapshot, so tickets issued, voided or reissued after it was generated are not known to the scanner; offline scans older than ${OFFLINE_MAX_AGE_H} hours are refused on replay.`,
-  input: z.object({ id, limit: z.coerce.number().int().min(1).max(5000).default(2000), offset: z.coerce.number().int().min(0).default(0) }),
+  input: z.object({ id, limit: z.coerce.number().int().min(1).max(5000).default(2000), offset: z.coerce.number().int().min(0).default(0), since: when.optional().describe('delta sync: only tickets issued since this time, plus the serials revoked since (void, refunded, transferred, replaced)'), session_id: id.optional() }),
   async handler({ user }, i) {
     const ev = await operatorOf(user, i.id);
     const rows = await many(
@@ -765,9 +771,14 @@ cap({
               (SELECT coalesce(array_agg(x.fixture_id), '{}') FROM ticket_product_fixtures x WHERE x.product_id=t.product_id) AS fixture_ids,
               EXISTS (SELECT 1 FROM ticket_attendance a WHERE a.entitlement_id=t.entitlement_id AND a.inside) AS inside, p.reentry
          FROM tickets t JOIN ticket_products p ON p.id=t.product_id LEFT JOIN ticket_sections s ON s.id=t.section_id
-        WHERE t.event_id=$1 AND t.status='issued' ORDER BY t.id LIMIT $2 OFFSET $3`, [ev.id, i.limit, i.offset]);
-    const total = (await pool.query("SELECT count(*)::int AS n FROM tickets WHERE event_id=$1 AND status='issued'", [ev.id])).rows[0].n;
-    return { generated_at: new Date().toISOString(), event_id: ev.id, total, limit: i.limit, offset: i.offset, offline_max_age_hours: OFFLINE_MAX_AGE_H, entry_window: { before_min: ENTRY_BEFORE_MIN, after_min: ENTRY_AFTER_MIN }, tickets: rows };
+        WHERE t.event_id=$1 AND t.status='issued' AND ($4::timestamptz IS NULL OR t.issued_at >= $4) ORDER BY t.id LIMIT $2 OFFSET $3`, [ev.id, i.limit, i.offset, i.since ?? null]);
+    const total = (await pool.query("SELECT count(*)::int AS n FROM tickets WHERE event_id=$1 AND status='issued' AND ($2::timestamptz IS NULL OR issued_at >= $2)", [ev.id, i.since ?? null])).rows[0].n;
+    const revoked = i.since ? (await many("SELECT serial, token_version, status FROM tickets WHERE event_id=$1 AND status <> 'issued' AND status <> 'reserved' AND ended_at >= $2 ORDER BY ended_at LIMIT 5000", [ev.id, i.since])) : [];
+    if (i.session_id) {
+      const sess = await pool.query("UPDATE ticket_scan_sessions SET manifest_at=now(), manifest_count=$3 WHERE id=$1 AND event_id=$2 AND operator_id=$4 AND status='open' RETURNING id", [i.session_id, ev.id, total, user.id]);
+      if (!sess.rowCount) throw notFound('Scan session');
+    }
+    return { generated_at: new Date().toISOString(), event_id: ev.id, since: i.since ?? null, revoked, total, limit: i.limit, offset: i.offset, offline_max_age_hours: OFFLINE_MAX_AGE_H, entry_window: { before_min: ENTRY_BEFORE_MIN, after_min: ENTRY_AFTER_MIN }, tickets: rows };
   },
 });
 
@@ -835,6 +846,7 @@ cap({
     return {
       event_id: ev.id, counts: { sold: sum('sold'), issued: sum('issued'), refunded: sum('refunded'), voided: sum('voided'), scanned_in: attendedTotal },
       commerce: await salesReport(pool, ev.id),
+      analytics: await analytics(pool, ev, f),
       money: Object.values(totals), sales: sales.map((s) => ({ ...s, gross_minor: Number(s.gross_minor), tax_minor: Number(s.tax_minor), refunded_minor: Number(s.refunded_minor) })), fixtures, gates, throughput: perHour,
       note: 'Sold is the number of tickets sold; scanned_in is how many actually came through a gate. They are different numbers.',
     };
