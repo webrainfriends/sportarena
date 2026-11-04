@@ -129,7 +129,7 @@ export const ACADEMY_STEPS = [
     why: 'Know who arrived, who is in your care and who took each young athlete home. Guardians decide who may collect, staff hand over with checks, and late pickups and no-shows escalate on your timings.',
     steps: ['Open Academy, then Safety & pickup, then Settings, and set when guardians, the second guardian with emergency contacts, and the safeguarding officer are alerted.', 'Ask families to open Family & guardians, then Pickup & safety, to list who may collect, with days, times, a passphrase and emergency contacts.', 'On session day, open the session and its Pickup & handover tab. Check the collector by QR, passphrase or ID, then tap Confirm handover. The guardian confirms on their phone, and the athlete stays in your care until they do.', 'Follow late pickups, no-shows and concerns under Safety & pickup. Details are shown only to staff with the safeguarding permission, and every read is audit-logged.'],
     target: { academy: 'safety' },
-    modules: ['academy-pickup.js'], sources: ['apps/app/src/screens/academy-safety.js'],
+    modules: ['academy-pickup.js', 'academy-transport.js'], sources: ['apps/app/src/screens/academy-safety.js', 'apps/app/src/screens/academy-transport-board.js', 'apps/app/src/screens/academy-transport.js'],
   },
   {
     id: 'kit', title: 'Issue uniforms and kit',
@@ -144,6 +144,13 @@ id: 'wellbeing', title: 'Support student wellbeing and development',
     steps: ['Open Academy, then Wellbeing, then Tracks, and create optional tracks in values, leadership, life skills, nutrition education or study skills, with an age band and ordered modules.', 'In Staff & leave, give mentors the Mentor template (the wellbeing permission). Then open People, ask families for their choices, and assign a mentor once the family has chosen mentoring.', 'Mentors schedule check-ins from People, record what was agreed (never what was said) and close follow-ups. A concern goes privately to safeguarding staff, and counselling or clinical wording is refused in notes.', 'Families see their choices, mentor, check-ins, goals and who has opened the record under My academy, then Wellbeing, and can withdraw any choice at any time. Overview shows what is due and participation counts, never content or a score about a person.'],
     target: { academy: 'wellbeing' },
     modules: ['academy-wellbeing.js', 'academy-wellbeing-family.js', 'academy-wellbeing-overview.js'], sources: ['apps/app/src/screens/academy-wellbeing.js', 'apps/app/src/screens/academy-wellbeing-tracks.js', 'apps/app/src/screens/wellbeing-family.js'],
+  },
+  {
+    id: 'placement', title: 'Manage placement pathways',
+    why: 'Give every graduating athlete a consented bridge from academy progression to university, scholarship and professional opportunities, managed by a placement advisor with an auditable funnel, evidence checklist, reference requests and revocable institution sharing.',
+    steps: ['Open Academy, then Placement, and tap Add opportunity for an enrolled athlete.', 'Choose the type (university place, scholarship, grant or professional contract), set the institution, sport, deadline and intake year.', 'Build the evidence checklist: add items for academic transcript, sport CV, performance video, references and any passport or ranking documents.', 'Request references from coaches, academic coordinators or other referees and track their submission status.', 'Ask the athlete (or their guardian for under-18s) to grant the institution access to specific evidence fields. They choose exactly what to share and can revoke at any time.', 'Advance the opportunity through its stages — identified, eligibility check, evidence gathering, applied, offer received, outcome — as the process progresses.', 'Link a sponsorship award to the opportunity for attribution tracking across the finance module.', 'Use the Action Queue to triage urgent items: references due, missing evidence and pending guardian consents. Use Analytics for seasonal outcome and scholarship reports.'],
+    target: { academy: 'placement' },
+    modules: ['academy-placement.js'], sources: ['apps/app/src/screens/academy-placement.js'],
   },
 ];
 

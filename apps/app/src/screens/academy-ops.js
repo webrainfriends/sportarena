@@ -13,6 +13,7 @@ import { FormSheet } from '../FormSheet';
 import { c } from '../theme';
 import { addDays, dateTimeIn, localToIso, moneyIn, timeIn, todayIn } from '../vtime';
 import { Block, Fact, Kpi } from './academy-ui';
+import { TransportTab } from './academy-transport';
 
 const uid = () => `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 10)}`;
 const LEVEL = { compliant: ['✓', 'Staffed'], warning: ['⚠', 'Needs attention'], blocked: ['⛔', 'Rule not met'] };
@@ -396,12 +397,13 @@ export function Operations({ o, role, toast }) {
     ...(has('schedule', 'attendance', 'roster') ? [['today', 'Today'], ['week', 'Week']] : []),
     ...(has('schedule', 'timesheets') ? [['staff', 'Staff & leave']] : []),
     ['pay', 'Time & pay'], ...(has('schedule') ? [['insights', 'Insights']] : []),
+    ...(admin || has('suppliers') ? [['transport', t('transport.title')]] : []),
   ];
   const cur = tabs.some(([k]) => k === tab) ? tab : tabs[0][0];
   return (
     <View style={{ gap: 12 }}>
       <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }} accessibilityRole="tablist">{tabs.map(([k, l]) => <Chip key={k} label={l} active={cur === k} onPress={() => setTab(k)} />)}<Btn small title="My academy week" color={c.paper} ink={c.ink} onPress={() => push('AcademyAgenda')} /></View>
-      {cur === 'today' ? <Today o={o} toast={toast} setTab={setTab} /> : cur === 'week' ? <Week o={o} toast={toast} perms={perms} cohorts={probe.data.cohorts ?? []} /> : cur === 'staff' ? <StaffTab o={o} toast={toast} admin={admin} perms={perms} /> : cur === 'pay' ? <Pay o={o} toast={toast} perms={perms} /> : <Insights o={o} />}
+      {cur === 'today' ? <Today o={o} toast={toast} setTab={setTab} /> : cur === 'week' ? <Week o={o} toast={toast} perms={perms} cohorts={probe.data.cohorts ?? []} /> : cur === 'staff' ? <StaffTab o={o} toast={toast} admin={admin} perms={perms} /> : cur === 'pay' ? <Pay o={o} toast={toast} perms={perms} /> : cur === 'transport' ? <TransportTab o={o} toast={toast} admin={admin} perms={perms} /> : <Insights o={o} />}
     </View>
   );
 }
