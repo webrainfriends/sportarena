@@ -258,6 +258,8 @@ import './academy-attendance.js';
 import './academy-payroll.js';
 import './academy-ops-board.js';
 import './academy-curriculum.js';
+import './academy-scouting.js';
+import './academy-scouting-pipeline.js';
 import './collections.js';
 import './athlete-profile.js';
 import './trials.js';
