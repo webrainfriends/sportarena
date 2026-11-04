@@ -152,6 +152,13 @@ id: 'wellbeing', title: 'Support student wellbeing and development',
     target: { academy: 'placement' },
     modules: ['academy-placement.js'], sources: ['apps/app/src/screens/academy-placement.js'],
   },
+  {
+    id: 'accreditation', title: 'Manage accreditation and audits',
+    why: 'Track every external accreditation, licence and quality mark your academy holds, keep the evidence for each one linked to records you already maintain, and run audits with findings and corrective actions that cannot be quietly changed.',
+    steps: ['Open Academy, then Accreditation, and tap Configure to add a framework: the accrediting body, type, level, owner, renewal cycle and reminder lead time.', 'Open the framework, choose Evidence, add what it requires, then link coach credentials and compliance records. Nothing is copied, and validity is read live.', 'Tap Schedule audit, choose the type, date and areas to verify, and optionally name an inspector, who sees that audit only.', 'Record each finding with its severity and corrective actions, give every action an owner and a due date, and mark them done as the work is finished.', 'Resubmit once every high and medium finding is resolved, then record the inspector decision. Every step is kept in a locked trail.'],
+    target: { academy: 'accreditation' },
+    modules: ['academy-accreditation.js'], sources: ['apps/app/src/screens/academy-accreditation.js'],
+  },
 ];
 
 /** Org/academy API modules with no step of their own, and why. Anything not here and not in a step fails the guard test. */
