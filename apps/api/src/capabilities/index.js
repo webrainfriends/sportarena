@@ -327,6 +327,7 @@ import './governance-lineage.js';
 import './season-archive.js';
 import './transfers.js';
 import './discipline.js';
+import './official-verification.js';
 import './my-workspace.js';
 import './security-keys.js';
 import './upload-limits.js';

@@ -62,7 +62,7 @@ export const hashRecovery = (c) => sha256(`recovery:${normalizeRecovery(c)}`);
 
 // ---- policy ----
 /** Roles that hold clinical or platform-wide power. MFA is enforced for their clinical/admin-class actions when MFA enforcement is on (default in production). */
-export const MFA_ROLES = ['doctor', 'physio', 'admin', 'platform_admin'];
+export const MFA_ROLES = ['doctor', 'physio', 'admin', 'platform_admin', 'official_verifier'];
 // Capabilities that must stay reachable so a person can enrol, step up, sign out or recover.
 export const MFA_EXEMPT = new Set([
   'logout', 'logout_all', 'list_login_sessions', 'revoke_login_session', 'change_my_password',
