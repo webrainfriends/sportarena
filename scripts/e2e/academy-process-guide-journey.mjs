@@ -93,6 +93,7 @@ try {
     coaches: async (p) => { await navTo(p, 'Manage', { id: venue.id, tab: 'coaches' }); await p.getByText('Tie-ups', { exact: true }).first().scrollIntoViewIfNeeded(); await wait(p, 600); },
     students: (p) => inOrg(p, async () => { await click(p, 'Academy'); await click(p, 'Admissions'); }),
     classes: (p) => inOrg(p, async () => { await click(p, 'Academy'); await click(p, 'Operations'); }),
+    education: (p) => inOrg(p, async () => { await click(p, 'Academy'); await click(p, 'Academics'); }),
     tax: async (p) => { await navTo(p, 'Finance', { id: org.id }); await click(p, 'Tax').catch(() => {}); },
     revenue: (p) => inOrg(p, async () => { await click(p, 'Academy'); await click(p, 'Finance'); await click(p, 'Costs'); }),
     reports: (p) => inOrg(p, async () => { await click(p, 'Academy'); }),   // the Academy tab opens on its Home (executive view)

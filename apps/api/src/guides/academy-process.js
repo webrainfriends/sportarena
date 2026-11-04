@@ -69,6 +69,13 @@ export const ACADEMY_STEPS = [
     modules: ['academy-sessions.js', 'academy-attendance.js', 'academy-ops-board.js', 'academy-desk.js'], sources: ['apps/app/src/screens/academy-ops.js'],
   },
   {
+    id: 'education', title: 'Link schools and track studies',
+    why: 'Sport-plus-study athletes need their school exams, lessons and attendance checked before you publish training, with grades kept private.',
+    steps: ['Open Academy, then Academics, and choose Athletes, then Link a school: pick the enrolled athlete and a verified school.', 'Ask the athlete or guardian to allow the school timetable (and, if you will hold reports, school progress) under My academy, School.', 'Add exams, lessons and school days under the athlete, or import the school\'s attendance and timetable; every entry shows where it came from.', 'Check Overview before publishing Operations: any exam or lesson clash must be excused or moved first.', 'Record term progress snapshots (education staff with record access only) and follow up attendance exceptions and coordination tasks.'],
+    target: { academy: 'academics' },
+    modules: ['academy-academics.js', 'academy-academics-records.js'], sources: ['apps/app/src/screens/academy-academics.js'],
+  },
+  {
     id: 'tax', title: 'Set up taxation',
     why: 'Know the tax collected and paid, with your own tax rules and tax details on invoices.',
     steps: ['Open Finance and choose the Tax tab (finance access is required).', 'Add your tax registration and tax rules.', 'Read collected, paid and net tax by period and rate.', 'Tax figures are informational, not tax advice.'],

@@ -15,6 +15,7 @@ import { opsAccess, sessionFor, staffIssues, cohortIssues, checkSession, heldVen
 import { placeBasket } from './reservations.js';
 import { reservationView } from '../booking/engine.js';
 import { releaseTrialBookings } from '../academy-trials.js';
+import { excuseResolved } from './academy-attendance.js';
 
 const TAG = 'Academy operations';
 const day = z.string().date();
@@ -284,10 +285,12 @@ cap({
       if (chk.conflicts.length) { results.push({ session_id: sid, published: false, reason: 'conflicts', conflicts: chk.conflicts }); continue; }
       if (chk.compliance.level === 'blocked') { results.push({ session_id: sid, published: false, reason: 'staffing rule not met', compliance: chk.compliance }); continue; }
       if (chk.compliance.level === 'warning' && !i.acknowledge_warnings) { results.push({ session_id: sid, published: false, reason: 'staffing warnings need acknowledgement', compliance: chk.compliance }); continue; }
+      if (chk.academic_warnings.length && !i.acknowledge_warnings) { results.push({ session_id: sid, published: false, reason: 'school and study warnings need acknowledgement', academic_warnings: chk.academic_warnings }); continue; }
       const next = (await c.query("UPDATE academy_sessions SET status='published', row_version=row_version+1, updated_at=now() WHERE id=$1 RETURNING *", [sid])).rows[0];
       await change(c, sid, 'published', user.id, chk.compliance.level === 'warning' ? 'published with acknowledged warnings' : null, null, { level: chk.compliance.level });
+      await excuseResolved(c, next, user.id);   // athletes whose school commitment was resolved are excused for school, so the roster is right on the day
       await tellSession(c, next, 'published', 'A session was scheduled', 'Open Gotmygame to see the schedule.', { staff: true, athletes: true });
-      results.push({ session_id: sid, published: true, compliance: chk.compliance.level });
+      results.push({ session_id: sid, published: true, compliance: chk.compliance.level, school_excused: chk.academics.resolved.length });
     }
     return { results, published: results.filter((r) => r.published).length };
   }),

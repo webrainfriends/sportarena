@@ -7,8 +7,10 @@ import { orgFor } from './org-access.js';
 import { badgesFor } from './verification.js';
 import { commitmentBusy } from './coach-commitments.js';
 import { toLocal } from './booking/time.js';
+import { academicClashes } from './academy-clashes.js';
 
-export const PERMS = ['schedule', 'attendance', 'roster', 'timesheets', 'payroll', 'safeguarding', 'suppliers'];
+// academics = school timetable, exams, attendance summaries and coordination tasks; academic_records = the grades themselves (a separate, narrower grant)
+export const PERMS = ['schedule', 'attendance', 'roster', 'timesheets', 'payroll', 'safeguarding', 'suppliers', 'academics', 'academic_records'];
 export const ADMINS = ['owner', 'admin'];
 
 /** Job-title templates: a starting permission set. Access is only ever the stored permissions, so templates never proliferate roles. */
@@ -27,6 +29,8 @@ export const TEMPLATES = {
   partnerships: { title: 'Sponsor / partnership manager', permissions: [] },
   communications: { title: 'Marketing / communications', permissions: [] },
   auditor: { title: 'Read-only auditor', permissions: ['schedule', 'attendance', 'roster', 'timesheets', 'payroll'] },
+  education_coordinator: { title: 'Education & school liaison coordinator', permissions: ['roster', 'academics', 'academic_records'] },
+  school_liaison: { title: 'School liaison (timetable and attendance, no grades)', permissions: ['roster', 'academics'] },
   custom: { title: 'Custom', permissions: [] },
 };
 
@@ -188,7 +192,10 @@ export async function checkSession(c, s) {
   const compliance = await evaluateSession(c, s);
   if (venue && venue.booking_status !== 'confirmed') conflicts.push({ kind: 'venue', code: 'venue_booking_not_confirmed', message: 'The venue booking is no longer confirmed' });
   if (venue && (new Date(venue.starts_at) > new Date(s.starts_at) || new Date(venue.ends_at) < new Date(s.ends_at))) conflicts.push({ kind: 'venue', code: 'venue_window_mismatch', message: 'The venue booking does not cover the whole session' });
-  return { conflicts, compliance, venue, publishable: compliance.level !== 'blocked' && conflicts.length === 0 };
+  // sport-study clashes (#783): school exams / lessons the athlete cannot miss refuse publication until resolved; study overlaps only warn
+  const academics = await academicClashes(c, s);
+  conflicts.push(...academics.clashes);
+  return { conflicts, compliance, venue, academics, academic_warnings: academics.warnings, publishable: compliance.level !== 'blocked' && conflicts.length === 0 };
 }
 
 // ------------------------------------------------------------------ compensation
