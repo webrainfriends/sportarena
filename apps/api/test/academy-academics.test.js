@@ -373,3 +373,18 @@ test('the academy Athlete 360 shows academic progress as its own labelled sectio
   assert.equal((await api('GET', `/organisations/${g.school.id}/academics/school-athletes`, { token: g.coach.token })).status, 404, 'academy staff are not school staff');
   assert.equal((await api('GET', `/organisations/${g.org.id}/academics/school-athletes`, { token: g.owner.token })).status, 404, 'an academy is not a school');
 });
+
+test('the term timetable preview shows school clashes before anything is saved; a session can still be drafted and is refused at publication', async () => {
+  const g = await setup(); const { la } = await consented(g, ['timetable'], 'summary');
+  ok(await api('POST', `/academics/links/${la.id}/items`, { token: g.liaison.token, body: { items: [{ kind: 'exam', title: 'Mathematics', starts_at: at(4, '09:30'), ends_at: at(4, '11:30'), timezone: 'UTC', high_stakes: true }] } }), 201);
+  const wd = new Date(`${day(4)}T12:00:00Z`).getUTCDay();
+  const body = { starts_on: day(4), ends_on: day(4), weekdays: [wd], start_time: '10:00', duration_min: 60, timezone: 'UTC', lead_id: g.coach.id };
+  const prev = ok(await api('POST', `/cohorts/${g.cohort.id}/academy/timetable/preview`, { token: g.owner.token, body }));
+  const issues = prev.sessions.flatMap((r) => r.cohort_issues);
+  assert.ok(issues.some((x) => x.code === 'school_exam_high_stakes'), JSON.stringify(prev.sessions[0]));
+  assert.ok(!/Mathematics/.test(JSON.stringify(prev)), 'the subject never reaches the preview');
+  const clear = ok(await api('POST', `/cohorts/${g.cohort.id}/academy/timetable/preview`, { token: g.owner.token, body: { ...body, start_time: '15:00' } }));
+  assert.equal(clear.sessions.flatMap((r) => r.cohort_issues).length, 0, 'a slot outside the exam is clear');
+  const s = await draftSession(g, at(4, '10:00'));   // drafting stays possible: the clash is flagged and publication is refused
+  assert.equal(ok(await publish(g, [s.id])).results[0].reason, 'conflicts');
+});

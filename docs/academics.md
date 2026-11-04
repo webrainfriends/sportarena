@@ -56,7 +56,8 @@ academy grant covering `timetable`, whose exam / lesson block / tutoring session
 blocks and suppresses lesson clashes that day. A clash refuses publication (`reason: conflicts`, codes `school_exam_clash`, `school_exam_high_stakes`,
 `school_class_block_clash`, `school_tutoring_clash`, `school_school_event_clash`). Staff see the athlete, the kind and the time, never the subject.
 Release for sport is allowed only with a recorded reason, and **never for a high-stakes exam**. `add_academic_items` also returns the sessions an item
-clashes with, so a clash is seen when the exam is entered. `check_academic_clashes` previews a window or a slot you are about to create.
+clashes with, so a clash is seen when the exam is entered, and the **term timetable preview** lists the same clashes (as group issues, with no subject) before
+any session is saved. Drafting a session is still possible; publishing it is refused. `check_academic_clashes` previews a window or a slot you are about to create.
 Revoking consent removes the athlete from the check at once. The background sweep `academic_exceptions` raises one coordination task per clash.
 
 ## Attendance, tasks and imports
