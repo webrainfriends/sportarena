@@ -378,7 +378,8 @@ async function needsReview(scope) {
   const params = [];
   const sc = scope.orgId ? `AND EXISTS (SELECT 1 FROM fin_transactions f WHERE f.payment_id = x.payment_id AND (f.payee_org_id = $1 OR f.payer_org_id = $1))` : '';
   if (scope.orgId) params.push(scope.orgId);
-  const a = await one(`SELECT count(*)::int AS n FROM fin_recon_items x WHERE x.status='open' ${sc}`, params);
+  const scA = scope.orgId ? `AND (x.organisation_id = $1 OR EXISTS (SELECT 1 FROM fin_transactions f WHERE f.payment_id = x.payment_id AND (f.payee_org_id = $1 OR f.payer_org_id = $1)))` : '';   // #787: academy cost items carry the organisation themselves
+  const a = await one(`SELECT count(*)::int AS n FROM fin_recon_items x WHERE x.status='open' ${scA}`, params);
   const b = await one(`SELECT count(*)::int AS n FROM settlement_exceptions x WHERE x.status='open' AND x.payment_id IS NOT NULL ${sc}`, params);
   const orphan = scope.orgId ? 0 : n((await one("SELECT count(*)::int AS n FROM settlement_exceptions WHERE status='open' AND payment_id IS NULL")).n);
   return n(a.n) + n(b.n) + orphan;
@@ -448,11 +449,12 @@ export async function getTransaction(scope, txId) {
 export async function listReconciliation(scope, { status = 'open', limit = 25, offset = 0 } = {}) {
   const params = [status];
   let sc = '';
-  if (scope.orgId) { params.push(scope.orgId); sc = `AND x.payment_id IS NOT NULL AND EXISTS (SELECT 1 FROM fin_transactions f WHERE f.payment_id = x.payment_id AND (f.payee_org_id = $2 OR f.payer_org_id = $2))`; }
+  let scC = '';
+  if (scope.orgId) { params.push(scope.orgId); sc = `AND x.payment_id IS NOT NULL AND EXISTS (SELECT 1 FROM fin_transactions f WHERE f.payment_id = x.payment_id AND (f.payee_org_id = $2 OR f.payer_org_id = $2))`; scC = `AND (x.organisation_id = $2 OR (x.payment_id IS NOT NULL AND EXISTS (SELECT 1 FROM fin_transactions f WHERE f.payment_id = x.payment_id AND (f.payee_org_id = $2 OR f.payer_org_id = $2))))`; }
   params.push(limit, offset);
   return many(
     `SELECT * FROM (
-       SELECT x.id, 'canonical'::text AS source, x.kind, x.status, x.payment_id, x.currency, x.amount_minor AS amount_minor, x.detail, x.resolution, x.created_at FROM fin_recon_items x WHERE x.status = $1 ${sc}
+       SELECT x.id, 'canonical'::text AS source, x.kind, x.status, x.payment_id, x.currency, x.amount_minor AS amount_minor, x.detail, x.resolution, x.created_at FROM fin_recon_items x WHERE x.status = $1 ${scC}
        UNION ALL
        SELECT x.id, 'settlement'::text, x.kind, x.status, x.payment_id, x.currency, x.amount_cents, x.detail, x.resolution, x.created_at FROM settlement_exceptions x WHERE x.status = $1 ${sc}
      ) u ORDER BY created_at DESC, id LIMIT $${params.length - 1} OFFSET $${params.length}`, params);

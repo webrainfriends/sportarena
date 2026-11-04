@@ -134,7 +134,7 @@ try {
     scouting: (p) => inOrg(p, async () => { await click(p, 'Academy'); await click(p, 'Scouting'); }),
     classes: (p) => inOrg(p, async () => { await click(p, 'Academy'); await click(p, 'Operations'); }),
     tax: async (p) => { await navTo(p, 'Finance', { id: org.id }); await click(p, 'Tax').catch(() => {}); },
-    revenue: (p) => inOrg(p, async () => { await click(p, 'Academy'); await click(p, 'Finance'); await click(p, 'Costs'); }),
+    revenue: (p) => inOrg(p, async () => { await click(p, 'Academy'); await click(p, 'Finance'); await click(p, 'Reconciliation'); }),
     reports: (p) => inOrg(p, async () => { await click(p, 'Academy'); }),
     academics: (p) => inOrg(p, async () => { await click(p, 'Academy'); await click(p, 'Academics'); await click(p, 'Athletes').catch(() => {}); }),   // the Academy tab opens on its Home (executive view)
     competition: (p) => inOrg(p, async () => { await click(p, 'Academy'); await click(p, 'Competition & Squads'); }),

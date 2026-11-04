@@ -38,6 +38,8 @@ export function CostSources({ sources }) {
     sources.payroll_unpriced_timesheets ? t('aco.src.unpriced', { n: sources.payroll_unpriced_timesheets }) : null,
     sources.venue_sessions_unbooked ? t('aco.src.unbooked', { n: sources.venue_sessions_unbooked }) : null,
     sources.manual_entries_superseded ? t('aco.src.superseded', { n: sources.manual_entries_superseded }) : null,
+    sources.supplier_requests ? t('arc.src.supplier_n', { n: sources.supplier_requests }) : null,
+    sources.payment_fee_lines ? t('arc.src.fees_n', { n: sources.payment_fee_lines }) : null,
   ].filter(Boolean);
   return (
     <View style={{ gap: 4 }} accessibilityRole="summary">
@@ -54,7 +56,7 @@ export function ByBranch({ rows, currency }) {
     <Block title={t('aco.branch.by')}>
       <Bars label={t('aco.branch.chart', { cur: currency })} rows={rows.map((b) => ({ label: b.branch_id ? b.name : t('aco.branch.unassigned'), value: b.operating_result_minor, text: `${M(b.operating_result_minor, currency)}${b.contribution_complete ? '' : ` (${t('aco.incomplete')})`}`, tone: b.operating_result_minor < 0 ? c.orange : undefined }))} />
       {rows.map((b) => (
-        <Row key={b.branch_id ?? 'none'} title={b.branch_id ? b.name : t('aco.branch.unassigned')} sub={`${t('aco.branch.n_programmes', { n: b.programmes })} · ${t('aco.revenue')} ${M(b.management_revenue_minor, currency)} · ${t('aco.collected')} ${M(b.cash_collected_minor, currency)}`}
+        <Row key={b.branch_id ?? 'none'} title={b.branch_id ? b.name : t('aco.branch.unassigned')} sub={`${t('aco.branch.n_programmes', { n: b.programmes })} · ${t('aco.revenue')} ${M(b.management_revenue_minor, currency)} · ${t('aco.collected')} ${M(b.cash_collected_minor, currency)}${b.venue_level_cost_minor ? ` · ${t('arc.branch.venue_level', { amount: M(b.venue_level_cost_minor, currency) })}` : ''}`}
           right={<Tag label={b.contribution_complete ? pct(b.margin_pct) : t('aco.costs_missing')} color={b.contribution_complete ? undefined : c.sunSoft} />} />
       ))}
     </Block>
