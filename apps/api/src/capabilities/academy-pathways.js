@@ -215,9 +215,9 @@ cap({
 });
 
 const FOLLOW = {
-  move_programme: { capability: 'transfer_academy_enrolment', note: 'Move the athlete with the enrolment transfer so billing and capacity stay correct.' },
-  invite_squad: { capability: 'team workflow', note: 'Invite the athlete to the squad through the team invitation flow.' },
-  graduate: { capability: 'passport', note: 'Issue any certificate or achievement through the athlete passport / awards flow.' },
+  move_programme: { capability: 'follow_through_academy_decision', action: 'move_cohort', note: 'Move the athlete with the canonical enrolment transfer so billing and capacity stay correct.' },
+  invite_squad: { capability: 'follow_through_academy_decision', action: 'invite_squad', note: 'Invite the athlete to the squad through the canonical team invitation (the athlete or guardian accepts).' },
+  graduate: { capability: 'follow_through_academy_decision', action: 'issue_certificate', note: 'Issue the certificate through the canonical credentials flow.' },
 };
 
 cap({
@@ -291,6 +291,35 @@ cap({
   },
 });
 
+/** The athlete-safe progress projection (own pathway levels, approved assessments the athlete may see, decisions, attendance). Shared by the screen and the progress PDF so both show exactly the same, consent-gated material. Coach-private notes never appear. */
+export async function progressFor(athleteId, { onlyOrgId = null } = {}) {
+  const consent = await hasConsent(athleteId, 'coaching');
+  const orgs = (await many(
+    `SELECT DISTINCT o.id, o.name FROM org_enrolments e JOIN org_cohorts k ON k.id=e.cohort_id JOIN organisations o ON o.id=k.organisation_id WHERE e.user_id=$1 AND e.programme_id IS NOT NULL ORDER BY o.name`, [athleteId])).filter((o) => !onlyOrgId || o.id === onlyOrgId);
+  const out = [];
+  for (const o of orgs) {
+    const pathways = await many("SELECT * FROM academy_pathways WHERE organisation_id=$1 AND status='active' ORDER BY title", [o.id]);
+    const items = [];
+    for (const p of pathways) {
+      const st = await standing(p, athleteId);
+      if (!st.last) continue;
+      const decisions = await many('SELECT decision, from_level, to_level, reason, created_at FROM academy_progression_decisions WHERE pathway_id=$1 AND athlete_id=$2 ORDER BY created_at DESC, id DESC LIMIT 20', [p.id, athleteId]);
+      const assessments = consent ? await many(
+        `SELECT id, level_key, period_from, period_to, outcome, created_at, CASE WHEN comment_visibility='athlete' THEN comment END AS comment, evidence->'attendance' AS attendance
+           FROM academy_assessments WHERE pathway_id=$1 AND athlete_id=$2 AND status IN ('approved','appealed') ORDER BY created_at DESC, id DESC LIMIT 10`, [p.id, athleteId]) : [];
+      const lastA = assessments[0]?.created_at ?? decisions[0]?.created_at;
+      items.push({ pathway_id: p.id, title: p.title, level: st.level_key, level_title: st.level?.title ?? null, graduated: st.graduated, next_level: st.next?.title ?? null,
+        destinations: st.level?.destinations ?? [], decisions, assessments, next_review_on: lastA ? new Date(new Date(lastA).getTime() + 90 * 864e5).toISOString().slice(0, 10) : null });
+    }
+    const weeks = await many(
+      `SELECT date_trunc('week', a.session_date)::date AS week, count(*) FILTER (WHERE a.status='present')::int AS present, count(*) FILTER (WHERE a.status='absent')::int AS absent
+         FROM org_attendance a JOIN org_cohorts k ON k.id=a.cohort_id WHERE k.organisation_id=$1 AND a.user_id=$2 AND a.session_date >= current_date - 56 GROUP BY 1 ORDER BY 1`, [o.id, athleteId]);
+    out.push({ organisation: o, pathways: items, attendance_weeks: weeks, attendance_pct_8w: (await attendanceEvidence(o.id, athleteId, daysAgo(56), today())).pct });
+  }
+
+  return { athlete_id: athleteId, is_youth: await isYouth(athleteId), coaching_consent: consent, academies: out };
+}
+
 cap({
   name: 'get_my_academy_progress', method: 'GET', path: '/academy/my-progress', tag: 'Academy',
   summary: 'Progress for the signed-in athlete, or for a young athlete when their verified guardian asks: pathway level, approved assessments (comments only when the assessor made them visible to the athlete), decisions, attendance trend and the next review date. Coach-private notes never appear; a young person\'s coaching material needs the guardian\'s coaching consent.',
@@ -298,30 +327,7 @@ cap({
   async handler({ user }, i) {
     const athleteId = i.athlete_id ?? user.id;
     if (athleteId !== user.id) { await requireGuardian(user, athleteId); await audit(null, user.id, 'read_child_academy_progress', 'users', athleteId); }
-    const consent = await hasConsent(athleteId, 'coaching');
-    const orgs = await many(
-      `SELECT DISTINCT o.id, o.name FROM org_enrolments e JOIN org_cohorts k ON k.id=e.cohort_id JOIN organisations o ON o.id=k.organisation_id WHERE e.user_id=$1 AND e.programme_id IS NOT NULL ORDER BY o.name`, [athleteId]);
-    const out = [];
-    for (const o of orgs) {
-      const pathways = await many("SELECT * FROM academy_pathways WHERE organisation_id=$1 AND status='active' ORDER BY title", [o.id]);
-      const items = [];
-      for (const p of pathways) {
-        const st = await standing(p, athleteId);
-        if (!st.last) continue;
-        const decisions = await many('SELECT decision, from_level, to_level, reason, created_at FROM academy_progression_decisions WHERE pathway_id=$1 AND athlete_id=$2 ORDER BY created_at DESC, id DESC LIMIT 20', [p.id, athleteId]);
-        const assessments = consent ? await many(
-          `SELECT id, level_key, period_from, period_to, outcome, created_at, CASE WHEN comment_visibility='athlete' THEN comment END AS comment, evidence->'attendance' AS attendance
-             FROM academy_assessments WHERE pathway_id=$1 AND athlete_id=$2 AND status IN ('approved','appealed') ORDER BY created_at DESC, id DESC LIMIT 10`, [p.id, athleteId]) : [];
-        const lastA = assessments[0]?.created_at ?? decisions[0]?.created_at;
-        items.push({ pathway_id: p.id, title: p.title, level: st.level_key, level_title: st.level?.title ?? null, graduated: st.graduated, next_level: st.next?.title ?? null,
-          destinations: st.level?.destinations ?? [], decisions, assessments, next_review_on: lastA ? new Date(new Date(lastA).getTime() + 90 * 864e5).toISOString().slice(0, 10) : null });
-      }
-      const weeks = await many(
-        `SELECT date_trunc('week', a.session_date)::date AS week, count(*) FILTER (WHERE a.status='present')::int AS present, count(*) FILTER (WHERE a.status='absent')::int AS absent
-           FROM org_attendance a JOIN org_cohorts k ON k.id=a.cohort_id WHERE k.organisation_id=$1 AND a.user_id=$2 AND a.session_date >= current_date - 56 GROUP BY 1 ORDER BY 1`, [o.id, athleteId]);
-      out.push({ organisation: o, pathways: items, attendance_weeks: weeks, attendance_pct_8w: (await attendanceEvidence(o.id, athleteId, daysAgo(56), today())).pct });
-    }
-    return { athlete_id: athleteId, is_youth: await isYouth(athleteId), coaching_consent: consent, academies: out };
+    return progressFor(athleteId);
   },
 });
 

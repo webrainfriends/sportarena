@@ -1,8 +1,10 @@
 // Academy OS 3/3: management-accounting PROJECTIONS over the canonical records. Nothing here moves or stores money. Revenue comes from
 // academy_charges (the fee snapshot) and payments (provider cash and refunds); costs come from academy_cost_entries, which are labelled
-// management entries because no payroll/timesheet source exists until Academy OS 2/3. Each currency is reported on its own and is never
+// management entries ONLY where the canonical Academy OS 2/3 source has nothing for that programme: staff cost is read from approved payroll runs and
+// venue cost from confirmed venue bookings (src/academy-cost-sources.js). Each currency is reported on its own and is never
 // summed with another. A figure that cannot be known from data is null ("missing"), never 0.
 import { many, one } from './db.js';
+import { payrollCost, venueCost, mergeCosts } from './academy-cost-sources.js';
 
 export const DEFINITIONS = {
   basis: 'Management view, not statutory accounts. Revenue is on an invoice (accrual-like) basis by charge due date; cash is on a cash basis by payment date.',
@@ -14,7 +16,9 @@ export const DEFINITIONS = {
   management_revenue: 'gross billed - discounts - tax - refunds. The funded part counts as revenue because a funder carries it.',
   cash_collected: 'Provider payments received in the period (paid_at); cash_refunded is refunds made in the period.',
   outstanding: 'Net invoiced amount of those charges still awaiting payment.',
-  direct_costs: 'Management cost entries (staff, venue, other direct) incurred in the period and attached to the programme.',
+  direct_costs: 'Staff cost = approved payroll runs (by timesheet work date and programme). Venue cost = confirmed venue booking lines split across the sessions that share them (by session date, cancelled sessions excluded). Other direct cost, and any staff/venue cost with no canonical source for that programme, = management cost entries. A canonical source replaces manual entries for the same programme, currency and category, so nothing is counted twice.',
+  branch: 'A programme belongs to at most one branch; a branch is the plain sum of its programmes. Programmes with no branch are shown as Unassigned.',
+  unattributed_cost: 'Approved payroll adjustments and timesheets with no programme: real cost that cannot be tied to one programme. Shown separately and deducted from the organisation total, never spread silently.',
   contribution: 'management revenue - known direct costs. Marked incomplete while a cost category has no entries.',
   allocated_overhead: 'Overhead entries spread by the entry\'s own rule (participants, revenue share or explicit split).',
   operating_result: 'contribution - allocated overhead.',
@@ -30,8 +34,9 @@ const sum = (arr) => arr.reduce((s, x) => s + x, 0);
 const CHARGE_BASE = `
   FROM academy_charges ch LEFT JOIN org_enrolments e ON e.id=ch.enrolment_id LEFT JOIN academy_applications a ON a.id=ch.application_id`;
 
-export async function pnl(orgId, { from, to, programmeId = null, sport = null } = {}) {
-  const programmes = await many('SELECT id, title, sport, capacity, status FROM academy_programmes WHERE organisation_id=$1 ORDER BY title, id', [orgId]);
+export async function pnl(orgId, { from, to, programmeId = null, sport = null, branchId = null } = {}) {
+  const programmes = await many('SELECT id, title, sport, capacity, status, branch_id FROM academy_programmes WHERE organisation_id=$1 ORDER BY title, id', [orgId]);
+  const branchNames = new Map((await many('SELECT id, name, archived_at FROM academy_branches WHERE organisation_id=$1', [orgId])).map((b) => [b.id, b]));
   const byId = new Map(programmes.map((p) => [p.id, p]));
   const charges = await many(
     `SELECT ch.id, ch.currency, ch.status, ch.gross_minor, ch.discount_minor, ch.funded_minor, ch.funding_source, ch.tax_minor, ch.amount_minor, ch.settled_minor, ch.adjusted_minor, coalesce(e.programme_id, a.programme_id) AS programme_id, coalesce(e.user_id, a.athlete_id) AS athlete_id,
@@ -47,7 +52,11 @@ export async function pnl(orgId, { from, to, programmeId = null, sport = null } 
     `SELECT pay.currency, coalesce(e.programme_id, a.programme_id) AS programme_id, sum(pay.refunded_cents)::bigint AS refunded
        FROM payments pay JOIN academy_charges ch ON ch.id=pay.purpose_id ${CHARGE_BASE.replace('FROM academy_charges ch ', '')}
       WHERE pay.purpose_type='academy_charge' AND ch.organisation_id=$1 AND pay.refunded_cents > 0 AND pay.refunded_at::date BETWEEN $2 AND $3 GROUP BY 1, 2`, [orgId, from, to]);
-  const costs = await many('SELECT * FROM academy_cost_entries WHERE organisation_id=$1 AND voided_at IS NULL AND incurred_on BETWEEN $2 AND $3 ORDER BY incurred_on, id', [orgId, from, to]);
+  const manualAll = await many('SELECT * FROM academy_cost_entries WHERE organisation_id=$1 AND voided_at IS NULL AND incurred_on BETWEEN $2 AND $3 ORDER BY incurred_on, id', [orgId, from, to]);
+  const [payroll, venue] = await Promise.all([payrollCost(orgId, from, to), venueCost(orgId, from, to)]);
+  const derived = [...payroll.rows, ...venue.rows];
+  const { manual: costs, superseded } = mergeCosts(manualAll, derived);
+  const unattributed = new Map(); // currency -> minor, cost with no programme
   const participants = new Map((await many(
     `SELECT e.programme_id, count(DISTINCT e.user_id)::int AS n FROM org_enrolments e JOIN org_cohorts k ON k.id=e.cohort_id
       WHERE k.organisation_id=$1 AND e.programme_id IS NOT NULL AND e.enrolled_at::date <= $3 AND (e.withdrawn_at IS NULL OR e.withdrawn_at::date >= $2) GROUP BY 1`, [orgId, from, to])).map((r) => [r.programme_id, r.n]));
@@ -59,7 +68,7 @@ export async function pnl(orgId, { from, to, programmeId = null, sport = null } 
   const row = (c, pid) => {
     if (!cur.has(c)) cur.set(c, new Map());
     const m = cur.get(c);
-    if (!m.has(pid)) m.set(pid, { programme_id: pid, gross: 0, discounts: 0, funded: { scholarship: 0, bursary: 0, sponsor: 0 }, net_invoiced: 0, tax: 0, refunds: 0, outstanding: 0, cash_collected: 0, cash_refunded: 0, athletes: new Set(), cost: { staff: null, venue: null, other_direct: null }, overhead: 0, charge_count: 0, cost_count: 0 });
+    if (!m.has(pid)) m.set(pid, { programme_id: pid, gross: 0, discounts: 0, funded: { scholarship: 0, bursary: 0, sponsor: 0 }, net_invoiced: 0, tax: 0, refunds: 0, outstanding: 0, cash_collected: 0, cash_refunded: 0, athletes: new Set(), cost: { staff: null, venue: null, other_direct: null }, overhead: 0, charge_count: 0, cost_count: 0, payroll_lines: 0, venue_bookings: new Set() });
     return m.get(pid);
   };
   for (const ch of charges) {
@@ -74,6 +83,12 @@ export async function pnl(orgId, { from, to, programmeId = null, sport = null } 
   for (const ce of costs.filter((x) => x.category !== 'overhead')) {
     const r = row(ce.currency, ce.programme_id);
     r.cost[ce.category] = (r.cost[ce.category] ?? 0) + n(ce.amount_minor); r.cost_count++;
+  }
+  for (const d of derived) {
+    if (!d.programme_id) { unattributed.set(d.currency, (unattributed.get(d.currency) ?? 0) + d.amount_minor); continue; }
+    const r = row(d.currency, d.programme_id);
+    r.cost[d.category] = (r.cost[d.category] ?? 0) + d.amount_minor;
+    if (d.category === 'staff') r.payroll_lines++; else r.venue_bookings.add(d.source_id);
   }
   const finish = (r, c) => {
     const revenue = r.gross - r.discounts - r.tax - r.refunds;
@@ -109,13 +124,14 @@ export async function pnl(orgId, { from, to, programmeId = null, sport = null } 
       const athletes = r.athletes.size;
       const sess = sessions.get(r.programme_id) ?? 0;
       return {
-        programme_id: r.programme_id, title: p?.title ?? 'Charges not linked to a programme', sport: p?.sport ?? null,
+        programme_id: r.programme_id, title: p?.title ?? 'Charges not linked to a programme', sport: p?.sport ?? null, branch_id: p?.branch_id ?? null,
         gross_billed_minor: r.gross, discounts_minor: r.discounts, funded_minor: r.funded, net_invoiced_minor: r.net_invoiced, tax_minor: r.tax, refunds_minor: r.refunds,
         management_revenue_minor: f.revenue, cash_collected_minor: r.cash_collected, cash_refunded_minor: r.cash_refunded, outstanding_minor: r.outstanding,
         staff_cost_minor: r.cost.staff, venue_cost_minor: r.cost.venue, other_direct_cost_minor: r.cost.other_direct, missing_costs: f.missing,
         contribution_minor: contribution, contribution_complete: f.complete, allocated_overhead_minor: r.overhead, operating_result_minor: operating,
         margin_pct: f.complete && f.revenue > 0 ? ratio(operating, f.revenue) : null,
-        sources: { charges: r.charge_count, cost_entries: r.cost_count },
+        sources: { charges: r.charge_count, cost_entries: r.cost_count, payroll_lines: r.payroll_lines, venue_bookings: r.venue_bookings.size },
+        venue_sessions_unbooked: venue.unbooked_by_programme.get(r.programme_id) ?? 0,
         unit: {
           capacity: p?.capacity ?? null, participants: participants.get(r.programme_id) ?? 0, utilisation_pct: p?.capacity ? ratio(participants.get(r.programme_id) ?? 0, p.capacity) : null,
           athletes_billed: athletes, sessions_delivered: sess || null,
@@ -127,11 +143,12 @@ export async function pnl(orgId, { from, to, programmeId = null, sport = null } 
         },
       };
     });
-    rows = rows.filter((r) => (!programmeId || r.programme_id === programmeId) && (!sport || r.sport === sport));
+    rows = rows.filter((r) => (!programmeId || r.programme_id === programmeId) && (!sport || r.sport === sport) && (!branchId || r.branch_id === branchId));
     const t = (k) => sum(rows.map((r) => r[k] ?? 0));
     const anyMissingStaff = rows.some((r) => !r.contribution_complete);
     const revenue = t('management_revenue_minor');
-    const op = t('operating_result_minor') - (programmeId || sport ? 0 : unallocated.get(currency) ?? 0);
+    const unattr = programmeId || sport || branchId ? null : unattributed.get(currency) ?? 0;
+    const op = t('operating_result_minor') - (programmeId || sport || branchId ? 0 : (unallocated.get(currency) ?? 0) + unattr);
     out.push({
       currency,
       totals: {
@@ -139,13 +156,34 @@ export async function pnl(orgId, { from, to, programmeId = null, sport = null } 
         net_invoiced_minor: t('net_invoiced_minor'), tax_minor: t('tax_minor'), refunds_minor: t('refunds_minor'), management_revenue_minor: revenue, cash_collected_minor: t('cash_collected_minor'), cash_refunded_minor: t('cash_refunded_minor'), outstanding_minor: t('outstanding_minor'),
         staff_cost_minor: rows.some((r) => r.staff_cost_minor != null) ? sum(rows.map((r) => r.staff_cost_minor ?? 0)) : null, venue_cost_minor: rows.some((r) => r.venue_cost_minor != null) ? sum(rows.map((r) => r.venue_cost_minor ?? 0)) : null,
         other_direct_cost_minor: rows.some((r) => r.other_direct_cost_minor != null) ? sum(rows.map((r) => r.other_direct_cost_minor ?? 0)) : null,
-        contribution_minor: t('contribution_minor'), allocated_overhead_minor: t('allocated_overhead_minor'), unallocated_overhead_minor: programmeId || sport ? null : unallocated.get(currency) ?? 0,
+        contribution_minor: t('contribution_minor'), allocated_overhead_minor: t('allocated_overhead_minor'), unallocated_overhead_minor: programmeId || sport || branchId ? null : unallocated.get(currency) ?? 0, unattributed_cost_minor: unattr,
         operating_result_minor: op, margin_pct: !anyMissingStaff && revenue > 0 ? ratio(op, revenue) : null, cost_picture_complete: !anyMissingStaff,
       },
       programmes: rows,
+      by_branch: byBranch(rows, branchNames),
     });
   }
-  return { period: { from, to }, basis: { revenue: 'invoice (accrual-like) by charge due date', cash: 'cash by payment date' }, definitions: DEFINITIONS, currencies: out };
+  // a currency with only unattributed cost still needs its own block so the cost is not lost
+  for (const [currency, minor] of unattributed) if (!out.some((o) => o.currency === currency) && !programmeId && !sport && !branchId) out.push({ currency, totals: { unattributed_cost_minor: minor, operating_result_minor: -minor - (unallocated.get(currency) ?? 0), cost_picture_complete: false }, programmes: [] });
+  out.sort((x, y) => x.currency.localeCompare(y.currency));
+  return {
+    period: { from, to }, basis: { revenue: 'invoice (accrual-like) by charge due date', cash: 'cash by payment date', staff_cost: 'approved payroll runs, by timesheet work date', venue_cost: 'confirmed venue bookings, by session date' },
+    cost_sources: { manual_entries_superseded: superseded.length, payroll_unpriced_timesheets: payroll.unpriced_timesheets, venue_sessions_unbooked: venue.unbooked_sessions },
+    definitions: DEFINITIONS, currencies: out,
+  };
+}
+
+/** Programme rows rolled up by branch, one currency. Programmes with no branch are an explicit "Unassigned" group, never dropped. Sums are plain sums of the programme figures, so they reconcile. */
+function byBranch(rows, names) {
+  const g = new Map();
+  for (const r of rows) {
+    const k = r.branch_id ?? null;
+    if (!g.has(k)) g.set(k, { branch_id: k, name: k ? names.get(k)?.name ?? 'Branch' : 'Unassigned', archived: !!(k && names.get(k)?.archived_at), programmes: 0, management_revenue_minor: 0, cash_collected_minor: 0, outstanding_minor: 0, contribution_minor: 0, operating_result_minor: 0, contribution_complete: true });
+    const b = g.get(k);
+    b.programmes++; b.management_revenue_minor += r.management_revenue_minor; b.cash_collected_minor += r.cash_collected_minor; b.outstanding_minor += r.outstanding_minor; b.contribution_minor += r.contribution_minor; b.operating_result_minor += r.operating_result_minor;
+    if (!r.contribution_complete) b.contribution_complete = false;
+  }
+  return [...g.values()].map((b) => ({ ...b, margin_pct: b.contribution_complete ? ratio(b.operating_result_minor, b.management_revenue_minor) : null })).sort((x, y) => (x.branch_id === null) - (y.branch_id === null) || x.name.localeCompare(y.name));
 }
 
 const BUCKETS = [['not_yet_due', -Infinity, 0], ['d1_30', 1, 30], ['d31_60', 31, 60], ['d61_90', 61, 90], ['d90_plus', 91, Infinity]];
@@ -181,7 +219,16 @@ export async function pnlLines(orgId, { from, to, programmeId, currency }) {
   const costs = await many(
     `SELECT 'academy_cost_entry' AS source_type, id AS source_id, category, incurred_on AS on_date, amount_minor, description, source_ref, allocation FROM academy_cost_entries
       WHERE organisation_id=$1 AND voided_at IS NULL AND incurred_on BETWEEN $2 AND $3 AND currency=$4 AND (programme_id=$5 OR (category='overhead' AND (allocation->>'method' <> 'split' OR allocation->'splits' @> jsonb_build_array(jsonb_build_object('programme_id', $5::text))) )) ORDER BY incurred_on, id LIMIT 500`, [orgId, from, to, currency, programmeId]);
-  return { charges, cost_entries: costs };
+  // canonical cost lines (approved payroll, confirmed venue bookings) for this programme; manual entries they replace are flagged, not hidden
+  const [payroll, venue] = await Promise.all([payrollCost(orgId, from, to), venueCost(orgId, from, to)]);
+  const derived = [...payroll.rows, ...venue.rows].filter((d) => d.currency === currency && d.programme_id === programmeId);
+  const { superseded } = mergeCosts(costs.map((c) => ({ ...c, programme_id: c.category === 'overhead' ? null : programmeId, currency })), derived);
+  const gone = new Set(superseded.map((c) => c.source_id));
+  return {
+    charges,
+    cost_entries: costs.map((c) => ({ ...c, superseded_by_canonical: gone.has(c.source_id) })),
+    canonical_costs: derived.map((d) => ({ source_type: d.source_type, source_id: d.source_id, category: d.category, on_date: d.on_date, amount_minor: d.amount_minor, session_id: d.session_id ?? null, payroll_run_id: d.run_id ?? null })),
+  };
 }
 
 /** Scenario maths. Pure: takes the baseline read from actuals plus editable assumptions, returns a separate projected result. Never writes to programmes, prices, payroll or bookings. */
@@ -217,6 +264,14 @@ export async function scenarioBaseline(orgId, programmeId) {
   const enrolled = (await one("SELECT count(*)::int AS n FROM org_enrolments WHERE programme_id=$1 AND status IN ('enrolled','paused')", [p.id])).n;
   const future = await one("SELECT coalesce(sum(ch.amount_minor),0)::bigint AS minor, count(*)::int AS n FROM academy_charges ch JOIN org_enrolments e ON e.id=ch.enrolment_id WHERE e.programme_id=$1 AND ch.status='awaiting_payment' AND ch.due_on >= current_date", [p.id]);
   const cost = Object.fromEntries((await many("SELECT category, sum(amount_minor)::bigint AS minor FROM academy_cost_entries WHERE programme_id=$1 AND voided_at IS NULL AND incurred_on >= current_date - 90 GROUP BY 1", [p.id])).map((r) => [r.category, Number(r.minor)]));
+  // canonical sources for the same last 90 days replace the manual figure for their category (same rule as the P&L)
+  const today = new Date().toISOString().slice(0, 10), start = new Date(Date.now() - 90 * 864e5).toISOString().slice(0, 10);
+  const cur = v?.currency;
+  const [pay, ven] = await Promise.all([payrollCost(orgId, start, today), venueCost(orgId, start, today)]);
+  const sumOf = (rows) => rows.filter((x) => x.programme_id === p.id && x.currency === cur).reduce((a, x) => a + x.amount_minor, 0);
+  const hasP = pay.rows.some((x) => x.programme_id === p.id && x.currency === cur), hasV = ven.rows.some((x) => x.programme_id === p.id && x.currency === cur);
+  if (hasP) cost.staff = sumOf(pay.rows);
+  if (hasV) cost.venue = sumOf(ven.rows);
   return { programme_id: p.id, title: p.title, currency: v?.currency ?? null, fee_minor: v ? Number(v.fee_minor) : null, billing_model: v?.billing_model ?? null, capacity: p.capacity, enrolled,
-    confirmed_future_invoices_minor: Number(future.minor), confirmed_future_invoices: future.n, staff_cost_per_period_minor: cost.staff ?? null, venue_cost_per_period_minor: cost.venue ?? null, source_period: 'last 90 days of cost entries; current enrolment; latest programme version' };
+    confirmed_future_invoices_minor: Number(future.minor), confirmed_future_invoices: future.n, staff_cost_per_period_minor: cost.staff ?? null, venue_cost_per_period_minor: cost.venue ?? null, source_period: 'last 90 days of approved payroll and confirmed venue bookings (manual cost entries where those have nothing); current enrolment; latest programme version' };
 }

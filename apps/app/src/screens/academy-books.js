@@ -9,10 +9,13 @@ import { Btn, Chip, Empty, ErrorBox, Loading, Row, Seg, T, Tag } from '../ui';
 import { FormSheet } from '../FormSheet';
 import { DateField } from '../pickers';
 import { c } from '../theme';
+import { t as tr } from '../i18n';
 import { moneyIn } from '../vtime';
 import { Bars, Block, Fact, Kpi, pct, saveCsv, when } from './academy-ui';
 import { Billing } from './academy-money';
 import { Collections } from './collections';
+import { BranchFilter, ByBranch, CostSources, PackButton, sourceLabel } from './academy-closeout';
+import { FinanceOverview } from './academy-overview';
 
 const Panel = ({ children }) => <View style={{ backgroundColor: c.paper, borderRadius: 20, padding: 16, gap: 10, borderWidth: 1, borderColor: c.line }}>{children}</View>;
 const day = (n) => new Date(Date.now() - n * 864e5).toISOString().slice(0, 10);
@@ -20,14 +23,15 @@ const M = (v, cur) => (v == null ? 'missing' : moneyIn(v, cur));
 const idem = (p) => `${p}-${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`;
 
 export function Finance({ o, role, archived, toast }) {
-  const [tab, setTab] = useState('charges');
   const staff = role === 'owner' || role === 'admin' || role === 'finance';
-  const opts = [{ value: 'charges', label: 'Charges' }, ...(staff ? [{ value: 'pnl', label: 'Profit & loss' }, { value: 'collections', label: 'Collections' }, { value: 'costs', label: 'Costs' }, { value: 'forecast', label: 'Forecast' }] : [])];
+  const [tab, setTab] = useState(staff ? 'overview' : 'charges');
+  const opts = [...(staff ? [{ value: 'overview', label: tr('aco.ov.tab') }] : []), { value: 'charges', label: 'Charges' }, ...(staff ? [{ value: 'pnl', label: 'Profit & loss' }, { value: 'collections', label: 'Collections' }, { value: 'costs', label: 'Costs' }, { value: 'forecast', label: 'Forecast' }] : [])];
   return (
     <View style={{ gap: 12 }}>
       <Seg value={tab} onChange={setTab} color={c.violet} options={opts} />
+      {tab === 'overview' ? <FinanceOverview o={o} role={role} toast={toast} /> : null}
       {tab === 'charges' ? <Billing o={o} archived={archived} /> : null}
-      {tab === 'pnl' ? <Pnl o={o} /> : null}
+      {tab === 'pnl' ? <Pnl o={o} toast={toast} /> : null}
       {tab === 'collections' ? <Collections target={{ organisation_id: o.id }} archived={archived} /> : null}
       {tab === 'costs' ? <Costs o={o} archived={archived} toast={toast} /> : null}
       {tab === 'forecast' ? <Forecast o={o} archived={archived} toast={toast} /> : null}
@@ -35,9 +39,9 @@ export function Finance({ o, role, archived, toast }) {
   );
 }
 
-function Pnl({ o }) {
-  const [from, setFrom] = useState(day(90)), [to, setTo] = useState(day(0)), [open, setOpen] = useState(null);
-  const r = useLoad(() => api.get(`/organisations/${o.id}/academy/pnl`, { from, to }), [o.id, from, to]);
+function Pnl({ o, toast }) {
+  const [from, setFrom] = useState(day(90)), [to, setTo] = useState(day(0)), [open, setOpen] = useState(null), [branch, setBranch] = useState(null);
+  const r = useLoad(() => api.get(`/organisations/${o.id}/academy/pnl`, { from, to, branch_id: branch || undefined }), [o.id, from, to, branch]);
   const lines = useLoad(() => (open ? api.get(`/organisations/${o.id}/academy/pnl/lines`, { from, to, programme_id: open.programme_id, currency: open.currency }) : Promise.resolve(null)), [open?.programme_id, open?.currency, from, to]);
   const exportCsv = async () => { try { const x = await api.get(`/organisations/${o.id}/academy/pnl/export`, { from, to }); await saveCsv(x.filename, x.csv); } catch (e) { /* shown by the error box on reload */ } };
   return (
@@ -47,7 +51,10 @@ function Pnl({ o }) {
           <View style={{ flex: 1, minWidth: 150 }}><DateField label="From" value={from} onChange={setFrom} max={to} /></View>
           <View style={{ flex: 1, minWidth: 150 }}><DateField label="To" value={to} onChange={setTo} min={from} /></View>
           <Btn small title="Export CSV" color={c.paper} ink={c.ink} onPress={exportCsv} />
+          <PackButton label={tr('aco.pack.finance')} path={`/organisations/${o.id}/academy/finance-pack`} body={{ from, to }} name="finance-pack" toast={toast} />
         </View>
+        <BranchFilter o={o} value={branch} onChange={setBranch} />
+        {r.data ? <CostSources sources={r.data.cost_sources} /> : null}
         {r.data ? <T size={12} color={c.mute}>{r.data.definitions.basis} Currencies are never added together.</T> : null}
       </Panel>
       {r.error ? <ErrorBox error={r.error} onRetry={r.reload} /> : !r.data ? <Loading /> : !r.data.currencies.length ? <Empty emoji="📊" title="No charges in this period" sub="Revenue appears once programmes are priced and people enrol. Costs are added on the Costs tab." /> : r.data.currencies.map((cur) => {
@@ -64,9 +71,11 @@ function Pnl({ o }) {
               <Fact k="Funded" v={`scholarship ${M(t.funded_minor.scholarship, k)} · bursary ${M(t.funded_minor.bursary, k)} · sponsor ${M(t.funded_minor.sponsor, k)}`} />
               <Fact k="Direct costs" v={`staff ${M(t.staff_cost_minor, k)} · venue ${M(t.venue_cost_minor, k)} · other ${M(t.other_direct_cost_minor, k)}`} />
               <Fact k="Contribution" v={`${M(t.contribution_minor, k)}${t.cost_picture_complete ? '' : ' (incomplete — a programme has no staff cost)'}`} />
+              {t.unattributed_cost_minor ? <Fact k={tr('aco.fund.unattributed')} v={`${M(t.unattributed_cost_minor, k)} · ${tr('aco.fund.unattributed_note')}`} /> : null}
               <Fact k="Overhead allocated" v={`${M(t.allocated_overhead_minor, k)}${t.unallocated_overhead_minor ? ` · ${M(t.unallocated_overhead_minor, k)} could not be allocated` : ''}`} />
               <Fact k="Operating result" v={`${M(t.operating_result_minor, k)} · margin ${pct(t.margin_pct)}`} />
             </Block>
+            <ByBranch rows={cur.by_branch} currency={k} />
             <Block title="By programme">
               <Bars label={`Operating result by programme in ${k}`} rows={cur.programmes.map((p) => ({ label: p.title, value: p.operating_result_minor, text: `${M(p.operating_result_minor, k)}${p.contribution_complete ? '' : ' (incomplete)'}`, tone: p.operating_result_minor < 0 ? c.orange : undefined }))} />
               {cur.programmes.map((p) => (
@@ -83,8 +92,9 @@ function Pnl({ o }) {
             {!lines.data ? <Loading /> : (
               <>
                 {lines.data.charges.map((l) => <Row key={l.source_id} title={`Charge · ${l.kind}`} sub={`due ${when(l.on_date)} · gross ${moneyIn(l.gross_minor, open.currency)} · discount ${moneyIn(l.discount_minor, open.currency)} · funded ${moneyIn(l.funded_minor, open.currency)}${l.funding_source ? ` (${l.funding_source})` : ''} · owed ${moneyIn(l.amount_minor, open.currency)} · source academy_charge ${l.source_id.slice(0, 8)}`} right={<Tag label={l.status.replace('_', ' ')} />} />)}
-                {lines.data.cost_entries.map((l) => <Row key={l.source_id} title={`Cost · ${l.category.replace('_', ' ')} · ${moneyIn(l.amount_minor, open.currency)}`} sub={`${when(l.on_date)} · ${l.description} · management entry ${l.source_id.slice(0, 8)}`} />)}
-                {!lines.data.charges.length && !lines.data.cost_entries.length ? <T size={13} color={c.mute}>Nothing in this period.</T> : null}
+                {(lines.data.canonical_costs ?? []).map((l) => <Row key={`${l.source_type}${l.source_id}${l.session_id ?? ''}`} title={`${sourceLabel(l.source_type === 'academy_payroll_line' ? 'payroll' : 'venue')} · ${moneyIn(l.amount_minor, open.currency)}`} sub={`${when(l.on_date)} · ${l.source_type === 'academy_payroll_line' ? tr('aco.line.payroll_ref', { id: l.source_id.slice(0, 8) }) : tr('aco.line.venue_ref', { id: l.source_id.slice(0, 8) })}`} />)}
+                {lines.data.cost_entries.map((l) => <Row key={l.source_id} title={`Cost · ${l.category.replace('_', ' ')} · ${moneyIn(l.amount_minor, open.currency)}`} sub={`${when(l.on_date)} · ${l.description} · ${l.superseded_by_canonical ? sourceLabel('superseded') : sourceLabel('manual')} ${l.source_id.slice(0, 8)}`} right={l.superseded_by_canonical ? <Tag label={tr('aco.line.set_aside')} color={c.sunSoft} /> : undefined} />)}
+                {!lines.data.charges.length && !lines.data.cost_entries.length && !(lines.data.canonical_costs ?? []).length ? <T size={13} color={c.mute}>Nothing in this period.</T> : null}
               </>
             )}
           </Block>
@@ -105,7 +115,7 @@ function Costs({ o, archived, toast }) {
   return (
     <Panel>
       <Block title="Management cost entries" right={!archived ? <Btn small title="＋ Add cost" onPress={() => { setKey(idem('cost')); setForm(true); }} /> : null}>
-        <T size={12} color={c.mute}>These are management-accounting lines for the P&L (coach fees, pitch hire, a share of overhead). They are not payments or invoices and move no money. Until Academy OS 2/3 brings timesheets and payroll, staff cost is entered here. Entries are never edited: void and re-add.</T>
+        <T size={12} color={c.mute}>{tr('aco.costs.intro')}</T>
         {list.error ? <ErrorBox error={list.error} onRetry={list.reload} /> : !list.data ? <Loading /> : list.data.length ? list.data.map((e) => (
           <Row key={e.id} title={`${moneyIn(e.amount_minor, e.currency)} · ${CATS.find(([k]) => k === e.category)?.[1]}${e.programme ? ` · ${e.programme}` : ''}`} sub={`${when(e.incurred_on)} · ${e.description}${e.category === 'overhead' ? ` · spread by ${e.allocation.method.replace('_', ' ')}` : ''}${e.voided_at ? ` · voided: ${e.void_reason}` : ''}`}
             right={e.voided_at ? <Tag label="Voided" /> : !archived ? <Btn small title="Void" color={c.paper} ink={c.ink} onPress={() => setVoid(e)} /> : null} />

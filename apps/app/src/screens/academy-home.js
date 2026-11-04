@@ -103,7 +103,7 @@ export function Home({ o, go, orgGo, openApplication, canMoney, toast }) {
         </View>
       </View>
       <T size={12} color={c.mute}>{d.families.payers} paying families · {d.families.multi_child} with more than one child</T>
-      <ExecutiveCards o={o} go={go} canMoney={canMoney} />
+      <ExecutiveCards o={o} go={go} canMoney={canMoney} toast={toast} />
     </View>
   );
 }

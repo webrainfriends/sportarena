@@ -289,6 +289,9 @@ export async function renderEnrolmentLetter({ layout, kit, logo, snapshot }) {
   return { buffer: Buffer.concat(chunks), pages: range.count };
 }
 
+/** The academy packs (progress report, management review, finance pack) are section documents from a frozen snapshot, exactly like the enrolment letter. */
+export const renderSectionDocument = renderEnrolmentLetter;
+
 /**
  * Agreement overview + full text, from a snapshot taken when the PDF is made. Letterhead (logo, legal name, address, contact) comes from the
  * brand kit or the organisation profile; parties get signature lines. It is template wording and says so in the footer.

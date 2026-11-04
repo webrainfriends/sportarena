@@ -167,6 +167,18 @@ export async function evaluateSession(c, s) {
   return { level, checks, expected, coaches: coaches.length, staff };
 }
 
+/** Published/completed sessions in a window whose staffing breaks a configured rule (ratio, minimum coaches, lead, lead credential). Capped; `capped` says so. */
+export async function staffingExceptions(c, orgId, from, to, { limit = 400 } = {}) {
+  const sessions = (await c.query("SELECT s.* FROM academy_sessions s WHERE s.organisation_id=$1 AND s.status IN ('published','completed') AND s.starts_at >= $2::date AND s.starts_at < $3::date + 1 ORDER BY s.starts_at, s.id LIMIT $4", [orgId, from, to, limit + 1])).rows;
+  const out = [];
+  for (const s of sessions.slice(0, limit)) {
+    const e = await evaluateSession(c, s);
+    const bad = e.checks.filter((x) => ['ratio', 'min_coaches', 'lead', 'lead_credential'].includes(x.code) && !x.ok);
+    if (bad.length) out.push({ session_id: s.id, title: s.title, programme_id: s.programme_id, cohort_id: s.cohort_id, starts_at: s.starts_at, issues: bad.map((x) => x.message) });
+  }
+  return { exceptions: out, checked: Math.min(sessions.length, limit), capped: sessions.length > limit };
+}
+
 /** Full pre-publish check: staff conflicts for everyone assigned, cohort overlaps, venue state and compliance. */
 export async function checkSession(c, s) {
   const staff = (await c.query("SELECT user_id FROM academy_session_staff WHERE session_id=$1 AND status IN ('assigned','confirmed')", [s.id])).rows;

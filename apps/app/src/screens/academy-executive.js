@@ -10,6 +10,10 @@ import { c } from '../theme';
 import { moneyIn } from '../vtime';
 import { useLayout } from '../layout';
 import { Bars, Block, Kpi, Meter, pct, when } from './academy-ui';
+import { t as tr } from '../i18n';
+import { BranchFilter, ByBranch, CostSources, DeliveryFacts, PackButton } from './academy-closeout';
+import { LeadershipPulse } from './academy-overview';
+import { BranchMatrix } from './academy-elite';
 
 const Panel = ({ children, onPress, label }) => {
   const body = <View style={{ backgroundColor: c.paper, borderRadius: 20, padding: 16, gap: 10, borderWidth: 1, borderColor: c.line }}>{children}</View>;
@@ -58,11 +62,13 @@ function Copilot({ o, from, to, canMoney }) {
   );
 }
 
-export function ExecutiveCards({ o, go, canMoney }) {
+export function ExecutiveCards({ o, go, canMoney, toast }) {
   const [days, setDays] = useState('90'), [all, setAll] = useState(false);
   const from = day(Number(days)), to = day(0);
-  const home = useLoad(() => api.get(`/organisations/${o.id}/academy/executive`, { from, to }), [o.id, days]);
+  const [branch, setBranch] = useState(null);
+  const home = useLoad(() => api.get(`/organisations/${o.id}/academy/executive`, { from, to, branch_id: branch || undefined }), [o.id, days, branch]);
   const sig = useLoad(() => api.get(`/organisations/${o.id}/academy/signals`), [o.id]);
+  const score = useLoad(() => api.get(`/organisations/${o.id}/academy/branch-scorecard`, { from, to }), [o.id, days]);
   const { tablet } = useLayout();
   if (home.error) return <ErrorBox error={home.error} onRetry={home.reload} />;
   if (!home.data) return <Loading />;
@@ -76,7 +82,14 @@ export function ExecutiveCards({ o, go, canMoney }) {
         <T weight="800" size={18} style={{ flex: 1 }}>Executive view</T>
         <Seg value={days} onChange={setDays} color={c.violet} options={PERIODS.map(([value, label]) => ({ value, label }))} />
       </View>
+      <View style={{ flexDirection: 'row', gap: 8, flexWrap: 'wrap', alignItems: 'flex-end' }}>
+        <View style={{ flex: 1, minWidth: 180 }}><BranchFilter o={o} value={branch} onChange={setBranch} /></View>
+        {h.people ? <PackButton label={tr('aco.pack.management')} path={`/organisations/${o.id}/academy/management-review`} body={{ from, to }} name="management-review" toast={toast} /> : null}
+        {h.finance ? <PackButton label={tr('aco.pack.finance')} path={`/organisations/${o.id}/academy/finance-pack`} body={{ from, to }} name="finance-pack" toast={toast} /> : null}
+      </View>
       <T size={12} color={c.mute}>{when(from)} – {when(to)}. Management figures from your own records, not statutory accounts. Currencies are never added together.</T>
+      <LeadershipPulse h={h} o={o} go={go} />
+      {score.data && h.finance ? <Panel><BranchMatrix data={score.data} currency={[...h.finance.currencies].sort((a, b) => b.management_revenue_minor - a.management_revenue_minor)[0]?.currency} /></Panel> : null}
       <View style={{ flexDirection: tablet ? 'row' : 'column', gap: 14, alignItems: 'flex-start' }}>
         <View style={[col, { gap: 14 }]}>
           {h.people ? (
@@ -91,13 +104,9 @@ export function ExecutiveCards({ o, go, canMoney }) {
             </Panel>
           ) : null}
           {h.delivery ? (
-            <Panel onPress={() => go('programmes')} label="Delivery. Open programmes.">
+            <Panel onPress={() => go('ops')} label={tr('aco.deliv.open')}>
               <Block title="Delivery">
-                <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
-                  <Kpi label="Sessions recorded" value={h.delivery.sessions_recorded} sub="with attendance taken" />
-                  <Kpi label="Attendance" value={pct(h.delivery.attendance_pct)} sub="present of present + absent" />
-                </View>
-                <T size={12} color={c.mute}>Cancelled sessions: missing · Staffing exceptions: missing. {h.delivery.missing_note}</T>
+                <DeliveryFacts d={h.delivery} />
               </Block>
             </Panel>
           ) : null}
@@ -128,9 +137,11 @@ export function ExecutiveCards({ o, go, canMoney }) {
                       <Kpi label="Outstanding" value={moneyIn(f.outstanding_minor, f.currency)} />
                       <Kpi label="Result" value={f.cost_picture_complete ? moneyIn(f.operating_result_minor, f.currency) : 'incomplete'} sub={f.cost_picture_complete ? pct(f.margin_pct) + ' margin' : 'staff cost missing for some programmes'} tone={f.cost_picture_complete ? undefined : 'alert'} />
                     </View>
+                    <ByBranch rows={f.by_branch} currency={f.currency} />
                     <Bars label={`Margin by programme in ${f.currency}`} rows={f.programmes.map((p) => ({ label: p.title, value: p.margin_pct, text: p.margin_pct == null ? 'missing' : `${p.margin_pct}%`, tone: p.margin_pct < 0 ? c.orange : undefined }))} />
                   </View>
                 )) : <T size={13} color={c.mute}>No charges in this period.</T>}
+                <CostSources sources={h.finance.cost_sources} />
                 {h.finance.ageing.map((a) => (
                   <Bars key={a.currency} label={`Receivables ageing in ${a.currency}`} rows={[['Not yet due', 'not_yet_due'], ['1–30 days', 'd1_30'], ['31–60 days', 'd31_60'], ['61–90 days', 'd61_90'], ['90+ days', 'd90_plus']].map(([l, k]) => ({ label: `${a.currency} ${l}`, value: a.buckets[k].amount_minor, text: moneyIn(a.buckets[k].amount_minor, a.currency), tone: k === 'not_yet_due' ? c.cyan : c.orange }))} />
                 ))}

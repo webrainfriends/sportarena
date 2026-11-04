@@ -20,10 +20,10 @@ export const ACADEMY_STEPS = [
   {
     id: 'venues', title: 'Configure venues',
     why: 'Sessions, courts and fees are tied to a venue, so add the places you train before you plan programmes.',
-    steps: ['Open the Teams, events & venues tab of your organisation.', 'Add a venue or link one you already manage, then open its workspace.', 'Add courts or pitches and set their sport, then set prices and the weekly timetable.', 'Finish with invoices, tax and contact details so bookings and fees show the right details.'],
+    steps: ['Open the Teams, events & venues tab of your organisation.', 'Add a venue or link one you already manage, then open its workspace.', 'Add courts or pitches and set their sport, then set prices and the weekly timetable.', 'Finish with invoices, tax and contact details so bookings and fees show the right details.', 'Running more than one location? In Academy, Settings, add a branch for each, choose its manager and venues, and place programmes in it so reports can compare locations.'],
     target: { org: 'assets' },
-    modules: ['venues.js', 'venue-admin.js', 'venue-facility.js', 'venue-operations.js', 'venue-command.js'],
-    sources: ['apps/app/src/screens/venue-setup.js', 'apps/app/src/screens/venue-workspace.js'],
+    modules: ['venues.js', 'venue-admin.js', 'venue-facility.js', 'venue-operations.js', 'venue-command.js', 'academy-branches.js'],
+    sources: ['apps/app/src/screens/venue-setup.js', 'apps/app/src/screens/venue-workspace.js', 'apps/app/src/screens/academy-closeout.js'],
   },
   {
     id: 'staff', title: 'Add staff',
@@ -43,9 +43,9 @@ export const ACADEMY_STEPS = [
   {
     id: 'programmes', title: 'Build programmes',
     why: 'A programme is what families buy: a squad, a term course or a camp, with a price and places.',
-    steps: ['Open Academy, then Programmes, and tap New programme.', 'Work through the steps: sport and venue, schedule, price and places, application questions and agreements.', 'Check the family price preview in Review.', 'Publish to open applications, or save as a draft.'],
+    steps: ['Open Academy, then Programmes, and tap New programme.', 'Work through the steps: sport and venue, schedule, price and places, application questions and agreements.', 'Check the family price preview in Review.', 'Publish to open applications, or save as a draft.', 'After a graduation or squad decision, open the athlete on the Progress page to issue the certificate, send the squad invitation or move them to another cohort.'],
     target: { academy: 'programmes' },
-    modules: ['academy-programmes.js', 'academy-pathways.js'], sources: ['apps/app/src/screens/academy-programmes.js'],
+    modules: ['academy-programmes.js', 'academy-pathways.js', 'academy-follow-through.js'], sources: ['apps/app/src/screens/academy-programmes.js'],
   },
   {
     id: 'coaches', title: 'Hire coaches',
@@ -78,16 +78,16 @@ export const ACADEMY_STEPS = [
   {
     id: 'revenue', title: 'Share revenue',
     why: 'Agree how money is shared with coaches and how shared costs are spread across programmes.',
-    steps: ['For coaches: in the venue workspace, Coaches tab, choose Revenue share as the pay model and set the percentage.', 'For shared costs: in Academy, Finance, open Costs, add a cost and choose how it is spread (participants, revenue share or evenly).', 'Open Profit & loss to review the result per programme.'],
+    steps: ['For coaches: in the venue workspace, Coaches tab, choose Revenue share as the pay model and set the percentage.', 'For shared costs: in Academy, Finance, open Costs, add a cost and choose how it is spread (participants, revenue share or evenly).', 'Open Profit & loss to review the result per programme; staff cost is read from approved payroll and venue cost from confirmed bookings.'],
     target: { academy: 'billing' },
     modules: ['academy-finance.js', 'academy-payroll.js'], sources: ['apps/app/src/screens/academy-books.js'],
   },
   {
     id: 'reports', title: 'Read reports',
     why: 'See outcomes, retention, finance health and partners on the executive home, and export what you need.',
-    steps: ['Open Academy, then Home for the executive view.', 'Check the funnel, fees, outcomes and retention indicators.', 'Open Finance to export the profit and loss.', 'Share season reports and shared reports with families or partners.'],
+    steps: ['Open Academy, then Home for the executive view.', 'Check the funnel, fees, outcomes and retention indicators.', 'Open Finance to export the profit and loss.', 'Open Finance, then Overview, for the monthly trend, the cost mix and the branch comparison, and issue the finance pack or management review as a PDF.', 'Open an athlete on the Progress page to issue their progress report as a PDF.', 'Share season reports and shared reports with families or partners.'],
     target: { academy: 'home' },
-    modules: ['academy-executive.js', 'academy-athlete360.js', 'org-command-centre.js'], sources: ['apps/app/src/screens/academy-home.js', 'apps/app/src/screens/academy-executive.js'],
+    modules: ['academy-executive.js', 'academy-athlete360.js', 'org-command-centre.js', 'academy-insights.js', 'academy-packs.js'], sources: ['apps/app/src/screens/academy-home.js', 'apps/app/src/screens/academy-executive.js', 'apps/app/src/screens/academy-overview.js', 'apps/app/src/screens/academy-elite.js'],
   },
 ];
 
