@@ -138,6 +138,13 @@ export const ACADEMY_STEPS = [
     target: { academy: 'wellbeing' },
     modules: ['academy-wellbeing.js', 'academy-wellbeing-family.js', 'academy-wellbeing-overview.js'], sources: ['apps/app/src/screens/academy-wellbeing.js', 'apps/app/src/screens/academy-wellbeing-tracks.js', 'apps/app/src/screens/wellbeing-family.js'],
   },
+  {
+    id: 'placement', title: 'Manage placement pathways',
+    why: 'Give every graduating athlete a consented bridge from academy progression to university, scholarship and professional opportunities, managed by a placement advisor with an auditable funnel, evidence checklist, reference requests and revocable institution sharing.',
+    steps: ['Open Academy, then Placement, and tap Add opportunity for an enrolled athlete.', 'Choose the type (university place, scholarship, grant or professional contract), set the institution, sport, deadline and intake year.', 'Build the evidence checklist: add items for academic transcript, sport CV, performance video, references and any passport or ranking documents.', 'Request references from coaches, academic coordinators or other referees and track their submission status.', 'Ask the athlete (or their guardian for under-18s) to grant the institution access to specific evidence fields. They choose exactly what to share and can revoke at any time.', 'Advance the opportunity through its stages — identified, eligibility check, evidence gathering, applied, offer received, outcome — as the process progresses.', 'Link a sponsorship award to the opportunity for attribution tracking across the finance module.', 'Use the Action Queue to triage urgent items: references due, missing evidence and pending guardian consents. Use Analytics for seasonal outcome and scholarship reports.'],
+    target: { academy: 'placement' },
+    modules: ['academy-placement.js'], sources: ['apps/app/src/screens/academy-placement.js'],
+  },
 ];
 
 /** Org/academy API modules with no step of their own, and why. Anything not here and not in a step fails the guard test. */
