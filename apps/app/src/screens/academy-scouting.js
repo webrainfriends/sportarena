@@ -36,7 +36,7 @@ export function Scouting({ o, role, archived, toast, onOpenApplication, focus })
         <View style={{ flex: 1, minWidth: 220 }}>
           {all.length ? <MenuField label={t('scout.pick')} value={current?.id} onChange={setSel} options={all.map((x) => ({ value: x.id, label: x.name, sub: t(`scout.status.${x.status}`) }))} /> : null}
         </View>
-        {staff && !archived ? <Btn small title={`＋ ${t('scout.new')}`} onPress={() => setWizard({ camp: null, step: 0 })} /> : null}
+        {staff && !archived ? <Btn small title={['＋', t('scout.new')].join(' ')} onPress={() => setWizard({ camp: null, step: 0 })} /> : null}
       </View>
       {!all.length ? (
         <Empty emoji="🔭" title={t('scout.none.title')} sub={staff ? t('scout.none.sub') : t('scout.none.sub_member')} />
@@ -208,7 +208,7 @@ function ProspectFile({ id, toast, onChanged, onOpenApplication }) {
   );
 }
 
-const FormReason = ({ value, onChange, required }) => <Field label={`${t('scout.vote.reason')}${required ? ' *' : ''}`} value={value} onChangeText={onChange} multiline minHeight={64} />;
+const FormReason = ({ value, onChange, required }) => <Field label={[t('scout.vote.reason'), required ? '*' : ''].join(' ').trim()} value={value} onChangeText={onChange} multiline minHeight={64} />;
 
 function Log({ events }) {
   if (!events?.length) return null;
