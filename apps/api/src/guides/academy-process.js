@@ -78,9 +78,9 @@ export const ACADEMY_STEPS = [
   {
     id: 'revenue', title: 'Share revenue',
     why: 'Agree how money is shared with coaches and how shared costs are spread across programmes.',
-    steps: ['For coaches: in the venue workspace, Coaches tab, choose Revenue share as the pay model and set the percentage.', 'For shared costs: in Academy, Finance, open Costs, add a cost and choose how it is spread (participants, revenue share or evenly).', 'Open Profit & loss to review the result per programme; staff cost is read from approved payroll and venue cost from confirmed bookings.'],
+    steps: ['For coaches: in the venue workspace, Coaches tab, choose Revenue share as the pay model and set the percentage.', 'For shared costs: in Academy, Finance, open Costs, add a cost and choose how it is spread (participants, revenue share or evenly).', 'Open Profit & loss to review the result per programme; staff cost is read from approved payroll and venue cost from confirmed bookings.', 'Before adding a cohort or promoting athletes, open Forecast and choose New capacity scenario: pick the period, programme changes, promotions, venue, days, times and coaches. It shows real venue, coach and School timetable conflicts, coaches and hours needed, pathway bottlenecks and cost, and lists what is missing. It changes nothing; you decide on each recommendation.'],
     target: { academy: 'billing' },
-    modules: ['academy-finance.js', 'academy-payroll.js'], sources: ['apps/app/src/screens/academy-books.js'],
+    modules: ['academy-finance.js', 'academy-payroll.js', 'academy-capacity.js'], sources: ['apps/app/src/screens/academy-books.js', 'apps/app/src/screens/academy-capacity.js'],
   },
   {
     id: 'reports', title: 'Read reports',

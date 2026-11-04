@@ -246,6 +246,7 @@ import './academy-desk.js';
 import './academy-pathways.js';
 import './academy-athlete360.js';
 import './academy-finance.js';
+import './academy-capacity.js';
 import './academy-branches.js';
 import './academy-follow-through.js';
 import './academy-packs.js';
