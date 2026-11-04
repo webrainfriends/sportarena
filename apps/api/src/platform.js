@@ -23,7 +23,7 @@ export async function mustBePlatformAdmin(user) {
 }
 
 /** The two platform-only roles. They are never shown or offered anywhere an ordinary person manages roles, and only allow-listed emails hold them. */
-export const PLATFORM_ROLES = ['admin', 'platform_admin', 'official_verifier'];   // official_verifier is platform STAFF with a narrow job (official verifications): granted only by the platform admin, never self-assigned, never public; it is NOT stripped by reconcilePlatformRoles (that guards the two admin labels)
+export const PLATFORM_ROLES = ['admin', 'platform_admin'];
 export const withoutPlatformRoles = (roles = []) => roles.filter((r) => !PLATFORM_ROLES.includes(r));
 
 /**

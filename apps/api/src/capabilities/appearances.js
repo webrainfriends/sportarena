@@ -12,7 +12,6 @@ import { publish } from '../live.js';
 import { liveState } from '../scoring/state.js';
 import { ACTIVITIES_CTE } from '../athlete-history.js';
 import { AUTHORITY, matchLength, minutesOn, ratesFrom } from '../appearances/minutes.js';
-import { activeSportingSanction } from '../integrity.js';
 
 const TAG = 'Appearances';
 const q = (c) => c ?? pool;
@@ -39,11 +38,6 @@ async function eligible(c, fixture, teamId, userIds) {
      UNION SELECT user_id FROM team_members WHERE team_id=$1 AND status='active' AND user_id = ANY($4)`, [teamId, fixture.id, fixture.event_id, userIds])).rows.map((r) => r.user_id));
   const missing = userIds.filter((u) => !ok.has(u));
   if (missing.length) throw badRequest('Everyone in the lineup must be in the squad or on the active roster of the team', { user_ids: missing });
-  // a suspension is read live from the disciplinary record, so stale squad data can never put a suspended player on the sheet
-  const sportId = (await c.query('SELECT sport_id FROM events WHERE id=$1', [fixture.event_id])).rows[0]?.sport_id;
-  const blocked = [];
-  for (const u of userIds) if (sportId && (await activeSportingSanction(c, u, sportId, undefined, { eventId: fixture.event_id, at: fixture.scheduled_at }))) blocked.push(u);
-  if (blocked.length) throw conflict('Someone named is not eligible to play in this match', { code: 'not_eligible', user_ids: blocked });
 }
 
 /** Minutes for every appearance of a game from the game clock. Manual entries and official-sheet values are never recomputed. */

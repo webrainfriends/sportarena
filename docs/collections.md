@@ -60,3 +60,14 @@ One React Native screen (`apps/app/src/screens/collections.js`) built from share
 * Automatic debit needs a provider adapter (#498). Until then it is reported as unavailable, never simulated.
 * A part-paid or waived charge keeps its single original invoice; the receipts and adjustments are shown on the collections case, not re-printed on the invoice.
 * Venue membership renewals have no part payments or waivers (a plan is bought whole); they do have reminders, promises, holds, escalation and history.
+
+## Coach subscription months on a saved card (#680)
+
+A coach subscription month can be paid automatically from a saved card. It is the same mandate system as UPI AutoPay (`payment_mandates`, capabilities `create_payment_mandate`, `confirm_payment_mandate`, `list_my_payment_mandates`, `cancel_payment_mandate`) with `provider='stripe'`, `method='card'`; there is no second one.
+
+* **Setup**: Stripe's hosted page (setup mode), so card data never reaches the app or the server. We keep Stripe's customer and payment-method ids encrypted (`payment_mandates.customer`, `payment_mandates.pm`) and the brand, last four and expiry for display.
+* **Who may opt in**: the payer of the subscription. For a young person that is a live, verified guardian with the `pay` scope and current `coaching` consent (`payerBlocked`, checked at setup and again before every charge). The guardian is recorded in `consent_by`.
+* **Charging**: `autoDebit` hands a coach month to the executor registered as `stripe-coach` (`payments/card-autopay.js`), using the case's own retry cadence and the `auto_debit_*` events. A charge is an ordinary `payments` row (`recordCharge`, then `settle()`), so ledger, receipts and refunds are unchanged.
+* **Exactly once**: Stripe idempotency key `coachsub:<subscription>:<period_no>:<attempt>`, `UNIQUE (subscription_id, period_no, attempt)` and a partial unique index allowing one `processing`/`succeeded` charge per period in `mandate_charges`, plus an advisory lock per period.
+* **Decline**: recorded as `auto_debit_failed`, the payer is told, and the normal reminders, grace days and lapse run unchanged. A card that can no longer be charged (expired, lost) halts the mandate. Nothing is deleted.
+* **Revoke**: the status is cancelled first, so the very next sweep makes no charge; the saved card is then detached at Stripe. A guardian link or consent that ends cancels the mandate at the next charge attempt and tells the payer and guardians.

@@ -1,5 +1,3 @@
-// Sports Disciplinary & Sanctions (#479): policy thresholds, cases from canonical cards, automatic and panel decisions, served-match counting, eligibility,
-// fines and points deductions through the canonical mechanisms, appeals, corrections, privacy and the whole sport catalogue.
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 
@@ -7,190 +5,227 @@ Object.assign(process.env, { DATABASE_URL: process.env.TEST_DATABASE_URL ?? 'pos
 const { pool } = await import('../src/db.js');
 const { migrate } = await import('../src/migrate.js');
 const { createApp } = await import('../src/http.js');
-const D = await import('../src/discipline.js');
-const { activeSportingSanction } = await import('../src/integrity.js');
+const { POLICY, thresholdFor, serviceOf, blocksOn, appealDeadline, modelFor } = await import('../src/discipline.js');
+const { flagSourceCorrection } = await import('../src/discipline-live.js');
 
 let server, base, n = 0;
 const api = async (method, path, { token, body, query } = {}) => {
   const r = await fetch(`${base}/api/v1${path}${query ? `?${new URLSearchParams(query)}` : ''}`, { method, headers: { 'content-type': 'application/json', ...(token ? { authorization: `Bearer ${token}` } : {}) }, body: body ? JSON.stringify(body) : undefined });
   return { status: r.status, body: await r.json() };
 };
+const rpc = async (method, params, token) => {
+  const r = await fetch(`${base}/mcp`, { method: 'POST', headers: { 'content-type': 'application/json', accept: 'application/json, text/event-stream', ...(token ? { authorization: `Bearer ${token}` } : {}) }, body: JSON.stringify({ jsonrpc: '2.0', id: 1, method, params }) });
+  return (await r.json()).result;
+};
 const must = (r, status = 200) => { assert.equal(r.status, status, JSON.stringify(r.body)); return r.body; };
 const day = (offset) => new Date(Date.now() + offset * 864e5).toISOString().slice(0, 10);
-const signup = async (roles = ['athlete']) => { n++; const r = await api('POST', '/auth/register', { body: { handle: `dc_${n}_${roles[0]}`, display_name: `Dc ${n}`, email: `dc${n}@example.com`, password: 'correct-horse-battery', roles } }); return { ...r.body.user, token: r.body.token }; };
+const signup = async (roles = ['athlete']) => { n++; const r = await api('POST', '/auth/register', { body: { handle: `cp_${n}_${roles[0]}`, display_name: `Cp ${n}`, email: `cp${n}@example.com`, password: 'correct-horse-battery-9', roles } }); assert.equal(r.status, 201, JSON.stringify(r.body)); return { ...r.body.user, token: r.body.token }; };
 
-before(async () => { await pool.query('DROP SCHEMA public CASCADE; CREATE SCHEMA public'); await migrate(); server = createApp().listen(0); base = `http://localhost:${server.address().port}`; });
+before(async () => {
+  await pool.query('DROP SCHEMA public CASCADE; CREATE SCHEMA public');
+  await migrate();
+  server = createApp().listen(0);
+  base = `http://localhost:${server.address().port}`;
+});
 after(async () => { server.close(); await pool.end(); });
 
-const PARAMS = {
-  card_points: { yellow_card: 1 }, accumulation: [{ points: 3, matches: 1 }], direct: [{ kind: 'red_card', matches: 2 }], second_caution: { kind: 'yellow_card', matches: 1 },
-  authority: { fines: true, points_deduction: true, fine_cap_minor: 500000, points_cap: 6 }, appeal_window_days: 7, stay_on_appeal: true,
-};
 
-// ------------------------------------------------------------------ pure engine
-test('thresholds are deterministic: the same cards give the same triggers in any order, and carry-over / expiry follow the policy', () => {
-  const at = (d) => new Date(Date.UTC(2026, 0, d)).toISOString();
-  const yc = (i, d, fx = `f${d}`) => ({ id: `c${String(i).padStart(2, '0')}`, kind: 'yellow_card', fixture_id: fx, at: at(d), player_id: 'p' });
-  const cards = [yc(1, 1), yc(2, 5), yc(3, 9), yc(4, 12), yc(5, 14), yc(6, 18)];
-  const a = D.evaluateThresholds(PARAMS, cards);
-  const b = D.evaluateThresholds(PARAMS, [...cards].reverse());
-  assert.deepEqual(a, b, 'order of arrival never changes the result');
-  assert.deepEqual(a.filter((t) => t.rule === 'accumulation').map((t) => t.match_event_id), ['c03', 'c06'], 'every third caution, then the count restarts');
-  const keep = D.evaluateThresholds({ ...PARAMS, carry_over: 'keep_excess', card_points: { yellow_card: 2 }, accumulation: [{ points: 3, matches: 1 }] }, cards.slice(0, 3));
-  assert.equal(keep.length, 2, 'excess points carry over: 2 then 4-3=1, +2 reaches 3 again');
-  const exp = D.evaluateThresholds({ ...PARAMS, expire_after_days: 4 }, cards);
-  assert.equal(exp.filter((t) => t.rule === 'accumulation').length, 0, 'cautions older than the window stop counting');
-  const two = D.evaluateThresholds(PARAMS, [yc(1, 1, 'fx'), yc(2, 1, 'fx')]);
-  assert.equal(two.filter((t) => t.rule === 'second_caution').length, 1, 'two cautions in one match');
-  assert.equal(D.escalate({ repeat_offence: { within_days: 365, add_matches: 1 } }, 2, 2), 4);
+// ------------------------------------------------------------------ pure rules
+test('discipline rules: policy schema, deterministic thresholds, served matches, blocking and appeal window', () => {
+  assert.throws(() => POLICY.parse({ caution_thresholds: [{ count: 5, suspension_matches: 1 }, { count: 5, suspension_matches: 2 }] }), /different/);
+  assert.throws(() => POLICY.parse({ caution_thresholds: [{ count: 5, suspension_matches: 2 }, { count: 10, suspension_matches: 1 }] }), /shorter/);
+  assert.throws(() => POLICY.parse({ typo_key: 1 }), /Unrecognized/);
+  const p = POLICY.parse({ caution_thresholds: [{ count: 5, suspension_matches: 1 }, { count: 10, suspension_matches: 2 }] });
+  assert.deepEqual([thresholdFor(p, 4), thresholdFor(p, 5)?.suspension_matches, thresholdFor(p, 6), thresholdFor(p, 10)?.suspension_matches], [null, 1, null, 2], 'only an exact crossing triggers, so recomputing never double-issues');
+  const s = { matches: 2, starts_on: '2026-03-01', starts_after: '2026-03-01T15:00:00Z', status: 'active', kind: 'match_suspension' };
+  const fx = [
+    { id: 'same-day', status: 'completed', scheduled_at: '2026-03-01T15:00:00Z' }, // the match the card happened in is not served
+    { id: 'a', status: 'postponed', scheduled_at: '2026-03-08T15:00:00Z' }, { id: 'b', status: 'completed', scheduled_at: '2026-03-15T15:00:00Z' },
+    { id: 'c', status: 'cancelled', scheduled_at: '2026-03-22T15:00:00Z' }, { id: 'd', status: 'completed', scheduled_at: '2026-03-29T15:00:00Z' },
+  ];
+  const sv = serviceOf(s, fx);
+  assert.deepEqual([sv.served, sv.remaining, sv.done, sv.counted_fixture_ids], [2, 0, true, ['b', 'd']]);
+  assert.equal(serviceOf(s, fx.slice(0, 3)).remaining, 1);
+  assert.equal(blocksOn(s, '2026-03-10', serviceOf(s, fx.slice(0, 3))), true);
+  assert.equal(blocksOn(s, '2026-04-10', sv), false, 'served');
+  assert.equal(blocksOn({ ...s, status: 'stayed' }, '2026-03-10'), false);
+  assert.equal(blocksOn({ ...s, status: 'interim' }, '2026-03-10'), true, 'an interim measure blocks but is labelled interim');
+  assert.equal(blocksOn({ ...s, kind: 'fine' }, '2026-03-10'), false);
+  assert.equal(appealDeadline('2026-03-01', { appeal_window_days: 3 }), '2026-03-04');
+  assert.equal(appealDeadline('2026-03-01', { appeal_window_days: 0 }), null);
 });
 
-// ------------------------------------------------------------------ the whole sport catalogue
-test('every sport in the catalogue has a native discipline model or a labelled generic fallback; none is silent', async () => {
-  const sports = (await pool.query('SELECT * FROM sports ORDER BY slug')).rows;
-  assert.ok(sports.length > 20);
-  const native = [], fallback = [];
-  for (const sp of sports) {
-    const m = D.disciplineModelOf(sp);
-    assert.ok(['cards', 'conduct_levels', 'foul_limits', 'generic'].includes(m.family), sp.slug);
-    assert.ok(m.label, `${sp.slug} is labelled`);
-    if (m.family === 'generic') { fallback.push(sp.slug); assert.match(m.label, /fallback/i); } else native.push(sp.slug);
-  }
-  console.log(`# discipline sports: ${sports.length}; native ${native.length}; labelled generic fallback ${fallback.length}: ${fallback.join(', ')}`);
-  const v = must(await api('GET', '/discipline/vocabulary'));
-  assert.equal(v.sports.length, sports.length);
-});
-
-// ------------------------------------------------------------------ a real league with cards
-const league = async () => {
+// ------------------------------------------------------------------ lifecycle (PostgreSQL)
+const comp = async ({ rules = {} } = {}) => {
   const org = await signup(['organizer']);
-  const comp = must(await api('POST', '/competitions', { token: org.token, body: { name: `Disc League ${++n}`, sport: 'football', country: 'IN', level: 'amateur', is_public: true } }), 201);
-  const season = must(await api('POST', `/competitions/${comp.id}/seasons`, { token: org.token, body: { label: '2026/27', starts_on: day(1), ends_on: day(200), registration_opens_on: day(-1), registration_closes_on: day(30) } }), 201);
+  const cm = must(await api('POST', '/competitions', { token: org.token, body: { name: `Discipline Cup ${++n}`, sport: 'football', is_public: true } }), 201);
+  const season = must(await api('POST', `/competitions/${cm.id}/seasons`, { token: org.token, body: { label: '2026', starts_on: day(-100), ends_on: day(100) } }), 201);
   const div = must(await api('POST', `/seasons/${season.id}/divisions`, { token: org.token, body: { name: 'Premier', tier: 1, capacity: 8 } }), 201);
-  const mgrs = [], teams = [];
-  for (let i = 0; i < 2; i++) {
-    const m = await signup(); mgrs.push(m);
-    teams.push(must(await api('POST', '/teams', { token: m.token, body: { name: `DFC ${n}-${i}`, sport: 'football' } }), 201));
-  }
+  const mA = await signup(); const mB = await signup(); const player = await signup();
+  const A = must(await api('POST', '/teams', { token: mA.token, body: { name: `DA ${n}`, sport: 'football' } }), 201);
+  const B = must(await api('POST', '/teams', { token: mB.token, body: { name: `DB ${n}`, sport: 'football' } }), 201);
+  await pool.query("INSERT INTO team_members(team_id,user_id,role,status) VALUES ($1,$2,'player','active') ON CONFLICT (team_id,user_id) DO UPDATE SET status='active'", [A.id, player.id]);
   must(await api('POST', `/seasons/${season.id}/status`, { token: org.token, body: { status: 'open' } }));
-  for (const [i, t] of teams.entries()) {
-    const m = must(await api('POST', `/seasons/${season.id}/memberships`, { token: mgrs[i].token, body: { team_id: t.id, division_id: div.id } }), 201);
-    must(await api('POST', `/memberships/${m.id}/decision`, { token: org.token, body: { action: 'accept' } }));
-  }
-  const player = await signup();
-  await pool.query("INSERT INTO team_members(team_id, user_id, role, status) VALUES ($1,$2,'player','active')", [teams[0].id, player.id]);
-  const ev = (await pool.query('SELECT event_id FROM comp_seasons WHERE id=$1', [season.id])).rows[0].event_id;
-  const fx = async (offset, status = 'scheduled') => (await pool.query('INSERT INTO fixtures(event_id, home_team_id, away_team_id, scheduled_at, status) VALUES ($1,$2,$3,now() + ($4 || \' days\')::interval,$5) RETURNING id', [ev, teams[0].id, teams[1].id, String(offset), status])).rows[0].id;
-  let seq = 0;
-  const card = async (fixtureId, kind, who = player.id, team = teams[0].id) => (await pool.query(
-    "INSERT INTO match_events(fixture_id, event_id, seq, kind, team_id, player_id, recorded_by) VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING id", [fixtureId, ev, ++seq + Math.floor(Math.random() * 1e6), kind, team, who, org.id])).rows[0].id;
-  return { org, comp, season, div, mgrs, teams, player, ev, fx, card };
+  for (const [m, tm] of [[mA, A], [mB, B]]) { const ms = must(await api('POST', `/seasons/${season.id}/memberships`, { token: m.token, body: { team_id: tm.id, division_id: div.id } }), 201); must(await api('POST', `/memberships/${ms.id}/decision`, { token: org.token, body: { action: 'accept' } })); }
+  const pol = must(await api('POST', `/competitions/${cm.id}/discipline-policy`, { token: org.token, body: { rules: { caution_thresholds: [{ count: 5, suspension_matches: 1 }, { count: 10, suspension_matches: 2 }], dismissal: { suspension_matches: 2, interim: true }, appeal_window_days: 3, stay_on_appeal: true, fine_authority: true, points_deduction_authority: true, ...rules } } }), 201);
+  return { org, cm, season, div, A, B, mA, mB, player, pol };
 };
+let uid = 0; const fid = () => `00000000-0000-4000-8000-${String(++uid).padStart(12, '0')}`;
+const fixture = async (C, offsetDays, status = 'completed', home = C.A.id, away = C.B.id) => (await pool.query(
+  'INSERT INTO fixtures(event_id,home_team_id,away_team_id,scheduled_at,status) VALUES ($1,$2,$3,now() + ($4 || \' days\')::interval,$5) RETURNING id', [C.season.event_id, home, away, String(offsetDays), status])).rows[0].id;
+const open = (C, category, extra = {}, token = C.org.token) => api('POST', '/discipline/cases', { token, body: { competition_id: C.cm.id, season_id: C.season.id, category, subject_user_id: C.player.id, subject_team_id: C.A.id, source: { type: 'official_report', id: fid() }, summary: 'Reported by the referee', ...extra } });
 
-test('a published, versioned policy turns a red card into a case with the automatic suspension; a repeat sweep adds nothing; eligibility reads it live', async () => {
-  const L = await league();
-  const t = L.org.token;
-  assert.equal((await api('GET', `/competitions/${L.comp.id}/discipline`, { token: (await signup()).token, query: { season_id: L.season.id } })).status, 404, 'outsiders get a 404');
-  const scope = must(await api('GET', `/events/${L.ev}/discipline-scope`, { token: t }));
-  assert.deepEqual([scope.competition_id, scope.season_id, scope.as, scope.can_decide], [L.comp.id, L.season.id, 'organiser', true]);
-  assert.equal((await api('GET', `/events/${L.ev}/discipline-scope`, { token: L.player.token })).status, 404, 'no standing: the tab stays hidden');
-  const v1 = must(await api('POST', `/competitions/${L.comp.id}/discipline/policy`, { token: t, body: { params: PARAMS } }), 201);
-  const v2 = must(await api('POST', `/competitions/${L.comp.id}/discipline/policy`, { token: t, body: { params: { ...PARAMS, direct: [{ kind: 'red_card', matches: 3 }] }, note: 'tougher' } }), 201);
-  assert.deepEqual([v1.version, v2.version], [1, 2]);
-  const played = await L.fx(-3, 'completed');
-  const next1 = await L.fx(2), next2 = await L.fx(9);
-  const red = await L.card(played, 'red_card');
-  const sw = must(await api('POST', `/competitions/${L.comp.id}/discipline/sweep`, { token: t, body: { season_id: L.season.id } }), 200);
-  assert.equal(sw.opened, 1);
-  assert.equal(must(await api('POST', `/competitions/${L.comp.id}/discipline/sweep`, { token: t, body: { season_id: L.season.id } })).opened, 0, 'idempotent');
-  const list = must(await api('GET', `/competitions/${L.comp.id}/discipline/cases`, { token: t, query: { season_id: L.season.id } }));
-  assert.equal(list.length, 1);
-  const k = must(await api('GET', `/discipline/cases/${list[0].id}`, { token: t }));
-  assert.equal(k.match_event_id, red, 'the card is referenced, not copied');
-  assert.equal(k.decisions[0].automatic, true);
-  assert.equal(k.sanctions[0].matches, 3, 'the latest policy version governs');
-  assert.equal(k.sanctions[0].service.remaining, 3);
-  // eligibility is consumed live: blocked for the next two matches, free for the third only after serving
-  const at = (id) => pool.query('SELECT scheduled_at FROM fixtures WHERE id=$1', [id]).then((r) => r.rows[0].scheduled_at);
-  const sport = (await pool.query('SELECT sport_id FROM events WHERE id=$1', [L.ev])).rows[0].sport_id;
-  assert.ok(await activeSportingSanction(pool, L.player.id, sport, undefined, { eventId: L.ev, at: await at(next1) }));
-  // cancelled and postponed fixtures do not count; a played one does
-  await pool.query("UPDATE fixtures SET status='cancelled' WHERE id=$1", [next1]);
-  const after1 = must(await api('GET', `/discipline/cases/${list[0].id}`, { token: t }));
-  assert.equal(after1.sanctions[0].service.served, 0);
-  assert.ok(after1.sanctions[0].service.fixtures.some((f) => f.state === 'skipped_cancelled'));
-  await pool.query("UPDATE fixtures SET status='completed' WHERE id=$1", [next2]);
-  assert.equal(must(await api('GET', `/discipline/cases/${list[0].id}`, { token: t })).sanctions[0].service.remaining, 2);
-  // the player and their manager see only what they should
-  const mine = must(await api('GET', '/me/discipline', { token: L.player.token }));
-  assert.equal(mine.length, 1);
-  const team = must(await api('GET', `/teams/${L.teams[0].id}/discipline`, { token: L.mgrs[0].token }));
-  assert.equal(team.length, 1);
-  assert.equal(JSON.stringify(team).includes('summary'), false);
-  assert.equal((await api('GET', `/discipline/cases/${list[0].id}`, { token: L.mgrs[1].token })).status, 404, 'the other team’s manager has no standing');
+test('policy is versioned and immutable; the sport vocabulary walks the whole catalogue with labelled fallbacks', async () => {
+  const C = await comp();
+  assert.equal(C.pol.version, 1);
+  const p2 = must(await api('POST', `/competitions/${C.cm.id}/discipline-policy`, { token: C.org.token, body: { rules: { appeal_window_days: 5 } } }), 201);
+  assert.equal(p2.version, 2);
+  await assert.rejects(pool.query('UPDATE disc_policies SET note=$2 WHERE id=$1', [C.pol.id, 'x']), /append-only/);
+  assert.equal((await api('POST', `/competitions/${C.cm.id}/discipline-policy`, { token: (await signup(['organizer'])).token, body: { rules: {} } })).status, 404);
+  assert.equal((await api('POST', `/competitions/${C.cm.id}/discipline-policy`, { token: C.org.token, body: { rules: { nonsense: 1 } } })).status, 400);
+  const got = must(await api('GET', `/competitions/${C.cm.id}/discipline-policy`));
+  assert.equal(got.current.version, 2); assert.equal(got.versions.length, 2); assert.equal(got.vocabulary.native, true);
+  const sports = (await pool.query('SELECT slug, scoring, category FROM sports')).rows;
+  assert.ok(sports.length > 10);
+  const fallback = [];
+  for (const s of sports) { const m = modelFor(s); assert.ok(m.caution && m.dismissal && typeof m.native === 'boolean', s.slug); if (!m.native) fallback.push(s.slug); }
+  assert.ok(fallback.length < sports.length, 'most sports use a native vocabulary');
+  console.log(`# discipline vocabulary: ${sports.length - fallback.length} native, ${fallback.length} labelled fallback`);
 });
 
-test('a panel decision: warning + fine through team finance + points deduction through standings adjustments, then an appeal that overturns it (history kept)', async () => {
-  const L = await league();
-  const t = L.org.token;
-  must(await api('POST', `/competitions/${L.comp.id}/discipline/policy`, { token: t, body: { params: PARAMS } }), 201);
-  const panel = await signup();
-  must(await api('POST', `/competitions/${L.comp.id}/discipline/panel`, { token: t, body: { user_id: panel.id, role: 'panel' } }), 201);
-  const c = must(await api('POST', `/competitions/${L.comp.id}/discipline/cases`, { token: t, body: { season_id: L.season.id, source: 'manual_referral', subject_kind: 'player', subject_user_id: L.player.id, team_id: L.teams[0].id, category: 'abusive_language', summary: 'Alleged abuse towards the referee after full time' } }), 201);
-  assert.match(c.case_no, /-DISC-/);
-  assert.equal(c.summary_enc, undefined, 'encrypted columns never leave the server');
-  const raw = (await pool.query('SELECT summary_enc FROM disc_cases WHERE id=$1', [c.id])).rows[0].summary_enc;
-  assert.ok(!raw.includes('referee'), 'the allegation is encrypted at rest');
-  // an allegation alone does not block; an interim suspension does, and is not a finding
-  assert.equal(await activeSportingSanction(pool, L.player.id, (await pool.query('SELECT sport_id FROM events WHERE id=$1', [L.ev])).rows[0].sport_id, undefined, { eventId: L.ev }), null);
-  must(await api('POST', `/discipline/cases/${c.id}/transition`, { token: panel.token, body: { action: 'set_interim', interim: 'interim_suspension' } }));
-  const sportId = (await pool.query('SELECT sport_id FROM events WHERE id=$1', [L.ev])).rows[0].sport_id;
-  assert.ok(await activeSportingSanction(pool, L.player.id, sportId, undefined, { eventId: L.ev }));
-  // the policy caps the authority
-  assert.equal((await api('POST', `/discipline/cases/${c.id}/decision`, { token: panel.token, body: { outcome: 'upheld', reason: 'Too much', sanctions: [{ kind: 'fine', amount_minor: 900000 }] } })).status, 400);
-  const dec = must(await api('POST', `/discipline/cases/${c.id}/decision`, { token: panel.token, body: { outcome: 'upheld', reason: 'Abuse towards a match official', sanctions: [{ kind: 'warning', label: 'Formal reprimand' }, { kind: 'fine', amount_minor: 200000 }, { kind: 'points_deduction', points: 3 }] } }), 201);
-  const fine = dec.sanctions.find((s) => s.kind === 'fine'), pts = dec.sanctions.find((s) => s.kind === 'points_deduction');
-  const ch = (await pool.query('SELECT c.amount_minor, b.kind FROM team_charges c JOIN team_charge_batches b ON b.id=c.batch_id WHERE c.id=$1', [fine.team_charge_id])).rows[0];
-  assert.deepEqual([Number(ch.amount_minor), ch.kind], [200000, 'fine']);
-  const adj = (await pool.query('SELECT points_delta, disc_sanction_id FROM comp_adjustments WHERE id=$1', [pts.comp_adjustment_id])).rows[0];
-  assert.deepEqual([adj.points_delta, adj.disc_sanction_id], [-3, pts.id]);
-  assert.equal((await pool.query("SELECT count(*)::int AS n FROM fixtures WHERE home_score IS NOT NULL AND event_id=$1", [L.ev])).rows[0].n, 0, 'no match result was touched');
-  assert.equal(await activeSportingSanction(pool, L.player.id, sportId, undefined, { eventId: L.ev }), null, 'a final non-playing sanction replaces the interim block');
-  // appeal: only the person, within the window; the panel member who decided cannot rule on it
-  assert.equal((await api('POST', `/discipline/cases/${c.id}/appeals`, { token: t, body: { grounds: 'I was not even there' } })).status, 403);
-  const ap = must(await api('POST', `/discipline/cases/${c.id}/appeals`, { token: L.player.token, body: { grounds: 'I was not at the ground at that time' } }), 201);
-  assert.equal(ap.stay, true);
-  assert.equal((await api('POST', `/discipline/cases/${c.id}/appeals`, { token: L.player.token, body: { grounds: 'Second appeal on the same decision' } })).status, 409, 'one open appeal per decision');
-  assert.equal((await api('POST', `/discipline/appeals/${ap.id}/ruling`, { token: panel.token, body: { outcome: 'overturned', reason: 'Not the decider' } })).status, 403);
-  must(await api('POST', `/discipline/appeals/${ap.id}/ruling`, { token: t, body: { outcome: 'overturned', reason: 'CCTV shows the player had already left the ground' } }));
-  const k = must(await api('GET', `/discipline/cases/${c.id}`, { token: t }));
-  assert.deepEqual(k.decisions.map((d) => [d.kind, d.outcome, !!d.superseded_at]), [['initial', 'upheld', true], ['appeal_outcome', 'dismissed', false]], 'the original decision stays in the history');
-  assert.equal((await pool.query("SELECT status FROM team_charges WHERE id=$1", [fine.team_charge_id])).rows[0].status, 'cancelled', 'the unpaid fine is cancelled');
-  assert.equal((await pool.query('SELECT sum(points_delta)::int AS s FROM comp_adjustments WHERE disc_sanction_id=$1', [pts.id])).rows[0].s, 0, 'the deduction is reversed by a reversing row, not edited');
-  // decisions cannot be edited or deleted
-  await assert.rejects(pool.query("UPDATE disc_decisions SET outcome='dismissed' WHERE case_id=$1 AND kind='initial'", [c.id]), /cannot be edited/);
-  await assert.rejects(pool.query('DELETE FROM disc_events WHERE case_id=$1', [c.id]), /append-only/);
+test('cautions accumulate to an automatic suspension exactly once, even concurrently; the engine blocks the player live; served matches ignore postponed games', async () => {
+  const C = await comp();
+  const stranger = await signup();
+  assert.equal((await open(C, 'caution', {}, stranger.token)).status, 404);
+  assert.equal((await open(C, 'caution', { subject_team_id: undefined })).status, 400, 'a caution names the team the person serves with');
+  for (let k = 0; k < 4; k++) { const r = must(await open(C, 'caution'), 201); assert.equal(r.auto_case_id, null); }
+  const [r5, r6] = await Promise.all([open(C, 'caution'), open(C, 'caution')]);
+  must(r5, 201); must(r6, 201);
+  const autos = (await pool.query("SELECT id FROM gov_cases WHERE competition_id=$1 AND category='caution_accumulation'", [C.cm.id])).rows;
+  assert.equal(autos.length, 1, 'the fifth caution triggers once; the sixth does not re-trigger');
+  const sus = must(await api('GET', '/discipline/suspensions', { token: C.player.token, query: { user_id: C.player.id } }));
+  assert.equal(sus.items.length, 1);
+  assert.deepEqual([sus.items[0].matches, sus.items[0].service.remaining, sus.items[0].blocking], [1, 1, true]);
+  // retrying the same incident returns the same case
+  const src = fid(); const first = must(await open(C, 'misconduct', { source: { type: 'official_report', id: src } }), 201);
+  assert.equal(must(await open(C, 'misconduct', { source: { type: 'official_report', id: src } }), 201).id, first.id);
+  // eligibility reads the sanction LIVE: a registered player is eligible until suspended, then ineligible with a stable code
+  const ev = C.season.event_id;
+  must(await api('POST', `/events/${ev}/registration/policy`, { token: C.org.token, body: { expected_version: 0, rules: { require_guardian_consent: false, require_compliance: false } } }), 201);
+  await pool.query('DELETE FROM disc_sanctions WHERE false');
+  await pool.query("INSERT INTO reg_registrations(event_id,team_id,user_id,status,submitted_by) VALUES ($1,$2,$3,'registered',$3)", [ev, C.A.id, C.player.id]);
+  const el = must(await api('GET', `/events/${ev}/eligibility`, { token: C.org.token, query: { team_id: C.A.id, user_id: C.player.id } }));
+  const txt = JSON.stringify(el);
+  assert.match(txt, /suspension\.fail/);
+  assert.match(txt, /ineligible/);
+  // the suspended match is served by the next COMPLETED fixture; a postponed or cancelled game does not count
+  await fixture(C, 1, 'postponed'); await fixture(C, 2, 'cancelled');
+  assert.equal(must(await api('GET', '/discipline/suspensions', { token: C.player.token, query: { user_id: C.player.id } })).items[0].service.remaining, 1);
+  await fixture(C, 3, 'completed');
+  const after = must(await api('GET', '/discipline/suspensions', { token: C.player.token, query: { user_id: C.player.id } })).items[0];
+  assert.deepEqual([after.service.remaining, after.blocking], [0, false], 'served by a completed fixture');
+  assert.doesNotMatch(JSON.stringify(must(await api('GET', `/events/${ev}/eligibility`, { token: C.org.token, query: { team_id: C.A.id, user_id: C.player.id } }))), /suspension\.fail/);
+  assert.equal((await api('GET', '/discipline/suspensions', { token: stranger.token, query: { user_id: C.player.id } })).status, 404);
 });
 
-test('voiding the card a case came from flags the case for re-evaluation; nothing is deleted', async () => {
-  const L = await league();
-  must(await api('POST', `/competitions/${L.comp.id}/discipline/policy`, { token: L.org.token, body: { params: PARAMS } }), 201);
-  const red = await L.card(await L.fx(-1, 'completed'), 'red_card');
-  must(await api('POST', `/competitions/${L.comp.id}/discipline/sweep`, { token: L.org.token, body: { season_id: L.season.id } }));
-  const { flagForEvent } = D;
-  assert.equal(await flagForEvent(pool, red, L.org.id, 'Referee corrected the card'), 1);
-  const [k] = must(await api('GET', `/competitions/${L.comp.id}/discipline/cases`, { token: L.org.token, query: { season_id: L.season.id, flagged: 'true' } }));
-  assert.equal(k.reevaluation, 'flagged');
-  const full = must(await api('GET', `/discipline/cases/${k.id}`, { token: L.org.token }));
-  assert.equal(full.decisions.length, 1, 'the prior decision is untouched');
-  assert.ok(full.history.some((h) => h.action === 'source_event_corrected'));
+test('dismissal sets an interim suspension; the panel decides with sanctions the policy allows; appeals respect the window and the stay; reduction and reversal keep history', async () => {
+  const C = await comp();
+  const k = must(await open(C, 'dismissal'), 201);
+  assert.equal(k.status, 'interim');
+  assert.deepEqual([k.sanctions[0].status, k.sanctions[0].matches], ['interim', 2]);
+  assert.match(k.events.find((e) => e.action === 'interim_set').detail.note, /not a finding/i);
+  const sus0 = must(await api('GET', '/discipline/suspensions', { token: C.mA.token, query: { team_id: C.A.id } }));
+  assert.equal(sus0.items[0].blocking, true);
+  // only competition staff decide; the player cannot
+  const dec = (token, body) => api('POST', `/governance/cases/${k.id}/decision`, { token, body });
+  assert.equal((await dec(C.player.token, { expected_version: 1, outcome: 'upheld', reason: 'Nope', sanctions: [{ kind: 'warning' }] })).status, 403);
+  assert.equal((await dec(C.org.token, { expected_version: 1, outcome: 'upheld', reason: 'Serious foul play', sanctions: [] })).status, 400, 'upheld needs a sanction');
+  assert.equal((await dec(C.org.token, { expected_version: 7, outcome: 'upheld', reason: 'Serious foul play', sanctions: [{ kind: 'warning' }] })).body.error.details.code, 'stale_version');
+  const decided = must(await dec(C.org.token, { expected_version: 1, outcome: 'upheld', reason: 'Serious foul play confirmed', sanctions: [
+    { kind: 'match_suspension', matches: 3, reason: 'Three matches' }, { kind: 'fine', amount_minor: 5000, currency: 'EUR' }, { kind: 'points_deduction', points: 3, reason: 'Team conduct' }] }));
+  assert.equal(decided.status, 'decided');
+  assert.equal(decided.decision, 'Serious foul play confirmed');
+  const interimKept = decided.sanctions.find((s) => s.matches === 2 && s.kind === 'match_suspension' && s.superseded_at);
+  assert.equal(interimKept.status, 'expired', 'the interim measure is kept, superseded by the final decision, never edited');
+  const adj = (await pool.query('SELECT points_delta FROM comp_adjustments WHERE season_id=$1 AND team_id=$2', [C.season.id, C.A.id])).rows;
+  assert.deepEqual(adj.map((a) => a.points_delta), [-3], 'a deduction goes through the standings adjustment, never an edited result');
+  const fine = decided.sanctions.find((s) => s.kind === 'fine');
+  assert.equal(fine.fine_state, 'imposed');
+  must(await api('POST', `/discipline/sanctions/${fine.id}/fine`, { token: C.org.token, body: { fine_state: 'invoiced', invoice_ref: 'INV-9' } }));
+  assert.equal((await api('POST', `/discipline/sanctions/${fine.id}/fine`, { token: C.org.token, body: { fine_state: 'invoiced' } })).status, 409);
+  assert.equal(decided.sanctions.find((s) => s.kind === 'match_suspension' && s.status === 'active').service.remaining, 3, 'a fine does not change the sporting state');
+  // appeal: only the person / guardian / team manager; stay pauses the suspension
+  const stranger = await signup();
+  assert.equal((await api('POST', `/governance/cases/${k.id}/appeal`, { token: stranger.token, body: { grounds: 'It was not me, honestly' } })).status, 404);
+  assert.equal((await api('POST', `/governance/cases/${k.id}/appeal`, { token: C.mB.token, body: { grounds: 'Not our player at all' } })).status, 404, 'the other club cannot appeal');
+  const ap = must(await api('POST', `/governance/cases/${k.id}/appeal`, { token: C.player.token, body: { grounds: 'The contact was accidental and unintentional' } }), 201);
+  assert.equal(ap.kind, 'appeal');
+  assert.equal((await api('POST', `/governance/cases/${k.id}/appeal`, { token: C.player.token, body: { grounds: 'A second appeal for the same thing' } })).status, 409, 'one appeal per decision');
+  const stayed = must(await api('GET', '/discipline/suspensions', { token: C.player.token, query: { user_id: C.player.id } }));
+  assert.equal(stayed.items.every((s) => s.status === 'stayed' && s.blocking === false), true, 'stay_on_appeal: not blocking while the appeal is heard');
+  assert.equal((await api('POST', `/governance/appeals/${ap.id}/decision`, { token: C.player.token, body: { expected_version: 1, outcome: 'upheld', reason: 'self' } })).status, 403);
+  assert.equal((await api('POST', `/governance/appeals/${ap.id}/decision`, { token: C.org.token, body: { expected_version: 1, outcome: 'reduced', reason: 'Too long', reduced_matches: 3 } })).status, 400, 'a reduction must be shorter');
+  const red = must(await api('POST', `/governance/appeals/${ap.id}/decision`, { token: C.org.token, body: { expected_version: 1, outcome: 'reduced', reason: 'Excessive for the offence', reduced_matches: 1 } }));
+  assert.equal(red.outcome, 'reduced');
+  const parent = must(await api('GET', `/governance/cases/${k.id}`, { token: C.org.token }));
+  const live = parent.sanctions.filter((s) => s.kind === 'match_suspension' && !s.superseded_at);
+  assert.deepEqual(live.map((s) => [s.status, s.matches]), [['active', 1]]);
+  assert.ok(parent.sanctions.some((s) => s.matches === 3 && s.superseded_at), 'the original is kept, superseded');
+  assert.ok(parent.events.some((e) => e.action === 'sanction_amended'));
+  await assert.rejects(pool.query('UPDATE disc_sanctions SET matches=9 WHERE id=$1', [live[0].id]), /superseding/);
+  await assert.rejects(pool.query('DELETE FROM disc_sanctions WHERE id=$1', [live[0].id]), /never deleted/);
+  await assert.rejects(pool.query('DELETE FROM gov_case_events WHERE case_id=$1', [k.id]), /append-only/);
+  // a separate case: window closed
+  const k2 = must(await open(C, 'misconduct'), 201);
+  must(await api('POST', `/governance/cases/${k2.id}/decision`, { token: C.org.token, body: { expected_version: 1, outcome: 'upheld', reason: 'Abusive language', sanctions: [{ kind: 'warning' }] } }));
+  await pool.query("UPDATE gov_cases SET appeal_deadline = current_date - 1 WHERE id=$1", [k2.id]);
+  assert.equal((await api('POST', `/governance/cases/${k2.id}/appeal`, { token: C.player.token, body: { grounds: 'This is far too late now' } })).body.error.details.code, 'appeal_window_closed');
+  // overturned appeal on a third case reverses the deduction
+  const k3 = must(await open(C, 'misconduct'), 201);
+  must(await api('POST', `/governance/cases/${k3.id}/decision`, { token: C.org.token, body: { expected_version: 1, outcome: 'upheld', reason: 'Fighting', sanctions: [{ kind: 'points_deduction', points: 2 }] } }));
+  const ap3 = must(await api('POST', `/governance/cases/${k3.id}/appeal`, { token: C.mA.token, body: { grounds: 'The video clearly shows otherwise' } }), 201);
+  must(await api('POST', `/governance/appeals/${ap3.id}/decision`, { token: C.org.token, body: { expected_version: 1, outcome: 'overturned', reason: 'Evidence did not support it' } }));
+  const adj2 = (await pool.query('SELECT points_delta, reverses_id FROM comp_adjustments WHERE season_id=$1 ORDER BY created_at', [C.season.id])).rows;
+  assert.equal(adj2.reduce((a, b) => a + b.points_delta, 0), -3, 'the -2 was reversed by a +2 adjustment, the -3 stands');
 });
 
-test('a voided event cannot start a case, and a card feeds one case per person even under concurrent sweeps', async () => {
-  const L = await league();
-  must(await api('POST', `/competitions/${L.comp.id}/discipline/policy`, { token: L.org.token, body: { params: PARAMS } }), 201);
-  await L.card(await L.fx(-1, 'completed'), 'red_card');
-  const runs = await Promise.all([1, 2, 3, 4].map(() => api('POST', `/competitions/${L.comp.id}/discipline/sweep`, { token: L.org.token, body: { season_id: L.season.id } })));
-  assert.equal(runs.reduce((t, r) => t + (r.body.opened ?? 0), 0), 1);
-  assert.equal((await pool.query('SELECT count(*)::int AS n FROM disc_cases WHERE competition_id=$1', [L.comp.id])).rows[0].n, 1);
+test('policy permissions bound what a panel can impose; correction of the source flags the case; waivers use the registration exception mechanism; public view hides youth', async () => {
+  const C = await comp({ rules: { fine_authority: false, points_deduction_authority: false, public_disclosure: 'sanctions' } });
+  const k = must(await open(C, 'misconduct'), 201);
+  const dec = (body) => api('POST', `/governance/cases/${k.id}/decision`, { token: C.org.token, body: { expected_version: 1, outcome: 'upheld', reason: 'Reason given', ...body } });
+  assert.equal((await dec({ sanctions: [{ kind: 'fine', amount_minor: 100, currency: 'USD' }] })).status, 403);
+  assert.equal((await dec({ sanctions: [{ kind: 'points_deduction', points: 1 }] })).status, 403);
+  must(await dec({ sanctions: [{ kind: 'date_suspension', starts_on: day(0), ends_on: day(14), public: true }] }));
+  const pub = must(await api('GET', `/competitions/${C.cm.id}/sanctions`));
+  assert.equal(pub.items.length, 1); assert.equal(pub.items[0].kind, 'date_suspension');
+  assert.equal(JSON.stringify(pub).includes('Reason given'), false, 'reasons and evidence are never public');
+  await pool.query("UPDATE users SET youth_until = current_date + 300 WHERE id=$1", [C.player.id]);
+  assert.equal(must(await api('GET', `/competitions/${C.cm.id}/sanctions`)).items.length, 0, 'a young person is never listed publicly');
+  // source correction flags, never deletes
+  const ev = (await pool.query("INSERT INTO match_events(fixture_id,event_id,seq,kind,player_id,team_id,recorded_by) VALUES ($1,$2,1,'card',$3,$4,$3) RETURNING id", [await fixture(C, -5), C.season.event_id, C.player.id, C.A.id])).rows[0];
+  const fx = (await pool.query('SELECT fixture_id FROM match_events WHERE id=$1', [ev.id])).rows[0].fixture_id;
+  const kc = must(await open(C, 'caution', { fixture_id: fx, source: { type: 'match_event', id: ev.id } }), 201);
+  assert.equal((await open(C, 'caution', { fixture_id: fx, source: { type: 'match_event', id: fid() } })).status, 400, 'the event must belong to the fixture');
+  assert.equal(await flagSourceCorrection(pool, { sourceType: 'match_event', sourceId: ev.id, reason: 'Card reassigned to another player' }), 1);
+  const queue = must(await api('GET', '/governance/cases', { token: C.org.token, query: { competition_id: C.cm.id, needs_review: 'true' } }));
+  assert.deepEqual(queue.items.map((x) => x.id), [kc.id]);
+  assert.equal((await api('POST', `/governance/cases/${kc.id}/review`, { token: C.player.token, body: { expected_version: 2, action: 'confirm', reason: 'self confirm' } })).status, 403);
+  const cleared = must(await api('POST', `/governance/cases/${kc.id}/review`, { token: C.org.token, body: { expected_version: 2, action: 'withdraw', reason: 'Card belonged to someone else' } }));
+  assert.equal(cleared.status, 'withdrawn');
+  assert.equal(await pool.query("SELECT count(*)::int AS n FROM gov_cases WHERE id=$1", [kc.id]).then((r) => r.rows[0].n), 1, 'withdrawn, not deleted');
+  // waiver: the request references the rule; granting creates the registration exception (encrypted reason), nobody else can grant
+  const w = must(await api('POST', '/governance/cases', { token: C.player.token, body: { kind: 'waiver', competition_id: C.cm.id, season_id: C.season.id, category: 'waiver', summary: 'Late registration after a medical delay', subject_user_id: C.player.id, subject_team_id: C.A.id, waiver_rule: 'window' } }), 201);
+  assert.equal((await api('POST', `/governance/cases/${w.id}/decision`, { token: C.player.token, body: { expected_version: 1, outcome: 'granted', reason: 'granting myself' } })).status, 403);
+  must(await api('POST', `/governance/cases/${w.id}/decision`, { token: C.org.token, body: { expected_version: 1, outcome: 'granted', reason: 'Medical evidence seen' } }));
+  const ex = (await pool.query("SELECT rule_key, reason_enc FROM reg_exceptions WHERE event_id=$1 AND user_id=$2", [C.season.event_id, C.player.id])).rows;
+  assert.deepEqual(ex.map((e) => e.rule_key), ['window']);
+  assert.notEqual(ex[0].reason_enc, 'Medical evidence seen');
+  // protest: opened by a team manager, never changes a score
+  const before = (await pool.query('SELECT count(*)::int AS n FROM fixtures WHERE event_id=$1 AND home_score IS NOT NULL', [C.season.event_id])).rows[0].n;
+  const pr = must(await api('POST', '/governance/cases', { token: C.mB.token, body: { kind: 'protest', competition_id: C.cm.id, fixture_id: fx, category: 'ineligible_player', summary: 'Team A fielded an unregistered player', subject_team_id: C.A.id, subject_role: 'team', links: [{ entity_type: 'fixture', entity_id: fx }] } }), 201);
+  assert.equal(pr.links.length, 1);
+  assert.equal((await api('GET', `/governance/cases/${pr.id}`, { token: (await signup()).token })).status, 404);
+  assert.equal((await pool.query('SELECT count(*)::int AS n FROM fixtures WHERE event_id=$1 AND home_score IS NOT NULL', [C.season.event_id])).rows[0].n, before);
+  const tools = (await rpc('tools/list', {}, C.org.token)).tools.map((t) => t.name);
+  for (const t of ['open_discipline_case', 'decide_governance_case', 'file_appeal', 'decide_appeal', 'get_suspension_status', 'publish_discipline_policy', 'list_governance_cases', 'open_governance_case']) assert.ok(tools.includes(t), t);
 });

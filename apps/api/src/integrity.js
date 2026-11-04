@@ -7,7 +7,6 @@ import { isGuardianOf } from './federation.js';
 import { forbidden, notFound } from './errors.js';
 import { notify } from './notify.js';
 import { guardiansOf } from './youth.js';
-import { activeDisciplineBlock } from './discipline.js';
 
 export const KINDS = ['anti_doping', 'match_integrity', 'betting_conflict', 'accreditation_fraud', 'other'];
 export const KIND_LABEL = { anti_doping: 'Anti-doping administration', match_integrity: 'Match integrity referral', betting_conflict: 'Betting / conflict disclosure', accreditation_fraud: 'Accreditation or identity referral', other: 'Other authorised integrity matter' };
@@ -84,15 +83,14 @@ export async function nextCaseNo(c, bodyId) {
 /**
  * The one read of an active sporting sanction that competition eligibility (#477) makes: a recorded, current decision with `sporting_sanction`, in force
  * today, from a body that governs the sport. It exposes only that a sanction exists and until when: never the case, the category or the source.
- * The disciplinary domain (#479) is read here too, so competition eligibility still has ONE source: integrity decisions first, then disc_* sanctions (match, date, ban, interim).
- * `opts.eventId` scopes a competition-level block; `opts.at` is the match time, so a multi-match suspension blocks only the matches it covers.
+ * When the disciplinary domain (#479) lands, this is the single function to point at its sanction table.
  */
-export async function activeSportingSanction(c, userId, sportId, onDay = today(), opts = {}) {
+export async function activeSportingSanction(c, userId, sportId, onDay = today()) {
   const r = await c.query(
     `SELECT d.id, d.effective_to::text AS valid_until FROM int_decisions d JOIN int_cases k ON k.id=d.case_id
       WHERE k.subject_id=$1 AND d.superseded_at IS NULL AND d.sporting_sanction AND d.outcome='finding_recorded'
         AND (d.effective_from IS NULL OR d.effective_from <= $3::date) AND (d.effective_to IS NULL OR d.effective_to >= $3::date)
         AND EXISTS (SELECT 1 FROM governing_body_sports s WHERE s.body_id=d.body_id AND s.sport_id=$2 AND s.ended_on IS NULL)
       ORDER BY d.effective_to DESC NULLS FIRST LIMIT 1`, [userId, sportId, onDay]);
-  return r.rows[0] ?? (await activeDisciplineBlock(c, userId, sportId, onDay, opts));
+  return r.rows[0] ?? null;
 }

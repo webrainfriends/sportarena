@@ -39,7 +39,6 @@ import { raiseScheduledCharges, runCollections } from './collections.js';
 import { runServiceSweeps } from './svc/sweeps.js';
 import { runServiceJobs } from './capabilities/svc-reports.js';
 import { runFederationSweeps } from './federation-sweeps.js';
-import { runDisciplineSweeps } from './discipline-engine.js';
 import { runOfficialsSweeps } from './officials-sweeps.js';
 import { runComplianceSweeps } from './compliance-sweeps.js';
 import { runTripSweeps } from './trips-sweeps.js';
@@ -108,7 +107,6 @@ export const STEPS = [
   ['supplier_services', 'supplier_services', runServiceSweeps, null],
   ['supplier_exports', 'supplier_exports', runServiceJobs, null],
   ['federation', 'federation', runFederationSweeps, null],
-  ['discipline', 'discipline_cases_opened', runDisciplineSweeps, 0],
   ['officials_development', 'officials_development', runOfficialsSweeps, null],
   ['compliance', 'compliance', runComplianceSweeps, null],
   ['team_travel', 'team_travel', runTripSweeps, null],

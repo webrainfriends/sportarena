@@ -26,7 +26,7 @@ const pii = {
   national_id: z.string().min(3).max(40).optional(),
   address: z.string().max(300).optional(),
 };
-const selfRoles = roles.filter((r) => r !== 'admin' && r !== 'platform_admin' && r !== 'official_verifier'); // platform roles are only granted by the platform owner
+const selfRoles = roles.filter((r) => r !== 'admin' && r !== 'platform_admin'); // platform roles are only granted by the platform owner
 export const HANDLE_RE = /^[a-z0-9_]{3,24}$/;
 const handleField = z.string().trim().toLowerCase().regex(HANDLE_RE, '3-24 chars: a-z, 0-9, _');
 const profileRoles = ['athlete', 'coach', 'referee', 'physio', 'doctor'];

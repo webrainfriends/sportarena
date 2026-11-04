@@ -2,7 +2,7 @@ import { query, one } from './db.js';
 import { badRequest, forbidden, notFound } from './errors.js';
 
 // platform roles (admin / platform_admin) are never shown to other people
-export const PUBLIC_ROLES_SQL = "array_remove(array_remove(array_remove(u.roles,'admin'),'platform_admin'),'official_verifier') AS roles";
+export const PUBLIC_ROLES_SQL = "array_remove(array_remove(u.roles,'admin'),'platform_admin') AS roles";
 export const PUBLIC_USER = `u.id, u.handle, u.display_name, ${PUBLIC_ROLES_SQL}, u.bio, u.avatar_emoji, u.avatar_color, u.avatar_url`;
 
 export const isAdmin = (user) => user?.roles?.includes('admin');

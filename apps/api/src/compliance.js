@@ -59,7 +59,7 @@ export function roleChoices(scopeKind, subjectKind) {
   if (subjectKind === 'organisation') return [...['club', 'academy', 'school', 'other'].map((v) => ({ value: v, label: v[0].toUpperCase() + v.slice(1) })), { value: 'supplier', label: 'Supplier bidding on a tender' }];
   if (subjectKind === 'event') return ['tournament', 'league', 'friendly', 'camp', 'trial'].map((v) => ({ value: v, label: v[0].toUpperCase() + v.slice(1) }));
   const label = (k) => k.replace(/_/g, ' ').replace(/^./, (x) => x.toUpperCase());
-  const globals = GLOBAL_ROLES.filter((r) => !['admin', 'platform_admin', 'official_verifier'].includes(r)).map((r) => ({ value: r, label: label(r) }));
+  const globals = GLOBAL_ROLES.filter((r) => !['admin', 'platform_admin'].includes(r)).map((r) => ({ value: r, label: label(r) }));
   if (scopeKind === 'event') return Object.entries(ENGAGEMENTS).map(([value, e]) => ({ value, label: e.label, hint: e.description }));
   if (scopeKind === 'body') return ['athlete', 'coach', 'official', 'administrator', 'other'].map((v) => ({ value: v, label: label(v) }));
   if (scopeKind === 'organisation') return [...['owner', 'admin', 'coach', 'finance'].map((v) => ({ value: v, label: label(v) })), ...globals.filter((g) => g.value !== 'coach')];
