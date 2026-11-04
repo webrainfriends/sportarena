@@ -17,6 +17,7 @@ import { c } from '../theme';
 import { locale } from '../locale';
 import { Bars, Block, Initials, Kpi } from './academy-ui';
 import { isOffline, newKey, flushQueue, dismissItem, queueHandover, useQueue } from '../pickup-queue';
+import { TransportBoardTab } from './academy-transport-board';
 
 // ------------------------------------------------------------------------------------------------------------------ words
 const phaseInfo = () => ({
@@ -267,18 +268,24 @@ const TABS = () => [['overview', t('pk.tab_overview')], ['exceptions', t('pk.tab
 const LATE_KINDS = ['late_pickup', 'no_show', 'unconfirmed_handover'];
 
 export function SafetyDesk({ o, role, toast }) {
+  const [mainTab, setMainTab] = useState('pickup');
   const [tab, setTab] = useState('overview');
   const { tablet } = useLayout();
   const admin = role === 'owner' || role === 'admin';
   const ov = useLoad(() => api.get(`/organisations/${o.id}/academy/safety`), [o.id]);
   const tabs = [...TABS(), ...(admin ? [['settings', t('pk.tab_settings')]] : [])];
-  if (ov.error) return <LoadError error={ov.error} onRetry={ov.reload} />;
-  if (!ov.data) return <Loading />;
-  const d = ov.data, k = d.kpis;
-  const anyLate = d.trend.some((x) => x.late_pickups > 0);
   return (
     <View style={{ gap: 12 }}>
       <View><T weight="800" size={22} style={{ letterSpacing: -0.5 }}>{t('pk.title')}</T><T color={c.mute}>{t('pk.subtitle')}</T></View>
+      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }} accessibilityRole="tablist">
+        <Chip label={t('transport.pickupBoard')} active={mainTab === 'pickup'} onPress={() => setMainTab('pickup')} />
+        <Chip label={t('transport.boardingBoard')} active={mainTab === 'transport'} onPress={() => setMainTab('transport')} />
+      </View>
+      {mainTab === 'transport' ? <TransportBoardTab o={o} toast={toast} /> : (
+      <>{!ov.data && !ov.error ? <Loading /> : ov.error ? <LoadError error={ov.error} onRetry={ov.reload} /> : (() => {
+      const d = ov.data, k = d.kpis;
+      const anyLate = d.trend.some((x) => x.late_pickups > 0);
+      return (<>
       <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }} accessibilityRole="tablist">{tabs.map(([key, label]) => <Chip key={key} label={label} active={tab === key} onPress={() => setTab(key)} />)}</View>
       {tab === 'overview' ? (
         <>
@@ -315,6 +322,8 @@ export function SafetyDesk({ o, role, toast }) {
         </Card>
       ) : null}
       {tab === 'settings' && admin ? <PolicyForm o={o} toast={toast} onSaved={ov.reload} /> : null}
+      </>);})()}</>
+      )}
     </View>
   );
 }

@@ -260,6 +260,7 @@ import './academy-sessions.js';
 import './academy-staff.js';
 import './academy-attendance.js';
 import './academy-pickup.js';
+import './academy-transport.js';
 import './academy-wellbeing.js';
 import './academy-wellbeing-family.js';
 import './academy-wellbeing-overview.js';
