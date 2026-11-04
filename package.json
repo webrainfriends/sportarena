@@ -15,7 +15,8 @@
     "test": "npm -w apps/api test",
     "app": "npm -w apps/app run start",
     "app:web": "npm -w apps/app run web",
-    "setup": "node scripts/init-env.mjs"
+    "setup": "node scripts/init-env.mjs",
+    "guide:shots": "node scripts/e2e/academy-process-guide-journey.mjs"
   },
   "overrides": {
     "react": "19.2.3",
