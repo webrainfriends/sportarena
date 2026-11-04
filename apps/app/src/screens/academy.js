@@ -1,5 +1,5 @@
 // The Academy module inside an organisation workspace: Home (executive view), Admissions (board + review), Programmes, Families, Progress
-// (pathways, assessments, decisions), Agreements, Finance (charges, P&L, receivables, costs, forecast), Partners, Announcements and Settings. On tablet/desktop the sections sit in a sidebar; on a phone they are a row of tabs. The server decides
+// (pathways, assessments, decisions), Curriculum (methodology library, versioned curricula, coverage), Agreements, Finance (charges, P&L, receivables, costs, forecast), Partners, Announcements and Settings. On tablet/desktop the sections sit in a sidebar; on a phone they are a row of tabs. The server decides
 // what each role may do; the module only hides what a role cannot use: a coach sees Progress only, finance sees Finance and Partners (sponsorship). Families and athletes use the AcademyFamily screen instead.
 import React, { useState } from 'react';
 import { View } from 'react-native';
@@ -18,21 +18,20 @@ import { Partners } from './academy-partners';
 import { Empty } from '../ui';
 import { Admissions as StudyDesk } from './admissions';
 import { Operations } from './academy-ops';
-import { Academics } from './academy-academics';
+import { SafetyDesk } from './academy-safety';
+import { Curriculum } from './academy-curriculum';
+import { Academics } from './academics';
 import { t } from '../i18n';
 
 const ALL = [
-  { key: 'home', label: 'Home', icon: '🏠' }, { key: 'ops', label: 'Operations', icon: '🗓️' }, { key: 'admissions', label: 'Admissions', icon: '📥' }, { key: 'programmes', label: 'Programmes', icon: '🏅' }, { key: 'families', label: 'Families', icon: '👨‍👩‍👧' }, { key: 'progress', label: 'Progress', icon: '🪜' }, { key: 'academics', label: t('ax.tab'), icon: '🎓' },
+  { key: 'home', label: 'Home', icon: '🏠' }, { key: 'ops', label: 'Operations', icon: '🗓️' }, { key: 'safety', label: t('pk.nav'), icon: '🛡️' }, { key: 'admissions', label: 'Admissions', icon: '📥' }, { key: 'programmes', label: 'Programmes', icon: '🏅' }, { key: 'families', label: 'Families', icon: '👨‍👩‍👧' }, { key: 'progress', label: 'Progress', icon: '🪜' }, { key: 'curriculum', label: t('cur.nav'), icon: '🧭' }, { key: 'academics', label: 'Academics', icon: '🎓' },
   { key: 'agreements', label: 'Agreements', icon: '📜' }, { key: 'billing', label: 'Finance', icon: '💷' }, { key: 'partners', label: 'Partners', icon: '🤝' }, { key: 'announce', label: 'Announcements', icon: '📣' }, { key: 'study', label: 'Study listing', icon: '🎓' }, { key: 'settings', label: 'Settings', icon: '⚙️' },
 ];
 
 export function AcademyDesk({ o, role, archived, toast, focus, go: orgGo }) {
   const staff = role === 'owner' || role === 'admin';
   // owners/admins get the whole module; everyone else only the parts their role and permission set reach (Operations decides the rest server-side)
-  // education staff (a member holding the academics grant) reach the Academics tab; the server decides, so probe it for non-owners
-  const probe = useLoad(() => (staff ? Promise.resolve(true) : api.get(`/organisations/${o.id}/academy/academics`).then(() => true, () => false)), [o.id, staff]);
-  const items0 = staff ? ALL : ALL.filter((i) => i.key === 'ops' || (role === 'coach' && i.key === 'progress') || (role === 'finance' && ['billing', 'partners'].includes(i.key)));
-  const items = items0.some((i) => i.key === 'academics') || !probe.data ? items0 : [...items0, ALL.find((i) => i.key === 'academics')];
+  const items = staff ? ALL : ALL.filter((i) => i.key === 'ops' || (['coach', 'staff', 'auditor'].includes(role) && i.key === 'safety') || (['coach', 'staff', 'auditor'].includes(role) && i.key === 'curriculum') || (role === 'coach' && ['progress', 'academics'].includes(i.key)) || (role === 'staff' && i.key === 'academics') || (role === 'finance' && ['billing', 'partners'].includes(i.key)));
   const [tab, setTab] = useState(focus?.tab ?? (staff ? 'home' : role === 'coach' ? 'progress' : 'ops'));   // focus: open on a given tab / application (from the Command Centre)
   const [openApp, setOpenApp] = useState(focus?.open ?? null);
   const { tablet } = useLayout();
@@ -42,9 +41,9 @@ export function AcademyDesk({ o, role, archived, toast, focus, go: orgGo }) {
   const P = { o, role, archived, toast };
   const goTo = (key, id) => { setTab(key); if (key === 'admissions' && id) setOpenApp(id); };
   const openApplication = (id) => { setOpenApp(id); setTab('admissions'); };
-  const body = !items.some((i) => i.key === tab) ? <Empty emoji="🔒" title="Not available for your role" /> : tab === 'ops' ? <Operations {...P} /> : tab === 'home' ? <Home {...P} go={goTo} orgGo={orgGo} openApplication={openApplication} canMoney />
+  const body = !items.some((i) => i.key === tab) ? <Empty emoji="🔒" title="Not available for your role" /> : tab === 'ops' ? <Operations {...P} /> : tab === 'safety' ? <SafetyDesk {...P} /> : tab === 'academics' ? <Academics {...P} /> : tab === 'home' ? <Home {...P} go={goTo} orgGo={orgGo} openApplication={openApplication} canMoney />
     : tab === 'admissions' ? <Admissions {...P} openId={openApp} setOpenId={setOpenApp} /> : tab === 'programmes' ? <Programmes {...P} onOpenApplication={openApplication} />
-    : tab === 'families' ? <Families {...P} onOpenApplication={openApplication} /> : tab === 'agreements' ? <Agreements {...P} /> : tab === 'billing' ? <Finance {...P} /> : tab === 'progress' ? <Progress {...P} /> : tab === 'partners' ? <Partners {...P} /> : tab === 'academics' ? <Academics {...P} />
+    : tab === 'families' ? <Families {...P} onOpenApplication={openApplication} /> : tab === 'agreements' ? <Agreements {...P} /> : tab === 'billing' ? <Finance {...P} /> : tab === 'progress' ? <Progress {...P} /> : tab === 'curriculum' ? <Curriculum {...P} focus={focus?.tab === 'curriculum' ? focus : null} /> : tab === 'partners' ? <Partners {...P} />
     : tab === 'announce' ? <Announcements {...P} /> : tab === 'study' ? <StudyDesk {...P} /> : <Settings {...P} />;
   return (
     <View style={{ flexDirection: tablet ? 'row' : 'column', gap: tablet ? 20 : 0, marginTop: 10, alignItems: 'flex-start' }}>

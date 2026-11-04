@@ -69,13 +69,6 @@ export const ACADEMY_STEPS = [
     modules: ['academy-sessions.js', 'academy-attendance.js', 'academy-ops-board.js', 'academy-desk.js'], sources: ['apps/app/src/screens/academy-ops.js'],
   },
   {
-    id: 'education', title: 'Link schools and track studies',
-    why: 'Sport-plus-study athletes need their school exams, lessons and attendance checked before you publish training, with grades kept private.',
-    steps: ['Open Academy, then Academics, and choose Athletes, then Link a school: pick the enrolled athlete and a verified school.', 'Ask the athlete or guardian to allow the school timetable (and, if you will hold reports, school progress) under My academy, School.', 'Add exams, lessons and school days under the athlete, or import the school\'s attendance and timetable; every entry shows where it came from.', 'Check Overview before publishing Operations: any exam or lesson clash must be excused or moved first.', 'Record term progress snapshots (education staff with record access only) and follow up attendance exceptions and coordination tasks.'],
-    target: { academy: 'academics' },
-    modules: ['academy-academics.js', 'academy-academics-records.js'], sources: ['apps/app/src/screens/academy-academics.js'],
-  },
-  {
     id: 'tax', title: 'Set up taxation',
     why: 'Know the tax collected and paid, with your own tax rules and tax details on invoices.',
     steps: ['Open Finance and choose the Tax tab (finance access is required).', 'Add your tax registration and tax rules.', 'Read collected, paid and net tax by period and rate.', 'Tax figures are informational, not tax advice.'],
@@ -96,10 +89,33 @@ export const ACADEMY_STEPS = [
     target: { academy: 'home' },
     modules: ['academy-executive.js', 'academy-athlete360.js', 'org-command-centre.js', 'academy-insights.js', 'academy-packs.js'], sources: ['apps/app/src/screens/academy-home.js', 'apps/app/src/screens/academy-executive.js', 'apps/app/src/screens/academy-overview.js', 'apps/app/src/screens/academy-elite.js'],
   },
+  {
+    id: 'academics', title: 'Connect schools and studies',
+    why: 'Sport-plus-study academies run on both calendars. Link each athlete to their school, let the athlete or guardian choose what to share, and clashes appear before a session is published.',
+    steps: ['Open Academy, then Academics, and tap Link an athlete to a school. Pick the athlete and the school already on the platform.', 'The athlete, or a minor\u2019s guardian, is asked what to share (timetable, attendance, progress), with whom and for how long. Nothing is shared until they decide.', 'The school adds exams, lesson blocks and attendance summaries, or sends them by file or API. A school exam that clashes with a session is flagged and blocks publishing.', 'Open an athlete to see sport progress and academic progress side by side as separate blocks, each with its source. Grades are only read with the academics_detail permission and the athlete\u2019s consent.'],
+    target: { academy: 'academics' },
+    modules: ['academy-academics.js', 'academy-attainment.js'], sources: ['apps/app/src/screens/academics.js'],
+  },
+  {
+    id: 'campuses', title: 'Organise campuses and transfers',
+    why: 'Run more than one location as one academy: regions, campuses and sport departments, directors with their own view, shared policies, and transfers that follow your own approval process.',
+    steps: ['Open the Campuses tab and tap Set up campuses to make your academy one campus without changing any record, or add a region and a campus yourself.', 'Place venues, teams, cohorts, programmes and coaches on a campus or sport department. Each keeps its identity and history; only a dated pointer is added.', 'Give each campus a director, finance, sports lead, operations or auditor role, and set policies that its sport departments inherit.', 'Under Transfers, configure your process (approvals, finance clearance, athlete or guardian acknowledgement, handover checklist), then move athletes, coaches or programmes between campuses with a request that follows it.'],
+    target: { org: 'campuses' },
+    modules: ['org-campuses.js', 'org-campus-transfers.js'], sources: ['apps/app/src/screens/campuses.js', 'apps/app/src/screens/campus-transfers.js'],
+  },
+  {
+    id: 'safety', title: 'Run pickup and daily safety',
+    why: 'Know who arrived, who is in your care and who took each young athlete home. Guardians decide who may collect, staff hand over with checks, and late pickups and no-shows escalate on your timings.',
+    steps: ['Open Academy, then Safety & pickup, then Settings, and set when guardians, the second guardian with emergency contacts, and the safeguarding officer are alerted.', 'Ask families to open Family & guardians, then Pickup & safety, to list who may collect, with days, times, a passphrase and emergency contacts.', 'On session day, open the session and its Pickup & handover tab. Check the collector by QR, passphrase or ID, then tap Confirm handover. The guardian confirms on their phone, and the athlete stays in your care until they do.', 'Follow late pickups, no-shows and concerns under Safety & pickup. Details are shown only to staff with the safeguarding permission, and every read is audit-logged.'],
+    target: { academy: 'safety' },
+    modules: ['academy-pickup.js'], sources: ['apps/app/src/screens/academy-safety.js'],
+  },
 ];
 
 /** Org/academy API modules with no step of their own, and why. Anything not here and not in a step fails the guard test. */
-export const NOT_IN_GUIDE = {};
+export const NOT_IN_GUIDE = {
+  'academy-curriculum.js': 'Curriculum, methodology and coaching-philosophy governance is set up by the academy after the first setup; it is described in docs/academy-curriculum.md, not in this onboarding guide.',
+};
 
 /** The directories/files the guard test watches for org/academy/venue/coach/tax capability modules. */
 export const WATCHED_MODULES = /^(academy-.*|org-.*|organisations|venue-coaches|gst|provider-tax|coach-classes)\.js$/;

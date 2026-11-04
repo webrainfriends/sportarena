@@ -69,13 +69,6 @@ export async function markAttendance(c, s, userId, status, { source = 'staff', a
   return { changed: true, row };
 }
 
-/** Athletes whose school commitment was resolved for this session are excused (reason: school) once it is published. System mark: needs no correction reason. */
-export async function excuseResolved(c, s, actor) {
-  const rows = (await c.query('SELECT DISTINCT athlete_id FROM academy_clash_resolutions WHERE session_id=$1', [s.id])).rows;
-  for (const r of rows) { try { await markAttendance(c, s, r.athlete_id, 'excused', { source: 'system', actor, reason_code: 'school' }); } catch (e) { if (e.status && e.status < 500) continue; throw e; } }
-  return rows.length;
-}
-
 const rosterOf = (c, s) => c.query(
   `SELECT u.id AS user_id, u.display_name, u.handle, u.avatar_emoji, u.avatar_color, coalesce(a.status, 'expected') AS status, a.reason_code, a.source, a.marked_at, a.arrived_at, a.left_at, coalesce(a.guest, false) AS guest, a.row_version,
           (u.youth_until IS NOT NULL AND u.youth_until > current_date) AS is_youth

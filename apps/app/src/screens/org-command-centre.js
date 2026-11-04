@@ -15,7 +15,7 @@ import { DateField, DateRangeField } from '../pickers';
 import { toMinor } from '../contracts-ui';
 import { SwitchRow } from '../federation-bits';
 
-const DOMAIN = { admissions: 'Admissions', registrations: 'Registrations', staff: 'Staff', compliance: 'Compliance', procurement: 'Procurement', finance: 'Finance', sponsors: 'Sponsors', documents: 'Documents', tasks: 'Tasks' };
+const DOMAIN = { admissions: 'Admissions', registrations: 'Registrations', curriculum: 'Curriculum', staff: 'Staff', compliance: 'Compliance', procurement: 'Procurement', finance: 'Finance', sponsors: 'Sponsors', documents: 'Documents', tasks: 'Tasks' };
 const SEV = { ok: c.lime, warn: c.sun, bad: c.red };
 const when = (iso) => { if (!iso) return ''; const days = Math.floor((Date.now() - Date.parse(iso)) / 864e5); return days <= 0 ? 'today' : days === 1 ? '1 day' : `${days} days`; };
 

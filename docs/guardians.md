@@ -59,6 +59,11 @@ Guardians authorise adults to collect for up to 90 days (`add_pickup_delegate`: 
 a team manager. A manager must release the child to a guardian or a current delegate. Retries are safe with `idempotency_key`,
 check-ins alternate (no double drop-off), guardians are notified. `check_in` needs current participation consent.
 
+Academy pickup and handover (#788) extends this: collectors can carry weekdays and a local-time window, one-time use, a passphrase,
+a phone number and an academy limit, and a delegate can be an **emergency contact** instead of, or as well as, a collector. A new
+`pickup` guardian scope controls who may collect, add collectors, confirm and mint a pickup QR. See
+[`academy-pickup-safety.md`](academy-pickup-safety.md) for the handover, escalation and safety-event rules.
+
 ## Data, migration and rollback
 `migrations/022_youth_guardians.sql` is additive: new nullable columns on `users` and new tables; nothing is dropped, rewritten or
 narrowed, and history tables are append-only by trigger. Existing rows survive; DOB-bearing accounts are evaluated by an

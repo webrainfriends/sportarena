@@ -7,30 +7,30 @@ import { orgFor } from './org-access.js';
 import { badgesFor } from './verification.js';
 import { commitmentBusy } from './coach-commitments.js';
 import { toLocal } from './booking/time.js';
-import { academicClashes } from './academy-clashes.js';
+import { academicClashes } from './academics.js';
 
-// academics = school timetable, exams, attendance summaries and coordination tasks; academic_records = the grades themselves (a separate, narrower grant)
-export const PERMS = ['schedule', 'attendance', 'roster', 'timesheets', 'payroll', 'safeguarding', 'suppliers', 'academics', 'academic_records'];
+export const PERMS = ['schedule', 'attendance', 'roster', 'timesheets', 'payroll', 'safeguarding', 'suppliers', 'curriculum', 'academics', 'academics_detail'];
+/** Subject-level academic records are never implied by seniority: owners and admins manage the academic side, but only an explicit grant reads grades (#783). */
+export const IMPLIED = PERMS.filter((p) => p !== 'academics_detail');
 export const ADMINS = ['owner', 'admin'];
 
 /** Job-title templates: a starting permission set. Access is only ever the stored permissions, so templates never proliferate roles. */
 export const TEMPLATES = {
-  director: { title: 'Academy director', permissions: PERMS },
+  director: { title: 'Academy director', permissions: IMPLIED },
   administrator: { title: 'Academy administrator', permissions: ['schedule', 'attendance', 'roster', 'timesheets'] },
-  head_coach: { title: 'Head coach / technical director', permissions: ['schedule', 'attendance', 'roster', 'timesheets'] },
+  head_coach: { title: 'Head coach / technical director', permissions: ['schedule', 'attendance', 'roster', 'timesheets', 'curriculum'] },
   coach: { title: 'Coach', permissions: ['attendance', 'roster'] },
   assistant_coach: { title: 'Assistant coach', permissions: ['attendance'] },
   programme_lead: { title: 'Programme lead', permissions: ['schedule', 'attendance', 'roster'] },
   registrar: { title: 'Registrar / front desk', permissions: ['attendance', 'roster'] },
   operations: { title: 'Operations manager', permissions: ['schedule', 'attendance', 'roster', 'timesheets', 'suppliers'] },
   payroll: { title: 'Finance / payroll', permissions: ['timesheets', 'payroll'] },
+  academic_lead: { title: 'Academic lead / education officer (reads consented grades)', permissions: ['academics', 'academics_detail', 'schedule', 'roster', 'attendance'] },
   safeguarding: { title: 'Safeguarding / youth coordinator', permissions: ['roster', 'safeguarding'] },
   medical_liaison: { title: 'Medical liaison (operational cover only, no clinical records)', permissions: ['roster'] },
   partnerships: { title: 'Sponsor / partnership manager', permissions: [] },
   communications: { title: 'Marketing / communications', permissions: [] },
   auditor: { title: 'Read-only auditor', permissions: ['schedule', 'attendance', 'roster', 'timesheets', 'payroll'] },
-  education_coordinator: { title: 'Education & school liaison coordinator', permissions: ['roster', 'academics', 'academic_records'] },
-  school_liaison: { title: 'School liaison (timetable and attendance, no grades)', permissions: ['roster', 'academics'] },
   custom: { title: 'Custom', permissions: [] },
 };
 
@@ -46,8 +46,8 @@ export async function opsAccess(user, orgId, { write = false, c } = {}) {
   const live = eng && eng.state === 'active' && (!eng.ends_on || new Date(eng.ends_on) >= new Date(new Date().toISOString().slice(0, 10)));
   const perms = new Set(), broad = new Set();      // broad = organisation-wide; the coach role alone only covers sessions the coach is part of
   const admin = ADMINS.includes(role);
-  if (admin) PERMS.forEach((p) => { perms.add(p); broad.add(p); });
-  else if (role === 'auditor') ['schedule', 'attendance', 'roster', 'timesheets', 'payroll'].forEach((p) => { perms.add(p); broad.add(p); });
+  if (admin) IMPLIED.forEach((p) => { perms.add(p); broad.add(p); });
+  else if (role === 'auditor') ['schedule', 'attendance', 'roster', 'timesheets', 'payroll', 'curriculum'].forEach((p) => { perms.add(p); broad.add(p); });
   else if (!eng || live) {
     if (role === 'coach') ['attendance', 'roster'].forEach((p) => perms.add(p));
     if (role === 'finance') ['timesheets', 'payroll'].forEach((p) => { perms.add(p); broad.add(p); });
@@ -186,16 +186,13 @@ export async function staffingExceptions(c, orgId, from, to, { limit = 400 } = {
 /** Full pre-publish check: staff conflicts for everyone assigned, cohort overlaps, venue state and compliance. */
 export async function checkSession(c, s) {
   const staff = (await c.query("SELECT user_id FROM academy_session_staff WHERE session_id=$1 AND status IN ('assigned','confirmed')", [s.id])).rows;
-  const conflicts = [...(await cohortIssues(c, s))];
+  const conflicts = [...(await cohortIssues(c, s)), ...(await academicClashes(c, s))];   // a consented school exam / lesson / tutoring clash blocks publication like any other clash (#783)
   for (const st of staff) for (const i of await staffIssues(c, s.organisation_id, st.user_id, s.starts_at, s.ends_at, { excludeSessionId: s.id, tz: s.timezone })) conflicts.push({ ...i, user_id: st.user_id });
   const venue = await heldVenue(c, s.id);
   const compliance = await evaluateSession(c, s);
   if (venue && venue.booking_status !== 'confirmed') conflicts.push({ kind: 'venue', code: 'venue_booking_not_confirmed', message: 'The venue booking is no longer confirmed' });
   if (venue && (new Date(venue.starts_at) > new Date(s.starts_at) || new Date(venue.ends_at) < new Date(s.ends_at))) conflicts.push({ kind: 'venue', code: 'venue_window_mismatch', message: 'The venue booking does not cover the whole session' });
-  // sport-study clashes (#783): school exams / lessons the athlete cannot miss refuse publication until resolved; study overlaps only warn
-  const academics = await academicClashes(c, s);
-  conflicts.push(...academics.clashes);
-  return { conflicts, compliance, venue, academics, academic_warnings: academics.warnings, publishable: compliance.level !== 'blocked' && conflicts.length === 0 };
+  return { conflicts, compliance, venue, publishable: compliance.level !== 'blocked' && conflicts.length === 0 };
 }
 
 // ------------------------------------------------------------------ compensation
