@@ -58,6 +58,8 @@ cap({
       `SELECT DISTINCT ON (d.pathway_id) d.pathway_id, p.title AS pathway, coalesce(d.to_level, d.from_level) AS level, d.decision, d.created_at,
               (SELECT a.outcome FROM academy_assessments a WHERE a.pathway_id=d.pathway_id AND a.athlete_id=d.athlete_id AND a.status='approved' ORDER BY a.created_at DESC LIMIT 1) AS latest_approved_assessment
          FROM academy_progression_decisions d JOIN academy_pathways p ON p.id=d.pathway_id WHERE d.organisation_id=$1 AND d.athlete_id=$2 ORDER BY d.pathway_id, d.created_at DESC, d.id DESC`, [i.id, i.athlete_id]) };
+    sections.development = !COACHING.includes(role) ? denied : { access: 'ok', source: 'academy_dev_plans (a link to the plan; the plan reads the canonical records itself)', data: await many(
+      "SELECT id, season_label, sport, status, starts_on, ends_on FROM academy_dev_plans WHERE organisation_id=$1 AND athlete_id=$2 AND archived_at IS NULL AND status <> 'draft' ORDER BY ends_on DESC, id", [i.id, i.athlete_id]) };
     if (!COACHING.includes(role)) sections.coaching = denied;
     else if (!(await hasConsent(i.athlete_id, 'coaching'))) sections.coaching = { access: 'no_consent', reason: 'A guardian has not allowed coaching material to be shared' };
     else {
