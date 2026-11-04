@@ -205,7 +205,6 @@ cap({
   input: z.object({ id }).merge(PARTIAL).extend({ name: FIELDS.name }),
   handler: ({ user }, { id: orgId, ...rest }) => tx(async (c) => {
     await orgFor(user, orgId, STAFF, { write: true, c });
-    if (!(await c.query("SELECT 1 FROM academy_profiles WHERE organisation_id=$1", [orgId])).rows.length) throw conflict('Set up the academy profile before creating a campaign');
     const f = normalise({ owner_id: user.id, ...rest });
     await checkRefs(c, orgId, f);
     const cols = Object.keys(f);

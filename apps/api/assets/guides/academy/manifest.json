@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-11-04T07:29:12.266Z",
+  "generated_at": "2026-11-04T09:46:56.997Z",
   "steps": {
     "create": "67c52c6973596dd7",
     "venues": "59e5e6d76e2e7f48",
@@ -7,7 +7,8 @@
     "suppliers": "0ced122a257369a9",
     "programmes": "15e0a2506777d9c2",
     "coaches": "5f5b1e1912ff4673",
-    "students": "7c80dcb830ed8843",
+    "students": "5607397c3ba5e53e",
+    "scouting": "447b55a9a18278e2",
     "classes": "a81d695699677c95",
     "tax": "e8c1a239959f1ce4",
     "revenue": "7454085a018f1758",
