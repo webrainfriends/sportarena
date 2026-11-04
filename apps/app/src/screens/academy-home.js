@@ -10,12 +10,14 @@ import { moneyIn } from '../vtime';
 import { useLayout } from '../layout';
 import { Block, FunnelBars, Kpi, Meter, Spark, when } from './academy-ui';
 import { ExecutiveCards } from './academy-executive';
+import { ProcessCard, useOpenTarget } from './process-card';
 
 const KIND = { review: ['📨', 'Review'], offer_expiring: ['⏰', 'Offer ending'], follow_up: ['↪️', 'Follow up'], overdue: ['💷', 'Overdue'] };
 
 const Panel = ({ children, style }) => <View style={[{ backgroundColor: c.paper, borderRadius: 20, padding: 16, gap: 10, borderWidth: 1, borderColor: c.line }, style]}>{children}</View>;
 
-export function Home({ o, go, openApplication, canMoney }) {
+export function Home({ o, go, orgGo, openApplication, canMoney, toast }) {
+  const openTarget = useOpenTarget({ o, academy: go, org: (tab) => orgGo?.(tab) });
   const dash = useLoad(() => api.get(`/organisations/${o.id}/academy/dashboard`), [o.id]);
   const pipe = useLoad(() => api.get(`/organisations/${o.id}/pipeline`), [o.id]);
   const { tablet } = useLayout();
@@ -30,6 +32,7 @@ export function Home({ o, go, openApplication, canMoney }) {
   const col = tablet ? { flex: 1, minWidth: 0 } : { width: '100%' };
   return (
     <View style={{ gap: 14 }}>
+      <ProcessCard open={openTarget} toast={toast} />
       <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10 }}>
         <Kpi label="Active athletes" value={d.enrolments.active} sub={`+${d.enrolments.new_30d} · −${d.enrolments.withdrawn_30d} in 30 days`} onPress={() => go('families')} />
         <Kpi label="Open places" value={open} sub={`${d.programmes.length} live programme${d.programmes.length === 1 ? '' : 's'}`} onPress={() => go('programmes')} />
@@ -100,7 +103,7 @@ export function Home({ o, go, openApplication, canMoney }) {
         </View>
       </View>
       <T size={12} color={c.mute}>{d.families.payers} paying families · {d.families.multi_child} with more than one child</T>
-      <ExecutiveCards o={o} go={go} canMoney={canMoney} />
+      <ExecutiveCards o={o} go={go} canMoney={canMoney} toast={toast} />
     </View>
   );
 }

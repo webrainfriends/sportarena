@@ -26,7 +26,7 @@ const ALL = [
   { key: 'agreements', label: 'Agreements', icon: '📜' }, { key: 'billing', label: 'Finance', icon: '💷' }, { key: 'partners', label: 'Partners', icon: '🤝' }, { key: 'announce', label: 'Announcements', icon: '📣' }, { key: 'study', label: 'Study listing', icon: '🎓' }, { key: 'settings', label: 'Settings', icon: '⚙️' },
 ];
 
-export function AcademyDesk({ o, role, archived, toast, focus }) {
+export function AcademyDesk({ o, role, archived, toast, focus, go: orgGo }) {
   const staff = role === 'owner' || role === 'admin';
   // owners/admins get the whole module; everyone else only the parts their role and permission set reach (Operations decides the rest server-side)
   const items = staff ? ALL : ALL.filter((i) => i.key === 'ops' || (['coach', 'staff', 'auditor'].includes(role) && i.key === 'curriculum') || (role === 'coach' && i.key === 'progress') || (role === 'finance' && ['billing', 'partners'].includes(i.key)));
@@ -39,7 +39,7 @@ export function AcademyDesk({ o, role, archived, toast, focus }) {
   const P = { o, role, archived, toast };
   const goTo = (key, id) => { setTab(key); if (key === 'admissions' && id) setOpenApp(id); };
   const openApplication = (id) => { setOpenApp(id); setTab('admissions'); };
-  const body = !items.some((i) => i.key === tab) ? <Empty emoji="🔒" title="Not available for your role" /> : tab === 'ops' ? <Operations {...P} /> : tab === 'home' ? <Home {...P} go={goTo} openApplication={openApplication} canMoney />
+  const body = !items.some((i) => i.key === tab) ? <Empty emoji="🔒" title="Not available for your role" /> : tab === 'ops' ? <Operations {...P} /> : tab === 'home' ? <Home {...P} go={goTo} orgGo={orgGo} openApplication={openApplication} canMoney />
     : tab === 'admissions' ? <Admissions {...P} openId={openApp} setOpenId={setOpenApp} /> : tab === 'programmes' ? <Programmes {...P} onOpenApplication={openApplication} />
     : tab === 'families' ? <Families {...P} onOpenApplication={openApplication} /> : tab === 'agreements' ? <Agreements {...P} /> : tab === 'billing' ? <Finance {...P} /> : tab === 'progress' ? <Progress {...P} /> : tab === 'curriculum' ? <Curriculum {...P} focus={focus?.tab === 'curriculum' ? focus : null} /> : tab === 'partners' ? <Partners {...P} />
     : tab === 'announce' ? <Announcements {...P} /> : tab === 'study' ? <StudyDesk {...P} /> : <Settings {...P} />;
