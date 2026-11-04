@@ -6,6 +6,7 @@ import { Platform, Pressable, ScrollView, View } from 'react-native';
 import { api } from '../api';
 import { useLoad } from '../hooks';
 import { useNav } from '../nav';
+import { t } from '../i18n';
 import { useLayout } from '../layout';
 import { explain, LoadError } from '../access';
 import { Btn, Card, Chip, Empty, Loading, Row, Seg, Sheet, T, Tag } from '../ui';
