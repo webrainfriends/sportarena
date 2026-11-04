@@ -18,7 +18,7 @@ import { dateTimeIn, moneyIn } from '../vtime';
 
 const day = (d) => (d ? new Date(d).toLocaleDateString(locale, { weekday: 'short', day: 'numeric', month: 'short' }) : '');
 const KIND = { rsvp: ['Answer', c.cyanSoft], payment: ['Pay', c.sunSoft], registration: ['Register', c.mintSoft], trip_consent: ['Trip consent', c.orangeSoft], consent: ['Permission', c.violetSoft], renew_link: ['Verification', c.pinkSoft] };
-const SCOPES = ['pay', 'register', 'rsvp', 'travel_consent', 'consent', 'calendar'];
+const SCOPES = ['pay', 'register', 'rsvp', 'travel_consent', 'consent', 'calendar', 'pickup'];
 const scopeOptions = () => SCOPES.map((s) => ({ value: s, label: tr(`family.scope.${s}`) }));
 const REG = { submitted: 'Submitted', under_review: 'Under review', registered: 'Registered', suspended: 'Suspended' };
 
