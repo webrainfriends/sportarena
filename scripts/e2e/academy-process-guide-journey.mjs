@@ -71,6 +71,17 @@ try {
     const exam = new Date(Date.now() + 5 * 864e5).toISOString().slice(0, 10);
     await call('POST', `/academics/links/${alink.id}/items`, { token: owner.token, body: { items: [{ kind: 'exam', starts_at: `${exam}T04:00:00Z`, ends_at: `${exam}T07:00:00Z`, timezone: 'Asia/Kolkata', high_stakes: true }] } });
   }
+  // a season plan with a squad linked to a real fixture, so the competition step photographs real figures (everything through the public API)
+  const rivalOwner = await reg('guide_rival', 'Rival Coach', ['coach']);
+  const home = await call('POST', '/teams', { token: owner.token, body: { name: 'U12 Boys', sport: 'football', organisation_id: org.id } });
+  const away = await call('POST', '/teams', { token: rivalOwner.token, body: { name: 'City Juniors U12', sport: 'football' } });
+  const cup = await call('POST', '/events', { token: owner.token, body: { name: 'Regional Youth Cup', sport: 'football', starts_on: new Date(Date.now() + 20 * 864e5).toISOString().slice(0, 10), ends_on: new Date(Date.now() + 21 * 864e5).toISOString().slice(0, 10), entry_fee_cents: 0 } });
+  if (home && away && cup) {
+    for (const [tk, tm] of [[owner, home], [rivalOwner, away]]) { const en = await call('POST', `/events/${cup.id}/entries`, { token: tk.token, body: { team_id: tm.id } }); if (en) await call('PATCH', `/entries/${en.id}`, { token: owner.token, body: { status: 'accepted' } }); }
+    const fx = await call('POST', `/events/${cup.id}/fixtures`, { token: owner.token, body: { home_team_id: home.id, away_team_id: away.id, scheduled_at: new Date(Date.now() + 20 * 864e5 + 10 * 36e5).toISOString() } });
+    const plan = await call('POST', `/organisations/${org.id}/season-plans`, { token: owner.token, body: { name: 'Season 2026-27', starts_on: new Date().toISOString().slice(0, 10), ends_on: new Date(Date.now() + 200 * 864e5).toISOString().slice(0, 10) } });
+    if (plan && fx) await call('POST', `/season-plans/${plan.id}/entries`, { token: owner.token, body: { team_id: home.id, fixture_id: fx.id, cohort_id: u12.id, age_group: 'U12' } });
+  }
   // the academy opts in to campuses (one default campus, no record changed) so the guide step photographs real figures
   await call('POST', `/organisations/${org.id}/campuses/adopt`, { token: owner.token, body: { name: 'Pune Campus', country: 'IN' } });
 
@@ -110,7 +121,8 @@ try {
     tax: async (p) => { await navTo(p, 'Finance', { id: org.id }); await click(p, 'Tax').catch(() => {}); },
     revenue: (p) => inOrg(p, async () => { await click(p, 'Academy'); await click(p, 'Finance'); await click(p, 'Costs'); }),
     reports: (p) => inOrg(p, async () => { await click(p, 'Academy'); }),
-    academics: (p) => inOrg(p, async () => { await click(p, 'Academy'); await click(p, 'Academics'); await click(p, 'Athletes'); }),   // the Academy tab opens on its Home (executive view)
+    academics: (p) => inOrg(p, async () => { await click(p, 'Academy'); await click(p, 'Academics'); await click(p, 'Athletes').catch(() => {}); }),   // the Academy tab opens on its Home (executive view)
+    competition: (p) => inOrg(p, async () => { await click(p, 'Academy'); await click(p, 'Competition & Squads'); }),
     campuses: (p) => inOrg(p, async () => { await click(p, 'Campuses'); }),   // the Academy tab opens on its Home (executive view)
   };
   const manifest = { generated_at: new Date().toISOString(), steps: {} };

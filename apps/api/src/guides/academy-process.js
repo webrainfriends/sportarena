@@ -97,6 +97,13 @@ export const ACADEMY_STEPS = [
     modules: ['academy-academics.js', 'academy-attainment.js'], sources: ['apps/app/src/screens/academics.js'],
   },
   {
+    id: 'competition', title: 'Plan competitions and squads',
+    why: 'Connect your teams to real fixtures and tournaments, check clashes with training, staff, venues, school exams and travel consent, and publish squads through the Team once your selection committee approves.',
+    steps: ['Open Academy, then Competition & Squads, and tap New season plan. Give it a name and the season dates.', 'Tap Link a squad to an event or match. Pick the team, the match or event it plays in, the cohort that trains it and, if there is one, the trip. Teams, fixtures and trips are entered elsewhere (the event console and Trips); this only links them.', 'Work through the readiness checklist, set the selection committee and the participation objectives. Training, staff, venue, school-exam and guardian-consent clashes are listed before you publish.', 'Once the committee has approved and no blocking clash remains, tap Publish squad. People are invited through the Team, and the Participation tab then shows matches and minutes from the official records, never a ranking.'],
+    target: { academy: 'competition' },
+    modules: ['academy-competition.js'], sources: ['apps/app/src/screens/academy-competition.js', 'apps/app/src/screens/academy-plan-strip.js'],
+  },
+  {
     id: 'campuses', title: 'Organise campuses and transfers',
     why: 'Run more than one location as one academy: regions, campuses and sport departments, directors with their own view, shared policies, and transfers that follow your own approval process.',
     steps: ['Open the Campuses tab and tap Set up campuses to make your academy one campus without changing any record, or add a region and a campus yourself.', 'Place venues, teams, cohorts, programmes and coaches on a campus or sport department. Each keeps its identity and history; only a dated pointer is added.', 'Give each campus a director, finance, sports lead, operations or auditor role, and set policies that its sport departments inherit.', 'Under Transfers, configure your process (approvals, finance clearance, athlete or guardian acknowledgement, handover checklist), then move athletes, coaches or programmes between campuses with a request that follows it.'],

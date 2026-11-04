@@ -1,9 +1,9 @@
 {
-  "generated_at": "2026-11-04T07:29:12.266Z",
+  "generated_at": "2026-11-04T10:48:16.037Z",
   "steps": {
-    "create": "67c52c6973596dd7",
+    "create": "d8eedc6cfcf50f98",
     "venues": "59e5e6d76e2e7f48",
-    "staff": "60b0e3fe0ca8eaaa",
+    "staff": "40a3da439f125def",
     "suppliers": "0ced122a257369a9",
     "programmes": "15e0a2506777d9c2",
     "coaches": "5f5b1e1912ff4673",
@@ -13,6 +13,7 @@
     "revenue": "7454085a018f1758",
     "reports": "fff65d7b70854d83",
     "academics": "177a4b476d93d737",
+    "competition": "41b7ac081f0e8ea7",
     "campuses": "d5cb91ed7050b13c"
   }
 }
