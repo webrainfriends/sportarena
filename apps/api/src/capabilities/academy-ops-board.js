@@ -7,7 +7,7 @@ import { badRequest } from '../errors.js';
 import { fromLocal } from '../booking/time.js';
 import { createHash } from 'node:crypto';
 import { notify } from '../notify.js';
-import { opsAccess, sessionFor, checkSession, evaluateSession } from '../academy-ops.js';
+import { opsAccess, sessionFor, checkSession, evaluateSession, staffingExceptions } from '../academy-ops.js';
 import { audience } from './academy-sessions.js';
 
 const TAG = 'Academy operations';
@@ -115,10 +115,9 @@ cap({
       many(`SELECT v.id AS venue_id, v.name AS venue, count(DISTINCT s.id)::int AS sessions, (sum(extract(epoch FROM (s.ends_at - s.starts_at)) / 60))::int AS minutes
               FROM academy_sessions s JOIN session_venue_links l ON l.session_type='academy_session' AND l.session_id=s.id AND l.released_at IS NULL JOIN bookings b ON b.id=l.booking_id AND b.status='confirmed' JOIN resources r ON r.id=b.resource_id JOIN venues v ON v.id=r.venue_id
              WHERE s.organisation_id=$1 AND s.status <> 'cancelled' AND s.starts_at >= $2::date AND s.starts_at < $3::date + 1 GROUP BY v.id, v.name ORDER BY v.name, v.id`, w),
-      many(`SELECT s.* FROM academy_sessions s WHERE s.organisation_id=$1 AND s.status IN ('published','completed') AND s.starts_at >= $2::date AND s.starts_at < $3::date + 1 ORDER BY s.starts_at, s.id LIMIT 400`, w),
+      staffingExceptions(pool, i.id, i.from, i.to),
     ]);
-    const exceptions = [];
-    for (const s of ratio) { const e = await evaluateSession(pool, s); const bad = e.checks.filter((x) => ['ratio', 'min_coaches', 'lead', 'lead_credential'].includes(x.code) && !x.ok); if (bad.length) exceptions.push({ session_id: s.id, title: s.title, starts_at: s.starts_at, issues: bad.map((x) => x.message) }); }
+    const exceptions = ratio.exceptions.map(({ session_id, title, starts_at, issues }) => ({ session_id, title, starts_at, issues }));
     const pct = (n, d) => (d ? Math.round((n / d) * 1000) / 10 : null);
     const cost = a.has('payroll') ? await many(
       `SELECT r.currency, p.id AS programme_id, coalesce(p.title, 'Not tied to a programme') AS programme, sum((d->>'amount_minor')::bigint)::bigint AS amount_minor

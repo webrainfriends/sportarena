@@ -11,6 +11,7 @@ import { t as tr } from '../i18n';
 import { Block, Kpi, opts, openInvoicePdf, when } from './academy-ui';
 import { useSession } from '../session';
 import { AgreementList, AgreementWizard } from './agreement-wizard';
+import { Branches } from './academy-closeout';
 
 const KINDS = [['participation', 'Participation terms'], ['code_of_conduct', 'Code of conduct'], ['refund_policy', 'Refund policy'], ['media_consent', 'Media consent'], ['equipment', 'Equipment'], ['pickup', 'Pick-up'], ['programme_declaration', 'Programme declaration'], ['other', 'Other']];
 const Panel = ({ children }) => <View style={{ backgroundColor: c.paper, borderRadius: 20, padding: 16, gap: 10, borderWidth: 1, borderColor: c.line }}>{children}</View>;
@@ -153,7 +154,7 @@ export function Announcements({ o, archived }) {
   );
 }
 
-export function Settings({ o, archived }) {
+export function Settings({ o, archived, toast }) {
   const prof = useLoad(() => api.get(`/organisations/${o.id}/academy`), [o.id]);
   const [edit, setEdit] = useState(false);
   const [guard, setGuard] = useState(false);
@@ -170,6 +171,7 @@ export function Settings({ o, archived }) {
           {!p.row_version ? <T size={13} color={c.mute}>Set your academy profile so families can find your published programmes.</T> : null}
         </Block>
       </Panel>
+      <Branches o={o} archived={archived} toast={toast} />
       {guard && gpol.data ? (
         <FormSheet visible onClose={() => setGuard(false)} title={tr('family.policy.title')} initial={{ primary_only_scopes: gpol.data.primary_only_scopes, note: gpol.data.note ?? '' }}
           fields={[

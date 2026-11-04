@@ -17,10 +17,10 @@ const cur = z.string().regex(/^[A-Z]{3}$/);
 cap({
   name: 'get_academy_pnl', method: 'GET', path: '/organisations/:id/academy/pnl', tag: 'Academy',
   summary: 'Management profit & loss for the academy (owner/admin/finance), per currency and never summed across currencies: gross billed, discounts, scholarships/sponsor funding, net invoiced, refunds, management revenue (invoice basis by due date), cash collected (cash basis by payment date), outstanding, staff / venue / other direct cost, contribution, allocated overhead, operating result, margin and per-programme unit economics. Missing costs are null, not zero. Filter by programme or sport. This is a management view, not statutory accounts.',
-  input: z.object({ id, from: day.optional(), to: day.optional(), programme_id: id.optional(), sport: z.string().max(40).optional() }),
+  input: z.object({ id, from: day.optional(), to: day.optional(), programme_id: id.optional(), sport: z.string().max(40).optional(), branch_id: id.optional() }),
   async handler({ user }, i) {
     await orgFor(user, i.id, STAFF_MONEY);
-    return pnl(i.id, { from: i.from ?? daysAgo(90), to: i.to ?? today(), programmeId: i.programme_id ?? null, sport: i.sport ?? null });
+    return pnl(i.id, { from: i.from ?? daysAgo(90), to: i.to ?? today(), programmeId: i.programme_id ?? null, sport: i.sport ?? null, branchId: i.branch_id ?? null });
   },
 });
 

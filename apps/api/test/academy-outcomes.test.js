@@ -373,7 +373,7 @@ test('executive home, retention indicators and the copilot: role-gated, explaina
 
   const home = must(await api('GET', `/organisations/${a.org.id}/academy/executive`, { token: a.owner.token }));
   assert.equal(home.people.enrolled_athletes, 1); assert.equal(home.people.utilisation_pct, 25); assert.equal(home.people.link.tab, 'admissions');
-  assert.equal(home.delivery.sessions_cancelled, null); assert.ok(home.delivery.missing_note.includes('Academy OS 2/3'));
+  assert.equal(home.delivery.sessions_cancelled, 0); assert.equal(home.delivery.staffing_exceptions, 0); assert.equal(home.delivery.link.tab, 'ops'); assert.equal(home.delivery.missing_note, undefined); // read from Academy OS 2/3 sessions now
   assert.equal(home.finance.currencies[0].outstanding_minor, 12000); assert.equal(home.finance.ageing[0].buckets.d1_30.amount_minor, 12000);
   assert.ok(home.retention.indicators.attendance_decline && home.retention.indicators.repeated_absence && home.retention.indicators.overdue_balance);
   const finHome = must(await api('GET', `/organisations/${a.org.id}/academy/executive`, { token: fin.token }));

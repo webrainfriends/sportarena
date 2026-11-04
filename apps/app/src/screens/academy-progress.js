@@ -9,6 +9,8 @@ import { Btn, Chip, Empty, ErrorBox, Loading, Row, Seg, T, Tag } from '../ui';
 import { FormSheet } from '../FormSheet';
 import { c } from '../theme';
 import { Block, Fact, Initials, Origin, Split, Timeline, when } from './academy-ui';
+import { t as tr } from '../i18n';
+import { FollowThrough, PackButton } from './academy-closeout';
 
 const Panel = ({ children }) => <View style={{ backgroundColor: c.paper, borderRadius: 20, padding: 16, gap: 10, borderWidth: 1, borderColor: c.line }}>{children}</View>;
 const WHY = { not_placed: ['🆕', 'Not placed on a level'], assessment_due: ['🗓️', 'Assessment due'], assessment_awaiting_review: ['🔎', 'Assessment awaiting review'], assessment_awaiting_decision: ['⚖️', 'Assessment approved, no decision yet'] };
@@ -114,6 +116,8 @@ function AthleteProgress({ o, pathway_id, athlete_id, staff, archived, toast, on
         {p.history.length ? <Timeline items={p.history.map((h) => ({ title: `${DECISIONS.find(([k]) => k === h.decision)?.[1] ?? h.decision}${h.to_level ? ` → ${h.to_level}` : ''}`, sub: `${when(h.created_at)} · ${h.decided_by_name} · v${h.pathway_version} · ${h.reason}` }))} /> : <T size={13} color={c.mute}>No decisions yet.</T>}
         <T size={11} color={c.mute}>A decision is always a person’s. Payment status plays no part in it, and nothing here is automatic.</T>
       </Block>
+      {staff && !archived ? <FollowThrough o={o} athleteId={athlete_id} history={p.history} toast={toast} /> : null}
+      <PackButton label={tr('aco.pack.progress')} path={`/organisations/${o.id}/academy/athletes/${athlete_id}/progress-report`} name="progress-report" toast={toast} />
       <FormSheet visible={form === 'assess'} onClose={() => setForm(null)} title="Record an assessment" submitLabel="Save assessment" initial={{ level_key: p.evaluating ?? levels[0]?.key, from: win.from, to: win.to, comment_visibility: 'staff' }}
         fields={[{ key: 'level_key', label: 'Assessed against', type: 'chips', options: lvlOpts }, { key: 'from', toKey: 'to', label: 'Period assessed', type: 'daterange' },
           { key: 'comment', label: 'Assessor comment', type: 'multiline', optional: true }, { key: 'comment_visibility', label: 'Who may read the comment', type: 'choice', options: [{ value: 'staff', label: 'Staff only' }, { value: 'athlete', label: 'The athlete / guardian too' }] }]}
@@ -248,6 +252,7 @@ export function FamilyProgress({ athlete, toast }) {
                 <Timeline items={p.decisions.slice(0, 5).map((x) => ({ title: `${(DECISIONS.find(([k]) => k === x.decision) ?? [0, x.decision])[1]}${x.to_level ? ` → ${x.to_level}` : ''}`, sub: `${when(x.created_at)} · ${x.reason}` }))} />
               </View>
             )) : <T size={13} color={c.mute}>Not placed on a pathway yet.</T>}
+            <PackButton label={tr('aco.pack.progress')} path={`/organisations/${a.organisation.id}/academy/athletes/${athlete.id}/progress-report`} name="progress-report" toast={toast} />
             {a.attendance_weeks.length ? <T size={12} color={c.mute}>Attendance, last 8 weeks: {a.attendance_weeks.map((w) => `${when(w.week)} ${w.present}/${w.present + w.absent}`).join(' · ')}</T> : null}
             <View style={{ padding: 12, borderRadius: 16, backgroundColor: c.bg, gap: 6 }}>
               <T weight="800" size={14}>Fit-to-take-part status</T>

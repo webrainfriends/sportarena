@@ -29,6 +29,7 @@ import { supplierAccess, buyerAccess } from '../svc/access.js';
 import { canReadPackDocument } from './export-packs.js';
 import { canReadTripReport } from '../trips.js';
 import { canReadFederationDocument } from './federation-home.js';
+import { canReadAcademyPack, isAcademyPackType } from './academy-packs.js';
 
 const TAG = 'Branded documents';
 const color = z.string().regex(/^#[0-9A-Fa-f]{6}$/, 'Use a #RRGGBB colour');
@@ -371,6 +372,7 @@ export function brandedDocumentsRouter() {
         if (!v || !(await canReadReportVersion(user, v))) throw notFound('Document');
       } else if (d.source_type === 'sponsorship_contract') await canReadContractDocument(user, d.source_id); // parties to the agreement only, checked live
       else if (d.source_type === 'export_pack') await canReadPackDocument(user, d.source_id); // the athlete, their verified guardian, or the coach who built it from a still-live share
+      else if (isAcademyPackType(d.source_type)) await canReadAcademyPack(user, d.source_type, d.source_id); // academy progress / management / finance PDFs: role, coach scope or guardian link re-checked live
       else if (d.source_type === 'academy_enrolment') await canReadEnrolmentLetter(user, d.source_id); // academy staff, the enrolled adult or their verified guardian, checked live
       else if (d.source_type.startsWith('trip_report:')) await canReadTripReport(user, d); // trip staff (or the traveller who made it) while it is under 24 h old, checked live
       else if (d.source_type.startsWith('federation_')) await canReadFederationDocument(user, d.source_type, d.source_id); // the body's officers or the other party, checked live

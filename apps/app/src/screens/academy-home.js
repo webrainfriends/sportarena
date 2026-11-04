@@ -15,7 +15,7 @@ const KIND = { review: ['📨', 'Review'], offer_expiring: ['⏰', 'Offer ending
 
 const Panel = ({ children, style }) => <View style={[{ backgroundColor: c.paper, borderRadius: 20, padding: 16, gap: 10, borderWidth: 1, borderColor: c.line }, style]}>{children}</View>;
 
-export function Home({ o, go, openApplication, canMoney }) {
+export function Home({ o, go, openApplication, canMoney, toast }) {
   const dash = useLoad(() => api.get(`/organisations/${o.id}/academy/dashboard`), [o.id]);
   const pipe = useLoad(() => api.get(`/organisations/${o.id}/pipeline`), [o.id]);
   const { tablet } = useLayout();
@@ -100,7 +100,7 @@ export function Home({ o, go, openApplication, canMoney }) {
         </View>
       </View>
       <T size={12} color={c.mute}>{d.families.payers} paying families · {d.families.multi_child} with more than one child</T>
-      <ExecutiveCards o={o} go={go} canMoney={canMoney} />
+      <ExecutiveCards o={o} go={go} canMoney={canMoney} toast={toast} />
     </View>
   );
 }
