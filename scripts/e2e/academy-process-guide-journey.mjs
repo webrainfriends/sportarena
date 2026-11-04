@@ -112,6 +112,7 @@ try {
     suppliers: (p) => inOrg(p, async () => { await click(p, 'Academy'); await click(p, 'Partners'); }),
     programmes: (p) => inOrg(p, async () => { await click(p, 'Academy'); await click(p, 'Programmes'); }),
     coaches: async (p) => { await navTo(p, 'Manage', { id: venue.id, tab: 'coaches' }); await p.getByText('Tie-ups', { exact: true }).first().scrollIntoViewIfNeeded(); await wait(p, 600); },
+    content: (p) => inOrg(p, async () => { await click(p, 'Academy'); await click(p, 'Content'); }),
     development: (p) => inOrg(p, async () => { await click(p, 'Academy'); await click(p, 'Progress'); await click(p, 'Development plans'); }),
     students: (p) => inOrg(p, async () => { await click(p, 'Academy'); await click(p, 'Admissions'); }),
     classes: (p) => inOrg(p, async () => { await click(p, 'Academy'); await click(p, 'Operations'); }),

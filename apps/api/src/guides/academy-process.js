@@ -69,6 +69,13 @@ export const ACADEMY_STEPS = [
     modules: ['academy-dev-plan.js'], sources: ['apps/app/src/screens/academy-dev-plan.js', 'apps/app/src/screens/academy-dev-builder.js', 'apps/app/src/screens/dev-plan-trend.js'],
   },
   {
+    id: 'content', title: 'License your curriculum',
+    why: 'Package your approved methodology, curricula, drills and micro-courses as a licensed pack, so affiliated and independent organisations can buy seats for their coaches while you keep the rights, the versions and the revenue record.',
+    steps: ['Open Academy, then Content, then Packs, and tap New pack. Choose the sport, level, ages and languages, credit the authors, and set who may license it (open, affiliated or by invitation), the territory, the seat limit and whether offline copies are allowed.', 'Add items: pick your published curriculum versions, methodology versions and approved drills (they are linked, never copied), then add micro-courses and video references. Mark footage that shows young people: it is stream-only, watermarked and never offline.', 'State the learning objectives, assessment and coach development hours, set the price per seat, the term, the grace period and the revenue split, then publish. A published version never changes.', 'When an organisation requests a pack, open Licences granted, set the terms (seats, dates, version, price) and send the offer. The buyer accepts and pays through the normal checkout, then assigns seats to its coaches.', 'Watch Overview and a pack’s Usage and Money tabs for seats, completion, renewals due and the revenue statement. Suspend, revoke or renew a licence with a reason: access ends at once and the buyer’s own academy data is untouched. Handle support and takedown cases under Support & takedowns.'],
+    target: { academy: 'content' },
+    modules: ['academy-content.js'], sources: ['apps/app/src/screens/academy-content.js', 'apps/app/src/screens/academy-content-pack.js'],
+  },
+  {
     id: 'classes', title: 'Track classes',
     why: 'See today and the week at a glance, take attendance and keep make-ups and cancellations visible.',
     steps: ['Open Academy, then Operations.', 'Use Week to build the term timetable: group, term dates, weekdays, start time and lead coach.', 'Use Today to open a session and mark attendance.', 'Use Insights for attendance and delivery trends.'],
@@ -99,7 +106,7 @@ export const ACADEMY_STEPS = [
   {
     id: 'academics', title: 'Connect schools and studies',
     why: 'Sport-plus-study academies run on both calendars. Link each athlete to their school, let the athlete or guardian choose what to share, and clashes appear before a session is published.',
-    steps: ['Open Academy, then Academics, and tap Link an athlete to a school. Pick the athlete and the school already on the platform.', 'The athlete, or a minor\u2019s guardian, is asked what to share (timetable, attendance, progress), with whom and for how long. Nothing is shared until they decide.', 'The school adds exams, lesson blocks and attendance summaries, or sends them by file or API. A school exam that clashes with a session is flagged and blocks publishing.', 'Open an athlete to see sport progress and academic progress side by side as separate blocks, each with its source. Grades are only read with the academics_detail permission and the athlete\u2019s consent.'],
+    steps: ['Open Academy, then Academics, and tap Link an athlete to a school. Pick the athlete and the school already on the platform.', 'The athlete, or a minor’s guardian, is asked what to share (timetable, attendance, progress), with whom and for how long. Nothing is shared until they decide.', 'The school adds exams, lesson blocks and attendance summaries, or sends them by file or API. A school exam that clashes with a session is flagged and blocks publishing.', 'Open an athlete to see sport progress and academic progress side by side as separate blocks, each with its source. Grades are only read with the academics_detail permission and the athlete’s consent.'],
     target: { academy: 'academics' },
     modules: ['academy-academics.js', 'academy-attainment.js'], sources: ['apps/app/src/screens/academics.js'],
   },
