@@ -151,6 +151,19 @@ try {
       await page.context().close();
     }
   }
+  // UX_SHOTS: the Competition & Squads screen (squads, conflicts, participation) at phone, tablet and desktop widths
+  if (process.env.UX_SHOTS) {
+    for (const [size, viewport] of Object.entries({ phone: { width: 390, height: 844 }, tablet: { width: 820, height: 1180 }, desktop: { width: 1280, height: 900 } })) {
+      const page = await open(viewport);
+      try {
+        await inOrg(page, async () => { await click(page, 'Academy'); await click(page, 'Competition & Squads'); });
+        await page.screenshot({ path: path.join(process.env.UX_SHOTS, `competition-squads-${size}.png`), fullPage: true });
+        await click(page, 'Conflicts'); await page.screenshot({ path: path.join(process.env.UX_SHOTS, `competition-conflicts-${size}.png`), fullPage: true });
+        log(`PASS  competition ${size}`);
+      } catch (e) { failures++; log(`FAIL  competition ${size}: ${e.message.split('\n')[0]}`); }
+      await page.context().close();
+    }
+  }
   for (const s of ACADEMY_STEPS) manifest.steps[s.id] = sourcesHash(s);
   fs.writeFileSync(MANIFEST_FILE, JSON.stringify(manifest, null, 2) + '\n');
   await browser.close();

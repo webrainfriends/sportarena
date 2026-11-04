@@ -8021,4 +8021,5 @@ export default {
   'cp.strip.open': 'Open plan',
   'guide.competition.title': 'Plan competitions and squads',
   'guide.competition.why': 'Connect your teams to real fixtures and tournaments, check clashes with training, staff, venues, school exams and travel consent, and publish squads through the Team once your selection committee approves.',
+  'cp.f.season': 'Competition season (optional)',
 };

@@ -38,8 +38,8 @@ export function Competition({ o, archived, toast }) {
   if (list.data?.error) return <Empty emoji="🔒" title={t('cp.locked')} sub={t('cp.locked_sub')} />;
   const create = (
     <FormSheet visible={sheet?.type === 'plan'} onClose={() => setSheet(null)} title={t('cp.new_plan')} submitLabel={t('cp.create')} initial={{ range: today() }}
-      fields={[{ key: 'name', label: t('cp.f.name'), type: 'text' }, { key: 'range', label: t('cp.f.dates'), type: 'daterange', toKey: 'ends_on' }]}
-      onSubmit={async (x) => { const r = await api.post(`/organisations/${o.id}/season-plans`, { name: x.name, starts_on: x.range, ends_on: x.ends_on }); setPlanId(r.id); setSheet(null); reload(); }} />
+      fields={[{ key: 'name', label: t('cp.f.name'), type: 'text' }, { key: 'range', label: t('cp.f.dates'), type: 'daterange', toKey: 'ends_on' }, menu('comp_season_id', t('cp.f.season'), (list.data?.season_options ?? []).map((x) => ({ value: x.id, label: x.label })), true)]}
+      onSubmit={async (x) => { const r = await api.post(`/organisations/${o.id}/season-plans`, { name: x.name, starts_on: x.range, ends_on: x.ends_on, ...(x.comp_season_id ? { comp_season_id: x.comp_season_id } : {}) }); setPlanId(r.id); setSheet(null); reload(); }} />
   );
   if (!list.data?.items?.length) return (
     <Panel style={{ padding: 22, gap: 12 }}>
@@ -59,7 +59,7 @@ export function Competition({ o, archived, toast }) {
       <View style={{ backgroundColor: c.violet, borderRadius: 20, padding: 16, gap: 8 }}>
         <T size={11} weight="800" color={c.on} style={{ letterSpacing: 1, opacity: 0.75 }}>{t('cp.hero')}</T>
         <T size={20} weight="800" color={c.on}>{p.name}</T>
-        <T size={13} color={c.on} style={{ opacity: 0.8 }}>{fmtDay(p.starts_on)} – {fmtDay(p.ends_on)}</T>
+        <T size={13} color={c.on} style={{ opacity: 0.8 }}>{fmtDay(p.starts_on)} – {fmtDay(p.ends_on)}{p.comp_season_label ? ` · ${p.comp_season_label}` : ''}</T>
         <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, alignItems: 'center' }}>
           <Tag label={t(`cp.status.${p.status}`)} color={STATUS[p.status]} />
           {NEXT[p.status] && !archived ? <Btn small title={t(`cp.advance.${NEXT[p.status]}`)} color={c.paper} ink={c.ink} onPress={advance} /> : null}

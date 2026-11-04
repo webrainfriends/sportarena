@@ -142,3 +142,39 @@ test('candidates feed the pickers from live records and are hidden from outsider
   assert.equal(c.teams.length, 1); assert.equal(c.teams[0].members.length, 3); assert.equal(c.fixtures.length, 1); assert.equal(c.events.length, 1); assert.equal(c.cohorts.length, 1);
   assert.equal((await api('GET', `/season-plans/${p.id}/candidates`, { token: g.stranger.token })).status, 404);
 });
+
+test('a consented school exam and missing guardian trip consent are both surfaced; only the exam blocks', async () => {
+  const g = await setup();
+  const guardian = await signup(), schoolAdmin = await signup();
+  const p = await mkPlan(g);
+  const e = ok(await addEntry(g, p), 201);
+  // school exam overlapping the match, shared by the athlete with the academy
+  const school = ok(await api('POST', '/organisations', { token: schoolAdmin.token, body: { name: `Greenfield ${n}`, kind: 'school', city: 'Madrid' } }), 201);
+  ok(await api('POST', `/cohorts/${g.cohort.id}/enrolments`, { token: g.owner.token, body: { csv: `handle,consent\n${g.p1.handle},yes` } }), 201);
+  const enr = (await pool.query('SELECT id FROM org_enrolments WHERE cohort_id=$1 AND user_id=$2', [g.cohort.id, g.p1.id])).rows[0];
+  const link = ok(await api('POST', `/organisations/${g.org.id}/academics/links`, { token: g.owner.token, body: { enrolment_id: enr.id, school_org_id: school.id } }), 201);
+  ok(await api('POST', '/academics/consents', { token: g.p1.token, body: { athlete_id: g.p1.id, party_org_id: g.org.id, scopes: ['timetable'], detail: 'summary' } }), 201);
+  ok(await api('POST', `/academics/links/${link.id}/items`, { token: g.owner.token, body: { items: [{ kind: 'exam', starts_at: `${day(10)}T10:30:00Z`, ends_at: `${day(10)}T12:00:00Z`, timezone: 'UTC', high_stakes: true }] } }), 201);
+  // a young traveller on a linked trip with no guardian trip consent
+  await pool.query('UPDATE users SET youth_until = current_date + 700 WHERE id=$1', [g.p2.id]);
+  await pool.query("INSERT INTO guardian_links(guardian_id, child_id, relationship, status, requested_by) VALUES ($1,$2,'parent','active',$1)", [guardian.id, g.p2.id]);
+  const trip = (await pool.query("INSERT INTO trips(name,team_id,organisation_id,origin,destination,timezone,depart_at,return_at,manager_id,created_by) VALUES ('Cup trip',$1,$2,'Madrid','Valencia','Europe/Madrid',$3,$4,$5,$5) RETURNING id", [g.team.id, g.org.id, `${day(9)}T08:00:00Z`, `${day(12)}T20:00:00Z`, g.owner.id])).rows[0];
+  await pool.query("INSERT INTO trip_participants(trip_id,user_id,role,status,basis,invited_by) VALUES ($1,$2,'athlete','confirmed','team_roster',$3)", [trip.id, g.p2.id, g.owner.id]);
+  await pool.query('UPDATE academy_plan_entries SET trip_id=$2 WHERE id=$1', [e.id, trip.id]);
+  const c = ok(await api('GET', `/season-plans/${p.id}/conflicts`, { token: g.owner.token }));
+  const exam = c.items.find((x) => x.kind === 'exam'), guard = c.items.find((x) => x.kind === 'guardian');
+  assert.ok(exam && exam.blocking, JSON.stringify(c.items));
+  assert.ok(guard && !guard.blocking && guard.count === 1, 'guardian consent is chased, not blocking');
+  assert.equal(c.blocking, 1);
+});
+
+test('a plan can reference a competition season its teams are entered in, and only those are offered', async () => {
+  const g = await setup();
+  const comp = (await pool.query("INSERT INTO comp_competitions(name,slug,sport_id,owner_id) SELECT 'Regional League', $3, sport_id, $1 FROM teams WHERE id=$2 RETURNING id", [g.owner.id, g.team.id, `regional-league-${n}`])).rows[0];
+  const season = (await pool.query("INSERT INTO comp_seasons(competition_id,event_id,label,starts_on,ends_on,created_by) VALUES ($1,$2,'2026-27',$3,$4,$5) RETURNING id", [comp.id, g.ev.id, day(0), day(200), g.owner.id])).rows[0];
+  const opts = ok(await api('GET', `/organisations/${g.org.id}/season-plans`, { token: g.owner.token })).season_options;
+  assert.equal(opts.length, 1); assert.equal(opts[0].id, season.id);
+  const p = await mkPlan(g, { comp_season_id: season.id });
+  assert.ok(ok(await api('GET', `/season-plans/${p.id}`, { token: g.owner.token })).comp_season_label.includes('Regional League'));
+  assert.equal((await api('POST', `/organisations/${g.org.id}/season-plans`, { token: g.owner.token, body: { name: 'Other plan', starts_on: day(0), ends_on: day(5), comp_season_id: '00000000-0000-4000-8000-000000000000' } })).status, 404);
+});

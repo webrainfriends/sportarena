@@ -8001,4 +8001,5 @@ export default {
   'cp.strip.open': 'Buka rencana',
   'guide.competition.title': 'Rencanakan kompetisi dan skuad',
   'guide.competition.why': 'Hubungkan tim Anda dengan pertandingan dan turnamen nyata, periksa bentrokan dengan latihan, staf, tempat, ujian sekolah, dan persetujuan perjalanan, lalu terbitkan skuad melalui Tim setelah komite seleksi menyetujui.',
+  'cp.f.season': 'Musim kompetisi (opsional)',
 };

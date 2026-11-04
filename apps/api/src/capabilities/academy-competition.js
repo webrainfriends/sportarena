@@ -100,7 +100,7 @@ cap({
 
 cap({
   name: 'list_season_plans', method: 'GET', path: '/organisations/:id/season-plans', tag: TAG,
-  summary: 'The academy\'s season plans with a metric strip (entries, squads published, open conflicts) for each.',
+  summary: 'The academy\'s season plans with entry counts, plus the competition seasons its teams are entered in (season_options) to reference from a new plan.',
   input: z.object({ id, include_archived: z.coerce.boolean().default(false) }),
   handler: async ({ user }, i) => {
     await access(user, i.id, 'schedule', false);
@@ -110,7 +110,9 @@ cap({
       const es = await many('SELECT squad_published_at FROM academy_plan_entries WHERE plan_id=$1 AND removed_at IS NULL', [p.id]);
       out.push({ ...shapePlan(p), entries: es.length, squads_published: es.filter((e) => e.squad_published_at).length });
     }
-    return { items: out };
+    const seasons = await many(`SELECT s.id, s.label, s.starts_on, s.ends_on, c.name AS competition FROM comp_seasons s JOIN comp_competitions c ON c.id=s.competition_id
+      WHERE EXISTS (SELECT 1 FROM event_entries ee JOIN teams t ON t.id=ee.team_id WHERE ee.event_id=s.event_id AND t.organisation_id=$1 AND ee.status IN ('pending','accepted')) ORDER BY s.starts_on DESC LIMIT 50`, [i.id]);
+    return { items: out, season_options: seasons.map((x) => ({ id: x.id, label: `${x.competition} · ${x.label}`, starts_on: ymd(x.starts_on), ends_on: ymd(x.ends_on) })) };
   },
 });
 
@@ -136,7 +138,7 @@ cap({
     }));
     const done = items.reduce((n, e) => n + e.checklist.filter((x) => x.state !== 'open').length, 0);
     const c0 = await tx(async (c) => (await Promise.all(es.map((e) => entryConflicts(c, p, e)))).flat());
-    return { ...shapePlan(p), entries: items, objectives,
+    return { ...shapePlan(p), comp_season_label: p.comp_season_id ? ((await one('SELECT c.name || \' · \' || s.label AS l FROM comp_seasons s JOIN comp_competitions c ON c.id=s.competition_id WHERE s.id=$1', [p.comp_season_id]))?.l ?? null) : null, entries: items, objectives,
       metrics: { entries: items.length, squads_published: items.filter((e) => e.squad_published_at).length, checklist_done: done, checklist_total: items.length * CHECKLIST.length,
         open_conflicts: c0.length, blocking_conflicts: c0.filter((x) => x.blocking).length } };
   },
