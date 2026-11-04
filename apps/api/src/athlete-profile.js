@@ -25,7 +25,7 @@ export function canonical(metric, unit, value) {
   return v >= m.min && v <= m.max ? v : null;
 }
 
-const POSITIONS = {
+export const POSITIONS = {
   football: ['Goalkeeper', 'Centre-back', 'Full-back', 'Defensive midfield', 'Central midfield', 'Attacking midfield', 'Winger', 'Striker'],
   basketball: ['Point guard', 'Shooting guard', 'Small forward', 'Power forward', 'Center'],
   cricket: ['Opening batter', 'Middle-order batter', 'Wicket-keeper', 'Fast bowler', 'Spin bowler', 'All-rounder'],
