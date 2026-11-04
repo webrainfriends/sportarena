@@ -8,7 +8,7 @@
 -- 1. Guardians may confirm / manage pickups only with the 'pickup' scope. Existing explicit scope sets keep the authority they already
 --    had (pickup delegation was never scope-gated before), so we backfill rather than narrow anyone's access.
 UPDATE guardian_links SET scopes = array_append(scopes, 'pickup') WHERE NOT ('pickup' = ANY(scopes));
-ALTER TABLE guardian_links ALTER COLUMN scopes SET DEFAULT '{pay,register,rsvp,travel_consent,consent,calendar,pickup}';
+ALTER TABLE guardian_links ALTER COLUMN scopes SET DEFAULT '{pay,register,rsvp,travel_consent,consent,calendar,social,pickup}';
 
 -- 2. Richer collector authority + emergency contacts on the canonical delegate table (no parallel table).
 ALTER TABLE pickup_delegates ADD COLUMN IF NOT EXISTS relationship        text;
