@@ -170,7 +170,7 @@ export function ScanPanel({ domain, subjectRef, people = [], youthDirection = tr
 }
 
 // ------------------------------------------------------------------------------------------------------------------------------ rotating QR
-function useRotating(path, query, visible) {
+export function useRotating(path, query, visible) {
   const [state, setState] = useState({ data: null, error: null });
   useEffect(() => {
     if (!visible) return undefined;
