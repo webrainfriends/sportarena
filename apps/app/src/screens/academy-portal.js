@@ -1,6 +1,7 @@
 // The family / athlete side of the academy: what needs your attention, where each application stands, your programmes, what is due,
 // and a programme browser with a step-by-step application (details, questions, agreements, exact price, confirm).
 // Identity, guardian authority and payments are the canonical records; nothing here is a copy.
+import { FamilyKit } from './academy-kit-family';
 import React, { useState } from 'react';
 import { Pressable, ScrollView, View } from 'react-native';
 import { api } from '../api';
@@ -91,6 +92,7 @@ export function AcademyFamily() {
                   <Btn small title="Find a programme" color={c.paper} ink={c.ink} onPress={() => setTab('browse')} style={{ alignSelf: 'flex-start' }} />
                 </Block>
               </Panel>
+              {p.enrolments.length ? <FamilyKit key={p.athlete.id} athleteId={p.athlete.id} /> : null}
               {p.certificates?.length ? (
                 <Panel>
                   <Block title="Certificates">
