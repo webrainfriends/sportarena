@@ -13,7 +13,8 @@ import { notify } from '../notify.js';
 import { prepEvidence } from '../cases.js';
 import { canManageTeam } from './teams.js';
 import { hasOrgGrant } from '../org-access.js';
-import { PURPOSES, RELATIONSHIPS, SCOPES, YOUTH_SQL, getPolicy, guardianLink, guardiansOf, hasConsent, isYouth, primaryGuardian, refreshYouth, requireConsent, requireGuardian } from '../youth.js';
+import { PURPOSES, RELATIONSHIPS, SCOPES, YOUTH_SQL, getPolicy, guardianCan, guardianLink, guardiansOf, hasConsent, isYouth, primaryGuardian, refreshYouth, requireConsent, requireGuardian } from '../youth.js';
+import { RELATIONSHIPS as COLLECTOR_RELATIONSHIPS, hashPhrase, liveDelegateSql, validZone } from '../pickup.js';
 
 const TAG = 'Youth & guardians';
 const DAY = 864e5;
@@ -423,13 +424,23 @@ cap({
 
 // ---- pickup delegation & check-in -------------------------------------------------------------------------------------------
 
-const delegateLive = `d.revoked_at IS NULL AND d.valid_from <= now() AND d.expires_at > now()
-  AND EXISTS (SELECT 1 FROM guardian_links l WHERE l.guardian_id=d.granted_by AND l.child_id=d.child_id AND l.status='active' AND l.revoked_at IS NULL AND (l.expires_at IS NULL OR l.expires_at > now()))`;
+const delegateLive = liveDelegateSql('d');
 
+const hhmm = z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, 'Use a 24-hour time such as 16:30');
 cap({
   name: 'add_pickup_delegate', method: 'POST', path: '/youth/children/:child_id/pickup-delegates', tag: TAG, status: 201,
-  summary: 'Guardian: authorise an adult to collect (and check in) a young person for a limited time. Give a person on the platform, a name (encrypted), or both. Coaches can only release the child to a guardian or a current delegate.',
-  input: z.object({ child_id: id, delegate_user_id: id.optional(), delegate_handle: z.string().min(3).max(24).optional(), delegate_name: z.string().min(2).max(120).optional(), valid_days: z.number().int().min(1).max(90).default(30) }),
+  summary: 'Guardian (with the pickup scope): authorise an adult to collect a young person and/or list them as an emergency contact. Give a person on the platform, a name (encrypted), or both. Optional limits: weekdays and a local time window, an academy, one-time use, a spoken passphrase (stored only as a salted hash), a phone number (encrypted). Coaches can only release the child to a guardian or a delegate whose authority is live right now.',
+  input: z.object({
+    child_id: id, delegate_user_id: id.optional(), delegate_handle: z.string().min(3).max(24).optional(), delegate_name: z.string().min(2).max(120).optional(),
+    valid_days: z.number().int().min(1).max(730).default(30),
+    relationship: z.enum(COLLECTOR_RELATIONSHIPS).optional(), phone: z.string().min(5).max(30).optional(),
+    can_collect: z.boolean().default(true), is_emergency: z.boolean().default(false), emergency_rank: z.number().int().min(1).max(5).optional(),
+    weekdays: z.array(z.number().int().min(1).max(7)).min(1).max(7).optional().describe('ISO weekdays 1=Mon..7=Sun; leave out for every day'),
+    from_time: hhmm.optional(), to_time: hhmm.optional(), timezone: z.string().max(60).default('UTC'),
+    one_time: z.boolean().default(false), passphrase: z.string().min(4).max(60).optional(), organisation_id: id.optional().describe('limit to one academy; leave out for every academy the child attends'),
+  }).refine((v) => v.can_collect || v.is_emergency, 'The person must be allowed to collect, an emergency contact, or both')
+    .refine((v) => !!v.from_time === !!v.to_time && (!v.from_time || v.from_time < v.to_time), 'Give both times, start before end')
+    .refine((v) => !v.can_collect || v.valid_days <= 90, 'A collection authority lasts at most 90 days; renew it when it ends'),
   async handler({ user }, i0) {
     const i = { ...i0 };
     if (i.delegate_handle) {
@@ -438,8 +449,12 @@ cap({
       i.delegate_user_id = d.id;
     }
     if (!i.delegate_user_id && !i.delegate_name) throw badRequest('Give a person or a name');
+    if (!validZone(i.timezone)) throw badRequest('Unknown time zone');
     return tx(async (c) => {
-      if (!(await guardianLink(user.id, i.child_id, c))) throw forbidden('You are not a verified guardian of this young person');
+      const link = await guardianLink(user.id, i.child_id, c);
+      if (!link) throw forbidden('You are not a verified guardian of this young person');
+      if (!(await guardianCan(link, 'pickup', i.organisation_id ?? null, c))) throw forbidden('Your guardian authority for this young person does not cover pickups (pickup)');
+      if (i.organisation_id && !(await c.query('SELECT 1 FROM organisations WHERE id=$1', [i.organisation_id])).rowCount) throw notFound('Organisation');
       if (i.delegate_user_id) {
         if (i.delegate_user_id === i.child_id) throw badRequest('A child cannot be their own pickup');
         const d = (await c.query(`SELECT u.id, ${YOUTH_SQL} AS is_youth FROM users u WHERE u.id=$1`, [i.delegate_user_id])).rows[0];
@@ -447,11 +462,13 @@ cap({
         if (d.is_youth) throw badRequest('A pickup person must be an adult');
       }
       const r = (await c.query(
-        'INSERT INTO pickup_delegates(child_id, delegate_user_id, delegate_name_enc, granted_by, expires_at) VALUES ($1,$2,$3,$4, now() + make_interval(days => $5)) RETURNING id, child_id, delegate_user_id, valid_from, expires_at',
-        [i.child_id, i.delegate_user_id ?? null, encrypt(i.delegate_name, 'pickup_delegates.name'), user.id, i.valid_days])).rows[0];
+        `INSERT INTO pickup_delegates(child_id, delegate_user_id, delegate_name_enc, granted_by, expires_at, relationship, phone_enc, can_collect, is_emergency, emergency_rank, weekdays, from_time, to_time, tz, one_time, passphrase_hash, organisation_id)
+         VALUES ($1,$2,$3,$4, now() + make_interval(days => $5), $6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17) RETURNING id, child_id, delegate_user_id, valid_from, expires_at, can_collect, is_emergency, relationship, weekdays, from_time, to_time, one_time, organisation_id`,
+        [i.child_id, i.delegate_user_id ?? null, encrypt(i.delegate_name, 'pickup_delegates.name'), user.id, i.valid_days, i.relationship ?? null, encrypt(i.phone, 'pickup_delegates.phone'), i.can_collect, i.is_emergency, i.emergency_rank ?? null,
+          i.weekdays ? [...new Set(i.weekdays)].sort() : null, i.from_time ?? null, i.to_time ?? null, i.timezone, i.one_time, i.passphrase ? hashPhrase(i.passphrase) : null, i.organisation_id ?? null])).rows[0];
       await audit(c, user.id, 'add_pickup_delegate', 'users', i.child_id);
-      if (i.delegate_user_id) await notify(c, i.delegate_user_id, { kind: 'pickup_delegate', title: 'You can collect a young person', body: 'A guardian authorised you to pick someone up. Open Family & guardians.', data: { child_id: i.child_id } });
-      return r;
+      if (i.delegate_user_id) await notify(c, i.delegate_user_id, { kind: 'pickup_delegate', title: i.can_collect ? 'You can collect a young person' : 'You are an emergency contact', body: 'A guardian listed you. Open Family & guardians.', data: { child_id: i.child_id } });
+      return { ...r, has_passphrase: !!i.passphrase };
     });
   },
 });
@@ -474,10 +491,11 @@ cap({
   async handler({ user }, i) {
     if (!(await guardianLink(user.id, i.child_id)) && !isAdmin(user)) throw notFound('Young person');
     const rows = await many(
-      `SELECT d.id, d.delegate_user_id, u.display_name AS delegate_display_name, d.delegate_name_enc, d.valid_from, d.expires_at, d.revoked_at, d.granted_by, (${delegateLive}) AS active
+      `SELECT d.id, d.delegate_user_id, u.display_name AS delegate_display_name, d.delegate_name_enc, d.phone_enc, d.relationship, d.can_collect, d.is_emergency, d.emergency_rank, d.weekdays, d.from_time, d.to_time, d.tz, d.one_time, d.used_at,
+              (d.passphrase_hash IS NOT NULL) AS has_passphrase, d.organisation_id, d.id_verified_at, d.valid_from, d.expires_at, d.revoked_at, d.granted_by, (${delegateLive}) AS active, (d.revoked_at IS NULL AND d.expires_at > now()) AS listed
          FROM pickup_delegates d LEFT JOIN users u ON u.id=d.delegate_user_id WHERE d.child_id=$1 ORDER BY d.created_at DESC, d.id DESC LIMIT $2 OFFSET $3`, [i.child_id, i.limit, i.offset]);
     await audit(null, user.id, 'read_pickup_delegates', 'users', i.child_id);
-    return rows.map(({ delegate_name_enc, ...r }) => ({ ...r, delegate_name: decrypt(delegate_name_enc, 'pickup_delegates.name') }));
+    return rows.map(({ delegate_name_enc, phone_enc, ...r }) => ({ ...r, delegate_name: decrypt(delegate_name_enc, 'pickup_delegates.name'), phone: decrypt(phone_enc, 'pickup_delegates.phone') }));
   },
 });
 

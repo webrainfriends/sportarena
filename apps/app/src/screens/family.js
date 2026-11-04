@@ -9,6 +9,7 @@ import { FormSheet } from '../FormSheet';
 import { Btn, Card, Empty, ErrorBox, H1, Loading, Row, Screen, Section, Sheet, T, Tag } from '../ui';
 import { GuardianSponsors } from './sponsor-youth';
 import { FamilyDashboard } from './family-dashboard';
+import { PendingHandovers, PickupSheet } from './pickup-safety';
 import { MyStudy } from './academics';
 import { MyTransferAcknowledgements } from './campus-transfers';
 import { c } from '../theme';
@@ -59,37 +60,6 @@ function Consents({ child, onClose }) {
         {d.data.history.length ? <><T weight="800" size={13}>History</T>
           {d.data.history.slice(0, 15).map((h, i) => <T key={i} size={12} color={c.mute}>{when(h.created_at)} · {PURPOSES[h.purpose][0]} {h.action === 'grant' ? 'allowed' : 'withdrawn'} by {h.actor_name ?? 'someone'}</T>)}</> : null}
       </> : null}
-    </Sheet>
-  );
-}
-
-function Pickup({ child, onClose }) {
-  const { toast } = useSession();
-  const d = useLoad(() => (child ? api.get(`/youth/children/${child.id}/pickup-delegates`) : Promise.resolve([])), [child?.id]);
-  const hist = useLoad(() => (child ? api.get('/youth/check-ins', { child_id: child.id, limit: 10 }) : Promise.resolve([])), [child?.id]);
-  const [form, setForm] = useState(false);
-  return (
-    <Sheet visible={!!child} onClose={onClose} title={child ? `${child.display_name}: pickup & check-in` : 'Pickup'}>
-      <T size={13} color={c.mute}>Coaches can only hand a child to a verified guardian or to someone listed here, for the dates you choose.</T>
-      <Btn title="Allow someone to collect" color={c.pink} onPress={() => setForm(true)} style={{ alignSelf: 'flex-start' }} />
-      {d.loading && !d.data ? <Loading /> : d.error ? <ErrorBox error={d.error} onRetry={d.reload} /> : d.data?.length ? d.data.map((x) => (
-        <Row key={x.id} title={x.delegate_display_name ?? x.delegate_name} sub={x.active ? `Allowed until ${when(x.expires_at)}` : x.revoked_at ? 'Withdrawn' : 'Expired'}
-          right={x.active ? <Btn small title="Withdraw" color={c.paper} ink={c.red} onPress={async () => { try { await api.del(`/youth/pickup-delegates/${x.id}`); toast('Withdrawn'); d.reload(); } catch (e) { toast(e.message); } }} /> : null} />
-      )) : <Empty emoji="🚸" title="No one else is allowed to collect" sub="Only verified guardians can collect until you add someone." />}
-      <T weight="800" size={13}>Recent check-ins</T>
-      {hist.data?.length ? hist.data.map((h) => <T key={h.id} size={12} color={c.mute}>{new Date(h.at).toLocaleString(locale)} · {h.kind === 'drop_off' ? 'Arrived' : 'Collected'}</T>) : <T size={12} color={c.mute}>Nothing recorded yet. Coaches and guardians check children in and out from the team.</T>}
-      <FormSheet visible={form} onClose={() => setForm(false)} title="Allow someone to collect" submitLabel="Allow"
-        fields={[
-          { key: 'delegate_handle', label: 'Their username (if they have an account)', optional: true, hint: 'Leave empty to add just a name.' },
-          { key: 'delegate_name', label: 'Their name', optional: true, hint: 'Stored encrypted. Show it to the coach at pickup.' },
-          { key: 'valid_days', label: 'For how many days?', type: 'stepper', min: 1, max: 90, default: 30, suffix: ' days' },
-        ]}
-        onSubmit={async (v) => {
-          if (!v.delegate_handle && !v.delegate_name) throw new Error('Enter a username or a name');
-          await api.post(`/youth/children/${child.id}/pickup-delegates`, { child_id: child.id, delegate_handle: v.delegate_handle || undefined, delegate_name: v.delegate_name || undefined, valid_days: v.valid_days });
-          d.reload();
-          return 'They can now collect';
-        }} />
     </Sheet>
   );
 }
@@ -227,6 +197,7 @@ export function Family() {
           <T size={13} color={c.mute}>{status.active_guardians ? `${status.active_guardians} verified guardian${status.active_guardians > 1 ? 's' : ''}.` : 'You need a verified guardian before you can join teams or share health information.'}</T>
         </Card>
       ) : null}
+      {!status?.is_youth ? <PendingHandovers links={links.data} /> : null}
       {!status?.is_youth ? <MyStudy /> : null}
       {!status?.is_youth ? <MyTransferAcknowledgements /> : null}
       {!status?.is_youth ? <FamilyDashboard onConsents={setConsents} /> : null}
@@ -249,7 +220,7 @@ export function Family() {
         ]}
         onSubmit={async (v) => { await api.post('/youth/guardian-links', { handle: v.handle.trim(), as: ask === 'child' ? 'child' : 'guardian', relationship: v.relationship }); reload(); return 'Request sent. They will be asked to accept.'; }} />
       <Consents child={consents} onClose={() => setConsents(null)} />
-      <Pickup child={pickup} onClose={() => setPickup(null)} />
+      <PickupSheet child={pickup} onClose={() => setPickup(null)} />
       <GuardianSponsors child={sponsors} onClose={() => setSponsors(null)} />
       <GuardianCalendarSheet child={calendar} onClose={() => setCalendar(null)} />
     </Screen>

@@ -1,5 +1,6 @@
 // Families & athletes: a searchable directory and a 360 of one athlete's relationship with the academy
 // (who is responsible, applications, enrolments, fees, agreements). Names only; contact details are never shown here.
+import { t as tr } from '../i18n';
 import React, { useState } from 'react';
 import { ScrollView, View } from 'react-native';
 import { api } from '../api';
@@ -81,6 +82,9 @@ function Sections({ o, id }) {
       </Block>
       <Block title="Pathway">
         {no(x.pathway) ?? (x.pathway.data.length ? x.pathway.data.map((p) => <Fact key={p.pathway_id} k={p.pathway} v={`${p.decision === 'graduate' ? 'Graduated' : p.level}${p.latest_approved_assessment ? ` · last assessment: ${p.latest_approved_assessment.replace(/_/g, ' ')}` : ''}`} />) : <T size={13} color={c.mute}>Not placed on a pathway.</T>)}
+      </Block>
+      <Block title={tr('dp.title')}>
+        {no(x.development) ?? (x.development.data.length ? x.development.data.map((p) => <Fact key={p.id} k={`${p.sport} · ${p.season_label}`} v={`${tr(`dp.status.${p.status}`)} · ${when(p.starts_on)} – ${when(p.ends_on)}`} />) : <T size={13} color={c.mute}>{tr('dp.none')}</T>)}
       </Block>
       <Block title="Coaching shared with the athlete" right={x.coaching.access === 'ok' ? <Origin origin="coach_observed" /> : null}>
         {no(x.coaching) ?? (<>
