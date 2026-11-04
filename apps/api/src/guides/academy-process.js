@@ -62,6 +62,13 @@ export const ACADEMY_STEPS = [
     modules: ['academy-admissions.js', 'academy-trials.js', 'academy-letters.js'], sources: ['apps/app/src/screens/academy-admissions.js', 'apps/app/src/screens/academy-families.js'],
   },
   {
+    id: 'development', title: 'Plan athlete development',
+    why: 'Give every athlete one season plan that coordinates coaches, conditioning, psychology, school and family, without copying their private records.',
+    steps: ['Open Academy, then Progress, then Development plans, and tap New plan for an enrolled athlete.', 'Name the accountable lead, the season dates and the pathway it serves, then add the specialists who work on it.', 'Add objectives with the guided builder: pick the domain and the sport-specific competency, check the athlete\'s current figure and the anonymised peer benchmark, set the target, and tick the usual tasks.', 'Set the season phases (pre-season, competition, exams, recovery) so clashes are flagged, then activate the plan.', 'Run a review each cycle: specialists add their view, the lead signs off and can share it with the athlete and guardians, who acknowledge it.', 'Use the Squad board to see who needs attention across all six domains, with the reasons spelled out.'],
+    target: { academy: 'progress' },
+    modules: ['academy-dev-plan.js'], sources: ['apps/app/src/screens/academy-dev-plan.js', 'apps/app/src/screens/academy-dev-builder.js', 'apps/app/src/screens/dev-plan-trend.js'],
+  },
+  {
     id: 'classes', title: 'Track classes',
     why: 'See today and the week at a glance, take attendance and keep make-ups and cancellations visible.',
     steps: ['Open Academy, then Operations.', 'Use Week to build the term timetable: group, term dates, weekdays, start time and lead coach.', 'Use Today to open a session and mark attendance.', 'Use Insights for attendance and delivery trends.'],
