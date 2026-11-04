@@ -110,6 +110,13 @@ export const ACADEMY_STEPS = [
     target: { academy: 'safety' },
     modules: ['academy-pickup.js'], sources: ['apps/app/src/screens/academy-safety.js'],
   },
+  {
+    id: 'kit', title: 'Issue uniforms and kit',
+    why: 'Give every programme, group and squad the kit it is owed, in the right size, and keep stock, deposits and reorders in one place instead of a spreadsheet.',
+    steps: ['Open Academy, then Kit, then Stock, and add each product with its sizes, barcode and opening quantity at the venue that holds it.', 'Open Entitlements and say what each programme, group or squad is owed: included in the fee, charged on top, or loaned against a refundable deposit, and when it is due.', 'Open Issue & return, record each athlete\'s size, then hand the kit over (scan its barcode or serial number on a phone, or type it at the desk). A fee or deposit is raised on the family\'s account and the receipt can be shared.', 'Take kit back, exchange sizes, and report damaged or lost kit: a manager approves it under Approvals before anything is written off or a deposit is kept.', 'Open Replenishment to see what is short by size and order it from your supplier. Parents and athletes see their own kit, where to collect it and their receipts under My academy.'],
+    target: { academy: 'kit' },
+    modules: ['academy-kit.js'], sources: ['apps/app/src/screens/academy-kit.js', 'apps/app/src/screens/academy-kit-desk.js'],
+  },
 ];
 
 /** Org/academy API modules with no step of their own, and why. Anything not here and not in a step fails the guard test. */

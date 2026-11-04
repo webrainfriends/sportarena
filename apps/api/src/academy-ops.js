@@ -9,7 +9,7 @@ import { commitmentBusy } from './coach-commitments.js';
 import { toLocal } from './booking/time.js';
 import { academicClashes } from './academics.js';
 
-export const PERMS = ['schedule', 'attendance', 'roster', 'timesheets', 'payroll', 'safeguarding', 'suppliers', 'curriculum', 'academics', 'academics_detail'];
+export const PERMS = ['schedule', 'attendance', 'roster', 'timesheets', 'payroll', 'safeguarding', 'suppliers', 'curriculum', 'academics', 'academics_detail', 'kit', 'kit_admin'];
 /** Subject-level academic records are never implied by seniority: owners and admins manage the academic side, but only an explicit grant reads grades (#783). */
 export const IMPLIED = PERMS.filter((p) => p !== 'academics_detail');
 export const ADMINS = ['owner', 'admin'];
@@ -22,8 +22,8 @@ export const TEMPLATES = {
   coach: { title: 'Coach', permissions: ['attendance', 'roster'] },
   assistant_coach: { title: 'Assistant coach', permissions: ['attendance'] },
   programme_lead: { title: 'Programme lead', permissions: ['schedule', 'attendance', 'roster'] },
-  registrar: { title: 'Registrar / front desk', permissions: ['attendance', 'roster'] },
-  operations: { title: 'Operations manager', permissions: ['schedule', 'attendance', 'roster', 'timesheets', 'suppliers'] },
+  registrar: { title: 'Registrar / front desk', permissions: ['attendance', 'roster', 'kit'] },
+  operations: { title: 'Operations manager', permissions: ['schedule', 'attendance', 'roster', 'timesheets', 'suppliers', 'kit', 'kit_admin'] },
   payroll: { title: 'Finance / payroll', permissions: ['timesheets', 'payroll'] },
   academic_lead: { title: 'Academic lead / education officer (reads consented grades)', permissions: ['academics', 'academics_detail', 'schedule', 'roster', 'attendance'] },
   safeguarding: { title: 'Safeguarding / youth coordinator', permissions: ['roster', 'safeguarding'] },

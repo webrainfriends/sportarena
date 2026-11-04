@@ -13,6 +13,7 @@ const req = createRequire(import.meta.url);
 const { chromium } = (() => { for (const n of [process.env.PLAYWRIGHT_PATH, 'playwright-core', 'playwright']) { if (!n) continue; try { return req(n); } catch {} } throw new Error('playwright is not installed'); })();
 import pg from 'pg';
 import { seedPickup } from './lib/pickup-fixture.mjs';
+import { seedKit } from './lib/kit-fixture.mjs';
 import { ACADEMY_STEPS, SHOT_SIZES, shotFile, sourcesHash, MANIFEST_FILE } from '../../apps/api/src/guides/academy-process.js';
 
 const API_DIR = new URL('../../apps/api/', import.meta.url).pathname;
@@ -77,7 +78,11 @@ try {
   }
   // young athletes, guardians, one session in the past and its handovers, so the Safety & pickup step photographs real figures
   const db = new pg.Pool({ connectionString: DB });
-  await seedPickup({ call, reg, org, owner, coach, cohort: u12, db, apiDir: API_DIR, env: E, log });
+  const fx = await seedPickup({ call, reg, org, owner, coach, cohort: u12, db, apiDir: API_DIR, env: E, log });
+  // kit stock, entitlements, fittings and a few issues (all through the API) so the Kit step photographs real figures
+  const enrolled = await call('GET', `/cohorts/${u12.id}/enrolments`, { token: owner.token });
+  const students = [student, ...fx.kids].map((user) => ({ user, enrolment_id: enrolled.find((e) => e.handle === user.handle)?.enrolment_id }));
+  await seedKit({ call, org, owner, venue, cohort: u12, students, db, log });
   // the academy opts in to campuses (one default campus, no record changed) so the guide step photographs real figures
   await call('POST', `/organisations/${org.id}/campuses/adopt`, { token: owner.token, body: { name: 'Pune Campus', country: 'IN' } });
 
@@ -119,7 +124,8 @@ try {
     reports: (p) => inOrg(p, async () => { await click(p, 'Academy'); }),
     academics: (p) => inOrg(p, async () => { await click(p, 'Academy'); await click(p, 'Academics'); await click(p, 'Athletes'); }),   // the Academy tab opens on its Home (executive view)
     campuses: (p) => inOrg(p, async () => { await click(p, 'Campuses'); }),
-    safety: (p) => inOrg(p, async () => { await click(p, 'Academy'); await click(p, 'Safety & pickup'); }),   // the Academy tab opens on its Home (executive view)
+    safety: (p) => inOrg(p, async () => { await click(p, 'Academy'); await click(p, 'Safety & pickup'); }),
+    kit: (p) => inOrg(p, async () => { await click(p, 'Academy'); await click(p, 'Kit'); }),   // the Academy tab opens on its Home (executive view)
   };
   const manifest = { generated_at: new Date().toISOString(), steps: {} };
   for (const [size, viewport] of Object.entries(SHOT_SIZES)) {
