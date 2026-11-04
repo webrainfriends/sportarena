@@ -106,7 +106,9 @@ export const ACADEMY_STEPS = [
 ];
 
 /** Org/academy API modules with no step of their own, and why. Anything not here and not in a step fails the guard test. */
-export const NOT_IN_GUIDE = {};
+export const NOT_IN_GUIDE = {
+  'academy-curriculum.js': 'Curriculum, methodology and coaching-philosophy governance is set up by the academy after the first setup; it is described in docs/academy-curriculum.md, not in this onboarding guide.',
+};
 
 /** The directories/files the guard test watches for org/academy/venue/coach/tax capability modules. */
 export const WATCHED_MODULES = /^(academy-.*|org-.*|organisations|venue-coaches|gst|provider-tax|coach-classes)\.js$/;
