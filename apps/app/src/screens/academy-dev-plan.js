@@ -33,7 +33,11 @@ const menu = (k, label, options, extra = {}) => ({ key: k, label, type: 'custom'
 const SRC = { coaching_observations: 'dp.src.observations', academy_attendance: 'dp.src.attendance', 'performances (approved competition)': 'dp.src.official', coaching_goals: 'dp.src.goal', 'plan milestones': 'dp.src.milestones', academic_evidence: 'dp.src.school', academy_progression_decisions: 'dp.src.pathway', 'clinical_clearances (minimal share)': 'dp.src.fit' };
 const srcLabel = (x) => (SRC[x] ? tr(SRC[x]) : x);
 
-export const StateTag = ({ state }) => { const m = stateMeta(state); return <Tag label={`${m.icon} ${tr(m.key)}`} color={state === 'on_track' || state === 'achieved' ? c.mint : state === 'behind' ? c.orange : state === 'tracking' ? c.cyan : c.violetSoft} />; };
+const stateText = (m) => m.icon + ' ' + tr(m.key);
+const backText = () => '← ' + tr('dp.all_plans');
+const milestoneText = (m) => m.title + ', ' + tr('dp.due_on', { date: when(m.due_on) });
+const chipCount = (d, n) => DOMAIN_ICON[d] + ' ' + n;
+export const StateTag = ({ state }) => { const m = stateMeta(state); return <Tag label={stateText(m)} color={state === 'on_track' || state === 'achieved' ? c.mint : state === 'behind' ? c.orange : state === 'tracking' ? c.cyan : c.violetSoft} />; };
 
 /** Baseline → now → target on one bar, plus where the season line says the athlete should be by today. Missing values are simply not drawn. */
 function FigureBar({ o }) {
@@ -96,7 +100,7 @@ function ObjectiveCard({ o, plan, canEdit, onChange, onSource, onEdit, onTask, o
         <View style={{ gap: 4 }}>
           <T size={11} weight="800" color={c.mute} style={{ letterSpacing: 1 }}>{tr('dp.milestones', { done: o.milestone_summary.done, total: o.milestone_summary.total })}</T>
           {ms.map((m) => (
-            <Pressable key={m.id} disabled={!canEdit} onPress={() => toggle(m)} accessibilityRole="checkbox" accessibilityState={{ checked: m.status === 'done', disabled: !canEdit }} accessibilityLabel={`${m.title}, ${tr('dp.due_on', { date: when(m.due_on) })}`} style={{ flexDirection: 'row', alignItems: 'center', gap: 10, minHeight: 44 }}>
+            <Pressable key={m.id} disabled={!canEdit} onPress={() => toggle(m)} accessibilityRole="checkbox" accessibilityState={{ checked: m.status === 'done', disabled: !canEdit }} accessibilityLabel={milestoneText(m)} style={{ flexDirection: 'row', alignItems: 'center', gap: 10, minHeight: 44 }}>
               <View style={{ width: 22, height: 22, borderRadius: 6, borderWidth: 2, borderColor: m.status === 'done' ? c.lime : c.line, backgroundColor: m.status === 'done' ? c.lime : 'transparent', alignItems: 'center', justifyContent: 'center' }}>{m.status === 'done' ? <T size={13} weight="800" color={c.onAccent}>✓</T> : null}</View>
               <T size={13} style={{ flex: 1, textDecorationLine: m.status === 'done' ? 'line-through' : 'none' }}>{m.title}</T>
               <T size={12} color={m.status === 'pending' && m.due_on < todayStr() ? c.orange : c.mute} weight={m.status === 'pending' && m.due_on < todayStr() ? '800' : '500'}>{when(m.due_on)}</T>
@@ -265,7 +269,7 @@ export function PlanDetail({ id, o, archived, toast, onChanged, onOpenPathway, f
       {family ? <>
         <T size={12} color={c.mute}>{tr('dp.school_family_note')}</T>
         {v.school.available?.length ? v.school.available.map((e) => (
-          <Pressable key={e.id} accessibilityRole="switch" accessibilityState={{ checked: !!e.linked }} accessibilityLabel={`${e.institution} ${e.kind}`} onPress={() => run(() => api.post(`/academy/dev-plans/${p.id}/school-links`, { evidence_id: e.id, shared: !e.linked }), e.linked ? tr('dp.school_off') : tr('dp.school_on'))} style={{ flexDirection: 'row', alignItems: 'center', gap: 10, minHeight: 48 }}>
+          <Pressable key={e.id} accessibilityRole="switch" accessibilityState={{ checked: !!e.linked }} accessibilityLabel={[e.institution, e.kind].join(' ')} onPress={() => run(() => api.post(`/academy/dev-plans/${p.id}/school-links`, { evidence_id: e.id, shared: !e.linked }), e.linked ? tr('dp.school_off') : tr('dp.school_on'))} style={{ flexDirection: 'row', alignItems: 'center', gap: 10, minHeight: 48 }}>
             <View style={{ flex: 1 }}><T size={14} weight="700">{e.institution}</T><T size={12} color={c.mute}>{e.kind}{e.period_to ? ` · ${when(e.period_from)} – ${when(e.period_to)}` : ''} · {e.provenance === 'institution_issued' ? tr('dp.school_issued') : tr('dp.school_self')}</T></View>
             <Tag label={e.linked ? tr('dp.shown') : tr('dp.hidden')} color={e.linked ? c.mint : undefined} />
           </Pressable>
@@ -392,7 +396,7 @@ export function DevPlans({ o, role, archived, toast, onOpenPathway }) {
   const athlete = (opts.data?.athletes ?? []);
   if (openId) return (
     <View style={{ gap: 12 }}>
-      <View style={{ flexDirection: 'row' }}><Btn small title={`← ${tr('dp.all_plans')}`} color={c.paper} ink={c.ink} onPress={() => { setOpenId(null); list.reload(); }} /></View>
+      <View style={{ flexDirection: 'row' }}><Btn small title={backText()} color={c.paper} ink={c.ink} onPress={() => { setOpenId(null); list.reload(); }} /></View>
       <PlanDetail id={openId} o={o} archived={archived} toast={toast} onChanged={list.reload} onOpenPathway={onOpenPathway} />
     </View>
   );
@@ -430,7 +434,7 @@ export function DevPlans({ o, role, archived, toast, onOpenPathway }) {
                   <View style={{ flex: 1 }}><T weight="800" size={15}>{x.athlete_name}</T><T size={12} color={c.mute}>{x.sport} · {x.season_label} · {tr('dp.lead_is', { name: x.lead.display_name })}</T></View>
                   <Tag label={tr(`dp.status.${x.status}`)} color={STATUS_TONE[x.status]} />
                 </View>
-                <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>{DOMAINS.map((d) => <Tag key={d} label={`${DOMAIN_ICON[d]} ${x.domain_counts[d]}`} color={x.domain_counts[d] ? c.cyan : c.violetSoft} />)}</View>
+                <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>{DOMAINS.map((d) => <Tag key={d} label={chipCount(d, x.domain_counts[d])} color={x.domain_counts[d] ? c.cyan : c.violetSoft} />)}</View>
                 {x.strip.objectives ? (
                   <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, alignItems: 'center' }}>
                     <StateTag state="on_track" /><T size={12} weight="800">{countsOf(x.strip).on_track}</T>
@@ -470,7 +474,7 @@ export function FamilyDevPlans({ athlete, toast }) {
   if (d.error) return <ErrorBox error={d.error} onRetry={d.reload} />;
   if (!d.data) return <Loading />;
   if (!d.data.length) return <Panel><Empty emoji="🧭" title={tr('dp.family_none')} sub={tr('dp.family_none_sub')} /></Panel>;
-  if (openId) return <View style={{ gap: 12 }}><View style={{ flexDirection: 'row' }}><Btn small title={`← ${tr('dp.all_plans')}`} color={c.paper} ink={c.ink} onPress={() => setOpenId(null)} /></View><PlanDetail id={openId} family toast={toast} onChanged={d.reload} /></View>;
+  if (openId) return <View style={{ gap: 12 }}><View style={{ flexDirection: 'row' }}><Btn small title={backText()} color={c.paper} ink={c.ink} onPress={() => setOpenId(null)} /></View><PlanDetail id={openId} family toast={toast} onChanged={d.reload} /></View>;
   return (
     <View style={{ gap: 10 }}>
       {d.data.map((x) => (

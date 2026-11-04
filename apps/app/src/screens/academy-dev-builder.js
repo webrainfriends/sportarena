@@ -179,7 +179,7 @@ export function ObjectiveBuilder({ visible, onClose, plan, view, opts, onCreated
             {cur.tasks?.length ? (
               <View style={{ gap: 6 }}>
                 <T weight="600" size={12} color={c.mute} style={{ letterSpacing: 0.4 }}>{tr('dp.b.suggested_tasks').toUpperCase()}</T>
-                <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>{cur.tasks.map((tk) => <Chip key={tk.title} label={`${f.tasks.some((y) => y.title === tk.title) ? '✓ ' : '+ '}${tk.title}`} active={f.tasks.some((y) => y.title === tk.title)} onPress={() => toggleTask(tk)} />)}</View>
+                <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>{cur.tasks.map((tk) => <Chip key={tk.title} label={(f.tasks.some((y) => y.title === tk.title) ? '✓ ' : '+ ') + tk.title} active={f.tasks.some((y) => y.title === tk.title)} onPress={() => toggleTask(tk)} />)}</View>
                 <T size={12} color={c.mute}>{tr('dp.b.tasks_hint')}</T>
               </View>
             ) : null}
