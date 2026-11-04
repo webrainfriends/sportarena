@@ -19,6 +19,7 @@ const Pill = ({ outcome }) => <Tag label={tr(OUTCOME[outcome]?.[0] ?? 'cap.incom
 const Card = ({ children, tone }) => <View style={{ padding: 12, borderRadius: 16, backgroundColor: tone ?? c.bg, gap: 6 }}>{children}</View>;
 const Sub = ({ children }) => <T size={12} weight="800" color={c.mute} style={{ letterSpacing: 0.6, marginTop: 4 }}>{String(children).toUpperCase()}</T>;
 const Row = ({ children }) => <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>{children}</View>;
+const J = (...parts) => parts.join(' ');
 const num = (v) => (v == null ? tr('cap.missing') : String(v));
 
 function Detail({ s, o, onChanged }) {
@@ -74,7 +75,7 @@ function Detail({ s, o, onChanged }) {
       ) : null}
       {p.cohorts.map((k) => (
         <Card key={k.name}>
-          <View style={{ flexDirection: 'row', gap: 8, alignItems: 'center' }}><T weight="800" size={14} style={{ flex: 1 }}>{k.name}</T><Tag label={`${k.athletes} · ${k.sessions_in_horizon}×`} /></View>
+          <View style={{ flexDirection: 'row', gap: 8, alignItems: 'center' }}><T weight="800" size={14} style={{ flex: 1 }}>{k.name}</T><Tag label={J(k.athletes, '·', `${k.sessions_in_horizon}×`)} /></View>
           <Fact k={tr('cap.f_coaches')} v={`${num(k.coaches_required)} ${k.ratio ? `(1:${k.ratio})` : ''} · ${k.coaches_chosen} ✓`} />
           <Fact k={tr('cap.f_venue')} v={k.venue?.name} />
           <Fact k={tr('cap.kpi_cost')} v={k.cost.total_minor == null ? tr('cap.missing') : moneyIn(k.cost.total_minor, k.cost.currency)} />
@@ -94,7 +95,7 @@ function Detail({ s, o, onChanged }) {
               <Card key={x.key}>
                 <T weight="800" size={13}>{x.title}</T>
                 <T size={12}>{x.why}</T>
-                <Tag label={`${tr('cap.open_in')} ${x.owner_screen}`} />
+                <Tag label={J(tr('cap.open_in'), x.owner_screen)} />
                 <T size={11} color={c.mute}>{x.rule}</T>
                 {d ? <Tag label={`${tr(`cap.${d.decision === 'approved' ? 'approve' : d.decision === 'declined' ? 'decline' : 'defer'}`)} · ${d.reason}`} />
                   : <Row>{['approved', 'declined', 'deferred'].map((k) => <Btn key={k} small title={tr(`cap.${k === 'approved' ? 'approve' : k === 'declined' ? 'decline' : 'defer'}`)} color={k === 'approved' ? c.pink : c.paper} ink={k === 'approved' ? undefined : c.ink} onPress={() => setDecide({ cand: x.key, decision: k })} />)}</Row>}
@@ -117,12 +118,15 @@ export function CapacityScenarios({ o, archived }) {
   const base = useLoad(() => api.get(`/organisations/${o.id}/academy/capacity/baseline`), [o.id]);
   const [studio, setStudio] = useState(false), [open, setOpen] = useState(null), [pick, setPick] = useState([]), [cmp, setCmp] = useState(null), [err, setErr] = useState(null);
   const b = base.data;
-  const togglePick = (id) => setPick((p) => (p.includes(id) ? p.filter((x) => x !== id) : p.length < 4 ? [...p, id] : p));
+  const togglePick = (id) => setPick((p) => {
+    if (p.includes(id)) return p.filter((x) => x !== id);
+    return p.length >= 4 ? p : [...p, id];
+  });
   const compare = async () => { setErr(null); try { setCmp(await api.get(`/organisations/${o.id}/academy/capacity-scenarios/compare`, { scenario_ids: pick.join(',') })); } catch (e) { setErr(e); } };
   if (studio) return <ScenarioStudio o={o} onClose={() => setStudio(false)} onSaved={() => { setStudio(false); list.reload(); }} />;
   return (
     <View style={{ gap: 10 }}>
-      <Block title={tr('cap.title')} right={!archived ? <Btn small title={`＋ ${tr('cap.new')}`} onPress={() => setStudio(true)} /> : null}>
+      <Block title={tr('cap.title')} right={!archived ? <Btn small title={J('＋', tr('cap.new'))} onPress={() => setStudio(true)} /> : null}>
         <T size={12} color={c.mute}>{tr('cap.intro')}</T>
         {b ? (
           <Row>
@@ -146,7 +150,7 @@ export function CapacityScenarios({ o, archived }) {
             {open === s.id ? <Detail s={s} o={o} onChanged={list.reload} /> : null}
           </Card>
         )) : <Empty emoji="🧭" title={tr('cap.empty_t')} sub={tr('cap.empty_s')} />}
-        {pick.length >= 2 ? <Btn small title={`${tr('cap.compare')} (${pick.length})`} onPress={compare} style={{ alignSelf: 'flex-start' }} /> : pick.length ? <T size={12} color={c.mute}>{tr('cap.compare_pick')}</T> : null}
+        {pick.length >= 2 ? <Btn small title={J(tr('cap.compare'), `(${pick.length})`)} onPress={compare} style={{ alignSelf: 'flex-start' }} /> : pick.length ? <T size={12} color={c.mute}>{tr('cap.compare_pick')}</T> : null}
         {err ? <ErrorBox error={err} /> : null}
         {cmp ? (
           <Card>

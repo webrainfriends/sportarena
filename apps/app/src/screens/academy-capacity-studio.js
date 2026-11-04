@@ -24,6 +24,7 @@ const OBJECTIVES = ['add_cohort', 'promotions', 'grow', 'staffing'];
 const STEPS = ['brief', 'demand', 'cohorts', 'constraints', 'review'];
 const Card = ({ children, tone, style }) => <View style={[{ padding: 14, borderRadius: 18, backgroundColor: tone ?? c.paper, borderWidth: 1, borderColor: c.line, gap: 10 }, style]}>{children}</View>;
 const Row = ({ children, style }) => <View style={[{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, alignItems: 'center' }, style]}>{children}</View>;
+const J = (...parts) => parts.join(' ');
 const num = (v) => (v == null ? tr('cap.missing') : String(v));
 const blankCohort = () => ({ key: idem('co'), name: '', programme_id: undefined, athletes: 12, weekdays: [], start: '17:00', end: '18:00', venue_id: undefined, coach_ids: [], source_cohort_id: undefined, ratio: 0 });
 
@@ -100,7 +101,7 @@ function Demand({ s, set, b }) {
               <Row style={{ justifyContent: 'space-between' }}><View style={{ flex: 1 }}><T weight="800" size={14}>{p.title}</T><T size={12} color={c.mute}>{p.sport}</T></View>
                 <Counter value={change} min={-p.enrolled} max={500} onChange={(n) => set({ mix: { ...s.mix, [p.id]: n } })} a11y={p.title} /></Row>
               <Meter filled={p.enrolled} capacity={p.capacity} waitlisted={p.waitlisted} />
-              <Row><Tag label={`${tr('cap.waitlist')} ${p.waitlisted}`} /><Tag label={`${tr('cap.offers')} ${p.offers_open}`} /><Tag label={`${tr('cap.review')} ${p.in_review}`} /></Row>
+              <Row><Tag label={J(tr('cap.waitlist'), p.waitlisted)} /><Tag label={J(tr('cap.offers'), p.offers_open)} /><Tag label={J(tr('cap.review'), p.in_review)} /></Row>
               {change ? <Bars label={p.title} rows={[{ label: tr('cap.projected'), value: p.capacity ? Math.round((projected / p.capacity) * 100) : projected, text: p.capacity ? `${projected}/${p.capacity} · ${Math.round((projected / p.capacity) * 100)}%` : `${projected}`, tone: p.capacity && projected > p.capacity ? c.orange : undefined }]} /> : null}
             </Card>
           );
@@ -152,7 +153,7 @@ function CohortCard({ k, update, remove, b, s, orgId, index }) {
         <View style={{ flex: 1, minWidth: 150 }}><TimeField label={tr('cap.f_start')} value={k.start} onChange={(v) => update({ start: v, end: mins(k.end) > mins(v) ? k.end : clock(mins(v) + (dur > 0 ? dur : 60)) })} step={15} /></View>
         <View style={{ flex: 1, minWidth: 150 }}><TimeField label={tr('cap.f_end')} value={k.end} onChange={(v) => update({ end: v })} step={15} /></View>
       </Row>
-      <Row>{[60, 75, 90, 120].map((m) => <Chip key={m} label={`${m} ${tr('cap.min')}`} active={dur === m} onPress={() => update({ end: clock(mins(k.start) + m) })} />)}</Row>
+      <Row>{[60, 75, 90, 120].map((m) => <Chip key={m} label={J(m, tr('cap.min'))} active={dur === m} onPress={() => update({ end: clock(mins(k.start) + m) })} />)}</Row>
       <MenuField label={tr('cap.f_venue')} value={k.venue_id} onChange={(v) => update({ venue_id: v })} options={venues.map((v) => ({ value: v.id, label: v.name, sub: `${v.city ?? ''} ${v.sports.join(', ')} · ${v.resources} ${tr('cap.courts')}` }))} placeholder={tr('cap.pick_optional')} hint={prog && venues.length < b.venues.length ? tr('cap.venue_filtered', { sport: prog.sport }) : undefined} />
       {venue ? (
         <View style={{ gap: 4 }} accessible accessibilityLabel={`${tr('cap.week_booked')}: ${venue.booked_hours_by_weekday.map((h, d) => `${DAYS.find(([x]) => x === d)?.[1]} ${h}`).join(', ')}`}>
@@ -176,7 +177,7 @@ function CohortCard({ k, update, remove, b, s, orgId, index }) {
       {slots ? (
         <View style={{ gap: 6 }}>
           <T size={12} color={c.mute}>{slots.note}</T>
-          <Row>{slots.suggestions.map((x) => <Chip key={x.start_time} label={`${x.start_time} · ${x.total ? tr('cap.n_conflicts', { n: x.total }) : tr('cap.clear')}`} active={k.start === x.start_time} onPress={() => update({ start: x.start_time, end: x.end_time })} />)}</Row>
+          <Row>{slots.suggestions.map((x) => <Chip key={x.start_time} label={J(x.start_time, '·', x.total ? tr('cap.n_conflicts', { n: x.total }) : tr('cap.clear'))} active={k.start === x.start_time} onPress={() => update({ start: x.start_time, end: x.end_time })} />)}</Row>
         </View>
       ) : null}
     </Card>
@@ -188,7 +189,7 @@ function Cohorts({ s, set, b, orgId }) {
     <View style={{ gap: 12 }}>
       <T size={12} color={c.mute}>{tr('cap.cohorts_note')}</T>
       {s.cohorts.map((k, i) => <CohortCard key={k.key} k={k} index={i} b={b} s={s} orgId={orgId} update={(p) => set({ cohorts: s.cohorts.map((x) => (x.key === k.key ? { ...x, ...p } : x)) })} remove={() => set({ cohorts: s.cohorts.filter((x) => x.key !== k.key) })} />)}
-      {s.cohorts.length < 6 ? <Btn title={`＋ ${tr('cap.add_cohort')}`} onPress={() => set({ cohorts: [...s.cohorts, blankCohort()] })} color={c.paper} ink={c.ink} style={{ alignSelf: 'flex-start' }} /> : null}
+      {s.cohorts.length < 6 ? <Btn title={J('＋', tr('cap.add_cohort'))} onPress={() => set({ cohorts: [...s.cohorts, blankCohort()] })} color={c.paper} ink={c.ink} style={{ alignSelf: 'flex-start' }} /> : null}
     </View>
   );
 }
@@ -260,7 +261,7 @@ export function ScenarioStudio({ o, onClose, onSaved }) {
   return (
     <View style={{ gap: 12 }}>
       <Row style={{ justifyContent: 'space-between' }}>
-        <Btn small title={`← ${tr('cap.back')}`} onPress={onClose} color={c.paper} ink={c.ink} />
+        <Btn small title={J('←', tr('cap.back'))} onPress={onClose} color={c.paper} ink={c.ink} />
         <T weight="800" size={16} style={{ flex: 1 }}>{tr('cap.studio')}</T>
       </Row>
       <Row accessibilityRole="tablist">{STEPS.map((k, i) => <Chip key={k} label={`${i + 1} · ${tr(`cap.step_${k}`)}`} active={step === i} onPress={() => setStep(i)} />)}</Row>
