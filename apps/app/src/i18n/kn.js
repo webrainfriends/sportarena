@@ -11375,7 +11375,6 @@ export default {
   'nav.title.AccessibleSession': 'ಪ್ರವೇಶಯೋಗ್ಯ ತರಬೇತಿ ನೋಟ',
   'guide.coaches.s6': 'ಪ್ಯಾರಾ ಸ್ಪೋರ್ಟ್ ಅಧಿವೇಶನಗಳಿಗೆ, ಅಧಿವೇಶನ ಸಂಪಾದಕದಲ್ಲಿನ ಟೆಂಪ್ಲೇಟ್ ಪಿಕ್ಕರ್‌ನಿಂದ ಪ್ಯಾರಾ-ಹೊಂದಿಸಿದ ಟೆಂಪ್ಲೇಟ್ ಆಯ್ಕೆ ಮಾಡಿ.',
 
-};
   // adaptive coaching (#837): machine-drafted, not yet reviewed by a native speaker
   'adp.title': 'ವಿಶೇಷ ಪ್ರಮಾಣಪತ್ರಗಳು',
   'adp.opt_in': 'ನನ್ನನ್ನು ಅಡಾಪ್ಟಿವ್ ತರಬೇತಿಗಾಗಿ ಪಟ್ಟಿ ಮಾಡಿ',

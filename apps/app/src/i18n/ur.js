@@ -11375,7 +11375,6 @@ export default {
   'nav.title.AccessibleSession': 'قابل رسائی تربیتی ویو',
   'guide.coaches.s6': 'پیرا کھیل سیشنوں کے لیے، سیشن ایڈیٹر میں ٹیمپلیٹ پکر سے پیرا موافق ٹیمپلیٹ منتخب کریں۔',
 
-};
   // adaptive coaching (#837): machine-drafted, not yet reviewed by a native speaker
   'adp.title': 'خصوصی اسناد',
   'adp.opt_in': 'مجھے موافقتی کوچنگ کے لیے درج کریں',

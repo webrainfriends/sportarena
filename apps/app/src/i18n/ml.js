@@ -11375,7 +11375,6 @@ export default {
   'nav.title.AccessibleSession': 'ആക്സസ് ചെയ്യാവുന്ന പരിശീലന കാഴ്ച',
   'guide.coaches.s6': 'പാരാ സ്പോർട്ട് സെഷനുകൾക്ക്, സെഷൻ എഡിറ്ററിലെ ടെംപ്ലേറ്റ് പിക്കറിൽ നിന്ന് ഒരു പാരാ-അഡാപ്റ്റഡ് ടെംപ്ലേറ്റ് തിരഞ്ഞെടുക്കുക.',
 
-};
   // adaptive coaching (#837): machine-drafted, not yet reviewed by a native speaker
   'adp.title': 'പ്രത്യേക യോഗ്യതാപത്രങ്ങൾ',
   'adp.opt_in': 'എന്നെ അഡാപ്റ്റീവ് കോച്ചിംഗിനായി പട്ടികപ്പെടുത്തുക',

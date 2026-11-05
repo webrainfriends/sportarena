@@ -11375,7 +11375,6 @@ export default {
   'nav.title.AccessibleSession': 'ସୁଲଭ ତ୍ୱ ଦୃଶ୍ୟ',
   'guide.coaches.s6': 'ପ୍ୟାରା ସ୍ପୋର୍ଟ ସେସନ ପାଇଁ, ସେସନ ସଂପାଦକ ଟେମ୍ପ୍ଲେଟ ପିକରରୁ ପ୍ୟାରା-ଅଭିଯୋଜିତ ଟେମ୍ପ୍ଲେଟ ଚୟନ କରନ୍ତୁ।',
 
-};
   // adaptive coaching (#837): machine-drafted, not yet reviewed by a native speaker
   'adp.title': 'ବିଶେଷ ପ୍ରମାଣପତ୍ର',
   'adp.opt_in': 'ମୋତେ ଅନୁକୂଳ କୋଚିଂ ପାଇଁ ତାଲିକାଭୁକ୍ତ କରନ୍ତୁ',

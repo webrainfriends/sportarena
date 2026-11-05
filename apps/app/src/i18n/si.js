@@ -11375,7 +11375,6 @@ export default {
   'nav.title.AccessibleSession': 'ප්‍රවේශ සාධ්‍ය පුහුණු දසුන',
   'guide.coaches.s6': 'පැරා ක්‍රීඩා සැසි සඳහා, සැසි සංස්කාරකයේ ආකෘතිපත්‍ර තෝරන්නා සිට පැරා-අනුවර්තිත ආකෘතිපත්‍රයක් තෝරන්න.',
 
-};
   // adaptive coaching (#837): machine-drafted, not yet reviewed by a native speaker
   'adp.title': 'විශේෂ සහතික',
   'adp.opt_in': 'මාව අනුවර්තන පුහුණුව සඳහා ලැයිස්තුගත කරන්න',

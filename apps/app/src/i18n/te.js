@@ -11375,7 +11375,6 @@ export default {
   'nav.title.AccessibleSession': 'యాక్సెసిబుల్ ట్రైనింగ్ వ్యూ',
   'guide.coaches.s6': 'పారా స్పోర్ట్ సెషన్‌ల కోసం, సెషన్ ఎడిటర్‌లోని టెంప్లేట్ పికర్ నుండి పారా-అనుకూలిత టెంప్లేట్‌ని ఎంచుకోండి.',
 
-};
   // adaptive coaching (#837): machine-drafted, not yet reviewed by a native speaker
   'adp.title': 'ప్రత్యేక ధృవపత్రాలు',
   'adp.opt_in': 'నన్ను అడాప్టివ్ కోచింగ్ కోసం జాబితా చేయండి',

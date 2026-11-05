@@ -11375,7 +11375,6 @@ export default {
   'nav.title.AccessibleSession': 'অ্যাক্সেসযোগ্য প্রশিক্ষণ ভিউ',
   'guide.coaches.s6': 'প্যারা স্পোর্ট সেশনের জন্য, সেশন সম্পাদকে টেমপ্লেট পিকার থেকে একটি প্যারা-অভিযোজিত টেমপ্লেট বেছে নিন।',
 
-};
   // adaptive coaching (#837): machine-drafted, not yet reviewed by a native speaker
   'adp.title': 'বিশেষ সনদ',
   'adp.opt_in': 'আমাকে অভিযোজিত কোচিংয়ের জন্য তালিকাভুক্ত করুন',

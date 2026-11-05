@@ -11375,7 +11375,6 @@ export default {
   'nav.title.AccessibleSession': 'அணுகக்கூடிய பயிற்சி காட்சி',
   'guide.coaches.s6': 'பாரா விளையாட்டு அமர்வுகளுக்கு, அமர்வு எடிட்டரில் உள்ள வார்ப்பரு தேர்விலிருந்து பாரா-தழுவிய வார்ப்பருவை தேர்ந்தெடுக்கவும்.',
 
-};
   // adaptive coaching (#837): machine-drafted, not yet reviewed by a native speaker
   'adp.title': 'சிறப்புச் சான்றுகள்',
   'adp.opt_in': 'என்னை தகவமைப்பு பயிற்சிக்குப் பட்டியலிடுங்கள்',

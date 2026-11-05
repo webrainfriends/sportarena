@@ -11375,7 +11375,6 @@ export default {
   'nav.title.AccessibleSession': 'प्रवेशयोग्य प्रशिक्षण दृश्य',
   'guide.coaches.s6': 'पॅरा स्पोर्ट सत्रांसाठी, सत्र संपादकातील टेम्पलेट पिकरमधून पॅरा-अनुकूलित टेम्पलेट निवडा.',
 
-};
   // adaptive coaching (#837): machine-drafted, not yet reviewed by a native speaker
   'adp.title': 'विशेष प्रमाणपत्रे',
   'adp.opt_in': 'मला अनुकूल प्रशिक्षणासाठी सूचीबद्ध करा',

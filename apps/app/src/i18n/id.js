@@ -11375,7 +11375,6 @@ export default {
   'nav.title.AccessibleSession': 'Tampilan latihan yang dapat diakses',
   'guide.coaches.s6': 'Untuk sesi para sport, pilih templat yang diadaptasi untuk para sport dari pemilih templat di editor sesi.',
 
-};
   // adaptive coaching (#837): machine-drafted, not yet reviewed by a native speaker
   'adp.title': 'Kredensial spesialis',
   'adp.opt_in': 'Daftarkan saya untuk pelatihan adaptif',
