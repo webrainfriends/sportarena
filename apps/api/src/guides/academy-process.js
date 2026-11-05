@@ -195,8 +195,6 @@ id: 'wellbeing', title: 'Support student wellbeing and development',
     target: { academy: 'reports' },
     modules: ['academy-report-packs.js', 'academy-packs.js'], sources: ['apps/app/src/screens/academy-reports.js'],
   },
-];
-
   {
     id: 'para_doctor', title: 'Para-athlete clinical coordination',
     why: 'Enable specialist doctors to declare para-sport expertise, structure consultations with sport-specific templates, coordinate referrals to prosthetists and rehabilitation clinicians, and share nonclinical operational summaries with coaches and event staff — entirely separate from classification and always with athlete consent.',
