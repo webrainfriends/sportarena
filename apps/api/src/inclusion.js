@@ -21,7 +21,8 @@ export const NEED_TYPES = {
 export const NEED_KEYS = Object.values(NEED_TYPES).flat();
 export const typeOfNeed = (k) => Object.keys(NEED_TYPES).find((t) => NEED_TYPES[t].includes(k));
 /** Venue features a session can require; a need maps onto the features that satisfy it. */
-export const VENUE_FEATURES = ['step_free_route', 'lift', 'accessible_changing', 'accessible_toilet', 'accessible_parking', 'pool_hoist', 'tactile_markings', 'hearing_loop', 'quiet_room'];
+export const VENUE_FEATURES = ['step_free_route', 'lift', 'accessible_changing', 'accessible_toilet', 'accessible_parking', 'pool_hoist', 'tactile_markings', 'hearing_loop', 'quiet_room', 'wheelchair_circulation', 'accessible_viewing', 'accessible_emergency_egress', 'accessible_drop_off'];
+export const VENUE_FEATURE_SET = new Set(VENUE_FEATURES);
 export const NEED_TO_FEATURE = { step_free_route: 'step_free_route', lift_access: 'lift', accessible_changing: 'accessible_changing', accessible_toilet: 'accessible_toilet', accessible_parking: 'accessible_parking', pool_hoist: 'pool_hoist', tactile_guidance: 'tactile_markings', quiet_room: 'quiet_room' };
 export const NEEDS_SUPPORT = ['support_person', 'sighted_guide', 'tapper', 'personal_assistant'];
 export const ELIGIBILITY = ['open', 'class_optional', 'class_required', 'mixed_ability'];
