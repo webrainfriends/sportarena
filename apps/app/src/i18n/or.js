@@ -11908,7 +11908,7 @@ export default {
   'psf.impact.awarded': 'ପ୍ରଦାନ',
   'psf.impact.disbursed': 'ବଣ୍ଟନ',
   'psf.impact.athletesSupported': 'ସହାୟତା ପ୍ରାପ୍ତ ଆଥ୍ଲେଟ',
-  'psf.impact.deliveryConfirmed': 'ଡେଲିଭରି ନିଶ୍ଚିତ',,
+  'psf.impact.deliveryConfirmed': 'ଡେଲିଭରି ନିଶ୍ଚିତ',
 
   // PS-06 machine-draft: venue accessibility (awaiting native-speaker review)
   'acc.feat.step_free_route': 'Step-free route',
@@ -11961,7 +11961,6 @@ export default {
   'acc.filter.self_reported': 'Self-reported or better',
   'acc.filter.third_party': 'Third-party or better',
   'acc.filter.certified': 'Certified only',
-};
   'psf.impact.deliveryConfirmed': 'ଡେଲିଭରି ନିଶ୍ଚିତ',
   'promo.tab': 'ପଦୋନ୍ନତି',
   'promo.title': 'ପଦୋନ୍ନତି ଓ ସ୍ନାତକ ସମାପନ',

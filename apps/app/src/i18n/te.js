@@ -11908,7 +11908,7 @@ export default {
   'psf.impact.awarded': 'మంజూరు చేయబడింది',
   'psf.impact.disbursed': 'పంపిణీ చేయబడింది',
   'psf.impact.athletesSupported': 'మద్దతు ఇచ్చిన అథ్లెట్లు',
-  'psf.impact.deliveryConfirmed': 'డెలివరీ నిర్ధారించబడింది',,
+  'psf.impact.deliveryConfirmed': 'డెలివరీ నిర్ధారించబడింది',
 
   // PS-06 machine-draft: venue accessibility (awaiting native-speaker review)
   'acc.feat.step_free_route': 'Step-free route',
@@ -11961,7 +11961,6 @@ export default {
   'acc.filter.self_reported': 'Self-reported or better',
   'acc.filter.third_party': 'Third-party or better',
   'acc.filter.certified': 'Certified only',
-};
   'psf.impact.deliveryConfirmed': 'డెలివరీ నిర్ధారించబడింది',
   'promo.tab': 'పదోన్నతులు',
   'promo.title': 'పదోన్నతులు & పూర్తి చేయడాలు',

@@ -11908,7 +11908,7 @@ export default {
   'psf.impact.awarded': 'पुरस्कृत',
   'psf.impact.disbursed': 'वितरित',
   'psf.impact.athletesSupported': 'समर्थित एथलीट',
-  'psf.impact.deliveryConfirmed': 'डिलीवरी पुष्टि',,
+  'psf.impact.deliveryConfirmed': 'डिलीवरी पुष्टि',
 
   // PS-06 machine-draft: venue accessibility (awaiting native-speaker review)
   'acc.feat.step_free_route': 'Step-free route',
@@ -11961,7 +11961,6 @@ export default {
   'acc.filter.self_reported': 'Self-reported or better',
   'acc.filter.third_party': 'Third-party or better',
   'acc.filter.certified': 'Certified only',
-};
   'psf.impact.deliveryConfirmed': 'डिलीवरी पुष्टि',
   'promo.tab': 'पदोन्नतियाँ',
   'promo.title': 'पदोन्नति और स्नातक समारोह',

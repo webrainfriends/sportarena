@@ -11908,7 +11908,7 @@ export default {
   'psf.impact.awarded': 'Diberikan',
   'psf.impact.disbursed': 'Dicairkan',
   'psf.impact.athletesSupported': 'Atlet yang didukung',
-  'psf.impact.deliveryConfirmed': 'Pengiriman dikonfirmasi',,
+  'psf.impact.deliveryConfirmed': 'Pengiriman dikonfirmasi',
 
   // PS-06 machine-draft: venue accessibility (awaiting native-speaker review)
   'acc.feat.step_free_route': 'Step-free route',
@@ -11961,7 +11961,6 @@ export default {
   'acc.filter.self_reported': 'Self-reported or better',
   'acc.filter.third_party': 'Third-party or better',
   'acc.filter.certified': 'Certified only',
-};
   'psf.impact.deliveryConfirmed': 'Pengiriman dikonfirmasi',
   'promo.tab': 'Promosi',
   'promo.title': 'Promosi & kelulusan',
