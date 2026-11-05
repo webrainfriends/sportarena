@@ -15,7 +15,7 @@ CREATE TABLE IF NOT EXISTS para_local_programmes (
   verification_status TEXT NOT NULL DEFAULT 'unverified'
     CHECK (verification_status IN ('unverified','sourced','verified')),
   verified_at         TIMESTAMPTZ,
-  verified_by         UUID REFERENCES accounts(id),
+  verified_by         UUID REFERENCES users(id),
   disclaimer          TEXT,
   active              BOOLEAN NOT NULL DEFAULT true,
   created_at          TIMESTAMPTZ NOT NULL DEFAULT now(),
