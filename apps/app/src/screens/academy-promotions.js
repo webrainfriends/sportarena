@@ -44,14 +44,21 @@ function StepTrack({ steps }) {
   );
 }
 
+/** The check sentence in the user's language, built from the stable code and its parameters; the English detail is only a fallback. */
+const checkText = (k) => {
+  const p = { ...k.p, ...(k.p?.decision ? { decision: t(`promo.decision.${k.p.decision}`) } : {}) };
+  const text = t(`promo.msg.${k.code}`, p);
+  return text === `promo.msg.${k.code}` ? k.detail : text;
+};
+
 function Checks({ checks }) {
   if (!checks?.length) return null;
   return (
     <Block title={t('promo.checks')}>
       {checks.map((k) => (
-        <View key={k.key} style={{ flexDirection: 'row', gap: 10, alignItems: 'flex-start' }} accessible accessibilityLabel={`${t(`promo.check.${k.key}`)}: ${t(`promo.check.${k.status}`)}. ${k.detail}`}>
+        <View key={k.key} style={{ flexDirection: 'row', gap: 10, alignItems: 'flex-start' }} accessible accessibilityLabel={`${t(`promo.check.${k.key}`)}: ${t(`promo.check.${k.status}`)}. ${checkText(k)}`}>
           <Tag label={`${CHECK[k.status][0]} ${t(`promo.check.${k.status}`)}`} color={CHECK[k.status][1]} />
-          <View style={{ flex: 1 }}><T size={13} weight="700">{t(`promo.check.${k.key}`)}</T><T size={12} color={c.mute}>{k.detail}</T></View>
+          <View style={{ flex: 1 }}><T size={13} weight="700">{t(`promo.check.${k.key}`)}</T><T size={12} color={c.mute}>{checkText(k)}</T></View>
         </View>
       ))}
     </Block>

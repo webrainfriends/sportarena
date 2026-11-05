@@ -48,47 +48,50 @@ async function currentEnrolment(c, r) {
 
 // ------------------------------------------------------------------ pre-flight: capacity, age, consent, eligibility and obligations, all read-only
 export async function preflight(c, r) {
-  const out = [], add = (key, status, detail, data = {}) => out.push({ key, status, detail, ...data });
+  // Each check carries an English `detail` (for the API and MCP) AND a stable `code` with `p` parameters, so the app shows it in the user's language.
+  const out = [], add = (key, status, code, p, detail, data = {}) => out.push({ key, status, code, p: p ?? {}, detail, ...data });
   const d = (await c.query('SELECT criteria_snapshot FROM academy_progression_decisions WHERE id=$1', [r.decision_id])).rows[0];
   const outcome = d?.criteria_snapshot?.outcome ?? null;
-  add('decision', 'pass', `Recorded decision: ${{ promote: 'promotion', move_programme: 'group move', invite_squad: 'squad invitation', graduate: 'graduation' }[r.decision] ?? r.decision}${r.to_level ? ` to ${r.to_level}` : ''}`);
-  if (['promote', 'graduate'].includes(r.decision)) add('criteria', outcome === 'criteria_met' ? 'pass' : 'warn', outcome === 'criteria_met' ? 'Pathway criteria were met at the time of the decision' : 'Pathway criteria were not all met (or evidence was missing) when this was decided');
+  const word = { promote: 'promotion', move_programme: 'group move', invite_squad: 'squad invitation', graduate: 'graduation' }[r.decision] ?? r.decision;
+  add('decision', 'pass', r.to_level ? 'decision.to' : 'decision.plain', { decision: r.decision, level: r.to_level }, `Recorded decision: ${word}${r.to_level ? ` to ${r.to_level}` : ''}`);
+  if (['promote', 'graduate'].includes(r.decision)) add('criteria', outcome === 'criteria_met' ? 'pass' : 'warn', outcome === 'criteria_met' ? 'criteria.met' : 'criteria.unmet', {}, outcome === 'criteria_met' ? 'Pathway criteria were met at the time of the decision' : 'Pathway criteria were not all met (or evidence was missing) when this was decided');
   const enr = r.enrolment_id ? (await c.query('SELECT e.*, k.organisation_id, k.programme_id AS cohort_programme, k.name AS cohort_name FROM org_enrolments e JOIN org_cohorts k ON k.id=e.cohort_id WHERE e.id=$1', [r.enrolment_id])).rows[0] : null;
   if (r.to_cohort_id || r.decision === 'graduate') {
-    if (!enr || enr.organisation_id !== r.organisation_id || enr.user_id !== r.athlete_id) add('enrolment', 'fail', 'Choose the athlete\'s own enrolment in this academy');
-    else if (r.decision === 'graduate' ? !['enrolled', 'paused', 'graduated', 'completed'].includes(enr.status) : !LIVE_ENROL.includes(enr.status) && r.status === 'pending_approval') add('enrolment', 'fail', `The enrolment is ${enr.status}; only a current enrolment can move`);
-    else add('enrolment', 'pass', `Current group: ${enr.cohort_name}`);
+    if (!enr || enr.organisation_id !== r.organisation_id || enr.user_id !== r.athlete_id) add('enrolment', 'fail', 'enrolment.not_theirs', {}, 'Choose the athlete\'s own enrolment in this academy');
+    else if (r.decision === 'graduate' ? !['enrolled', 'paused', 'graduated', 'completed'].includes(enr.status) : !LIVE_ENROL.includes(enr.status) && r.status === 'pending_approval') add('enrolment', 'fail', 'enrolment.not_current', { status: enr.status }, `The enrolment is ${enr.status}; only a current enrolment can move`);
+    else add('enrolment', 'pass', 'enrolment.ok', { group: enr.cohort_name }, `Current group: ${enr.cohort_name}`);
   }
   if (r.to_cohort_id) {
     const to = (await c.query('SELECT k.*, p.age_min, p.age_max, p.title AS programme FROM org_cohorts k LEFT JOIN academy_programmes p ON p.id=k.programme_id WHERE k.id=$1', [r.to_cohort_id])).rows[0];
-    if (!to || to.organisation_id !== r.organisation_id || to.status !== 'active') add('destination', 'fail', 'The destination group must be an active group of this academy');
+    if (!to || to.organisation_id !== r.organisation_id || to.status !== 'active') add('destination', 'fail', 'destination.inactive', {}, 'The destination group must be an active group of this academy');
     else {
-      add('destination', enr && to.programme_id === enr.programme_id ? 'pass' : 'fail', enr && to.programme_id === enr.programme_id ? `Destination: ${to.name}` : 'A transfer stays within one programme; use the admissions flow for a different programme');
+      const same = enr && to.programme_id === enr.programme_id;
+      add('destination', same ? 'pass' : 'fail', same ? 'destination.ok' : 'destination.other_programme', { group: to.name }, same ? `Destination: ${to.name}` : 'A transfer stays within one programme; use the admissions flow for a different programme');
       const taken = (await c.query("SELECT count(*)::int AS n FROM org_enrolments WHERE cohort_id=$1 AND status IN ('enrolled','paused')", [to.id])).rows[0].n;
       const free = to.capacity == null ? null : to.capacity - taken;
-      add('capacity', free == null ? 'pass' : free > 0 ? 'pass' : 'fail', free == null ? 'No seat limit on this group' : free > 0 ? `${free} of ${to.capacity} seats free` : 'That group is full', { seats_free: free, capacity: to.capacity });
+      add('capacity', free == null || free > 0 ? 'pass' : 'fail', free == null ? 'capacity.unlimited' : free > 0 ? 'capacity.free' : 'capacity.full', { free, capacity: to.capacity }, free == null ? 'No seat limit on this group' : free > 0 ? `${free} of ${to.capacity} seats free` : 'That group is full', { seats_free: free, capacity: to.capacity });
       const u = (await c.query('SELECT dob_enc FROM users WHERE id=$1', [r.athlete_id])).rows[0];
       const age = u?.dob_enc ? ageOf(decrypt(u.dob_enc, 'users.dob')) : null;
-      if (to.age_min == null && to.age_max == null) add('age', 'pass', 'The programme has no age band');
-      else if (age == null) add('age', 'warn', 'No date of birth on file, so the age band could not be checked');
-      else add('age', (to.age_min != null && age < to.age_min) || (to.age_max != null && age > to.age_max) ? 'fail' : 'pass', `Age ${age} against the band ${to.age_min ?? '…'}–${to.age_max ?? '…'}`, { age });
+      if (to.age_min == null && to.age_max == null) add('age', 'pass', 'age.no_band', {}, 'The programme has no age band');
+      else if (age == null) add('age', 'warn', 'age.unknown', {}, 'No date of birth on file, so the age band could not be checked');
+      else add('age', (to.age_min != null && age < to.age_min) || (to.age_max != null && age > to.age_max) ? 'fail' : 'pass', 'age.band', { age, min: to.age_min ?? '…', max: to.age_max ?? '…' }, `Age ${age} against the band ${to.age_min ?? '…'}–${to.age_max ?? '…'}`, { age });
     }
   }
   if (r.team_id) {
     const team = (await c.query('SELECT id, name FROM teams WHERE id=$1', [r.team_id])).rows[0];
-    if (!team) add('squad', 'fail', 'That team does not exist');
+    if (!team) add('squad', 'fail', 'squad.missing', {}, 'That team does not exist');
     else {
       const m = (await c.query('SELECT status FROM team_members WHERE team_id=$1 AND user_id=$2', [r.team_id, r.athlete_id])).rows[0];
-      add('squad', m?.status === 'active' ? 'fail' : 'pass', m?.status === 'active' ? `Already on ${team.name}` : `Squad: ${team.name}`);
+      add('squad', m?.status === 'active' ? 'fail' : 'pass', m?.status === 'active' ? 'squad.already' : 'squad.ok', { team: team.name }, m?.status === 'active' ? `Already on ${team.name}` : `Squad: ${team.name}`);
     }
     const youth = await isYouth(r.athlete_id, c);
     const consent = await hasConsent(r.athlete_id, 'participation', c);
-    add('consent', consent ? 'pass' : 'fail', consent ? (youth ? 'Guardian participation consent is on file' : 'Participation consent is on file') : 'Participation consent is missing, so the canonical invitation would be refused');
-    if (youth) { const g = await guardiansOf(r.athlete_id, c); add('guardian', g.length ? 'pass' : 'fail', g.length ? `${g.length} verified guardian${g.length > 1 ? 's' : ''} will be notified` : 'A young athlete needs a verified guardian'); }
+    add('consent', consent ? 'pass' : 'fail', consent ? (youth ? 'consent.guardian' : 'consent.ok') : 'consent.missing', {}, consent ? (youth ? 'Guardian participation consent is on file' : 'Participation consent is on file') : 'Participation consent is missing, so the canonical invitation would be refused');
+    if (youth) { const g = await guardiansOf(r.athlete_id, c); add('guardian', g.length ? 'pass' : 'fail', g.length ? 'guardian.ok' : 'guardian.none', { n: g.length }, g.length ? `${g.length} verified guardian${g.length > 1 ? 's' : ''} will be notified` : 'A young athlete needs a verified guardian'); }
   }
   if (enr) {
     const ch = (await c.query("SELECT count(*)::int AS n, coalesce(sum(gross_minor - discount_minor - funded_minor),0)::bigint AS minor, max(currency) AS currency FROM academy_charges WHERE enrolment_id=$1 AND status='awaiting_payment'", [enr.id])).rows[0];
-    add('obligations', 'pass', ch.n ? `${ch.n} unpaid charge${ch.n > 1 ? 's' : ''} stay${ch.n > 1 ? '' : 's'} owed and follow the athlete to the new group` : 'No unpaid charges', { unpaid_charges: ch.n, unpaid_minor: Number(ch.minor), currency: ch.currency, private: true });
+    add('obligations', 'pass', ch.n ? 'obligations.owed' : 'obligations.none', { n: ch.n }, ch.n ? `${ch.n} unpaid charge${ch.n > 1 ? 's' : ''} stay${ch.n > 1 ? '' : 's'} owed and follow the athlete to the new group` : 'No unpaid charges', { unpaid_charges: ch.n, unpaid_minor: Number(ch.minor), currency: ch.currency, private: true });
   }
   return out;
 }
@@ -364,7 +367,8 @@ cap({
     const role = await access(user, i.id, undefined);
     const f = i.status === 'open' ? OPEN : i.status === 'completed' ? ['completed'] : i.status === 'closed' ? ['rejected', 'expired', 'cancelled', 'rolled_back'] : null;
     const rows = await many(`${SELECT} WHERE r.organisation_id=$1 AND ($2::text[] IS NULL OR r.status = ANY($2)) AND ($3::uuid IS NULL OR r.athlete_id=$3) ORDER BY r.created_at DESC, r.id LIMIT $4 OFFSET $5`, [i.id, f, i.athlete_id ?? null, i.limit, i.offset]);
-    const counts = await many('SELECT status, count(*)::int AS n FROM academy_promotion_runs WHERE organisation_id=$1 GROUP BY status', [i.id]);
+    const counts = await many(`SELECT r.status, count(*)::int AS n FROM academy_promotion_runs r WHERE r.organisation_id=$1
+      AND ($2 OR EXISTS (SELECT 1 FROM org_enrolments e JOIN org_cohorts k ON k.id=e.cohort_id WHERE e.user_id=r.athlete_id AND k.organisation_id=r.organisation_id AND k.coach_id=$3 AND e.status IN ('enrolled','paused','graduated','completed'))) GROUP BY r.status`, [i.id, role === 'staff', user.id]);
     const out = [];
     for (const r of rows) {
       if (role === 'coach' && !(await one("SELECT 1 FROM org_enrolments e JOIN org_cohorts k ON k.id=e.cohort_id WHERE e.user_id=$1 AND k.organisation_id=$2 AND k.coach_id=$3 AND e.status IN ('enrolled','paused','graduated','completed') LIMIT 1", [r.athlete_id, r.organisation_id, user.id]))) continue;
