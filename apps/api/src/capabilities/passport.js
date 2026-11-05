@@ -31,10 +31,11 @@ export async function buildPassport(userId, scope = FULL_SCOPE, ctx = {}) {
          FROM acts a JOIN sports s ON s.id=a.sport_id GROUP BY 1, 2 ORDER BY 1 DESC, 2`, [userId]) : [],
     scope.show_results ? many(
       `SELECT s.slug AS sport_slug, s.name AS sport, p.metric, p.unit, coalesce(p.direction,'higher') AS direction, count(*)::int AS results,
-              (CASE WHEN bool_or(p.direction='lower') THEN min(p.value) ELSE max(p.value) END)::float8 AS best
+              (CASE WHEN bool_or(p.direction='lower') THEN min(p.value) ELSE max(p.value) END)::float8 AS best,
+              p.sport_class
          FROM performances p JOIN sports s ON s.id=p.sport_id
         WHERE p.user_id=$1 AND p.provenance='approved_competition' AND p.status='approved'
-        GROUP BY s.slug, s.name, p.metric, p.unit, coalesce(p.direction,'higher') ORDER BY s.slug, p.metric`, [userId]) : [],
+        GROUP BY s.slug, s.name, p.metric, p.unit, coalesce(p.direction,'higher'), p.sport_class ORDER BY s.slug, p.metric, p.sport_class`, [userId]) : [],
     scope.show_awards ? many(
       `SELECT a.kind, a.name, e.name AS event_name, extract(year FROM a.awarded_at)::int AS year
          FROM awards a LEFT JOIN events e ON e.id=a.event_id WHERE a.user_id=$1 ORDER BY a.awarded_at DESC LIMIT 100`, [userId]) : [],
@@ -54,7 +55,13 @@ export async function buildPassport(userId, scope = FULL_SCOPE, ctx = {}) {
   return {
     athlete: u, sport_profiles: profiles,
     career: scope.show_matches ? [...career.values()] : null, seasons: scope.show_matches ? activity : null,
-    verified_results: scope.show_results ? results : null, awards: scope.show_awards ? awards : null, credentials: scope.show_credentials ? credentials : null,
+    verified_results: scope.show_results ? results : null,
+    para_records: scope.show_results ? await many(
+      `SELECT r.record_type, s.slug AS sport_slug, r.metric, r.value, r.unit, r.sport_class, r.achieved_at, r.status, r.ratified_at
+         FROM para_records r JOIN sports s ON s.id=r.sport_id
+        WHERE r.holder_user_id=$1 AND r.status IN ('current','pending_ratification')
+        ORDER BY r.sport_class, r.record_type, r.metric`, [userId]) : null,
+    awards: scope.show_awards ? awards : null, credentials: scope.show_credentials ? credentials : null,
     memberships: scope.show_career ? memberships : null,
     journey,
     ...rec,
