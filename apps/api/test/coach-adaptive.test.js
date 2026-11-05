@@ -8,6 +8,7 @@ const { migrate } = await import('../src/migrate.js');
 const { createApp } = await import('../src/http.js');
 const { DISCIPLINE_KEYS, DISCLAIMER } = await import('../src/coach-adaptive.js');
 const { SPORT_TEMPLATES } = await import('../src/inclusion.js');
+const { signToken } = await import('../src/auth.js');
 
 let server, base, n = 0;
 const api = async (method, path, { token, body } = {}) => {
@@ -16,7 +17,8 @@ const api = async (method, path, { token, body } = {}) => {
   return { status: r.status, body: j, text: t };
 };
 const ok = (r, s = 200) => { assert.equal(r.status, s, r.text); return r.body; };
-const signup = async (roles) => { n++; const r = ok(await api('POST', '/auth/register', { body: { handle: `ca_${n}_${roles[0]}`, display_name: `Ca ${n}`, email: `ca${n}@example.com`, password: 'correct-horse-battery', roles } }), 201); return { ...r.user, token: r.token }; };
+const yearsAgo = (y) => { const d = new Date(); d.setUTCFullYear(d.getUTCFullYear() - y); d.setUTCDate(d.getUTCDate() - 3); return d.toISOString().slice(0, 10); };
+const signup = async (roles, extra = {}) => { n++; const r = ok(await api('POST', '/auth/register', { body: { handle: `ca_${n}_${roles[0]}`, display_name: `Ca ${n}`, email: `ca${n}@example.com`, password: 'correct-horse-battery', roles, ...extra } }), 201); return { ...r.user, token: r.token }; };
 const PDF = Buffer.from('%PDF-1.4 fake evidence body').toString('base64');
 const ID = { kind: 'id_document', label: 'Passport', data: PDF, file_name: 'passport.pdf' };
 const CERT = { kind: 'coaching_certificate', reference: 'ITF-L2-123' };
@@ -30,7 +32,8 @@ after(async () => { server.close(); await pool.end(); });
 
 test('catalogue is governed, public, and walks every native para family with a labelled fallback', async () => {
   const cat = ok(await api('GET', '/coaches/adaptive/catalogue'));
-  assert.deepEqual(cat.disciplines.map((d) => d.key).sort(), Object.entries(SPORT_TEMPLATES).filter(([, t]) => !t.fallback).map(([k]) => k).sort());
+  assert.deepEqual(cat.disciplines.map((d) => d.key).sort(), Object.keys(SPORT_TEMPLATES).sort());
+  assert.deepEqual(cat.disciplines.filter((d) => d.fallback).map((d) => d.key), ['generic'], 'the fallback is labelled, never silent');
   assert.equal(cat.generic_fallback.fallback, true); assert.equal(cat.disclaimer, DISCLAIMER);
   assert.ok(cat.communication_support.includes('sign_interpreter'));
 });
@@ -141,7 +144,7 @@ test('regression: ordinary coach search and the hire flow are unchanged; MCP and
   for (const p of ['/coaches/adaptive/catalogue', '/me/coach-adaptive', '/me/coach-adaptive/expertise', '/coaches/{id}/adaptive', '/hires/{id}/adjustments']) assert.ok(spec.paths[p], `openapi ${p}`);
   const { capabilities } = await import('../src/registry.js');
   for (const name of ['get_adaptive_catalogue', 'set_my_adaptive_coaching', 'upsert_adaptive_expertise', 'get_coach_adaptive', 'share_hire_adjustments', 'revoke_hire_adjustments', 'get_hire_adjustments']) assert.ok(capabilities.find((c) => c.name === name), name);
-  assert.equal(DISCIPLINE_KEYS.length, 9);
+  assert.equal(DISCIPLINE_KEYS.length, 10);
 });
 
 test('academy instructor validation: the staff list shows each opted-in coach\'s live credential state and nothing about athletes', async () => {
@@ -154,4 +157,70 @@ test('academy instructor validation: the staff list shows each opted-in coach\'s
   assert.equal(staff.find((x) => x.user_id === coach.id).adaptive.state, 'self_declared');
   assert.equal(staff.find((x) => x.user_id === plain.id).adaptive, null, 'coaches who did not opt in show nothing');
   assert.ok(!JSON.stringify(staff).includes('training_enc'));
+});
+
+test('every sport in the catalogue works: native discipline where one exists, the labelled generic fallback otherwise', async () => {
+  const sports = (await pool.query('SELECT id, slug FROM sports ORDER BY slug')).rows;
+  assert.ok(sports.length > 10, 'catalogue is seeded by migrations');
+  const coach = await signup(['coach']); ok(await api('POST', '/me/coach-adaptive', { token: coach.token, body: { opt_in: true } }));
+  const native = new Map(Object.values(SPORT_TEMPLATES).flatMap((t) => t.sports.map((s) => [s, t])));
+  const key = (slug) => Object.entries(SPORT_TEMPLATES).find(([, t]) => t.sports.includes(slug))?.[0] ?? 'generic';
+  for (const s of sports) {
+    await pool.query("INSERT INTO sport_profiles(user_id, sport_id, role, level) VALUES ($1,$2,'coach','pro') ON CONFLICT DO NOTHING", [coach.id, s.id]);
+    const r = await api('POST', '/me/coach-adaptive/expertise', { token: coach.token, body: { sport: s.slug, discipline: key(s.slug) } });
+    assert.equal(r.status, 201, `${s.slug}: ${r.text}`);
+  }
+  const pub = ok(await api('GET', `/coaches/${coach.id}/adaptive`));
+  assert.equal(pub.expertise.length, sports.length);
+  assert.ok(pub.expertise.some((e) => e.discipline === 'generic') && native.size > 0);
+});
+
+test('a young person: only a verified guardian books and shares adjustments; the authority lapses with the link; strangers get 404; booking permissions are unchanged', async () => {
+  const row = (await pool.query("INSERT INTO users(handle,display_name,roles,password_hash,email_enc,email_idx) VALUES ('ca_root','ca_root','{admin}','x','x','ca_root') RETURNING id")).rows[0];
+  const admin = { token: await signToken({ id: row.id, roles: ['admin'] }) };
+  const kid = await signup(['athlete'], { dob: yearsAgo(13) }), parent = await signup(['athlete'], { dob: yearsAgo(40) }), stranger = await signup(['athlete']), coach = await coachOf();
+  const link = ok(await api('POST', '/youth/guardian-links', { token: parent.token, body: { guardian_id: parent.id, child_id: kid.id, relationship: 'parent' } }), 201);
+  ok(await api('POST', `/youth/guardian-links/${link.id}/respond`, { token: kid.token, body: { accept: true } }));
+  ok(await api('POST', `/youth/guardian-links/${link.id}/evidence`, { token: parent.token, body: { evidence: { reference: 'https://example.com/birth-certificate-ref-123', label: 'Birth certificate' } } }), 201);
+  ok(await api('POST', `/youth/guardian-links/${link.id}/decision`, { token: admin.token, body: { decision: 'approve', note: 'Documents match' } }));
+  ok(await api('POST', `/youth/children/${kid.id}/consents`, { token: parent.token, body: { purpose: 'participation' } }), 201);
+  const book = (token, extra = {}) => api('POST', '/hires', { token, body: { coach_id: coach.id, sport: 'tennis', starts_at: inFuture(7), duration_min: 60, ...extra } });
+  assert.equal((await book(stranger.token, { athlete_id: kid.id })).status, 404, 'a stranger cannot book for a young person');
+  const hire = ok(await book(parent.token, { athlete_id: kid.id }), 201);
+  const post = (token) => api('POST', `/hires/${hire.id}/adjustments`, { token, body: { need_keys: ['step_free_route'], expires_on: day(30) } });
+  assert.equal((await post(kid.token)).status, 403, 'a young person cannot share alone');
+  assert.equal((await post(stranger.token)).status, 404, 'strangers learn nothing');
+  const shared = ok(await post(parent.token), 201); assert.equal(shared.granted_as, 'guardian');
+  assert.equal(ok(await api('GET', `/hires/${hire.id}/adjustments`, { token: coach.token })).length, 1, 'the coach sees what the guardian shared');
+  assert.equal(ok(await api('GET', `/hires/${hire.id}/adjustments`, { token: parent.token })).length, 1);
+  // the coach\'s booking permissions are unchanged: the coach still sees the booking and can confirm it
+  assert.equal(ok(await api('PATCH', `/hires/${hire.id}`, { token: coach.token, body: { status: 'confirmed' } })).status, 'confirmed');
+  // authority lapses with the guardian link: nothing more can be shared or withdrawn by them
+  await pool.query("UPDATE guardian_links SET status='revoked', revoked_at=now() WHERE id=$1", [link.id]);
+  assert.equal((await post(parent.token)).status, 404, 'a revoked guardian is a stranger');
+  assert.equal((await api('GET', `/hires/${hire.id}/adjustments`, { token: parent.token })).status, 404);
+});
+
+test('credential renewal: a new case chains to the old one, relinking moves the badge, and the old expiry stops verifying', async () => {
+  const coach = await coachOf();
+  ok(await api('POST', '/me/coach-adaptive', { token: coach.token, body: { opt_in: true } }));
+  const claim = (extra) => api('POST', '/verification/cases', { token: coach.token, body: { type: 'coach', issuing_authority: 'ITF', credential_title: 'Wheelchair Coach L2', scope_disciplines: ['wheelchair_tennis'], evidence: [ID, CERT], ...extra } });
+  const c1 = ok(await claim({ credential_expires_on: day(20) }), 201);
+  ok(await api('POST', '/me/coach-adaptive/expertise', { token: coach.token, body: { sport: 'tennis', discipline: 'wheelchair_tennis', case_id: c1.id } }), 201);
+  await approve(c1.id, `, credential_expires_on='${day(20)}'`);
+  assert.equal(ok(await api('GET', `/coaches/${coach.id}/adaptive`)).state, 'verified');
+  assert.equal((await claim({})).status, 409, 'an open or still-valid case cannot be duplicated outside the renewal window');
+  // inside the renewal window a renewal is accepted and chains to the previous case
+  await pool.query("UPDATE verification_cases SET expires_at = now() + interval '10 days' WHERE id=$1", [c1.id]);
+  const c2 = ok(await claim({ credential_expires_on: day(800) }), 201);
+  assert.equal((await pool.query('SELECT previous_case_id FROM verification_cases WHERE id=$1', [c2.id])).rows[0].previous_case_id, c1.id);
+  assert.equal(ok(await api('GET', `/coaches/${coach.id}/adaptive`)).state, 'verified', 'the current badge holds while the renewal is reviewed');
+  await approve(c2.id, `, credential_expires_on='${day(800)}'`);
+  ok(await api('POST', '/me/coach-adaptive/expertise', { token: coach.token, body: { sport: 'tennis', discipline: 'wheelchair_tennis', case_id: c2.id } }), 201);
+  await pool.query("UPDATE verification_cases SET credential_expires_on = current_date - 1 WHERE id=$1", [c1.id]);
+  const pub = ok(await api('GET', `/coaches/${coach.id}/adaptive`));
+  assert.equal(pub.state, 'verified'); assert.ok(pub.expertise[0].valid_to > day(30), 'the renewed credential carries the display, not the expired one');
+  // the credential cannot outlive its own date even if the platform validity is longer
+  const mine = ok(await api('GET', '/me/coach-adaptive', { token: coach.token }));
+  assert.equal(mine.cases.length, 2); assert.equal(mine.expertise.length, 1);
 });

@@ -146,7 +146,9 @@ cap({
       if (rows.length) await tx((c) => audit(c, user.id, 'read_hire_adjustments', 'coach_hires', h.id));
       return rows.map((r) => view(r, true));
     }
-    if (h.hirer_id !== user.id && h.athlete_id !== user.id) { const ok = await tx((c) => actingFor(c, user, h.athlete_id, 'consent').catch(() => null)); if (!ok) throw notFound('Booking'); }
+    // the athlete (adult) or a LIVE verified guardian; a guardian whose link lapsed, even if they placed the booking, sees nothing
+    const standing = await tx((c) => actingFor(c, user, h.athlete_id, 'consent').catch(() => null));
+    if (!standing) throw notFound('Booking');
     const rows = await many('SELECT a.*, (SELECT count(*)::int FROM coach_hire_adjustment_reads r WHERE r.adjustment_id=a.id) AS reads FROM coach_hire_adjustments a WHERE hire_id=$1 ORDER BY created_at DESC', [h.id]);
     return rows.map((r) => ({ ...view(r, true), coach_reads: r.reads }));
   },

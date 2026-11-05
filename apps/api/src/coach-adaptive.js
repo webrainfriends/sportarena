@@ -6,7 +6,7 @@ import { SPORT_TEMPLATES, NEED_TYPES } from './inclusion.js';
 import { many } from './db.js';
 
 /** Governed discipline catalogue: the native adaptation templates (the same families #808 uses). `generic` is the labelled fallback. */
-export const DISCIPLINES = Object.entries(SPORT_TEMPLATES).filter(([, t]) => !t.fallback).map(([key, t]) => ({ key, sports: t.sports }));
+export const DISCIPLINES = Object.entries(SPORT_TEMPLATES).map(([key, t]) => ({ key, sports: t.sports, ...(t.fallback ? { fallback: true } : {}) }));   // `generic` is the labelled fallback for every other sport
 export const DISCIPLINE_KEYS = DISCIPLINES.map((d) => d.key);
 export const FORMATS = ['in_person', 'online', 'accessible_venue', 'home_visit'];
 export const COMM = NEED_TYPES.communication;
@@ -14,7 +14,7 @@ export const DISCLAIMER = 'A coaching credential confirms coaching qualification
 
 export const catalogue = () => ({
   disciplines: DISCIPLINES, delivery_formats: FORMATS, communication_support: COMM, credential_states: ['verified', 'self_declared', 'expired', 'revoked', 'none'], disclaimer: DISCLAIMER,
-  generic_fallback: { key: 'generic', fallback: true, note: 'Sports without a native para template are served by the generic fallback.' },
+  generic_fallback: { key: 'generic', fallback: true, note: 'Sports without a native para template use the generic discipline, which is labelled as a fallback wherever it appears.' },
 });
 
 /** The state of one verification case for display. Derived live, so expiry and revocation take effect at once. */

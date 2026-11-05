@@ -61,7 +61,7 @@ export function SwitchRow({ label, sub, value, onChange }) {
   return (
     <Pressable onPress={() => onChange(!value)} accessibilityRole="switch" accessibilityState={{ checked: !!value }} accessibilityLabel={label} style={{ minHeight: 44, flexDirection: 'row', alignItems: 'center', gap: 12 }}>
       <View style={{ flex: 1 }}><T weight="600" size={14}>{label}</T>{sub ? <T size={12} color={c.mute}>{sub}</T> : null}</View>
-      <Switch value={!!value} onValueChange={onChange} trackColor={{ true: c.pink }} />
+      <Switch value={!!value} onValueChange={onChange} trackColor={{ true: c.pink }} accessibilityLabel={label} />
     </Pressable>
   );
 }
