@@ -43,7 +43,7 @@ export const ACADEMY_STEPS = [
   {
     id: 'programmes', title: 'Build programmes',
     why: 'A programme is what families buy: a squad, a term course or a camp, with a price and places.',
-    steps: ['Open Academy, then Programmes, and tap New programme.', 'Work through the steps: sport and venue, schedule, price and places, application questions and agreements.', 'Check the family price preview in Review.', 'Publish to open applications, or save as a draft.', 'After a graduation or squad decision, open the athlete on the Progress page to issue the certificate, send the squad invitation or move them to another cohort.'],
+    steps: ['Open Academy, then Programmes, and tap New programme.', 'Work through the steps: sport and venue, schedule, price and places, application questions and agreements. Para and adaptive sports are in the same sport list: tap the Para & adaptive filter to find them.', 'Check the family price preview in Review.', 'Publish to open applications, or save as a draft.', 'After a graduation or squad decision, open the athlete on the Progress page to issue the certificate, send the squad invitation or move them to another cohort.'],
     target: { academy: 'programmes' },
     modules: ['academy-programmes.js', 'academy-pathways.js', 'academy-follow-through.js'], sources: ['apps/app/src/screens/academy-programmes.js'],
   },
@@ -57,9 +57,9 @@ export const ACADEMY_STEPS = [
   {
     id: 'students', title: 'Invite students',
     why: 'Move people from enquiry to enrolled. Parents and guardians consent for children.',
-    steps: ['Open Academy, then Admissions.', 'Invite a family to a programme, or review the applications and trials that arrive.', 'Make an offer, then enrol once they accept. Enrolment letters are produced for you.', 'Use Families to see everyone enrolled and who pays.'],
+    steps: ['Open Academy, then Admissions.', 'Invite a family to a programme, or review the applications and trials that arrive.', 'Make an offer, then enrol once they accept. Enrolment letters are produced for you.', 'For an athlete joining from abroad, open Start international checklist on the application, then track permissions, passport and visa status, school, residence and arrival under International. Enrolment waits until every mandatory item is met.', 'Use Families to see everyone enrolled and who pays.'],
     target: { academy: 'admissions' },
-    modules: ['academy-admissions.js', 'academy-trials.js', 'academy-letters.js'], sources: ['apps/app/src/screens/academy-admissions.js', 'apps/app/src/screens/academy-families.js'],
+    modules: ['academy-admissions.js', 'academy-trials.js', 'academy-letters.js', 'academy-international.js'], sources: ['apps/app/src/screens/academy-admissions.js', 'apps/app/src/screens/academy-families.js', 'apps/app/src/screens/academy-international.js'],
   },
   {
     id: 'scouting', title: 'Scout and recruit talent',
