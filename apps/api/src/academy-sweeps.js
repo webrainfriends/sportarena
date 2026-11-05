@@ -55,6 +55,30 @@ export async function remindIntlDeadlines() {
   return n;
 }
 
+/** Promotions nobody approved / answered in time lapse. A squad invitation still open is withdrawn so it cannot be accepted later; moves already done are kept and flagged for a person to roll back. */
+export async function expireAcademyPromotions() {
+  const due = await many("SELECT id FROM academy_promotion_runs WHERE status IN ('pending_approval','approved','awaiting_acceptance','awaiting_final_approval') AND expires_at <= now() ORDER BY expires_at, id LIMIT 200");
+  let n = 0;
+  for (const d of due) {
+    await tx(async (c) => {
+      const r = (await c.query("SELECT * FROM academy_promotion_runs WHERE id=$1 AND status IN ('pending_approval','approved','awaiting_acceptance','awaiting_final_approval') AND expires_at <= now() FOR UPDATE", [d.id])).rows[0];
+      if (!r) return;
+      const steps = (await c.query('SELECT * FROM academy_promotion_steps WHERE run_id=$1', [r.id])).rows;
+      const open = steps.find((s) => s.kind === 'squad_acceptance' && s.state === 'pending') && steps.find((s) => s.kind === 'squad_invite' && s.state === 'done');
+      if (open) {
+        await c.query("UPDATE team_members SET status='left' WHERE team_id=$1 AND user_id=$2 AND status='invited'", [r.team_id, r.athlete_id]);
+        await c.query("UPDATE academy_promotion_steps SET state='compensated', compensated_at=now() WHERE run_id=$1 AND kind IN ('squad_invite','squad_acceptance') AND state IN ('done','pending')", [r.id]);
+      }
+      await c.query("UPDATE academy_promotion_steps SET state='skipped' WHERE run_id=$1 AND state='pending'", [r.id]);
+      await c.query("UPDATE academy_promotion_runs SET status='expired', closed_at=now(), row_version=row_version+1, updated_at=now() WHERE id=$1", [r.id]);
+      await c.query('INSERT INTO academy_promotion_events(run_id, event, detail) VALUES ($1,$2,$3)', [r.id, 'expired', JSON.stringify({ steps_kept: steps.filter((s) => s.state === 'done').map((s) => s.kind) })]);
+      for (const uid of new Set([r.created_by])) await notify(c, uid, { kind: 'academy_promotion', title: 'An academy promotion expired', body: steps.some((s) => s.state === 'done' && s.kind === 'cohort_transfer') ? 'A group move had already happened; review it and roll it back if it is not wanted.' : '', data: { run_id: r.id, organisation_id: r.organisation_id, status: 'expired' }, dedupe_key: `promo:${r.id}:expired:${uid}` });
+      n++;
+    });
+  }
+  return n;
+}
+
 const handlers = {
   'academy.announce': async (p) => {
     const apps = await many('SELECT id, organisation_id, programme_id, athlete_id, applicant_id FROM academy_applications WHERE organisation_id=$1 AND stage = ANY($2) AND ($3::uuid IS NULL OR programme_id=$3) ORDER BY id', [p.organisation_id, p.stages, p.programme_id]);
