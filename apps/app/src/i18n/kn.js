@@ -12015,7 +12015,7 @@ export default {
   'psf.impact.awarded': 'ನೀಡಲಾಗಿದೆ',
   'psf.impact.disbursed': 'ವಿತರಿಸಲಾಗಿದೆ',
   'psf.impact.athletesSupported': 'ಬೆಂಬಲಿಸಿದ ಅಥ್ಲೀಟ್‌ಗಳು',
-  'psf.impact.deliveryConfirmed': 'ಡೆಲಿವರಿ ದೃಢೀಕರಿಸಲಾಗಿದೆ',,
+  'psf.impact.deliveryConfirmed': 'ಡೆಲಿವರಿ ದೃಢೀಕರಿಸಲಾಗಿದೆ',
 
   // PS-06 machine-draft: venue accessibility (awaiting native-speaker review)
   'acc.feat.step_free_route': 'Step-free route',
@@ -12068,7 +12068,6 @@ export default {
   'acc.filter.self_reported': 'Self-reported or better',
   'acc.filter.third_party': 'Third-party or better',
   'acc.filter.certified': 'Certified only',
-};
   'psf.impact.deliveryConfirmed': 'ಡೆಲಿವರಿ ದೃಢೀಕರಿಸಲಾಗಿದೆ',
   'insurance.para.tab': 'Para cover',
   'insurance.para.disciplines': 'Para-sport disciplines',

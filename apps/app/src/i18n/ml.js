@@ -12015,7 +12015,7 @@ export default {
   'psf.impact.awarded': 'അനുവദിച്ചു',
   'psf.impact.disbursed': 'വിതരണം ചെയ്തു',
   'psf.impact.athletesSupported': 'പിന്തുണ നൽകിയ അത്‌ലറ്റുകൾ',
-  'psf.impact.deliveryConfirmed': 'ഡെലിവറി സ്ഥിരീകരിച്ചു',,
+  'psf.impact.deliveryConfirmed': 'ഡെലിവറി സ്ഥിരീകരിച്ചു',
 
   // PS-06 machine-draft: venue accessibility (awaiting native-speaker review)
   'acc.feat.step_free_route': 'Step-free route',
@@ -12068,7 +12068,6 @@ export default {
   'acc.filter.self_reported': 'Self-reported or better',
   'acc.filter.third_party': 'Third-party or better',
   'acc.filter.certified': 'Certified only',
-};
   'psf.impact.deliveryConfirmed': 'ഡെലിവറി സ്ഥിരീകരിച്ചു',
   'insurance.para.tab': 'Para cover',
   'insurance.para.disciplines': 'Para-sport disciplines',

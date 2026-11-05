@@ -38,9 +38,11 @@ CREATE TABLE IF NOT EXISTS accommodation_checklist_items (
   arranged_at     timestamptz,
   arranged_by     uuid REFERENCES users(id),
   arrangement_note text,
-  created_at      timestamptz NOT NULL DEFAULT now(),
-  UNIQUE(share_id, need_key, COALESCE(session_id::text,''), COALESCE(event_id::text,''))
+  created_at      timestamptz NOT NULL DEFAULT now()
 );
+-- one item per need for a given session/event: a table UNIQUE cannot hold expressions, so it is a unique index
+CREATE UNIQUE INDEX IF NOT EXISTS uq_checklist_share_need_scope
+  ON accommodation_checklist_items(share_id, need_key, COALESCE(session_id::text,''), COALESCE(event_id::text,''));
 
 CREATE INDEX IF NOT EXISTS idx_checklist_session ON accommodation_checklist_items(session_id) WHERE session_id IS NOT NULL;
 CREATE INDEX IF NOT EXISTS idx_checklist_event   ON accommodation_checklist_items(event_id)   WHERE event_id   IS NOT NULL;

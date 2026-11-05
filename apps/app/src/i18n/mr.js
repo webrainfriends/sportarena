@@ -12015,7 +12015,7 @@ export default {
   'psf.impact.awarded': 'दिले',
   'psf.impact.disbursed': 'वितरित',
   'psf.impact.athletesSupported': 'समर्थित खेळाडू',
-  'psf.impact.deliveryConfirmed': 'वितरण पुष्टी झाली',,
+  'psf.impact.deliveryConfirmed': 'वितरण पुष्टी झाली',
 
   // PS-06 machine-draft: venue accessibility (awaiting native-speaker review)
   'acc.feat.step_free_route': 'Step-free route',
@@ -12068,7 +12068,6 @@ export default {
   'acc.filter.self_reported': 'Self-reported or better',
   'acc.filter.third_party': 'Third-party or better',
   'acc.filter.certified': 'Certified only',
-};
   'psf.impact.deliveryConfirmed': 'वितरण पुष्टी झाली',
   'insurance.para.tab': 'Para cover',
   'insurance.para.disciplines': 'Para-sport disciplines',
