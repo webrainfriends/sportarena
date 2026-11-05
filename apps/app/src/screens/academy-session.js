@@ -320,6 +320,7 @@ export function AcademySession({ id, tab: want, find }) {
         <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 10 }}>
           <Btn small title="Track a scrimmage or game" color={c.violet} onPress={() => nav.push('ScoringTool', { tab: 'start', contextType: 'academy_session', contextId: s.id })} />
           <Btn small title={t('swk.open')} onPress={() => nav.push('SessionWorkspace', { source_type: 'academy_session', source_id: s.id })} />
+          {s.has_inclusion ? <Btn small title={t('inc.ck_title')} color={c.pink} onPress={() => nav.push('AccommodationChecklist', { sessionId: s.id, sessionTitle: s.title })} accessibilityLabel={t('inc.ck_title')} /> : null}
           <Btn small title="Clock in" color={c.paper} ink={c.ink} onPress={async () => { try { await api.post(`/academy/sessions/${s.id}/clock-in`); toast('Clocked in. This does not mark anyone present.'); } catch (e) { toast(explain(e)); } }} />
           <Btn small title="Can't make it: ask for cover" color={c.paper} ink={c.ink} onPress={() => setCover(true)} />
         </View>

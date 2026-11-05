@@ -11,7 +11,7 @@ import { mustManage } from '../booking/engine.js';
 import { badgesFor } from '../verification.js';
 import { orgFor } from '../org-access.js';
 import {
-  NEED_TYPES, VENUE_FEATURES, ELIGIBILITY, VARIANTS, LEVELS, AUDIENCE_ROLES, SHARE_MONTHS_MAX, SPORT_TEMPLATES, SCHEMES, NEED_TO_FEATURE, NEEDS_SUPPORT, MIN_GROUP, suppress,
+  NEED_TYPES, VENUE_FEATURES, ELIGIBILITY, VARIANTS, LEVELS, AUDIENCE_ROLES, SHARE_MONTHS_MAX, SPORT_TEMPLATES, SCHEMES, NEED_TO_FEATURE, NEEDS_SUPPORT, MIN_GROUP, suppress, PURPOSE_KEYS, SHARE_CONTEXTS,
   catalogue, checkNeeds, typeOfNeed, sealNote, unsealNote, log, liveShares, shareIsLive, inAudience, actingFor, enrolled, badRequest, conflict, forbidden, notFound, isYouth, guardianLink,
 } from '../inclusion.js';
 
@@ -124,14 +124,18 @@ cap({
 });
 
 // ------------------------------------------------------------------------------------------------------------------ the athlete's own shares
-const shareView = (s, live, views) => ({ id: s.id, organisation_id: s.organisation_id, athlete_id: s.athlete_id, needs: needLabelKeys(s.need_keys), note: unsealNote(s.note_enc, 'note'), audience_user_ids: s.audience_users, audience_roles: s.audience_roles, expires_at: s.expires_at, revoked_at: s.revoked_at, granted_as: s.granted_as, status: s.revoked_at ? 'revoked' : !live ? 'lapsed' : 'active', viewed_count: views });
+const shareView = (s, live, views) => ({ id: s.id, organisation_id: s.organisation_id, athlete_id: s.athlete_id, needs: needLabelKeys(s.need_keys), note: unsealNote(s.note_enc, 'note'), audience_user_ids: s.audience_users, audience_roles: s.audience_roles, expires_at: s.expires_at, revoked_at: s.revoked_at, granted_as: s.granted_as, status: s.revoked_at ? 'revoked' : !live ? 'lapsed' : 'active', viewed_count: views, context: s.context ?? 'academy', event_id: s.event_id ?? null, purpose_key: s.purpose_key ?? null, purpose: s.purpose ?? null });
 
 cap({
   name: 'share_accommodation', method: 'POST', path: '/me/accommodations', tag: TAG, status: 201,
   summary: 'Share minimal operational needs (equipment, access, support person, transport, communication, schedule) with named staff and/or the coach and venue of your sessions, until a date you choose. An adult decides for themself; a verified guardian with the consent scope decides for a young person. No diagnosis is asked for; an optional short note is screened for clinical content and encrypted. You can revoke at any time.',
   input: z.object({
     organisation_id: id, athlete_id: id.optional(), need_keys: z.array(z.string().max(40)).min(1).max(12), note: z.string().trim().max(300).optional(),
-    audience_user_ids: z.array(id).max(20).default([]), audience_roles: z.array(z.enum(AUDIENCE_ROLES)).max(2).default([]), expires_on: day,
+    audience_user_ids: z.array(id).max(20).default([]), audience_roles: z.array(z.enum(AUDIENCE_ROLES)).max(3).default([]), expires_on: day,
+    context: z.enum(SHARE_CONTEXTS).default('academy'),
+    event_id: id.optional(),
+    purpose_key: z.enum(PURPOSE_KEYS).optional(),
+    purpose: z.string().trim().max(200).optional(),
   }),
   async handler({ user }, i) {
     return tx(async (c) => {
@@ -141,12 +145,20 @@ cap({
       const needs = checkNeeds(i.need_keys);
       if (!i.audience_user_ids.length && !i.audience_roles.length) throw badRequest('Choose who may see this: named staff, the coach or the venue');
       if (i.expires_on <= today() || i.expires_on > plusDays(SHARE_MONTHS_MAX * 31)) throw badRequest(`Choose an expiry date within the next ${SHARE_MONTHS_MAX} months`);
+      if (i.context === 'event' && !i.event_id) throw badRequest('Provide an event_id when context is event');
+      if (i.event_id) {
+        const ev = await c.query("SELECT 1 FROM events WHERE id=$1", [i.event_id]);
+        if (!ev.rowCount) throw badRequest('Event not found');
+      }
+      if (i.audience_roles.includes('event_staff') && i.context !== 'event') throw badRequest('event_staff audience requires event context');
       for (const u of i.audience_user_ids) {
         const ok = await c.query("SELECT 1 FROM organisation_members WHERE organisation_id=$1 AND user_id=$2 AND status='active'", [i.organisation_id, u]);
         if (!ok.rowCount) throw badRequest('Everyone named must be an active member of this academy');
       }
-      const row = (await c.query('INSERT INTO academy_accommodation_shares(organisation_id, athlete_id, need_keys, note_enc, audience_users, audience_roles, granted_by, granted_as, expires_at) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING *',
-        [i.organisation_id, athleteId, needs, sealNote(i.note, 'note'), i.audience_user_ids, i.audience_roles, user.id, as, `${i.expires_on}T23:59:59Z`])).rows[0];
+      const row = (await c.query(
+        'INSERT INTO academy_accommodation_shares(organisation_id, athlete_id, need_keys, note_enc, audience_users, audience_roles, granted_by, granted_as, expires_at, context, event_id, purpose_key, purpose) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13) RETURNING *',
+        [i.organisation_id, athleteId, needs, sealNote(i.note, 'note'), i.audience_user_ids, i.audience_roles, user.id, as, `${i.expires_on}T23:59:59Z`, i.context, i.event_id ?? null, i.purpose_key ?? null, i.purpose ?? null],
+      )).rows[0];
       await log(c, i.organisation_id, athleteId, 'share_granted', user.id, { type: 'share', id: row.id }, needs.map(typeOfNeed).join(','));
       for (const u of i.audience_user_ids) await notify(c, u, { kind: 'academy_inclusion', title: 'An athlete shared an operational need with you', body: 'Open the session in Gotmygame to see what was shared with you.', data: { organisation_id: i.organisation_id }, dedupe_key: `incl:share:${row.id}:${u}` });
       await audit(c, user.id, 'share_accommodation', 'academy_accommodation_shares', row.id);
