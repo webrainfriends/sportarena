@@ -12034,4 +12034,86 @@ export default {
   'guide.inclusive_delivery.s3': 'آنے والا سیشن کھولیں اور شمولیت تیاری پینل دیکھیں۔',
   'guide.inclusive_delivery.s4': 'اگر کھلاڑی پروگرام تبدیل کرے تو Change programme استعمال کریں۔',
   'guide.inclusive_delivery.s5': 'سرپرست Guardian progress دیکھ سکتے ہیں۔',
+  // reviewed: false
+  'paraDoctor.tab_label': 'موافق',
+  // reviewed: false
+  'paraDoctor.specialism_title': 'پیرا-اسپورٹ تخصصات',
+  // reviewed: false
+  'paraDoctor.specialism_hint': 'وہ کھیل جن میں آپ کو موافق کھلاڑیوں کے لیے طبی مہارت ہے۔',
+  // reviewed: false
+  'paraDoctor.specialism_edit': 'ترمیم',
+  // reviewed: false
+  'paraDoctor.specialism_none': 'کوئی تخصص اعلان نہیں کیا',
+  // reviewed: false
+  'paraDoctor.specialism_none_sub': 'اپنے کھیل شامل کریں۔',
+  // reviewed: false
+  'paraDoctor.template_title': 'مشاورتی سانچے',
+  // reviewed: false
+  'paraDoctor.template_new': '＋ نیا',
+  // reviewed: false
+  'paraDoctor.template_none': 'ابھی کوئی سانچہ نہیں',
+  // reviewed: false
+  'paraDoctor.template_none_sub': 'کھیل مخصوص سانچے بنائیں۔',
+  // reviewed: false
+  'paraDoctor.episode_title': 'پیرا واقعات',
+  // reviewed: false
+  'paraDoctor.episode_none': 'کوئی فعال پیرا واقعہ نہیں',
+  // reviewed: false
+  'paraDoctor.episode_none_sub': 'واقعات یہاں ظاہر ہوں گے۔',
+  // reviewed: false
+  'paraDoctor.summary_title': 'غیر طبی معاونت خلاصے',
+  // reviewed: false
+  'paraDoctor.summary_new': '＋ مسودہ',
+  // reviewed: false
+  'paraDoctor.summary_none': 'کوئی خلاصہ تیار نہیں',
+  // reviewed: false
+  'paraDoctor.summary_none_sub': 'کھلاڑی کے لیے خلاصہ تیار کریں۔',
+  // reviewed: false
+  'paraDoctor.boundary_title': '⚠️ درجہ بندی کی حد',
+  // reviewed: false
+  'paraDoctor.boundary_body': 'یہاں درج طبی مشاورتیں پیرا-اسپورٹ درجہ بندی کے فیصلوں سے بالکل الگ ہیں۔',
+  // reviewed: false
+  'paraDoctor.support_tab_label': 'معاونت',
+  // reviewed: false
+  'paraDoctor.support_privacy_title': 'آپ کی طبی معلومات ذاتی ہیں',
+  // reviewed: false
+  'paraDoctor.support_privacy_body': 'کوچ صرف حیثیت دیکھتے ہیں۔',
+  // reviewed: false
+  'paraDoctor.support_classification_note': 'آپ کی درجہ بندی بالکل الگ ہے۔',
+  // reviewed: false
+  'paraDoctor.support_summaries_title': 'معاونت خلاصے',
+  // reviewed: false
+  'paraDoctor.support_summaries_hint': 'آپ کا ڈاکٹر آپریشنل خلاصہ تیار کر سکتا ہے۔',
+  // reviewed: false
+  'paraDoctor.support_summaries_none': 'کوئی معاونت خلاصہ نہیں',
+  // reviewed: false
+  'paraDoctor.support_summaries_none_sub': 'ڈاکٹر نے تیار کیا تو یہاں دکھے گا۔',
+  // reviewed: false
+  'paraDoctor.support_approve': 'منظور',
+  // reviewed: false
+  'paraDoctor.support_decline': 'رد کریں',
+  // reviewed: false
+  'paraDoctor.support_revoke_all': 'تمام رسائی منسوخ کریں',
+  // reviewed: false
+  'paraDoctor.support_history_title': 'مشاورت کی تاریخ',
+  // reviewed: false
+  'paraDoctor.support_history_hint': 'موافق کھیل سے منسلک مشاورتیں۔',
+  // reviewed: false
+  'paraDoctor.support_history_none': 'کوئی واقعہ درج نہیں',
+  // reviewed: false
+  'paraDoctor.support_history_none_sub': 'مشاورت منسلک ہونے پر یہاں دکھے گا۔',
+  // reviewed: false
+  'guide.para_doctor.title': 'پیرا-کھلاڑی طبی ہم آہنگی',
+  // reviewed: false
+  'guide.para_doctor.why': 'پیرا کھلاڑیوں کو ماہر طبی خدمات فراہم کریں۔',
+  // reviewed: false
+  'guide.para_doctor.s1': 'ڈاکٹر ورک اسپیس → موافق ٹیب کھولیں۔',
+  // reviewed: false
+  'guide.para_doctor.s2': 'مشاورت کے دوران پیرا واقعہ بنائیں۔',
+  // reviewed: false
+  'guide.para_doctor.s3': 'ریفرلز استعمال کریں۔',
+  // reviewed: false
+  'guide.para_doctor.s4': 'معاونت خلاصہ تیار کریں۔',
+  // reviewed: false
+  'guide.para_doctor.s5': 'کھلاڑی رضامندی دیتا ہے۔',
 };

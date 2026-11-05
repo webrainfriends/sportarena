@@ -12033,4 +12033,86 @@ export default {
   'guide.inclusive_delivery.s3': 'வரவிருக்கும் அமர்வை திறந்து சேர்க்கை தயார்நிலை பலகத்தைப் பாருங்கள்.',
   'guide.inclusive_delivery.s4': 'ஒரு வீரர் திட்டத்தை மாற்றினால், Change programme பயன்படுத்தி பகிர்வுகளை நிர்வகிக்கவும்.',
   'guide.inclusive_delivery.s5': 'பாதுகாவலர்கள் Guardian progress பார்வையைத் திறக்கலாம்.',
+  // reviewed: false
+  'paraDoctor.tab_label': 'தகவமைப்பு',
+  // reviewed: false
+  'paraDoctor.specialism_title': 'பாரா-விளையாட்டு சிறப்பு நிபுணத்துவங்கள்',
+  // reviewed: false
+  'paraDoctor.specialism_hint': 'தகவமைப்பு விளையாட்டு வீரர்களுக்கான மருத்துவ நிபுணத்துவம்.',
+  // reviewed: false
+  'paraDoctor.specialism_edit': 'திருத்து',
+  // reviewed: false
+  'paraDoctor.specialism_none': 'சிறப்பு நிபுணத்துவம் அறிவிக்கப்படவில்லை',
+  // reviewed: false
+  'paraDoctor.specialism_none_sub': 'உங்கள் விளையாட்டுகளை சேர்க்கவும்.',
+  // reviewed: false
+  'paraDoctor.template_title': 'ஆலோசனை வார்ப்புருக்கள்',
+  // reviewed: false
+  'paraDoctor.template_new': '＋ புதியது',
+  // reviewed: false
+  'paraDoctor.template_none': 'இன்னும் வார்ப்புருக்கள் இல்லை',
+  // reviewed: false
+  'paraDoctor.template_none_sub': 'விளையாட்டு-குறிப்பிட்ட வார்ப்புருக்கள் உருவாக்கவும்.',
+  // reviewed: false
+  'paraDoctor.episode_title': 'பாரா அத்தியாயங்கள்',
+  // reviewed: false
+  'paraDoctor.episode_none': 'செயலில் உள்ள பாரா அத்தியாயங்கள் இல்லை',
+  // reviewed: false
+  'paraDoctor.episode_none_sub': 'அத்தியாயங்கள் இங்கே தோன்றும்.',
+  // reviewed: false
+  'paraDoctor.summary_title': 'மருத்துவமற்ற ஆதரவு சுருக்கங்கள்',
+  // reviewed: false
+  'paraDoctor.summary_new': '＋ வரைவு',
+  // reviewed: false
+  'paraDoctor.summary_none': 'சுருக்கங்கள் வரையப்படவில்லை',
+  // reviewed: false
+  'paraDoctor.summary_none_sub': 'தகவமைப்பு விளையாட்டு வீரருக்கு சுருக்கம் வரைக.',
+  // reviewed: false
+  'paraDoctor.boundary_title': '⚠️ வகைப்பாட்டு எல்லை',
+  // reviewed: false
+  'paraDoctor.boundary_body': 'இங்கு பதிவு செய்யப்பட்ட மருத்துவ ஆலோசனைகள் பாரா-விளையாட்டு வகைப்பாட்டு முடிவுகளிலிருந்து முற்றிலும் தனியானவை.',
+  // reviewed: false
+  'paraDoctor.support_tab_label': 'ஆதரவு',
+  // reviewed: false
+  'paraDoctor.support_privacy_title': 'உங்கள் மருத்துவ தகவல் தனிப்பட்டது',
+  // reviewed: false
+  'paraDoctor.support_privacy_body': 'பயிற்சியாளர்கள் நிலையை மட்டுமே காண்கிறார்கள்.',
+  // reviewed: false
+  'paraDoctor.support_classification_note': 'உங்கள் வகைப்பாடு முற்றிலும் தனியானது.',
+  // reviewed: false
+  'paraDoctor.support_summaries_title': 'ஆதரவு சுருக்கங்கள்',
+  // reviewed: false
+  'paraDoctor.support_summaries_hint': 'உங்கள் மருத்துவர் செயல்பாட்டு சுருக்கத்தை வரையலாம்.',
+  // reviewed: false
+  'paraDoctor.support_summaries_none': 'ஆதரவு சுருக்கங்கள் இல்லை',
+  // reviewed: false
+  'paraDoctor.support_summaries_none_sub': 'உங்கள் மருத்துவர் வரைந்தால் இங்கே தோன்றும்.',
+  // reviewed: false
+  'paraDoctor.support_approve': 'அனுமதி',
+  // reviewed: false
+  'paraDoctor.support_decline': 'நிராகரி',
+  // reviewed: false
+  'paraDoctor.support_revoke_all': 'அனைத்து அணுகலையும் திரும்பப் பெறுக',
+  // reviewed: false
+  'paraDoctor.support_history_title': 'ஆலோசனை வரலாறு',
+  // reviewed: false
+  'paraDoctor.support_history_hint': 'தகவமைப்பு விளையாட்டுடன் இணைக்கப்பட்ட ஆலோசனைகள்.',
+  // reviewed: false
+  'paraDoctor.support_history_none': 'அத்தியாயங்கள் பதிவு இல்லை',
+  // reviewed: false
+  'paraDoctor.support_history_none_sub': 'ஆலோசனை இணைக்கப்படும்போது இங்கே தோன்றும்.',
+  // reviewed: false
+  'guide.para_doctor.title': 'பாரா-விளையாட்டு வீரர் மருத்துவ ஒருங்கிணைப்பு',
+  // reviewed: false
+  'guide.para_doctor.why': 'பாரா விளையாட்டு வீரர்களுக்கு நிபுணத்துவ மருத்துவ பராமரிப்பு வழங்கவும்.',
+  // reviewed: false
+  'guide.para_doctor.s1': 'மருத்துவர் பணியிடம் → தகவமைப்பு தாவலை திறக்கவும்.',
+  // reviewed: false
+  'guide.para_doctor.s2': 'ஆலோசனையின்போது பாரா அத்தியாயம் உருவாக்கவும்.',
+  // reviewed: false
+  'guide.para_doctor.s3': 'பரிந்துரைகளை பயன்படுத்தவும்.',
+  // reviewed: false
+  'guide.para_doctor.s4': 'ஆதரவு சுருக்கம் வரைக.',
+  // reviewed: false
+  'guide.para_doctor.s5': 'விளையாட்டு வீரர் சம்மதிக்கிறார்.',
 };

@@ -12034,4 +12034,86 @@ export default {
   'guide.inclusive_delivery.s3': 'আসন্ন সেশন খুলুন এবং অন্তর্ভুক্তি প্রস্তুতি প্যানেল দেখুন।',
   'guide.inclusive_delivery.s4': 'ক্রীড়াবিদ প্রোগ্রাম পরিবর্তন করলে, Change programme ব্যবহার করুন।',
   'guide.inclusive_delivery.s5': 'অভিভাবকরা Guardian progress ভিউ খুলতে পারেন।',
+  // reviewed: false
+  'paraDoctor.tab_label': 'অভিযোজিত',
+  // reviewed: false
+  'paraDoctor.specialism_title': 'প্যারা-স্পোর্ট বিশেষজ্ঞতা',
+  // reviewed: false
+  'paraDoctor.specialism_hint': 'অভিযোজিত ক্রীড়াবিদদের জন্য ক্লিনিক্যাল দক্ষতা সম্পন্ন খেলাধুলা।',
+  // reviewed: false
+  'paraDoctor.specialism_edit': 'সম্পাদনা করুন',
+  // reviewed: false
+  'paraDoctor.specialism_none': 'কোনো বিশেষজ্ঞতা ঘোষণা করা হয়নি',
+  // reviewed: false
+  'paraDoctor.specialism_none_sub': 'আপনার খেলাধুলা যোগ করুন।',
+  // reviewed: false
+  'paraDoctor.template_title': 'পরামর্শ টেমপ্লেট',
+  // reviewed: false
+  'paraDoctor.template_new': '＋ নতুন',
+  // reviewed: false
+  'paraDoctor.template_none': 'এখনো কোনো টেমপ্লেট নেই',
+  // reviewed: false
+  'paraDoctor.template_none_sub': 'খেলা-নির্দিষ্ট টেমপ্লেট তৈরি করুন।',
+  // reviewed: false
+  'paraDoctor.episode_title': 'প্যারা এপিসোড',
+  // reviewed: false
+  'paraDoctor.episode_none': 'কোনো সক্রিয় প্যারা এপিসোড নেই',
+  // reviewed: false
+  'paraDoctor.episode_none_sub': 'এপিসোডগুলি এখানে দেখাবে।',
+  // reviewed: false
+  'paraDoctor.summary_title': 'নন-ক্লিনিক্যাল সাপোর্ট সারসংক্ষেপ',
+  // reviewed: false
+  'paraDoctor.summary_new': '＋ ড্রাফট',
+  // reviewed: false
+  'paraDoctor.summary_none': 'কোনো সারসংক্ষেপ প্রস্তুত করা হয়নি',
+  // reviewed: false
+  'paraDoctor.summary_none_sub': 'অভিযোজিত ক্রীড়াবিদের জন্য সারসংক্ষেপ প্রস্তুত করুন।',
+  // reviewed: false
+  'paraDoctor.boundary_title': '⚠️ শ্রেণীবিভাগ সীমানা',
+  // reviewed: false
+  'paraDoctor.boundary_body': 'এখানে রেকর্ড করা ক্লিনিক্যাল পরামর্শগুলি প্যারা-স্পোর্ট শ্রেণীবিভাগ সিদ্ধান্ত থেকে সম্পূর্ণ আলাদা।',
+  // reviewed: false
+  'paraDoctor.support_tab_label': 'সাপোর্ট',
+  // reviewed: false
+  'paraDoctor.support_privacy_title': 'আপনার ক্লিনিক্যাল তথ্য ব্যক্তিগত',
+  // reviewed: false
+  'paraDoctor.support_privacy_body': 'কোচরা শুধুমাত্র স্ট্যাটাস দেখেন।',
+  // reviewed: false
+  'paraDoctor.support_classification_note': 'আপনার শ্রেণীবিভাগ সম্পূর্ণ আলাদা।',
+  // reviewed: false
+  'paraDoctor.support_summaries_title': 'সাপোর্ট সারসংক্ষেপ',
+  // reviewed: false
+  'paraDoctor.support_summaries_hint': 'আপনার ডাক্তার অপারেশনাল সারসংক্ষেপ প্রস্তুত করতে পারেন।',
+  // reviewed: false
+  'paraDoctor.support_summaries_none': 'কোনো সাপোর্ট সারসংক্ষেপ নেই',
+  // reviewed: false
+  'paraDoctor.support_summaries_none_sub': 'ডাক্তার প্রস্তুত করলে এখানে দেখাবে।',
+  // reviewed: false
+  'paraDoctor.support_approve': 'অনুমোদন করুন',
+  // reviewed: false
+  'paraDoctor.support_decline': 'প্রত্যাখ্যান করুন',
+  // reviewed: false
+  'paraDoctor.support_revoke_all': 'সব অ্যাক্সেস প্রত্যাহার করুন',
+  // reviewed: false
+  'paraDoctor.support_history_title': 'পরামর্শ ইতিহাস',
+  // reviewed: false
+  'paraDoctor.support_history_hint': 'অভিযোজিত খেলার সাথে সংযুক্ত পরামর্শ।',
+  // reviewed: false
+  'paraDoctor.support_history_none': 'কোনো এপিসোড রেকর্ড নেই',
+  // reviewed: false
+  'paraDoctor.support_history_none_sub': 'পরামর্শ সংযুক্ত হলে এখানে দেখাবে।',
+  // reviewed: false
+  'guide.para_doctor.title': 'প্যারা-ক্রীড়াবিদ ক্লিনিক্যাল সমন্বয়',
+  // reviewed: false
+  'guide.para_doctor.why': 'প্যারা ক্রীড়াবিদদের বিশেষজ্ঞ চিকিৎসা সেবা প্রদান করুন।',
+  // reviewed: false
+  'guide.para_doctor.s1': 'ডাক্তার কর্মক্ষেত্র → অভিযোজিত ট্যাব খুলুন।',
+  // reviewed: false
+  'guide.para_doctor.s2': 'পরামর্শের সময় প্যারা এপিসোড তৈরি করুন।',
+  // reviewed: false
+  'guide.para_doctor.s3': 'রেফারেল ব্যবহার করুন।',
+  // reviewed: false
+  'guide.para_doctor.s4': 'সাপোর্ট সারসংক্ষেপ প্রস্তুত করুন।',
+  // reviewed: false
+  'guide.para_doctor.s5': 'ক্রীড়াবিদ সম্মতি দেন।',
 };

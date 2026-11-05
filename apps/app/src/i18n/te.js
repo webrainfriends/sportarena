@@ -12034,4 +12034,86 @@ export default {
   'guide.inclusive_delivery.s3': 'రాబోయే సెషన్ తెరిచి చేర్పు సన్నద్ధత ప్యానెల్ చూడండి.',
   'guide.inclusive_delivery.s4': 'అథ్లెట్ కార్యక్రమాన్ని మార్చినట్లయితే, Change programme ఉపయోగించి షేర్లు నిర్వహించండి.',
   'guide.inclusive_delivery.s5': 'సంరక్షకులు Guardian progress వీక్షణను తెరవగలరు.',
+  // reviewed: false
+  'paraDoctor.tab_label': 'అడాప్టివ్',
+  // reviewed: false
+  'paraDoctor.specialism_title': 'పారా-స్పోర్ట్ స్పెషలిజమ్స్',
+  // reviewed: false
+  'paraDoctor.specialism_hint': 'అడాప్టివ్ అథ్లెట్లకు క్లినికల్ నైపుణ్యం ఉన్న క్రీడలు.',
+  // reviewed: false
+  'paraDoctor.specialism_edit': 'సవరించు',
+  // reviewed: false
+  'paraDoctor.specialism_none': 'స్పెషలిజమ్ ప్రకటించలేదు',
+  // reviewed: false
+  'paraDoctor.specialism_none_sub': 'మీ క్రీడలను జోడించండి.',
+  // reviewed: false
+  'paraDoctor.template_title': 'కన్సల్ట్ టెంప్లేట్లు',
+  // reviewed: false
+  'paraDoctor.template_new': '＋ కొత్తది',
+  // reviewed: false
+  'paraDoctor.template_none': 'ఇంకా టెంప్లేట్లు లేవు',
+  // reviewed: false
+  'paraDoctor.template_none_sub': 'క్రీడ-నిర్దిష్ట టెంప్లేట్లు రూపొందించండి.',
+  // reviewed: false
+  'paraDoctor.episode_title': 'పారా ఎపిసోడ్లు',
+  // reviewed: false
+  'paraDoctor.episode_none': 'యాక్టివ్ పారా ఎపిసోడ్లు లేవు',
+  // reviewed: false
+  'paraDoctor.episode_none_sub': 'ఎపిసోడ్లు ఇక్కడ కనిపిస్తాయి.',
+  // reviewed: false
+  'paraDoctor.summary_title': 'నాన్-క్లినికల్ సపోర్ట్ సమ్మరీలు',
+  // reviewed: false
+  'paraDoctor.summary_new': '＋ డ్రాఫ్ట్',
+  // reviewed: false
+  'paraDoctor.summary_none': 'సమ్మరీలు తయారుచేయలేదు',
+  // reviewed: false
+  'paraDoctor.summary_none_sub': 'అడాప్టివ్ అథ్లెట్ కోసం సమ్మరీ తయారుచేయండి.',
+  // reviewed: false
+  'paraDoctor.boundary_title': '⚠️ వర్గీకరణ హద్దు',
+  // reviewed: false
+  'paraDoctor.boundary_body': 'ఇక్కడ నమోదు చేసిన క్లినికల్ కన్సల్టేషన్లు పారా-స్పోర్ట్ వర్గీకరణ నిర్ణయాల నుండి పూర్తిగా వేరుగా ఉంటాయి.',
+  // reviewed: false
+  'paraDoctor.support_tab_label': 'సపోర్ట్',
+  // reviewed: false
+  'paraDoctor.support_privacy_title': 'మీ క్లినికల్ సమాచారం ప్రైవేట్',
+  // reviewed: false
+  'paraDoctor.support_privacy_body': 'కోచ్లు స్థితి మాత్రమే చూస్తారు.',
+  // reviewed: false
+  'paraDoctor.support_classification_note': 'మీ వర్గీకరణ పూర్తిగా వేరుగా ఉంటుంది.',
+  // reviewed: false
+  'paraDoctor.support_summaries_title': 'సపోర్ట్ సమ్మరీలు',
+  // reviewed: false
+  'paraDoctor.support_summaries_hint': 'మీ డాక్టర్ ఆపరేషనల్ సమ్మరీ తయారుచేయవచ్చు.',
+  // reviewed: false
+  'paraDoctor.support_summaries_none': 'సపోర్ట్ సమ్మరీలు లేవు',
+  // reviewed: false
+  'paraDoctor.support_summaries_none_sub': 'మీ డాక్టర్ తయారుచేస్తే ఇక్కడ కనిపిస్తుంది.',
+  // reviewed: false
+  'paraDoctor.support_approve': 'ఆమోదించు',
+  // reviewed: false
+  'paraDoctor.support_decline': 'తిరస్కరించు',
+  // reviewed: false
+  'paraDoctor.support_revoke_all': 'అన్ని యాక్సెస్ రద్దుచేయండి',
+  // reviewed: false
+  'paraDoctor.support_history_title': 'కన్సల్టేషన్ చరిత్ర',
+  // reviewed: false
+  'paraDoctor.support_history_hint': 'అడాప్టివ్ స్పోర్ట్తో అనుసంధానించిన కన్సల్టేషన్లు.',
+  // reviewed: false
+  'paraDoctor.support_history_none': 'ఎపిసోడ్లు నమోదు లేవు',
+  // reviewed: false
+  'paraDoctor.support_history_none_sub': 'కన్సల్టేషన్ అనుసంధానించినప్పుడు ఇక్కడ కనిపిస్తుంది.',
+  // reviewed: false
+  'guide.para_doctor.title': 'పారా-అథ్లెట్ క్లినికల్ సమన్వయం',
+  // reviewed: false
+  'guide.para_doctor.why': 'పారా అథ్లెట్లకు నిపుణుల వైద్య సేవలు అందించండి.',
+  // reviewed: false
+  'guide.para_doctor.s1': 'డాక్టర్ వర్క్స్పేస్ → అడాప్టివ్ ట్యాబ్ తెరవండి.',
+  // reviewed: false
+  'guide.para_doctor.s2': 'కన్సల్టేషన్ సమయంలో పారా ఎపిసోడ్ తయారుచేయండి.',
+  // reviewed: false
+  'guide.para_doctor.s3': 'రిఫెరల్లు ఉపయోగించండి.',
+  // reviewed: false
+  'guide.para_doctor.s4': 'సపోర్ట్ సమ్మరీ తయారుచేయండి.',
+  // reviewed: false
+  'guide.para_doctor.s5': 'అథ్లెట్ అంగీకరిస్తారు.',
 };
