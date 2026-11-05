@@ -379,5 +379,6 @@ import './coach-adaptive.js';
 import './para-competition.js';
 import './para-catalogue.js';
 import './para-results.js';
+import './para-readiness.js';
 import './event-control-tower.js';
 import './process-guides.js';
