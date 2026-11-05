@@ -12088,4 +12088,86 @@ export default {
   'guide.inclusive_delivery.s3': 'ଆସନ୍ତ ସେସନ ଖୋଲନ୍ତୁ।',
   'guide.inclusive_delivery.s4': 'ପ୍ରୋଗ୍ରାମ ବଦଳ ପାଇଁ Change programme ବ୍ୟବହାର କରନ୍ତୁ।',
   'guide.inclusive_delivery.s5': 'ଅଭିଭାବକ Guardian progress ଦେଖିପାରିବେ।',
+  // reviewed: false
+  'paraDoctor.tab_label': 'ଆଡାପ୍ଟିଭ',
+  // reviewed: false
+  'paraDoctor.specialism_title': 'ପ୍ୟାରା-ସ୍ପୋର୍ଟ ବିଶେଷଜ୍ଞତା',
+  // reviewed: false
+  'paraDoctor.specialism_hint': 'ଆଡାପ୍ଟିଭ ଆଥ୍ଲେଟ୍ ମାନଙ୍କ ପାଇଁ ଚିକିତ୍ସା ଦକ୍ଷତା ଥିବା କ୍ରୀଡ଼ା।',
+  // reviewed: false
+  'paraDoctor.specialism_edit': 'ସମ୍ପାଦନ',
+  // reviewed: false
+  'paraDoctor.specialism_none': 'କୌଣସି ବିଶେଷଜ୍ଞତା ଘୋଷଣା ହୋଇନାହିଁ',
+  // reviewed: false
+  'paraDoctor.specialism_none_sub': 'ଆପଣଙ୍କ କ୍ରୀଡ଼ା ଯୋଡ଼ନ୍ତୁ।',
+  // reviewed: false
+  'paraDoctor.template_title': 'ପରାମର୍ଶ ଟେମ୍ପ୍ଲେଟ',
+  // reviewed: false
+  'paraDoctor.template_new': '＋ ନୂଆ',
+  // reviewed: false
+  'paraDoctor.template_none': 'ଏ ପର୍ଯ୍ୟନ୍ତ ଟେମ୍ପ୍ଲେଟ ନାହିଁ',
+  // reviewed: false
+  'paraDoctor.template_none_sub': 'କ୍ରୀଡ଼ା-ନିର୍ଦ୍ଦିଷ୍ଟ ଟେମ୍ପ୍ଲେଟ ତିଆରି କରନ୍ତୁ।',
+  // reviewed: false
+  'paraDoctor.episode_title': 'ପ୍ୟାରା ଏପିସୋଡ',
+  // reviewed: false
+  'paraDoctor.episode_none': 'ସକ୍ରିୟ ପ୍ୟାରା ଏପିସୋଡ ନାହିଁ',
+  // reviewed: false
+  'paraDoctor.episode_none_sub': 'ଏପିସୋଡ ଏଠାରେ ଦେଖାଯିବ।',
+  // reviewed: false
+  'paraDoctor.summary_title': 'ଗୈର-ଚିକିତ୍ସା ସହାୟତା ସାରାଂଶ',
+  // reviewed: false
+  'paraDoctor.summary_new': '＋ ଡ୍ରାଫ୍ଟ',
+  // reviewed: false
+  'paraDoctor.summary_none': 'ସାରାଂଶ ପ୍ରସ୍ତୁତ ହୋଇନାହିଁ',
+  // reviewed: false
+  'paraDoctor.summary_none_sub': 'ଆଥ୍ଲେଟ ପାଇଁ ସାରାଂଶ ପ୍ରସ୍ତୁତ କରନ୍ତୁ।',
+  // reviewed: false
+  'paraDoctor.boundary_title': '⚠️ ବର୍ଗୀକରଣ ସୀମା',
+  // reviewed: false
+  'paraDoctor.boundary_body': 'ଏଠାରେ ଦର୍ଜ ଚିକିତ୍ସା ପରାମର୍ଶ ପ୍ୟାରା-ସ୍ପୋର୍ଟ ବର୍ଗୀକରଣ ନିର୍ଣ୍ଣୟଠାରୁ ସଂପୂର୍ଣ୍ଣ ଅଲଗା।',
+  // reviewed: false
+  'paraDoctor.support_tab_label': 'ସହାୟତା',
+  // reviewed: false
+  'paraDoctor.support_privacy_title': 'ଆପଣଙ୍କ ଚିକିତ୍ସା ସୂଚନା ବ୍ୟକ୍ତିଗତ',
+  // reviewed: false
+  'paraDoctor.support_privacy_body': 'ପ୍ରଶିକ୍ଷକ ଶୁଧୁ ସ୍ଥିତି ଦେଖନ୍ତି।',
+  // reviewed: false
+  'paraDoctor.support_classification_note': 'ଆପଣଙ୍କ ବର୍ଗୀକରଣ ସଂପୂର୍ଣ୍ଣ ଅଲଗା।',
+  // reviewed: false
+  'paraDoctor.support_summaries_title': 'ସହାୟତା ସାରାଂଶ',
+  // reviewed: false
+  'paraDoctor.support_summaries_hint': 'ଆପଣଙ୍କ ଡାକ୍ତର ଅପରେସନାଲ ସାରାଂଶ ପ୍ରସ୍ତୁତ କରିପାରିବେ।',
+  // reviewed: false
+  'paraDoctor.support_summaries_none': 'ସହାୟତା ସାରାଂଶ ନାହିଁ',
+  // reviewed: false
+  'paraDoctor.support_summaries_none_sub': 'ଡାକ୍ତର ପ୍ରସ୍ତୁତ କଲେ ଏଠାରେ ଦେଖାଯିବ।',
+  // reviewed: false
+  'paraDoctor.support_approve': 'ଅନୁମୋଦନ',
+  // reviewed: false
+  'paraDoctor.support_decline': 'ପ୍ରତ୍ୟାଖ୍ୟାନ',
+  // reviewed: false
+  'paraDoctor.support_revoke_all': 'ସମସ୍ତ ପ୍ରବେଶ ରଦ୍ଦ',
+  // reviewed: false
+  'paraDoctor.support_history_title': 'ପରାମର୍ଶ ଇତିହାସ',
+  // reviewed: false
+  'paraDoctor.support_history_hint': 'ଆଡାପ୍ଟିଭ ସ୍ପୋର୍ଟ ସହ ସଂଯୁକ୍ତ ପରାମର୍ଶ।',
+  // reviewed: false
+  'paraDoctor.support_history_none': 'ଏପିସୋଡ ଦର୍ଜ ନାହିଁ',
+  // reviewed: false
+  'paraDoctor.support_history_none_sub': 'ପରାମର୍ଶ ସଂଯୁକ୍ତ ହେଲେ ଏଠାରେ ଦେଖାଯିବ।',
+  // reviewed: false
+  'guide.para_doctor.title': 'ପ୍ୟାରା-ଆଥ୍ଲେଟ ଚିକିତ୍ସା ସମନ୍ୱୟ',
+  // reviewed: false
+  'guide.para_doctor.why': 'ପ୍ୟାରା ଆଥ୍ଲେଟ ମାନଙ୍କୁ ବିଶେଷଜ୍ଞ ଚିକିତ୍ସା ଯୋଗାଇ ଦିଅନ୍ତୁ।',
+  // reviewed: false
+  'guide.para_doctor.s1': 'ଡାକ୍ତର କର୍ମକ୍ଷେତ୍ର → ଆଡାପ୍ଟିଭ ଟ୍ୟାବ ଖୋଲନ୍ତୁ।',
+  // reviewed: false
+  'guide.para_doctor.s2': 'ପରାମର୍ଶ ସମୟରେ ପ୍ୟାରା ଏପିସୋଡ ତିଆରି କରନ୍ତୁ।',
+  // reviewed: false
+  'guide.para_doctor.s3': 'ରେଫରାଲ ବ୍ୟବହାର କରନ୍ତୁ।',
+  // reviewed: false
+  'guide.para_doctor.s4': 'ସହାୟତା ସାରାଂଶ ପ୍ରସ୍ତୁତ କରନ୍ତୁ।',
+  // reviewed: false
+  'guide.para_doctor.s5': 'ଆଥ୍ଲେଟ ସମ୍ମତି ଦିଅନ୍ତି।',
 };

@@ -23,12 +23,14 @@ export const hasGrant = async (athleteId, providerId, need = 'full') => (await h
   "SELECT 1 FROM medical_grants WHERE athlete_id=$1 AND provider_id=$2 AND revoked_at IS NULL AND (expires_at IS NULL OR expires_at > now()) AND ($3::text = 'clearance' OR scope = 'full')", [athleteId, providerId, need]));
 const logGrant = (c, athleteId, providerId, action, scope, expiresAt) => c.query('INSERT INTO medical_grant_events(athlete_id, provider_id, action, scope, expires_at) VALUES ($1,$2,$3,$4,$5)', [athleteId, providerId, action, scope ?? null, expiresAt ?? null]);
 
+// PS-17: extended role set for list_providers — prosthetist, rehabilitation_clinician, sports_medicine added alongside physio/doctor.
+const PROVIDER_ROLES = ['physio', 'doctor', 'prosthetist', 'rehabilitation_clinician', 'sports_medicine'];
 cap({
-  name: 'list_providers', method: 'GET', path: '/providers', tag: 'Health', auth: 'public', summary: 'Find physios and doctors, optionally by sport.',
-  input: z.object({ role: z.enum(['physio', 'doctor']).optional(), sport: z.string().optional(), ...page }),
+  name: 'list_providers', method: 'GET', path: '/providers', tag: 'Health', auth: 'public', summary: 'Find physios, doctors and para-specialist providers (prosthetist, rehabilitation clinician, sports medicine), optionally by sport.',
+  input: z.object({ role: z.enum(PROVIDER_ROLES).optional(), sport: z.string().optional(), ...page }),
   handler: (_, i) => many(
     `SELECT ${PUBLIC_USER}, p.role AS provider_role, p.hourly_rate_cents, s.name AS sport, s.emoji AS sport_emoji, p.level FROM active_sport_profiles p JOIN users u ON u.id=p.user_id JOIN sports s ON s.id=p.sport_id
-      WHERE p.role IN ('physio','doctor') AND ($1::text IS NULL OR p.role=$1) AND ($2::text IS NULL OR s.slug=$2) ORDER BY u.display_name LIMIT $3 OFFSET $4`, [i.role ?? null, i.sport ?? null, i.limit, i.offset]),
+      WHERE p.role = ANY($5::text[]) AND ($1::text IS NULL OR p.role=$1) AND ($2::text IS NULL OR s.slug=$2) ORDER BY u.display_name LIMIT $3 OFFSET $4`, [i.role ?? null, i.sport ?? null, i.limit, i.offset, PROVIDER_ROLES]),
 });
 
 cap({

@@ -12088,4 +12088,86 @@ export default {
   'guide.inclusive_delivery.s3': 'ඉදිරි සැසිය විවෘත කර ඇතුළත් කිරීමේ සූදානම් පැනලය දෙස බලන්න.',
   'guide.inclusive_delivery.s4': 'ක්‍රීඩකයා වැඩසටහන වෙනස් කළහොත් Change programme භාවිත කරන්න.',
   'guide.inclusive_delivery.s5': 'භාරකාරයන්ට Guardian progress දසුන විවෘත කළ හැකිය.',
+  // reviewed: false
+  'paraDoctor.tab_label': 'අනුගත',
+  // reviewed: false
+  'paraDoctor.specialism_title': 'පාරා-ක්‍රීඩා විශේෂඥතාවයන්',
+  // reviewed: false
+  'paraDoctor.specialism_hint': 'අනුගත ක්‍රීඩකයින් සඳහා සායනික විශේෂඥතාව ඇති ක්‍රීඩා.',
+  // reviewed: false
+  'paraDoctor.specialism_edit': 'සංස්කරණය',
+  // reviewed: false
+  'paraDoctor.specialism_none': 'විශේෂඥතාවයක් ප්‍රකාශ කර නොමැත',
+  // reviewed: false
+  'paraDoctor.specialism_none_sub': 'ඔබේ ක්‍රීඩා එකතු කරන්න.',
+  // reviewed: false
+  'paraDoctor.template_title': 'උපදේශ සැකිලි',
+  // reviewed: false
+  'paraDoctor.template_new': '＋ නව',
+  // reviewed: false
+  'paraDoctor.template_none': 'සැකිලි නොමැත',
+  // reviewed: false
+  'paraDoctor.template_none_sub': 'ක්‍රීඩා-විශේෂ සැකිලි සාදන්න.',
+  // reviewed: false
+  'paraDoctor.episode_title': 'පාරා කථාංග',
+  // reviewed: false
+  'paraDoctor.episode_none': 'ක්‍රියාකාරී පාරා කථාංග නොමැත',
+  // reviewed: false
+  'paraDoctor.episode_none_sub': 'කථාංග මෙහි දිස්වනු ඇත.',
+  // reviewed: false
+  'paraDoctor.summary_title': 'සායනික නොවන සහාය සාරාංශ',
+  // reviewed: false
+  'paraDoctor.summary_new': '＋ කෙටුම්පත',
+  // reviewed: false
+  'paraDoctor.summary_none': 'සාරාංශ සකස් කර නොමැත',
+  // reviewed: false
+  'paraDoctor.summary_none_sub': 'ක්‍රීඩකයා සඳහා සාරාංශ සකස් කරන්න.',
+  // reviewed: false
+  'paraDoctor.boundary_title': '⚠️ වර්ගීකරණ සීමාව',
+  // reviewed: false
+  'paraDoctor.boundary_body': 'මෙහි සටහන් කළ සායනික උපදේශ පාරා-ක්‍රීඩා වර්ගීකරණ තීරණවලින් සම්පූර්ණයෙන්ම වෙනස්.',
+  // reviewed: false
+  'paraDoctor.support_tab_label': 'සහාය',
+  // reviewed: false
+  'paraDoctor.support_privacy_title': 'ඔබේ සායනික තොරතුරු පෞද්ගලිකයි',
+  // reviewed: false
+  'paraDoctor.support_privacy_body': 'පුහුණුකරුවන් තත්ත්වය පමණක් දකිති.',
+  // reviewed: false
+  'paraDoctor.support_classification_note': 'ඔබේ වර්ගීකරණය සම්පූර්ණයෙන්ම වෙනස්.',
+  // reviewed: false
+  'paraDoctor.support_summaries_title': 'සහාය සාරාංශ',
+  // reviewed: false
+  'paraDoctor.support_summaries_hint': 'ඔබේ වෛද්‍යවරයා මෙහෙයුම් සාරාංශ සකස් කළ හැකිය.',
+  // reviewed: false
+  'paraDoctor.support_summaries_none': 'සහාය සාරාංශ නොමැත',
+  // reviewed: false
+  'paraDoctor.support_summaries_none_sub': 'වෛද්‍යවරයා සකස් කළ විට මෙහි දිස්වනු ඇත.',
+  // reviewed: false
+  'paraDoctor.support_approve': 'අනුමත',
+  // reviewed: false
+  'paraDoctor.support_decline': 'ප්‍රතික්ෂේප',
+  // reviewed: false
+  'paraDoctor.support_revoke_all': 'සියලු ප්‍රවේශ අහෝසි කරන්න',
+  // reviewed: false
+  'paraDoctor.support_history_title': 'උපදේශ ඉතිහාසය',
+  // reviewed: false
+  'paraDoctor.support_history_hint': 'අනුගත ක්‍රීඩාව සමඟ සම්බන්ධිත උපදේශ.',
+  // reviewed: false
+  'paraDoctor.support_history_none': 'කථාංග සටහන් නොමැත',
+  // reviewed: false
+  'paraDoctor.support_history_none_sub': 'උපදේශ සම්බන්ධ කළ විට මෙහි දිස්වනු ඇත.',
+  // reviewed: false
+  'guide.para_doctor.title': 'පාරා-ක්‍රීඩක සායනික සම්බන්ධීකරණය',
+  // reviewed: false
+  'guide.para_doctor.why': 'පාරා ක්‍රීඩකයින්ට විශේෂඥ වෛද්‍ය සේවා සපයන්න.',
+  // reviewed: false
+  'guide.para_doctor.s1': 'වෛද්‍ය කාර්යාලය → අනුගත ටැබය විවෘත කරන්න.',
+  // reviewed: false
+  'guide.para_doctor.s2': 'උපදේශ අතරතුර පාරා කථාංගය සාදන්න.',
+  // reviewed: false
+  'guide.para_doctor.s3': 'යොමු කිරීම් භාවිතා කරන්න.',
+  // reviewed: false
+  'guide.para_doctor.s4': 'සහාය සාරාංශ සකස් කරන්න.',
+  // reviewed: false
+  'guide.para_doctor.s5': 'ක්‍රීඩකයා කැමතිවෙයි.',
 };

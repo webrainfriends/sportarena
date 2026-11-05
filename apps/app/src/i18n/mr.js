@@ -12088,4 +12088,86 @@ export default {
   'guide.inclusive_delivery.s3': 'आगामी सत्र उघडा आणि समावेश तयारी पॅनेल पाहा.',
   'guide.inclusive_delivery.s4': 'खेळाडू कार्यक्रम बदलल्यास, Change programme वापरा.',
   'guide.inclusive_delivery.s5': 'पालक Guardian progress दृश्य उघडू शकतात.',
+  // reviewed: false
+  'paraDoctor.tab_label': 'अनुकूलन',
+  // reviewed: false
+  'paraDoctor.specialism_title': 'पॅरा-क्रीडा विशेषज्ञता',
+  // reviewed: false
+  'paraDoctor.specialism_hint': 'अनुकूलन खेळाडूंसाठी वैद्यकीय कौशल्य असलेले खेळ.',
+  // reviewed: false
+  'paraDoctor.specialism_edit': 'संपादित करा',
+  // reviewed: false
+  'paraDoctor.specialism_none': 'कोणतीही विशेषज्ञता घोषित केलेली नाही',
+  // reviewed: false
+  'paraDoctor.specialism_none_sub': 'तुमचे खेळ जोडा.',
+  // reviewed: false
+  'paraDoctor.template_title': 'सल्लागार टेम्प्लेट्स',
+  // reviewed: false
+  'paraDoctor.template_new': '＋ नवीन',
+  // reviewed: false
+  'paraDoctor.template_none': 'अद्याप टेम्प्लेट्स नाहीत',
+  // reviewed: false
+  'paraDoctor.template_none_sub': 'खेळ-विशिष्ट टेम्प्लेट्स तयार करा.',
+  // reviewed: false
+  'paraDoctor.episode_title': 'पॅरा भाग',
+  // reviewed: false
+  'paraDoctor.episode_none': 'सक्रिय पॅरा भाग नाहीत',
+  // reviewed: false
+  'paraDoctor.episode_none_sub': 'भाग येथे दिसतील.',
+  // reviewed: false
+  'paraDoctor.summary_title': 'गैर-वैद्यकीय सहाय्य सारांश',
+  // reviewed: false
+  'paraDoctor.summary_new': '＋ मसुदा',
+  // reviewed: false
+  'paraDoctor.summary_none': 'सारांश तयार केलेले नाहीत',
+  // reviewed: false
+  'paraDoctor.summary_none_sub': 'खेळाडूसाठी सारांश तयार करा.',
+  // reviewed: false
+  'paraDoctor.boundary_title': '⚠️ वर्गीकरण सीमा',
+  // reviewed: false
+  'paraDoctor.boundary_body': 'येथे नोंदवलेले वैद्यकीय सल्ले पॅरा-क्रीडा वर्गीकरण निर्णयांपासून पूर्णपणे वेगळे आहेत.',
+  // reviewed: false
+  'paraDoctor.support_tab_label': 'सहाय्य',
+  // reviewed: false
+  'paraDoctor.support_privacy_title': 'तुमची वैद्यकीय माहिती खाजगी आहे',
+  // reviewed: false
+  'paraDoctor.support_privacy_body': 'प्रशिक्षक फक्त स्थिती पाहतात.',
+  // reviewed: false
+  'paraDoctor.support_classification_note': 'तुमचे वर्गीकरण पूर्णपणे वेगळे आहे.',
+  // reviewed: false
+  'paraDoctor.support_summaries_title': 'सहाय्य सारांश',
+  // reviewed: false
+  'paraDoctor.support_summaries_hint': 'तुमचा डॉक्टर परिचालन सारांश तयार करू शकतो.',
+  // reviewed: false
+  'paraDoctor.support_summaries_none': 'सहाय्य सारांश नाहीत',
+  // reviewed: false
+  'paraDoctor.support_summaries_none_sub': 'डॉक्टरने तयार केल्यास येथे दिसेल.',
+  // reviewed: false
+  'paraDoctor.support_approve': 'मंजूर करा',
+  // reviewed: false
+  'paraDoctor.support_decline': 'नाकारा',
+  // reviewed: false
+  'paraDoctor.support_revoke_all': 'सर्व प्रवेश रद्द करा',
+  // reviewed: false
+  'paraDoctor.support_history_title': 'सल्लागार इतिहास',
+  // reviewed: false
+  'paraDoctor.support_history_hint': 'अनुकूलन खेळाशी जोडलेले सल्ले.',
+  // reviewed: false
+  'paraDoctor.support_history_none': 'भाग नोंदवलेले नाहीत',
+  // reviewed: false
+  'paraDoctor.support_history_none_sub': 'सल्ला जोडल्यावर येथे दिसेल.',
+  // reviewed: false
+  'guide.para_doctor.title': 'पॅरा-खेळाडू वैद्यकीय समन्वय',
+  // reviewed: false
+  'guide.para_doctor.why': 'पॅरा खेळाडूंना तज्ञ वैद्यकीय सेवा द्या.',
+  // reviewed: false
+  'guide.para_doctor.s1': 'डॉक्टर कार्यक्षेत्र → अनुकूलन टॅब उघडा.',
+  // reviewed: false
+  'guide.para_doctor.s2': 'सल्ल्यादरम्यान पॅरा भाग तयार करा.',
+  // reviewed: false
+  'guide.para_doctor.s3': 'रेफरल वापरा.',
+  // reviewed: false
+  'guide.para_doctor.s4': 'सहाय्य सारांश तयार करा.',
+  // reviewed: false
+  'guide.para_doctor.s5': 'खेळाडू संमती देतो.',
 };

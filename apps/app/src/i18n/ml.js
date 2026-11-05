@@ -12088,4 +12088,86 @@ export default {
   'guide.inclusive_delivery.s3': 'വരാനിരിക്കുന്ന സെഷൻ തുറന്ന് ഉൾക്കൊള്ളൽ റെഡിനസ് പാനൽ കാണുക.',
   'guide.inclusive_delivery.s4': 'അത്‌ലറ്റ് പ്രോഗ്രാം മാറ്റുകയാണെങ്കിൽ, Change programme ഉപയോഗിക്കുക.',
   'guide.inclusive_delivery.s5': 'രക്ഷകർത്താക്കൾ Guardian progress കാണാൻ കഴിയും.',
+  // reviewed: false
+  'paraDoctor.tab_label': 'അഡാപ്റ്റിവ്',
+  // reviewed: false
+  'paraDoctor.specialism_title': 'പാര-സ്‌പോർട്ട് സ്‌പെഷ്യലിസങ്ങൾ',
+  // reviewed: false
+  'paraDoctor.specialism_hint': 'അഡാപ്റ്റിവ് അത്‌ലറ്റുകൾക്ക് ക്ലിനിക്കൽ വൈദഗ്ദ്ധ്യമുള്ള കായിക ഇനങ്ങൾ.',
+  // reviewed: false
+  'paraDoctor.specialism_edit': 'എഡിറ്റ്',
+  // reviewed: false
+  'paraDoctor.specialism_none': 'സ്‌പെഷ്യലിസം പ്രഖ്യാപിച്ചിട്ടില്ല',
+  // reviewed: false
+  'paraDoctor.specialism_none_sub': 'നിങ്ങളുടെ കായിക ഇനങ്ങൾ ചേർക്കുക.',
+  // reviewed: false
+  'paraDoctor.template_title': 'കൺസൾട്ട് ടെംപ്ലേറ്റുകൾ',
+  // reviewed: false
+  'paraDoctor.template_new': '＋ പുതിയത്',
+  // reviewed: false
+  'paraDoctor.template_none': 'ടെംപ്ലേറ്റുകൾ ഒന്നുമില്ല',
+  // reviewed: false
+  'paraDoctor.template_none_sub': 'കായിക-നിർദ്ദിഷ്ട ടെംപ്ലേറ്റുകൾ സൃഷ്ടിക്കുക.',
+  // reviewed: false
+  'paraDoctor.episode_title': 'പാര എപ്പിസോഡുകൾ',
+  // reviewed: false
+  'paraDoctor.episode_none': 'സജീവ പാര എപ്പിസോഡുകൾ ഇല്ല',
+  // reviewed: false
+  'paraDoctor.episode_none_sub': 'എപ്പിസോഡുകൾ ഇവിടെ ദൃശ്യമാകും.',
+  // reviewed: false
+  'paraDoctor.summary_title': 'നോൺ-ക്ലിനിക്കൽ സപ്പോർട്ട് സംഗ്രഹങ്ങൾ',
+  // reviewed: false
+  'paraDoctor.summary_new': '＋ ഡ്രാഫ്റ്റ്',
+  // reviewed: false
+  'paraDoctor.summary_none': 'സംഗ്രഹങ്ങൾ തയ്യാറാക്കിയിട്ടില്ല',
+  // reviewed: false
+  'paraDoctor.summary_none_sub': 'അഡാപ്റ്റിവ് അത്‌ലറ്റിനായി സംഗ്രഹം തയ്യാറാക്കുക.',
+  // reviewed: false
+  'paraDoctor.boundary_title': '⚠️ വർഗ്ഗീകരണ അതിർത്തി',
+  // reviewed: false
+  'paraDoctor.boundary_body': 'ഇവിടെ രേഖപ്പെടുത്തിയ ക്ലിനിക്കൽ കൺസൾട്ടേഷനുകൾ പാര-സ്‌പോർട്ട് വർഗ്ഗീകരണ തീരുമാനങ്ങളിൽ നിന്ന് തികച്ചും വ്യത്യസ്തമാണ്.',
+  // reviewed: false
+  'paraDoctor.support_tab_label': 'സപ്പോർട്ട്',
+  // reviewed: false
+  'paraDoctor.support_privacy_title': 'നിങ്ങളുടെ ക്ലിനിക്കൽ വിവരങ്ങൾ സ്വകാര്യമാണ്',
+  // reviewed: false
+  'paraDoctor.support_privacy_body': 'കോച്ചുകൾ സ്റ്റാറ്റസ് മാത്രം കാണുന്നു.',
+  // reviewed: false
+  'paraDoctor.support_classification_note': 'നിങ്ങളുടെ വർഗ്ഗീകരണം പൂർണ്ണമായും വ്യത്യസ്തമാണ്.',
+  // reviewed: false
+  'paraDoctor.support_summaries_title': 'സപ്പോർട്ട് സംഗ്രഹങ്ങൾ',
+  // reviewed: false
+  'paraDoctor.support_summaries_hint': 'നിങ്ങളുടെ ഡോക്ടർ ഓപ്പറേഷണൽ സംഗ്രഹം തയ്യാറാക്കാം.',
+  // reviewed: false
+  'paraDoctor.support_summaries_none': 'സപ്പോർട്ട് സംഗ്രഹങ്ങൾ ഇല്ല',
+  // reviewed: false
+  'paraDoctor.support_summaries_none_sub': 'ഡോക്ടർ തയ്യാറാക്കിയാൽ ഇവിടെ ദൃശ്യമാകും.',
+  // reviewed: false
+  'paraDoctor.support_approve': 'അംഗീകരിക്കുക',
+  // reviewed: false
+  'paraDoctor.support_decline': 'നിരസിക്കുക',
+  // reviewed: false
+  'paraDoctor.support_revoke_all': 'എല്ലാ ആക്‌സസ്സും റദ്ദ് ചെയ്യുക',
+  // reviewed: false
+  'paraDoctor.support_history_title': 'കൺസൾട്ടേഷൻ ചരിത്രം',
+  // reviewed: false
+  'paraDoctor.support_history_hint': 'അഡാപ്റ്റിവ് സ്‌പോർട്ടുമായി ബന്ധിപ്പിച്ചിട്ടുള്ള കൺസൾട്ടേഷനുകൾ.',
+  // reviewed: false
+  'paraDoctor.support_history_none': 'എപ്പിസോഡുകൾ രേഖപ്പെടുത്തിയിട്ടില്ല',
+  // reviewed: false
+  'paraDoctor.support_history_none_sub': 'കൺസൾട്ടേഷൻ ബന്ധിപ്പിക്കുമ്പോൾ ഇവിടെ ദൃശ്യമാകും.',
+  // reviewed: false
+  'guide.para_doctor.title': 'പാര-അത്‌ലറ്റ് ക്ലിനിക്കൽ ഏകോപനം',
+  // reviewed: false
+  'guide.para_doctor.why': 'പാര അത്‌ലറ്റുകൾക്ക് വിദഗ്‌ദ്ധ ചികിത്സ നൽകുക.',
+  // reviewed: false
+  'guide.para_doctor.s1': 'ഡോക്ടർ വർക്ക്സ്‌പേസ് → അഡാപ്റ്റിവ് ടാബ് തുറക്കുക.',
+  // reviewed: false
+  'guide.para_doctor.s2': 'കൺസൾട്ടേഷൻ സമയത്ത് പാര എപ്പിസോഡ് ഉണ്ടാക്കുക.',
+  // reviewed: false
+  'guide.para_doctor.s3': 'റഫറലുകൾ ഉപയോഗിക്കുക.',
+  // reviewed: false
+  'guide.para_doctor.s4': 'സപ്പോർട്ട് സംഗ്രഹം ഉണ്ടാക്കുക.',
+  // reviewed: false
+  'guide.para_doctor.s5': 'അത്‌ലറ്റ് സമ്മതിക്കുന്നു.',
 };

@@ -12088,4 +12088,86 @@ export default {
   'guide.inclusive_delivery.s3': 'Buka sesi mendatang dan lihat panel Kesiapan Inklusi.',
   'guide.inclusive_delivery.s4': 'Jika atlet berpindah program, gunakan Change programme untuk mengelola berbagi.',
   'guide.inclusive_delivery.s5': 'Wali dapat membuka tampilan Guardian progress.',
+  // reviewed: false
+  'paraDoctor.tab_label': 'Adaptif',
+  // reviewed: false
+  'paraDoctor.specialism_title': 'Spesialisasi Para-Olahraga',
+  // reviewed: false
+  'paraDoctor.specialism_hint': 'Olahraga dengan keahlian klinis untuk atlet adaptif.',
+  // reviewed: false
+  'paraDoctor.specialism_edit': 'Ubah',
+  // reviewed: false
+  'paraDoctor.specialism_none': 'Belum ada spesialisasi dideklarasikan',
+  // reviewed: false
+  'paraDoctor.specialism_none_sub': 'Tambahkan olahraga Anda.',
+  // reviewed: false
+  'paraDoctor.template_title': 'Template Konsultasi',
+  // reviewed: false
+  'paraDoctor.template_new': '＋ Baru',
+  // reviewed: false
+  'paraDoctor.template_none': 'Belum ada template',
+  // reviewed: false
+  'paraDoctor.template_none_sub': 'Buat template spesifik olahraga.',
+  // reviewed: false
+  'paraDoctor.episode_title': 'Episode Para',
+  // reviewed: false
+  'paraDoctor.episode_none': 'Tidak ada episode para aktif',
+  // reviewed: false
+  'paraDoctor.episode_none_sub': 'Episode akan muncul di sini.',
+  // reviewed: false
+  'paraDoctor.summary_title': 'Ringkasan Dukungan Non-Klinis',
+  // reviewed: false
+  'paraDoctor.summary_new': '＋ Draf',
+  // reviewed: false
+  'paraDoctor.summary_none': 'Belum ada ringkasan dibuat',
+  // reviewed: false
+  'paraDoctor.summary_none_sub': 'Buat ringkasan untuk atlet adaptif.',
+  // reviewed: false
+  'paraDoctor.boundary_title': '⚠️ Batas Klasifikasi',
+  // reviewed: false
+  'paraDoctor.boundary_body': 'Konsultasi klinis yang dicatat di sini sepenuhnya terpisah dari keputusan klasifikasi para-olahraga.',
+  // reviewed: false
+  'paraDoctor.support_tab_label': 'Dukungan',
+  // reviewed: false
+  'paraDoctor.support_privacy_title': 'Informasi klinis Anda bersifat pribadi',
+  // reviewed: false
+  'paraDoctor.support_privacy_body': 'Pelatih hanya melihat status.',
+  // reviewed: false
+  'paraDoctor.support_classification_note': 'Klasifikasi Anda sepenuhnya terpisah.',
+  // reviewed: false
+  'paraDoctor.support_summaries_title': 'Ringkasan Dukungan',
+  // reviewed: false
+  'paraDoctor.support_summaries_hint': 'Dokter Anda dapat menyiapkan ringkasan operasional.',
+  // reviewed: false
+  'paraDoctor.support_summaries_none': 'Tidak ada ringkasan dukungan',
+  // reviewed: false
+  'paraDoctor.support_summaries_none_sub': 'Jika dokter membuat satu, akan muncul di sini.',
+  // reviewed: false
+  'paraDoctor.support_approve': 'Setujui',
+  // reviewed: false
+  'paraDoctor.support_decline': 'Tolak',
+  // reviewed: false
+  'paraDoctor.support_revoke_all': 'Cabut semua akses',
+  // reviewed: false
+  'paraDoctor.support_history_title': 'Riwayat Konsultasi',
+  // reviewed: false
+  'paraDoctor.support_history_hint': 'Konsultasi yang terhubung dengan olahraga adaptif Anda.',
+  // reviewed: false
+  'paraDoctor.support_history_none': 'Tidak ada episode tercatat',
+  // reviewed: false
+  'paraDoctor.support_history_none_sub': 'Akan muncul saat konsultasi dihubungkan.',
+  // reviewed: false
+  'guide.para_doctor.title': 'Koordinasi Klinis Atlet Para',
+  // reviewed: false
+  'guide.para_doctor.why': 'Berikan perawatan medis spesialis kepada atlet para.',
+  // reviewed: false
+  'guide.para_doctor.s1': 'Buka Ruang Kerja Dokter → tab Adaptif.',
+  // reviewed: false
+  'guide.para_doctor.s2': 'Buat episode para saat konsultasi.',
+  // reviewed: false
+  'guide.para_doctor.s3': 'Gunakan rujukan.',
+  // reviewed: false
+  'guide.para_doctor.s4': 'Buat ringkasan dukungan.',
+  // reviewed: false
+  'guide.para_doctor.s5': 'Atlet memberikan persetujuan.',
 };

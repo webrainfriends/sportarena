@@ -12088,4 +12088,86 @@ export default {
   'guide.inclusive_delivery.s3': 'आने वाला सत्र खोलें और समावेश तत्परता पैनल देखें।',
   'guide.inclusive_delivery.s4': 'यदि एथलीट कार्यक्रम बदलता है, Change programme का उपयोग करें।',
   'guide.inclusive_delivery.s5': 'अभिभावक Guardian progress दृश्य खोल सकते हैं।',
+  // reviewed: false
+  'paraDoctor.tab_label': 'अनुकूली',
+  // reviewed: false
+  'paraDoctor.specialism_title': 'पैरा-खेल विशेषज्ञताएं',
+  // reviewed: false
+  'paraDoctor.specialism_hint': 'वे खेल जिनमें आपको अनुकूली एथलीटों के लिए नैदानिक विशेषज्ञता है।',
+  // reviewed: false
+  'paraDoctor.specialism_edit': 'संपादित करें',
+  // reviewed: false
+  'paraDoctor.specialism_none': 'कोई विशेषज्ञता घोषित नहीं',
+  // reviewed: false
+  'paraDoctor.specialism_none_sub': 'अपने खेल जोड़ें।',
+  // reviewed: false
+  'paraDoctor.template_title': 'परामर्श टेम्पलेट',
+  // reviewed: false
+  'paraDoctor.template_new': '＋ नया',
+  // reviewed: false
+  'paraDoctor.template_none': 'अभी तक कोई टेम्पलेट नहीं',
+  // reviewed: false
+  'paraDoctor.template_none_sub': 'खेल-विशिष्ट टेम्पलेट बनाएं।',
+  // reviewed: false
+  'paraDoctor.episode_title': 'पैरा एपिसोड',
+  // reviewed: false
+  'paraDoctor.episode_none': 'कोई सक्रिय पैरा एपिसोड नहीं',
+  // reviewed: false
+  'paraDoctor.episode_none_sub': 'एपिसोड यहाँ दिखाई देंगे।',
+  // reviewed: false
+  'paraDoctor.summary_title': 'गैर-नैदानिक सहायता सारांश',
+  // reviewed: false
+  'paraDoctor.summary_new': '＋ ड्राफ्ट',
+  // reviewed: false
+  'paraDoctor.summary_none': 'कोई सारांश तैयार नहीं',
+  // reviewed: false
+  'paraDoctor.summary_none_sub': 'सहमति देने वाले एथलीट के लिए सारांश तैयार करें।',
+  // reviewed: false
+  'paraDoctor.boundary_title': '⚠️ वर्गीकरण सीमा',
+  // reviewed: false
+  'paraDoctor.boundary_body': 'यहाँ दर्ज नैदानिक परामर्श पैरा-खेल वर्गीकरण निर्णयों से पूरी तरह अलग हैं।',
+  // reviewed: false
+  'paraDoctor.support_tab_label': 'सहायता',
+  // reviewed: false
+  'paraDoctor.support_privacy_title': 'आपकी नैदानिक जानकारी निजी रहती है',
+  // reviewed: false
+  'paraDoctor.support_privacy_body': 'कोच केवल स्थिति देखते हैं — कारण नहीं।',
+  // reviewed: false
+  'paraDoctor.support_classification_note': 'आपका पैरा-खेल वर्गीकरण पूरी तरह अलग है।',
+  // reviewed: false
+  'paraDoctor.support_summaries_title': 'सहायता सारांश',
+  // reviewed: false
+  'paraDoctor.support_summaries_hint': 'आपका डॉक्टर परिचालन सारांश तैयार कर सकता है।',
+  // reviewed: false
+  'paraDoctor.support_summaries_none': 'कोई सहायता सारांश नहीं',
+  // reviewed: false
+  'paraDoctor.support_summaries_none_sub': 'यदि आपका डॉक्टर कोई तैयार करता है तो यहाँ दिखेगा।',
+  // reviewed: false
+  'paraDoctor.support_approve': 'स्वीकृत करें',
+  // reviewed: false
+  'paraDoctor.support_decline': 'अस्वीकार करें',
+  // reviewed: false
+  'paraDoctor.support_revoke_all': 'सभी पहुँच रद्द करें',
+  // reviewed: false
+  'paraDoctor.support_history_title': 'परामर्श इतिहास',
+  // reviewed: false
+  'paraDoctor.support_history_hint': 'आपके अनुकूली खेल से जुड़े परामर्श।',
+  // reviewed: false
+  'paraDoctor.support_history_none': 'कोई एपिसोड दर्ज नहीं',
+  // reviewed: false
+  'paraDoctor.support_history_none_sub': 'जब आपका डॉक्टर परामर्श जोड़ता है तो यहाँ दिखेगा।',
+  // reviewed: false
+  'guide.para_doctor.title': 'पैरा-एथलीट नैदानिक समन्वय',
+  // reviewed: false
+  'guide.para_doctor.why': 'पैरा-एथलीटों को विशेषज्ञ नैदानिक देखभाल प्रदान करें।',
+  // reviewed: false
+  'guide.para_doctor.s1': 'डॉक्टर कार्यक्षेत्र → अनुकूली टैब खोलें।',
+  // reviewed: false
+  'guide.para_doctor.s2': 'परामर्श के दौरान पैरा एपिसोड बनाएं।',
+  // reviewed: false
+  'guide.para_doctor.s3': 'रेफरल का उपयोग करें।',
+  // reviewed: false
+  'guide.para_doctor.s4': 'सहायता सारांश तैयार करें।',
+  // reviewed: false
+  'guide.para_doctor.s5': 'एथलीट सहमति देता है।',
 };

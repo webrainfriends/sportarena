@@ -12088,4 +12088,86 @@ export default {
   'guide.inclusive_delivery.s3': 'ಮುಂಬರುವ ಸೆಷನ್ ತೆರೆದು ಸೇರ್ಪಡೆ ಸಿದ್ಧತೆ ಫಲಕ ನೋಡಿ.',
   'guide.inclusive_delivery.s4': 'ಅಥ್ಲೀಟ್ ಕಾರ್ಯಕ್ರಮ ಬದಲಿಸಿದರೆ, Change programme ಬಳಸಿ.',
   'guide.inclusive_delivery.s5': 'ಪೋಷಕರು Guardian progress ನೋಟ ತೆರೆಯಬಹುದು.',
+  // reviewed: false
+  'paraDoctor.tab_label': 'ಅಡಾಪ್ಟಿವ್',
+  // reviewed: false
+  'paraDoctor.specialism_title': 'ಪ್ಯಾರಾ-ಸ್ಪೋರ್ಟ್ ವಿಶೇಷತೆಗಳು',
+  // reviewed: false
+  'paraDoctor.specialism_hint': 'ಅಡಾಪ್ಟಿವ್ ಅಥ್ಲೀಟ್‌ಗಳಿಗೆ ಕ್ಲಿನಿಕಲ್ ಪರಿಣತಿ ಹೊಂದಿರುವ ಕ್ರೀಡೆಗಳು.',
+  // reviewed: false
+  'paraDoctor.specialism_edit': 'ಸಂಪಾದಿಸಿ',
+  // reviewed: false
+  'paraDoctor.specialism_none': 'ವಿಶೇಷತೆ ಘೋಷಿಸಿಲ್ಲ',
+  // reviewed: false
+  'paraDoctor.specialism_none_sub': 'ನಿಮ್ಮ ಕ್ರೀಡೆಗಳನ್ನು ಸೇರಿಸಿ.',
+  // reviewed: false
+  'paraDoctor.template_title': 'ಕನ್ಸಲ್ಟ್ ಟೆಂಪ್ಲೇಟ್‌ಗಳು',
+  // reviewed: false
+  'paraDoctor.template_new': '＋ ಹೊಸದು',
+  // reviewed: false
+  'paraDoctor.template_none': 'ಇನ್ನೂ ಟೆಂಪ್ಲೇಟ್‌ಗಳಿಲ್ಲ',
+  // reviewed: false
+  'paraDoctor.template_none_sub': 'ಕ್ರೀಡೆ-ನಿರ್ದಿಷ್ಟ ಟೆಂಪ್ಲೇಟ್‌ಗಳನ್ನು ರಚಿಸಿ.',
+  // reviewed: false
+  'paraDoctor.episode_title': 'ಪ್ಯಾರಾ ಎಪಿಸೋಡ್‌ಗಳು',
+  // reviewed: false
+  'paraDoctor.episode_none': 'ಸಕ್ರಿಯ ಪ್ಯಾರಾ ಎಪಿಸೋಡ್‌ಗಳಿಲ್ಲ',
+  // reviewed: false
+  'paraDoctor.episode_none_sub': 'ಎಪಿಸೋಡ್‌ಗಳು ಇಲ್ಲಿ ಕಾಣಿಸಿಕೊಳ್ಳುತ್ತವೆ.',
+  // reviewed: false
+  'paraDoctor.summary_title': 'ನಾನ್-ಕ್ಲಿನಿಕಲ್ ಸಪೋರ್ಟ್ ಸಾರಾಂಶಗಳು',
+  // reviewed: false
+  'paraDoctor.summary_new': '＋ ಡ್ರಾಫ್ಟ್',
+  // reviewed: false
+  'paraDoctor.summary_none': 'ಸಾರಾಂಶಗಳನ್ನು ತಯಾರಿಸಿಲ್ಲ',
+  // reviewed: false
+  'paraDoctor.summary_none_sub': 'ಅಡಾಪ್ಟಿವ್ ಅಥ್ಲೀಟ್‌ಗಾಗಿ ಸಾರಾಂಶ ತಯಾರಿಸಿ.',
+  // reviewed: false
+  'paraDoctor.boundary_title': '⚠️ ವರ್ಗೀಕರಣ ಗಡಿ',
+  // reviewed: false
+  'paraDoctor.boundary_body': 'ಇಲ್ಲಿ ದಾಖಲಿಸಿದ ಕ್ಲಿನಿಕಲ್ ಸಮಾಲೋಚನೆಗಳು ಪ್ಯಾರಾ-ಸ್ಪೋರ್ಟ್ ವರ್ಗೀಕರಣ ನಿರ್ಧಾರಗಳಿಂದ ಸಂಪೂರ್ಣ ಭಿನ್ನವಾಗಿವೆ.',
+  // reviewed: false
+  'paraDoctor.support_tab_label': 'ಸಪೋರ್ಟ್',
+  // reviewed: false
+  'paraDoctor.support_privacy_title': 'ನಿಮ್ಮ ಕ್ಲಿನಿಕಲ್ ಮಾಹಿತಿ ಖಾಸಗಿ',
+  // reviewed: false
+  'paraDoctor.support_privacy_body': 'ತರಬೇತುದಾರರು ಸ್ಥಿತಿ ಮಾತ್ರ ನೋಡುತ್ತಾರೆ.',
+  // reviewed: false
+  'paraDoctor.support_classification_note': 'ನಿಮ್ಮ ವರ್ಗೀಕರಣ ಸಂಪೂರ್ಣ ಭಿನ್ನ.',
+  // reviewed: false
+  'paraDoctor.support_summaries_title': 'ಸಪೋರ್ಟ್ ಸಾರಾಂಶಗಳು',
+  // reviewed: false
+  'paraDoctor.support_summaries_hint': 'ನಿಮ್ಮ ವೈದ್ಯರು ಕಾರ್ಯಾಚರಣೆ ಸಾರಾಂಶ ತಯಾರಿಸಬಹುದು.',
+  // reviewed: false
+  'paraDoctor.support_summaries_none': 'ಸಪೋರ್ಟ್ ಸಾರಾಂಶಗಳಿಲ್ಲ',
+  // reviewed: false
+  'paraDoctor.support_summaries_none_sub': 'ವೈದ್ಯರು ತಯಾರಿಸಿದರೆ ಇಲ್ಲಿ ಕಾಣಿಸಿಕೊಳ್ಳುತ್ತದೆ.',
+  // reviewed: false
+  'paraDoctor.support_approve': 'ಅನುಮೋದಿಸಿ',
+  // reviewed: false
+  'paraDoctor.support_decline': 'ತಿರಸ್ಕರಿಸಿ',
+  // reviewed: false
+  'paraDoctor.support_revoke_all': 'ಎಲ್ಲ ಪ್ರವೇಶ ರದ್ದುಮಾಡಿ',
+  // reviewed: false
+  'paraDoctor.support_history_title': 'ಸಮಾಲೋಚನೆ ಇತಿಹಾಸ',
+  // reviewed: false
+  'paraDoctor.support_history_hint': 'ಅಡಾಪ್ಟಿವ್ ಸ್ಪೋರ್ಟ್‌ಗೆ ಸಂಪರ್ಕಿಸಲಾದ ಸಮಾಲೋಚನೆಗಳು.',
+  // reviewed: false
+  'paraDoctor.support_history_none': 'ಎಪಿಸೋಡ್‌ಗಳು ದಾಖಲಿಲ್ಲ',
+  // reviewed: false
+  'paraDoctor.support_history_none_sub': 'ಸಮಾಲೋಚನೆ ಸಂಪರ್ಕಿಸಿದಾಗ ಇಲ್ಲಿ ಕಾಣಿಸಿಕೊಳ್ಳುತ್ತದೆ.',
+  // reviewed: false
+  'guide.para_doctor.title': 'ಪ್ಯಾರಾ-ಅಥ್ಲೀಟ್ ಕ್ಲಿನಿಕಲ್ ಸಮನ್ವಯ',
+  // reviewed: false
+  'guide.para_doctor.why': 'ಪ್ಯಾರಾ ಅಥ್ಲೀಟ್‌ಗಳಿಗೆ ತಜ್ಞ ವೈದ್ಯಕೀಯ ಸೇವೆ ನೀಡಿ.',
+  // reviewed: false
+  'guide.para_doctor.s1': 'ವೈದ್ಯರ ಕಾರ್ಯಸ್ಥಳ → ಅಡಾಪ್ಟಿವ್ ಟ್ಯಾಬ್ ತೆರೆಯಿರಿ.',
+  // reviewed: false
+  'guide.para_doctor.s2': 'ಸಮಾಲೋಚನೆ ಸಮಯದಲ್ಲಿ ಪ್ಯಾರಾ ಎಪಿಸೋಡ್ ರಚಿಸಿ.',
+  // reviewed: false
+  'guide.para_doctor.s3': 'ರೆಫರಲ್‌ಗಳನ್ನು ಬಳಸಿ.',
+  // reviewed: false
+  'guide.para_doctor.s4': 'ಸಪೋರ್ಟ್ ಸಾರಾಂಶ ತಯಾರಿಸಿ.',
+  // reviewed: false
+  'guide.para_doctor.s5': 'ಅಥ್ಲೀಟ್ ಸಮ್ಮತಿಸುತ್ತಾರೆ.',
 };
