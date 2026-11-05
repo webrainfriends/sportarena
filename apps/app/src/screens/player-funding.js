@@ -11,6 +11,7 @@ import { useLayout } from '../layout';
 import { Btn, Card, Chip, Empty, H1, Loading, Row, Screen, Section, T, Tag } from '../ui';
 import { HScroll } from '../ui';
 import { FormSheet } from '../FormSheet';
+import { t } from '../i18n';
 import { c } from '../theme';
 import { explain, LoadError } from '../access';
 import { cash, key, saveFile } from '../contracts-ui';

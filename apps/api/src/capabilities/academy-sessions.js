@@ -16,6 +16,7 @@ import { academicClashes } from '../academics.js';
 import { placeBasket } from './reservations.js';
 import { reservationView } from '../booking/engine.js';
 import { releaseTrialBookings } from '../academy-trials.js';
+import { liveShares, typeOfNeed } from '../inclusion.js';
 
 const TAG = 'Academy operations';
 const day = z.string().date();
@@ -442,4 +443,40 @@ cap({
     await change(c, s.id, 'venue_released', user.id, i.reason, { booking_id: held.booking_id }, null);
     return { ...(await view(c, s)), released_booking: held };
   }),
+});
+
+cap({
+  name: 'get_session_staff_match',
+  method: 'GET',
+  path: '/academy/sessions/:id/staff-match',
+  tag: TAG,
+  summary: 'For sessions in inclusive programmes: returns assigned staff with their adaptive expertise match against the need types shared for this session. No athlete data or diagnoses are returned. Auth: academy member (assigned staff or schedule permission).',
+  input: z.object({ id }),
+  async handler({ user }, i) {
+    return pool.connect(async (c) => {
+      const { s } = await sessionFor(user, i.id, null, { c });
+      if (!s.programme_id) return { session_id: i.id, staff: [] };
+      const prof = (await c.query('SELECT offered_needs FROM academy_programme_inclusion WHERE programme_id=$1', [s.programme_id])).rows[0];
+      if (!prof) return { session_id: i.id, staff: [] };
+      const sharedTypes = new Set();
+      const allShares = (await c.query(
+        "SELECT need_keys, audience_user_ids FROM accommodation_shares WHERE organisation_id=$1 AND revoked_at IS NULL AND expires_on >= current_date",
+        [s.organisation_id],
+      )).rows;
+      for (const share of allShares) {
+        for (const key of share.need_keys ?? []) sharedTypes.add(typeOfNeed(key));
+      }
+      const staffRows = await c.query(
+        "SELECT st.user_id, u.display_name, st.role, coalesce(ca.expertise_keys,'{}') AS expertise_keys FROM academy_session_staff st JOIN users u ON u.id=st.user_id LEFT JOIN coach_adaptive_profiles ca ON ca.user_id=st.user_id WHERE st.session_id=$1 AND st.status IN ('assigned','confirmed') ORDER BY u.display_name",
+        [i.id],
+      );
+      const staff = staffRows.rows.map((r) => {
+        const expertise = r.expertise_keys ?? [];
+        const matched = expertise.filter((k) => sharedTypes.has(k));
+        const match_state = sharedTypes.size === 0 ? 'none' : matched.length >= sharedTypes.size ? 'full' : matched.length > 0 ? 'partial' : 'none';
+        return { user_id: r.user_id, name: r.display_name, role: r.role, expertise, match_state };
+      });
+      return { session_id: i.id, staff };
+    });
+  },
 });
