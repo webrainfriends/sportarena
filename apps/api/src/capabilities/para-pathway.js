@@ -92,7 +92,7 @@ cap({
   method: 'GET',
   path: '/me/para-pathway',
   tag: TAG,
-  summary: 'Athlete's own para-sport development pathway: milestones by stage, shares, para sports, classification status (read-only).',
+  summary: 'Athlete\'s own para-sport development pathway: milestones by stage, shares, para sports, classification status (read-only).',
   input: z.object({ athlete_id: id.optional() }),
   async handler({ user }, i) {
     const athleteId = await subjectId(user, i);
@@ -594,7 +594,7 @@ cap({
   method: 'GET',
   path: '/coaching/para-pathway/:athlete_id',
   tag: TAG,
-  summary: 'Coach or academy view of an athlete's para pathway. Requires an active share. Returns only stages in the share scope.',
+  summary: 'Coach or academy view of an athlete\'s para pathway. Requires an active share. Returns only stages in the share scope.',
   input: z.object({ athlete_id: id }),
   async handler({ user }, i) {
     const share = await activeShareForCaller(user.id, i.athlete_id);
