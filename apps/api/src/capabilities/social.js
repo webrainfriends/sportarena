@@ -240,7 +240,7 @@ const UUIDRX = /^[0-9a-f-]{36}$/i;
 cap({
   name: 'report_social', method: 'POST', path: '/social/reports', tag: TAG, status: 201,
   summary: 'Report a person, one of their activity items, or a community post or comment you can read (harassment, unsafe contact, impersonation, spam, privacy, inaccurate). The note is encrypted and one report per target counts; reporting again updates your reason. Reporting something you cannot see is a 404. You are told the outcome once it is decided.',
-  input: z.object({ target_type: z.enum(['user', 'activity', 'community_post', 'community_comment']), target_id: z.string().min(1).max(160), reason: z.enum(['harassment', 'unsafe_contact', 'impersonation', 'spam', 'privacy', 'inaccurate', 'other']), note: z.string().max(1000).optional() }),
+  input: z.object({ target_type: z.enum(['user', 'activity', 'community_post', 'community_comment']), target_id: z.string().min(1).max(160), reason: z.enum(['harassment', 'unsafe_contact', 'impersonation', 'spam', 'privacy', 'inaccurate', 'disability_abuse', 'unwanted_contact', 'youth_exploitation', 'scam', 'other']), note: z.string().max(1000).optional() }),
   async handler({ user }, i) {
     let actorId = i.target_id, communityId = null;
     if (i.target_type === 'activity') {
