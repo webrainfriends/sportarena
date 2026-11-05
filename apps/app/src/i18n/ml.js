@@ -11682,7 +11682,7 @@ export default {
   'pp.metrics.done': 'പൂർത്തിയായി',
   'pp.metrics.pending': 'അവലോകനം ബാക്കി',
   'nav.title.ParaPathway': 'പാരാ പാത',
-  'nav.title.SharedParaPathway': 'പാരാ പാത',,
+  'nav.title.SharedParaPathway': 'പാരാ പാത',
 
   // ── PS-16 Para-sport physio & adapted rehabilitation (machine-drafted, reviewed: false) ─
   'pr.adaptive_tab_title': 'Adaptive Rehab',
