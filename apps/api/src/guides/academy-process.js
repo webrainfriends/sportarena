@@ -152,6 +152,13 @@ id: 'wellbeing', title: 'Support student wellbeing and development',
     target: { academy: 'placement' },
     modules: ['academy-placement.js'], sources: ['apps/app/src/screens/academy-placement.js'],
   },
+  {
+    id: 'report_packs', title: 'Issue reviewed report packs',
+    why: 'Send families, boards and finance branded PDF packs that a second person has checked and approved, with the data basis and any gaps shown.',
+    steps: ['Open Academy, then Reports. Choose a pack: development report, term report, board management pack, P&L pack or campus quality pack.', 'Tap New draft and pick the athlete, campus and period. The figures are frozen when the draft is created and nothing is shared yet.', 'Tap Schedule to have drafts prepared weekly, monthly or each quarter for a group or campus. A schedule only drafts; it never issues.', 'Send the draft to review. A different owner or admin checks the data basis, evidence versions, gaps and who can read it, then approves or asks for changes.', 'Issue the approved pack. Guardians (or the adult athlete) get a notice with no figures and open the PDF securely from My academy.', 'To withdraw a pack, open it and tap Revoke with a reason. The file stops opening at once and the history is kept.'],
+    target: { academy: 'reports' },
+    modules: ['academy-report-packs.js', 'academy-packs.js'], sources: ['apps/app/src/screens/academy-reports.js'],
+  },
 ];
 
 /** Org/academy API modules with no step of their own, and why. Anything not here and not in a step fails the guard test. */

@@ -46,6 +46,8 @@ Only invoices are connected; other families are listed as coming soon (e.g. doct
 * Logos: type/dimensions read from the actual bytes, SVG/WebP refused (WebP: renderer cannot embed it), private to the kit scope.
 * Characters the built-in fonts cannot show (e.g. Tamil) are **refused with 422**, never garbled. Set `DOC_FONT_REGULAR` (and optionally `DOC_FONT_BOLD`) to a TTF such as Noto Sans Tamil to enable them.
 
+Academy report packs (#807) add the `academy_term_report` and `academy_campus_quality` families and a governed review/issue/revoke flow on the same stack (see academy-reports.md).
+
 Sponsorship portfolio reports (#305) reuse the brand kit (name, colours, logo) and the pdfkit renderer (`renderSponsorshipReport`); they are generated on demand from live data and are not stored in `generated_documents`. See sponsorship-reporting.md.
 
 ## Deferred (tracked in #249, not in this PR)
