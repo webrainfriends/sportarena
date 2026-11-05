@@ -13,9 +13,10 @@ import { A, AAvatar, ABar, ABtn, ACard, AChip, AEmpty, ARow, ASection, AStat, AT
 import { FormSheet } from '../FormSheet';
 import { ErrorBox, Field, Loading, Sheet } from '../ui';
 import { saveFile } from '../contracts-ui';
-import { useDo } from './console-utils';
-import { ParaDesk } from './para-competition';
 import { t } from '../i18n';
+import { useDo } from './console-utils';
+import { ParaEntries, ParaRules } from './para-rules';
+import { ParaDesk } from './para-competition';
 
 const STATUS = {
   submitted: ['Awaiting review', A.sun], under_review: ['Under review', A.cyan], registered: ['Registered', A.green], rejected: ['Not accepted', A.red],
@@ -27,7 +28,7 @@ const LISTS = [['active', 'Active'], ['reserve', 'Reserve'], ['development', 'De
 const ORIGINS = [['unclassified', 'Not set'], ['local', 'Local'], ['homegrown', 'Homegrown'], ['foreign', 'Foreign']];
 const KINDS = [['licence', 'Licence'], ['transfer', 'Transfer'], ['loan', 'Loan'], ['disciplinary', 'Suspension / discipline'], ['classification', 'Classification']];
 const RULE_LABEL = { window: 'Registration window', division_age: 'Age category', licence: 'Licence', transfer: 'Transfer', loan: 'Loan', classification: 'Classification', disciplinary: 'Suspension', contract: 'Contract', roster_limit: 'Roster limit', quota: 'Quota', guardian_consent: 'Guardian consent' };
-const SECTIONS = [['queue', 'Queue'], ['rosters', 'Rosters'], ['windows', 'Windows'], ['exceptions', 'Exceptions'], ['holds', 'Clearances'], ['para', t('pc.section')], ['policy', 'Policy'], ['reports', 'Reports']];
+const SECTIONS = [['queue', 'Queue'], ['rosters', 'Rosters'], ['windows', 'Windows'], ['exceptions', 'Exceptions'], ['holds', 'Clearances'], ['para', t('pr.section')], ['policy', 'Policy'], ['reports', 'Reports']];
 const pick = (a) => a.map(([value, label]) => ({ value, label }));
 const dt = (iso, tz) => { try { return new Date(iso).toLocaleString(undefined, { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit', timeZone: tz || undefined }); } catch { return String(iso).slice(0, 16); } };
 const dOnly = (d) => (d ? new Date(`${String(d).slice(0, 10)}T00:00:00`).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' }) : null);
@@ -362,6 +363,8 @@ function Mine({ id, e, rosters, reload }) {
       {rosters?.frozen ? <ACard tone={A.orange}><AT weight="800">🧊 Rosters are frozen</AT><AT size={12.5} color={A.mute}>Contact the organiser to register a player now.</AT></ACard> : null}
       {regs.loading && !regs.data ? <Loading /> : regs.error ? <ErrorBox error={regs.error} onRetry={regs.reload} /> : !rows.length ? <AEmpty emoji="🪪" title="No registrations yet" sub={manages ? 'Register your players so they can be selected for matches.' : 'Register with your team to be selectable for matches.'} action="Register" onAction={() => setOpen(true)} /> : rows.map((r) => <RegRow key={r.id} r={r} on={sel === r.id} onPress={() => setSel(r.id)} />)}
       <Sheet visible={!!current} onClose={() => setSel(null)} title="Registration">{current ? <Dark><RegDetail id={id} reg={current} isOrg={false} canAct={manages || current.user_id === user?.id} onDone={done} onClose={() => setSel(null)} /></Dark> : null}</Sheet>
+      <ParaEntries id={id} mine />
+      {manages ? <ParaRules id={id} e={e} isOrg={false} teams={teams} /> : null}
       <RegisterForm id={id} open={open} onClose={() => setOpen(false)} teams={manages ? teams : entrants.map((x) => ({ team_id: x.team_id, team_name: x.name }))} self={!manages} onDone={done} />
     </>
   );
@@ -443,6 +446,7 @@ export function RegistrationTab({ id, e, isOrg, reload }) {
       {section === 'holds' ? <Holds id={id} isOrg /> : null}
       {section === 'para' ? <ParaDesk id={id} setup={S} /> : null}
       {section === 'policy' ? <Policy id={id} setup={S} reload={refresh} isOrg /> : null}
+      {section === 'para' ? <ParaRules id={id} e={e} setup={S} reload={refresh} isOrg /> : null}
       {section === 'reports' ? <Reports id={id} /> : null}
       <RegisterForm id={id} open={reg} onClose={() => setReg(false)} teams={(e.entrants ?? []).filter((x) => x.team_id).map((x) => ({ team_id: x.team_id, team_name: x.name }))} self={false} staff onDone={refresh} />
     </>

@@ -29,11 +29,18 @@ const reqLabel = (r) => (r.kind === 'venue_feature' ? t('inc.req_venue', { featu
   : r.kind === 'duty' ? t('inc.req_duty', { duty: r.duty.replace(/_/g, ' ') }) : r.kind === 'credential' ? t('inc.req_credential', { credential: r.credential.replace(/_/g, ' ') }) : t('inc.req_equipment', { n: r.athletes }));
 const pc = (v) => (v == null ? '–' : `${v}%`);
 
-export function InclusionDesk({ o, role, toast }) {
-  const [tab, setTab] = useState(role === 'owner' || role === 'admin' ? 'overview' : 'session');
+export function InclusionDesk({ o, role, athleteId, toast }) {
+  const [tab, setTab] = useState(role === 'owner' || role === 'admin' ? 'overview' : role === 'guardian' ? 'guardian_progress' : 'session');
   const [pick, setPick] = useState(null);
   const director = role === 'owner' || role === 'admin';
-  const tabs = [...(director ? [['overview', t('inc.tab_overview')]] : []), ['session', t('inc.tab_session')], ['assess', t('inc.tab_assess')], ...(director ? [['programmes', t('inc.tab_programmes')]] : [])];
+  const guardian = role === 'guardian';
+  const tabs = [
+    ...(director ? [['overview', t('inc.tab_overview')]] : []),
+    ...(!guardian ? [['session', t('inc.tab_session')]] : []),
+    ...(!guardian ? [['assess', t('inc.tab_assess')]] : []),
+    ...(director ? [['programmes', t('inc.tab_programmes')]] : []),
+    ...(guardian ? [['guardian_progress', t('incops.guardian_progress_title')]] : []),
+  ];
   return (
     <View style={{ gap: 12 }}>
       <View><T weight="800" size={22} style={{ letterSpacing: -0.5 }}>{t('inc.title')}</T><T color={c.mute}>{director ? t('inc.subtitle') : t('inc.subtitle_staff')}</T></View>
@@ -42,6 +49,7 @@ export function InclusionDesk({ o, role, toast }) {
       {tab === 'session' ? <SessionReadiness o={o} initial={pick} /> : null}
       {tab === 'assess' ? <AdaptedAssessments o={o} toast={toast} /> : null}
       {tab === 'programmes' ? <ProgrammeSetup o={o} toast={toast} /> : null}
+      {tab === 'guardian_progress' ? <GuardianProgress o={o} athleteId={athleteId} /> : null}
     </View>
   );
 }
@@ -92,6 +100,8 @@ function SessionReadiness({ o, initial }) {
   const options = sessions.map((s) => ({ value: s.id, label: `${s.title} · ${dayText(s.starts_at)}` }));
   const r = useLoad(() => (sid ? api.get(`/academy/sessions/${sid}/readiness`).catch((e) => ({ error: e })) : Promise.resolve(null)), [sid]);
   const sh = useLoad(() => (sid ? api.get(`/academy/sessions/${sid}/accommodations`).catch(() => null) : Promise.resolve(null)), [sid]);
+  const sm = useLoad(() => (sid ? api.get(`/academy/sessions/${sid}/staff-match`).catch(() => null) : Promise.resolve(null)), [sid]);
+  const MATCH_TONE = { full: c.lime, partial: c.sun, none: c.line };
   if (list.error) return <LoadError error={list.error} onRetry={list.reload} />;
   return (
     <View style={{ gap: 12 }}>
@@ -111,6 +121,16 @@ function SessionReadiness({ o, initial }) {
               {r.data.requirements.length ? r.data.requirements.map((x) => <Row key={x.code} left={<Tag label={t(`inc.state_${x.state}`)} color={STATE_TONE[x.state]} />} title={reqLabel(x)} sub={x.kind === 'equipment' ? t('inc.equipment_hint') : x.kind === 'venue_feature' && !x.venue_booked ? t('inc.no_venue') : undefined} />) : <T color={c.mute}>{t('inc.req_none')}</T>}
             </Block>
           </Card>
+          {sm.data?.staff?.length ? (
+            <Card>
+              <Block title={t('incops.session_staff_match')}>
+                <T size={12} color={c.mute}>{t('incops.consented_access_note')}</T>
+                {sm.data.staff.map((p) => (
+                  <Row key={p.user_id} left={<Tag label={t(`incops.staff_match_${p.match_state}`)} color={MATCH_TONE[p.match_state]} />} title={p.name} sub={p.expertise.join(' · ') || '—'} />
+                ))}
+              </Block>
+            </Card>
+          ) : null}
           <Card>
             <Block title={t('inc.you_see_title')}>
               <T size={12} color={c.mute}>{t('inc.you_see_note')}</T>
@@ -121,6 +141,46 @@ function SessionReadiness({ o, initial }) {
           </Card>
         </View>
       ) : null}
+    </View>
+  );
+}
+
+function GuardianProgress({ o, athleteId }) {
+  const { tablet } = useLayout();
+  const d = useLoad(() => (athleteId ? api.get(`/organisations/${o.id}/academy/inclusion/guardian-progress`, { athlete_id: athleteId }) : Promise.resolve(null)), [o.id, athleteId]);
+  if (!athleteId) return <View style={{ gap: 12 }}><Card><Empty emoji="👤" title={t('incops.guardian_progress_title')} sub={t('incops.guardian_progress_programme')} /></Card></View>;
+  if (d.error) return <LoadError error={d.error} onRetry={d.reload} />;
+  if (!d.data) return <Loading />;
+  const v = d.data;
+  return (
+    <View style={{ gap: 12 }}>
+      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+        <Kpi label={t('incops.guardian_progress_programme')} value={v.programme?.title ?? '–'} sub={v.cohort?.name} />
+        <Kpi label={t('incops.guardian_progress_attendance')} value={v.attendance.rate_pct != null ? `${v.attendance.rate_pct}%` : '–'} sub={`${v.attendance.present}/${v.attendance.held} ${t('incops.guardian_progress_assessments_note')}`} />
+        {v.billing.outstanding_minor > 0 ? <Kpi label={t('incops.guardian_progress_credits')} value={`${(v.billing.outstanding_minor / 100).toFixed(2)} ${v.billing.currency ?? ''}`} tone="alert" /> : null}
+      </View>
+      {v.milestones.length ? (
+        <Card>
+          <Block title={t('incops.guardian_progress_assessments')}>
+            {v.milestones.map((m, i) => (
+              <Row key={i} left={<Tag label={t('incops.milestone_achieved')} color={c.lime} />} title={m.descriptor} sub={m.level_key} right={<T size={11} color={c.mute}>{dayText(m.achieved_at)}</T>} />
+            ))}
+          </Block>
+        </Card>
+      ) : null}
+      {v.upcoming_sessions.length ? (
+        <Card>
+          <Block title={t('incops.guardian_progress_upcoming')}>
+            {v.upcoming_sessions.map((s) => <Row key={s.session_id} title={s.title} sub={dayText(s.starts_at)} />)}
+          </Block>
+        </Card>
+      ) : null}
+      <Card>
+        <Block title={t('incops.guardian_progress_accommodations')}>
+          <T size={13} color={c.mute}>{v.accommodations_shared ? `${v.accommodation_count} ${t('incops.enrolment_prompt_already_shared')}` : t('incops.enrolment_prompt_body')}</T>
+          <T size={11} color={c.mute}>{t('incops.enrolment_prompt_privacy')}</T>
+        </Block>
+      </Card>
     </View>
   );
 }
