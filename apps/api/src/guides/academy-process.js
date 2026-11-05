@@ -28,7 +28,7 @@ export const ACADEMY_STEPS = [
   {
     id: 'staff', title: 'Add staff',
     why: 'Give coaches, front desk and finance their own access. Each person only sees what their role needs.',
-    steps: ['Open the People tab and tap Invite someone, or use Import people to bring a list across.', 'Search for the person and choose their role and department.', 'In Academy, Operations, Staff & leave, set the job title, engagement (employee, contractor or volunteer) and what they can do.', 'They appear under Waiting for a reply until they accept.'],
+    steps: ['Open the People tab and tap Invite someone, or use Import people to bring a list across.', 'Search for the person and choose their role and department.', 'In Academy, Operations, Staff & leave, set the job title, engagement (employee, contractor or volunteer) and what they can do.', 'They appear under Waiting for a reply until they accept.', 'Coaches who list themselves for adaptive coaching show their credential state (verified, self-declared, expired or revoked) on the staff list, so you can check instructors before assigning para sessions. It is a coaching credential only, never medical authorisation or a classification.'],
     target: { org: 'people' },
     modules: ['academy-staff.js', 'academy-payroll.js', 'org-agreements.js'],
     sources: ['apps/app/src/screens/org.js', 'apps/app/src/screens/academy-ops.js'],

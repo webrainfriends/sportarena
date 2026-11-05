@@ -1,28 +1,97 @@
 {
-  "generated_at": "2026-11-05T06:53:05.752Z",
+  "generated_at": "2026-11-05T13:39:25.643Z",
   "steps": {
-    "create": "16ee7dac0c8e7107",
-    "venues": "a9444373891ff683",
-    "staff": "9903783eba5fb3b0",
-    "suppliers": "4ee41f001d53d126",
-    "programmes": "15e0a2506777d9c2",
-    "coaches": "5f5b1e1912ff4673",
-    "students": "003d0275df6386b2",
-    "scouting": "447b55a9a18278e2",
-    "development": "fbad7a7c00443eed",
-    "content": "e4f5bf9dec4d6783",
-    "classes": "2507ea9826b0dc85",
-    "tax": "e8c1a239959f1ce4",
-    "revenue": "435569ba209cb37f",
-    "reports": "fff65d7b70854d83",
-    "academics": "177a4b476d93d737",
-    "competition": "0ce233ce796013ae",
-    "campuses": "d5cb91ed7050b13c",
-    "safety": "15b9d41ca148b848",
-    "kit": "5171f13622af80cc",
-    "wellbeing": "dbfa0e67af4e847e",
-    "inclusion": "5a192f1ce2b0b5ba",
-    "placement": "25857d284d645b9a",
-    "accreditation": "54e3120b588e4f17"
+    "create": {
+      "desktop": "c5a44b6a20b3ce5e",
+      "phone": "3b3ed5bf47a7644c"
+    },
+    "venues": {
+      "desktop": "45bd93b908504acd",
+      "phone": "9e0dc3c81fea29c7"
+    },
+    "staff": {
+      "desktop": "8ead97b6597040d7",
+      "phone": "8e282e5ba10948fe"
+    },
+    "suppliers": {
+      "desktop": "70f8c70af7d66085",
+      "phone": "428b3e26d7954dbe"
+    },
+    "programmes": {
+      "desktop": "49450be3f6740d95",
+      "phone": "740e9737ae5ad1d5"
+    },
+    "coaches": {
+      "desktop": "b5b8de7892f8154d",
+      "phone": "e4186ef68db0f930"
+    },
+    "students": {
+      "desktop": "f8ee003d61795359",
+      "phone": "2f6e65c84d8ef6da"
+    },
+    "scouting": {
+      "desktop": "c441d0d11854b09f",
+      "phone": "57436e13a9e0180e"
+    },
+    "development": {
+      "desktop": "a739dafada3bd1e3",
+      "phone": "8c7dd97a3234aa94"
+    },
+    "content": {
+      "desktop": "ddf801dd11816ef0",
+      "phone": "14aab4e6b6973271"
+    },
+    "classes": {
+      "desktop": "7f1542970a356753",
+      "phone": "75f667b838901b8c"
+    },
+    "tax": {
+      "desktop": "b433905764858723",
+      "phone": "a4f2152e6bbef938"
+    },
+    "revenue": {
+      "desktop": "43153aa1a5ce8542",
+      "phone": "8b20035ba8329eb5"
+    },
+    "reports": {
+      "desktop": "adeee53056976858",
+      "phone": "6b0ac5e53b1a1a8a"
+    },
+    "academics": {
+      "desktop": "d69d1cec2c9797b8",
+      "phone": "15dbbf2856c16018"
+    },
+    "competition": {
+      "desktop": "2fe508c0f63fc58b",
+      "phone": "e5f6c2d91b8047b1"
+    },
+    "campuses": {
+      "desktop": "6070937295847f60",
+      "phone": "cd1b902f69550c60"
+    },
+    "safety": {
+      "desktop": "c472f67df0f53ed9",
+      "phone": "fa8f2a31a4bf4d63"
+    },
+    "kit": {
+      "desktop": "5539d1d5cf09ba26",
+      "phone": "af43ea596671aa31"
+    },
+    "wellbeing": {
+      "desktop": "60008917e33dcba3",
+      "phone": "e94e07a53cde3e1a"
+    },
+    "inclusion": {
+      "desktop": "b280a5be745c66d1",
+      "phone": "2a3af594b4c0a007"
+    },
+    "placement": {
+      "desktop": "c4ca6137f8f815cf",
+      "phone": "68f7cdde12775138"
+    },
+    "accreditation": {
+      "desktop": "0e1264bd5f6b76b7",
+      "phone": "8d48283466bb4d21"
+    }
   }
 }
