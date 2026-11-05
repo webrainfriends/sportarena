@@ -7,7 +7,7 @@ import { isAdmin, mustFind, sportBySlugOrId } from '../helpers.js';
 import { hasOrgGrant } from '../org-access.js';
 import { eventForOrganizer } from './events.js';
 import { lockEvent, programmeFor, scopeFor, canActFor } from '../multisport.js';
-import { CONTEXTS, resolvePara, savePara } from '../para-catalogue.js';
+import { CONTEXTS, resolvePara, savePara, disciplineClassCheck } from '../para-catalogue.js';
 
 const TAG = 'Multi-sport events';
 export const placePoints = z.record(z.string().regex(/^\d{1,3}$/), z.number().int().min(0).max(1000)).describe('place -> points, e.g. {"1":5,"2":3,"3":1}');
@@ -357,6 +357,9 @@ async function nominateOne(c, { user, scope, ev, prog, d, p, seed, teamId = null
   if (p.medical_hold) throw conflict(`${p.full_name} is on a medical hold and cannot be nominated`);
   if (d.gender !== 'any' && p.gender !== d.gender) throw badRequest(`${d.name} is for ${d.gender} participants only`);
   if (d.eligible_grades && !d.eligible_grades.includes(p.grade)) throw badRequest(`${d.name} is open to grades ${d.eligible_grades.join(', ')} only`);
+  // PS-01: a sanctioned para discipline whose pinned rule requires classification admits only a governed class (or a live provisional approval); other contexts are never asked
+  const cls = await disciplineClassCheck(c, d, p.user_id);
+  if (cls && !['pass', 'waived'].includes(cls.status)) throw conflict(`${p.full_name} cannot be nominated: ${cls.reason}`, { code: 'classification_required', check: cls.code });
   await c.query("SELECT pg_advisory_xact_lock(hashtextextended('nominate:' || $1::text, 0))", [p.id]);
   const existing = (await c.query('SELECT * FROM discipline_nominations WHERE discipline_id=$1 AND participant_id=$2 FOR UPDATE', [d.id, p.id])).rows[0];
   if (existing && ['nominated', 'confirmed'].includes(existing.status)) {
