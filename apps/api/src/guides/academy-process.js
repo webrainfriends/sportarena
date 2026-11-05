@@ -197,6 +197,15 @@ id: 'wellbeing', title: 'Support student wellbeing and development',
   },
 ];
 
+  {
+    id: 'para_doctor', title: 'Para-athlete clinical coordination',
+    why: 'Enable specialist doctors to declare para-sport expertise, structure consultations with sport-specific templates, coordinate referrals to prosthetists and rehabilitation clinicians, and share nonclinical operational summaries with coaches and event staff — entirely separate from classification and always with athlete consent.',
+    steps: ['Open Doctor workspace → Adaptive tab. Declare the para-sports you have clinical expertise in; this appears on your profile and is not a classification credential.', 'Create consult templates for each relevant sport: name the template, write a description, and define the structured fields you use each session.', 'When consulting a para-athlete, open their patient file and create a para episode, linking it to the appropriate sport and template.', 'To extend the care pathway, use Health → Referrals to refer to prosthetists, rehabilitation clinicians or sports medicine providers already on the platform.', 'Draft a nonclinical support summary for operational staff (access needs, emergency contacts, general support). The athlete receives a consent request; only after they approve can staff see the summary.', 'Athletes manage consent from Health → Support tab: approve, decline or revoke individual access per person at any time.'],
+    target: { health: 'doctor', athlete: 'support' },
+    modules: ['para-doctor-consult.js'], sources: ['apps/app/src/screens/doctor.js', 'apps/app/src/screens/health-file.js'],
+  },
+];
+
 /** Org/academy API modules with no step of their own, and why. Anything not here and not in a step fails the guard test. */
 export const NOT_IN_GUIDE = {
   'academy-curriculum.js': 'Curriculum, methodology and coaching-philosophy governance is set up by the academy after the first setup; it is described in docs/academy-curriculum.md, not in this onboarding guide.',
