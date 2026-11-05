@@ -12054,7 +12054,6 @@ export default {
   'insurance.para.serial_masked': 'S/N {masked}',
   'insurance.para.linked_event_label': 'Linked event: {name}',
   'insurance.para.best_para_cover': 'Best para cover',
-};
 // PS-19: Para-sport funding (machine-drafted, awaiting native-speaker review)
 // psf keys appended
   'promo.tab': 'பதவி உயர்வுகள்',
