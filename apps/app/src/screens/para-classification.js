@@ -11,6 +11,7 @@ import { Btn, Card, Empty, ErrorBox, Loading, Screen, Seg, Sheet, T, Tag } from 
 import { FormSheet } from '../FormSheet';
 import { MenuField } from '../menu-field';
 import { Kpi } from './academy-ui';
+import { ParaDisciplines } from './para-disciplines';
 import { c } from '../theme';
 import { t } from '../i18n';
 import { locale } from '../locale';
@@ -18,6 +19,9 @@ import { locale } from '../locale';
 const STAGES = ['submitted', 'evidence_review', 'assessment_scheduled', 'assessment_completed', 'panel_review', 'decision_issued'];
 const STATUSES = ['confirmed', 'review_required', 'temporary', 'not_eligible', 'other'];
 const TONE = { confirmed: c.limeSoft, temporary: c.sunSoft, review_required: c.orangeSoft, not_eligible: c.redSoft, other: c.violetSoft };
+const ROLES = ['athlete', 'guide', 'pusher', 'caller', 'assistant', 'interpreter'];
+/** A comma-separated list typed from the governing document, as a clean array. */
+const list = (x) => String(x ?? '').split(/[,;\n]/).map((y) => y.trim()).filter(Boolean);
 const label = (group, v) => t(`para.${group}.${v}`);
 const join = (...p) => p.filter((x) => x !== null && x !== undefined && x !== '').join(', ');
 const dot = (a, b) => [a, b].join(' · ');
@@ -304,10 +308,17 @@ function Authority({ desk }) {
       <Block title={t('para.definitions')} right={<Btn small title={t('para.new_version')} onPress={() => setForm('version')} />}>
         {versions.data?.versions?.length ? versions.data.versions.map((v) => (
           <Card key={v.id} pad={14} style={{ gap: 6 }}>
-            <View style={{ flexDirection: 'row', justifyContent: 'space-between', gap: 8, flexWrap: 'wrap' }}><T weight="800">{v.sport}{v.discipline ? ` · ${v.discipline}` : ''} · {t('para.version', { n: v.version })}</T><Tag label={label('vstate', v.status)} color={v.status === 'published' ? c.limeSoft : v.status === 'draft' ? c.sunSoft : c.violetSoft} /></View>
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', gap: 8, flexWrap: 'wrap' }}><T weight="800">{v.sport}{v.discipline ? ` · ${v.discipline}` : ''} · {t('para.version', { n: v.version })}</T><Tag label={v.deprecated_at ? t('ps.state.deprecated') : v.status === 'draft' ? t(`ps.approval.${v.approval_status}`) : label('vstate', v.status)} color={v.status === 'published' ? c.limeSoft : v.status === 'draft' ? c.sunSoft : c.violetSoft} /></View>
             <T size={13} color={c.mute}>{v.title} · {t('para.panel_size', { n: v.panel_size })} · {t('para.appeal_days', { n: v.appeal_days })}</T>
             <T size={13}>{v.classes.map((k) => k.code).join(' · ')}</T>
-            {v.status === 'draft' ? <Btn small title={t('para.publish')} onPress={() => run(() => api.post(`/para/class-versions/${v.id}/publish`, {}), t('para.published'))} /> : null}
+            {v.publisher || v.source_url ? <T size={12} color={c.mute}>{[v.publisher, v.source_url].filter(Boolean).join(' · ')}</T> : null}
+            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+              {v.status === 'draft' && v.approval_status === 'draft' && v.source_url ? <Btn small color={c.cyan} title={t('ps.act_submit')} onPress={() => run(() => api.post(`/para/class-versions/${v.id}/submit`, {}), t('ps.submitted'))} /> : null}
+              {v.status === 'draft' && v.approval_status === 'submitted' ? <Btn small color={c.paper} ink={c.red} title={t('ps.act_reject')} onPress={() => setForm({ reject: v })} /> : null}
+              {v.status === 'draft' && v.approval_status !== 'rejected' && (!v.source_url || v.approval_status === 'submitted') ? <Btn small title={t('para.publish')} onPress={() => run(() => api.post(`/para/class-versions/${v.id}/publish`, {}), t('para.published'))} /> : null}
+              {v.status === 'published' ? <Btn small color={c.paper} ink={c.red} title={t('ps.act_deprecate')} onPress={() => setForm({ deprecate: v })} /> : null}
+              {v.status === 'retired' ? <Btn small color={c.paper} ink={c.ink} title={t('ps.act_rollback')} onPress={() => setForm({ rollback: v })} /> : null}
+            </View>
           </Card>
         )) : <Empty emoji="📘" title={t('para.no_definitions')} sub={t('para.no_definitions_sub')} />}
       </Block>
@@ -344,6 +355,11 @@ function Authority({ desk }) {
         <FormSheet inline onClose={() => setForm(null)} notice={t('para.version_notice')}
           fields={[{ key: 'sport', label: t('para.f_sport'), type: 'chips', options: sportOptions },
             { key: 'discipline', label: t('para.f_discipline'), type: 'text', optional: true }, { key: 'title', label: t('para.f_title'), type: 'text' }, { key: 'source_ref', label: t('para.f_source'), type: 'text', hint: t('para.f_source_hint') },
+            { key: 'publisher', label: t('ps.publisher'), type: 'text', optional: true }, { key: 'source_url', label: t('ps.source'), type: 'text', optional: true, hint: t('ps.f_source_url_hint') },
+            { key: 'scope_countries', label: t('ps.scope'), type: 'countries', optional: true, hint: t('ps.f_scope_hint') },
+            { key: 'event_categories', label: t('ps.categories'), type: 'text', optional: true, hint: t('ps.f_list_hint') }, { key: 'adaptations', label: t('ps.adaptations'), type: 'text', optional: true, hint: t('ps.f_list_hint') },
+            { key: 'permitted_roles', label: t('ps.roles'), type: 'multi', optional: true, options: ROLES.map((r) => ({ value: r, label: t(`ps.role.${r}`) })) },
+            { key: 'classification_required', label: t('ps.class_req'), type: 'switch', default: true },
             { key: 'effective_from', label: t('para.f_effective'), type: 'date' }, { key: 'panel_size', label: t('para.f_panel_size'), type: 'stepper', min: 1, max: 7, default: 1 },
             { key: 'appeal_days', label: t('para.f_appeal_days'), type: 'stepper', min: 1, max: 365, default: 14, suffix: t('para.days') },
             { key: 'review_rule', label: t('para.f_review_rule'), type: 'chips', options: ['none', 'fixed_term', 'review_required'].map((k) => ({ value: k, label: label('rule', k) })) },
@@ -360,7 +376,7 @@ function Authority({ desk }) {
           <Btn small color={c.paper} ink={c.ink} title={t('para.add_class')} onPress={() => setRows((all) => [...all, { code: '', name: '' }])} />
           <Btn title={t('para.save_draft')} onPress={async () => {
             const v = form.classes; const s = [].concat(v.sport)[0];
-            await run(() => api.post('/para/class-versions', { body_id: bodyId, sport_id: s, discipline: v.discipline || '', title: v.title, source_ref: v.source_ref, effective_from: v.effective_from, panel_size: v.panel_size, appeal_days: v.appeal_days, review_rule: v.review_rule, review_months: v.review_rule !== 'none' ? v.review_months : undefined, classes: rows.filter((r) => r.code && r.name) }), t('para.drafted'));
+            await run(() => api.post('/para/class-versions', { body_id: bodyId, sport_id: s, discipline: v.discipline || '', title: v.title, source_ref: v.source_ref, effective_from: v.effective_from, panel_size: v.panel_size, appeal_days: v.appeal_days, review_rule: v.review_rule, review_months: v.review_rule !== 'none' ? v.review_months : undefined, publisher: v.publisher || undefined, source_url: v.source_url || undefined, scope_countries: v.scope_countries?.length ? v.scope_countries : undefined, event_categories: list(v.event_categories), adaptations: list(v.adaptations), permitted_roles: v.permitted_roles?.length ? v.permitted_roles : undefined, classification_required: v.classification_required, classes: rows.filter((r) => r.code && r.name) }), t('para.drafted'));
             setForm(null); setRows([{ code: '', name: '' }]);
           }} />
         </View>
@@ -370,6 +386,13 @@ function Authority({ desk }) {
           { key: 'discipline', label: t('para.f_discipline'), type: 'text', optional: true }, { key: 'grade', label: t('para.f_grade'), type: 'text' }, { key: 'credential_no', label: t('para.f_credential_no'), type: 'text', optional: true },
           { key: 'issued_on', label: t('para.f_issued'), type: 'date' }, { key: 'expires_on', label: t('para.f_expires'), type: 'date' }]}
         onSubmit={async (val) => { await api.post('/para/classifiers', { body_id: bodyId, user_id: val.user_id, sport_id: [].concat(val.sport)[0], discipline: val.discipline || '', grade: val.grade, credential_no: val.credential_no || undefined, issued_on: val.issued_on, expires_on: val.expires_on }); toast(t('para.granted')); await reloadAll(); }} />
+      <FormSheet visible={!!form?.reject} onClose={() => setForm(null)} title={t('ps.act_reject')} fields={[{ key: 'reason', label: t('ps.reason'), type: 'multiline' }]}
+        onSubmit={async (val) => { await api.post(`/para/class-versions/${form.reject.id}/reject`, { reason: val.reason }); await reloadAll(); }} />
+      <FormSheet visible={!!form?.deprecate} onClose={() => setForm(null)} title={t('ps.act_deprecate')} notice={t('ps.deprecate_notice')} fields={[{ key: 'reason', label: t('ps.reason'), type: 'multiline' }]}
+        onSubmit={async (val) => { await api.post(`/para/class-versions/${form.deprecate.id}/deprecate`, { reason: val.reason }); await reloadAll(); }} />
+      <FormSheet visible={!!form?.rollback} onClose={() => setForm(null)} title={t('ps.act_rollback')} notice={t('ps.rollback_notice')}
+        fields={[{ key: 'effective_from', label: t('para.f_effective'), type: 'date' }, { key: 'reason', label: t('ps.reason'), type: 'multiline' }]}
+        onSubmit={async (val) => { await api.post(`/para/class-versions/${form.rollback.id}/rollback`, { reason: val.reason, effective_from: val.effective_from }); await reloadAll(); }} />
       <FormSheet visible={!!form?.end} onClose={() => setForm(null)} title={form?.action ? t(`para.${form.action}`) : ''}
         fields={[{ key: 'reason', label: t('para.f_reason'), type: 'multiline' }]}
         onSubmit={async (val) => { await api.post(`/para/classifiers/${form.end.id}/end`, { action: form.action, reason: val.reason }); await reloadAll(); }} />
@@ -394,13 +417,13 @@ export function ParaClassification() {
   if (desk.error) return <Screen><ErrorBox error={desk.error} onRetry={desk.reload} /></Screen>;
   if (!desk.data) return <Screen><Loading /></Screen>;
   const d = desk.data;
-  const tabs = [['me', t('para.tab_me')], ...(d.classifier.length ? [['desk', t('para.tab_desk')]] : []), ...(d.governs.length ? [['authority', t('para.tab_authority')]] : [])];
+  const tabs = [['me', t('para.tab_me')], ['disciplines', t('ps.tab')], ...(d.classifier.length ? [['desk', t('para.tab_desk')]] : []), ...(d.governs.length ? [['authority', t('para.tab_authority')]] : [])];
   return (
     <Screen wide onRefresh={desk.reload}>
       <View style={{ gap: 14 }}>
         <T size={26} weight="800" accessibilityRole="header">{t('para.title')}</T>
         {tabs.length > 1 ? <Seg options={tabs.map(([v, l]) => ({ value: v, label: l }))} value={tab} onChange={setTab} /> : null}
-        {tab === 'me' ? <Mine athleteId={ward} wards={d.wards} onWard={setWard} /> : tab === 'desk' ? <Desk desk={d} /> : <Authority desk={d} />}
+        {tab === 'me' ? <Mine athleteId={ward} wards={d.wards} onWard={setWard} /> : tab === 'disciplines' ? <ParaDisciplines /> : tab === 'desk' ? <Desk desk={d} /> : <Authority desk={d} />}
       </View>
     </Screen>
   );

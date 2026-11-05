@@ -7,10 +7,18 @@ import { isAdmin, mustFind, sportBySlugOrId } from '../helpers.js';
 import { hasOrgGrant } from '../org-access.js';
 import { eventForOrganizer } from './events.js';
 import { lockEvent, programmeFor, scopeFor, canActFor } from '../multisport.js';
+import { CONTEXTS, resolvePara, savePara } from '../para-catalogue.js';
 
 const TAG = 'Multi-sport events';
 export const placePoints = z.record(z.string().regex(/^\d{1,3}$/), z.number().int().min(0).max(1000)).describe('place -> points, e.g. {"1":5,"2":3,"3":1}');
 const gender = z.enum(['male', 'female', 'other']);
+/** Para-sport fields (PS-01 #831): a discipline of a para sport is sanctioned (pins an approved governed rule version), recreational or mixed-ability (never need classification). */
+const paraFields = {
+  participation_context: z.enum(CONTEXTS).optional().describe('standard (default), sanctioned, recreational or mixed_ability; para / adaptive sports only except standard'),
+  para_version_id: id.nullable().optional().describe('the approved governed rule version this discipline runs under; frozen as a snapshot when pinned'),
+  para_categories: z.array(z.string().trim().min(1).max(80)).max(80).optional().describe('event categories, chosen from the pinned version'),
+  para_change_reason: z.string().trim().min(3).max(300).optional().describe('required to change an already pinned rule version or context'),
+};
 
 /** Can this user see the event's management data (organiser, house master, crew, a participant)? Returns { ev, scope }. */
 export async function eventAccess(c, user, eventId) {
@@ -269,7 +277,7 @@ const disciplineFields = {
 cap({
   name: 'create_discipline', method: 'POST', path: '/events/:id/disciplines', tag: TAG, status: 201,
   summary: 'Add a sport to the event: 100m sprint, U14 football, relay… Choose individual or team, gender/grade eligibility, team size, entries per house, points per place and officials needed.',
-  input: z.object({ id, sport: z.string(), name: z.string().min(2).max(100), mode: z.enum(['individual', 'team']).default('individual'), result_type: z.enum(['time', 'distance', 'score']).optional(), ...disciplineFields }),
+  input: z.object({ id, sport: z.string(), name: z.string().min(2).max(100), mode: z.enum(['individual', 'team']).default('individual'), result_type: z.enum(['time', 'distance', 'score']).optional(), ...disciplineFields, ...paraFields }),
   async handler({ user }, i) {
     const sport = await sportBySlugOrId(i.sport);
     if (!sport) throw notFound('Sport');
@@ -278,11 +286,14 @@ cap({
       await programmeFor(c, i.id);
       if (i.mode === 'team' && !i.team_size_min && !i.team_size_max) throw badRequest('Team disciplines need team_size_min / team_size_max');
       const resultType = i.result_type ?? (i.mode === 'team' ? 'score' : sport.scoring === 'time' ? 'time' : sport.scoring === 'distance' ? 'distance' : 'score');
-      return (await c.query(
+      const para = await resolvePara(c, user, null, sport, i);
+      const row = (await c.query(
         `INSERT INTO event_disciplines(event_id, sport_id, name, mode, gender, eligible_grades, team_size_min, team_size_max, result_type, max_per_house, points, officials_required, venue_id, created_by)
          VALUES ($1,$2,$3,$4,coalesce($5,'any'),$6,$7,$8,$9,$10,$11,coalesce($12,1),$13,$14) RETURNING *`,
         [i.id, sport.id, i.name, i.mode, i.gender ?? null, i.eligible_grades ?? null, i.team_size_min ?? i.team_size_max ?? null, i.team_size_max ?? i.team_size_min ?? null, resultType, i.max_per_house ?? null,
           i.points ? JSON.stringify(i.points) : null, i.officials_required ?? null, i.venue_id ?? null, user.id])).rows[0];
+      if (para) { await savePara(c, user, row.id, para); return (await c.query('SELECT * FROM event_disciplines WHERE id=$1', [row.id])).rows[0]; }
+      return row;
     });
   },
 });
@@ -290,7 +301,7 @@ cap({
 cap({
   name: 'update_discipline', method: 'PATCH', path: '/disciplines/:id', tag: TAG,
   summary: 'Edit a discipline\'s rules, close/open nominations on it (status nominations → scheduled → ongoing) or cancel it. Cancelling withdraws all nominations and cancels its unplayed sessions; history is kept.',
-  input: z.object({ id, name: z.string().min(2).max(100).optional(), status: z.enum(['nominations', 'scheduled', 'ongoing', 'cancelled']).optional(), ...disciplineFields }),
+  input: z.object({ id, name: z.string().min(2).max(100).optional(), status: z.enum(['nominations', 'scheduled', 'ongoing', 'cancelled']).optional(), ...disciplineFields, ...paraFields }),
   async handler({ user }, i) {
     return tx(async (c) => {
       const d = (await c.query('SELECT * FROM event_disciplines WHERE id=$1 FOR UPDATE', [i.id])).rows[0];
@@ -299,18 +310,20 @@ cap({
       if (['completed', 'cancelled'].includes(d.status)) throw conflict(`Discipline is ${d.status}`);
       const min = i.team_size_min ?? d.team_size_min, max = i.team_size_max ?? d.team_size_max;
       if (min && max && max < min) throw badRequest('team_size_max is below team_size_min');
+      const para = await resolvePara(c, user, d, (await c.query('SELECT id, is_para FROM sports WHERE id=$1', [d.sport_id])).rows[0], i);
       const row = (await c.query(
         `UPDATE event_disciplines SET name=coalesce($2,name), status=coalesce($3,status), gender=coalesce($4,gender), eligible_grades = CASE WHEN $5::boolean THEN $6::text[] ELSE eligible_grades END,
            team_size_min=coalesce($7,team_size_min), team_size_max=coalesce($8,team_size_max), max_per_house=coalesce($9,max_per_house),
            points = CASE WHEN $10::boolean THEN $11::jsonb ELSE points END, officials_required=coalesce($12,officials_required), venue_id=coalesce($13,venue_id) WHERE id=$1 RETURNING *`,
         [i.id, i.name ?? null, i.status ?? null, i.gender ?? null, i.eligible_grades !== undefined, i.eligible_grades ?? null, i.team_size_min ?? null, i.team_size_max ?? null, i.max_per_house ?? null,
           i.points !== undefined, i.points ? JSON.stringify(i.points) : null, i.officials_required ?? null, i.venue_id ?? null])).rows[0];
+      if (para) { await savePara(c, user, d.id, para, i.para_change_reason ?? null); }
       if (i.status === 'cancelled') {
         await c.query("UPDATE discipline_nominations SET status='withdrawn' WHERE discipline_id=$1 AND status IN ('nominated','confirmed')", [i.id]);
         await c.query("UPDATE event_sessions SET status='cancelled' WHERE discipline_id=$1 AND status IN ('draft','scheduled','live')", [i.id]);
         await c.query("UPDATE event_shifts SET status='cancelled' WHERE status='assigned' AND session_id IN (SELECT id FROM event_sessions WHERE discipline_id=$1)", [i.id]);
       }
-      return row;
+      return para ? (await c.query('SELECT * FROM event_disciplines WHERE id=$1', [d.id])).rows[0] : row;
     });
   },
 });
