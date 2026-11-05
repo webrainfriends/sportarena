@@ -15,6 +15,7 @@ import { c } from '../theme';
 import { dateTimeIn, localDate, localHHMM, localToIso, timeIn } from '../vtime';
 import { Block, Fact, Timeline } from './academy-ui';
 import { SessionObjectives } from './academy-curriculum-session';
+import { LicensedSessionContent } from './academy-content-session';
 import { PickupTab } from './academy-safety';
 import { SessionVideo } from './academy-video';
 import { CourtPicker } from './training-venue';
@@ -283,7 +284,7 @@ export function AcademySession({ id, tab: want, find }) {
       {tab === 'pickup' ? <PickupTab s={s} /> : null}
       {tab === 'staff' ? <Staff s={s} reload={reload} toast={toast} me={user.id} openFind={!!find} /> : null}
       {tab === 'venue' ? <Venue s={s} reload={reload} toast={toast} /> : null}
-      {tab === 'curriculum' ? <SessionObjectives s={s} toast={toast} nav={nav} mine={!!mine && ['lead', 'assistant'].includes(mine.role)} /> : null}
+      {tab === 'curriculum' ? <View style={{ gap: 14 }}><SessionObjectives s={s} toast={toast} nav={nav} mine={!!mine && ['lead', 'assistant'].includes(mine.role)} /><LicensedSessionContent s={s} toast={toast} nav={nav} mine={!!mine && ['lead', 'assistant'].includes(mine.role)} /></View> : null}
       {tab === 'video' ? <SessionVideo s={s} toast={toast} nav={nav} /> : null}
       {tab === 'details' ? <Details s={s} reload={reload} toast={toast} /> : null}
       <FormSheet visible={cover} onClose={() => setCover(false)} title="Ask for cover" submitLabel="Send request" fields={[{ key: 'reason', label: 'What happened? (shared with the managers)', optional: true }]}

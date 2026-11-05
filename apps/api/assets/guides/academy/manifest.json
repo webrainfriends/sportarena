@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-11-05T03:36:15.939Z",
+  "generated_at": "2026-11-05T03:58:23.939Z",
   "steps": {
     "create": {
       "desktop": "c95a8acadf5cb192",
@@ -36,6 +36,10 @@
     "development": {
       "desktop": "18bb5c2486825ffa",
       "phone": "307e890df2512fa9"
+    },
+    "content": {
+      "desktop": "fe39e7e7a8cda97c",
+      "phone": "66132c6e1d4b8f30"
     },
     "classes": {
       "desktop": "0c2df5c7272d1c7a",

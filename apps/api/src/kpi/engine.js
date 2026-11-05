@@ -37,7 +37,7 @@ const CHANNELS = { venue_booking: 'Venue bookings', academy: 'Academy fees', tea
   // payment purposes (payment failure rate, provider earnings)
   coach_hire: 'Coaching sessions', marketplace_engagement: 'Marketplace engagements', shop_order: 'Shop orders', shop_checkout: 'Shop checkout', insurance_policy: 'Insurance', venue_invoice: 'Venue invoices', wallet_topup: 'Wallet top-ups',
   gift_card: 'Gift cards', venue_plan: 'Venue plans', appointment: 'Appointments', physio_package: 'Physio packages', coach_package: 'Coach session packages', sponsorship_payment: 'Sponsorship', academy_charge: 'Academy fees', service_invoice: 'Service invoices',
-  media_rights_fee: 'Media rights', pos_sale: 'Point of sale', team_charge: 'Team dues', team_contribution: 'Team contributions', ad_funding: 'Advertising' };
+  media_rights_fee: 'Media rights', content_licence: 'Academy content licences', pos_sale: 'Point of sale', team_charge: 'Team dues', team_contribution: 'Team contributions', ad_funding: 'Advertising' };
 // Labels for dimensions whose values are codes. The gender value is a keyed blind index, so a census can group by it without decrypting anything.
 const genderLabels = () => ({ ...Object.fromEntries(GENDERS.map((g) => [blindIndex(`gender|${g.key}`), g.label])), not_stated: 'Not stated' });
 const labelsFor = (dim) => (dim === 'channel' ? CHANNELS : dim === 'age_band' ? AGE_BANDS : dim === 'status' ? STANDING_LABELS : dim === 'gender' ? genderLabels() : null);
