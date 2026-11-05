@@ -10,12 +10,12 @@ export const MODULE_OF = {
   shop_order: 'shop', shop_checkout: 'shop', coach_hire: 'coaching', coach_class_seat: 'coaching', coach_subscription_period: 'coaching', coach_package: 'coaching', appointment: 'health', physio_package: 'health', insurance_policy: 'insurance',
   venue_invoice: 'venue', venue_plan: 'venue', pos_sale: 'venue', wallet_topup: 'wallet', gift_card: 'wallet', sponsorship_payment: 'sponsorship',
   academy_charge: 'registration', registration_instalment: 'registration', team_charge: 'registration', team_contribution: 'registration', media_rights_fee: 'media', ad_funding: 'advertising',
-  service_invoice: 'suppliers', ticket_order: 'tickets',
+  service_invoice: 'suppliers', ticket_order: 'tickets', content_licence: 'academy_content',
 };
 export const moduleOf = (type) => MODULE_OF[type] ?? 'other';
 export const MODULE_LABEL = {
   registration: 'Registration & dues', venue: 'Venue', coaching: 'Coaching', health: 'Doctor & physio', shop: 'Shop', wallet: 'Wallet', sponsorship: 'Sponsorship',
-  suppliers: 'Suppliers', insurance: 'Insurance', media: 'Media rights', advertising: 'Advertising', travel: 'Travel', officials: 'Officials', agents: 'Agents', tickets: 'Spectator tickets', events: 'Event budget', payouts: 'Payouts', contracts: 'Player contracts', other: 'Other',
+  academy_content: 'Academy content licences', suppliers: 'Suppliers', insurance: 'Insurance', media: 'Media rights', advertising: 'Advertising', travel: 'Travel', officials: 'Officials', agents: 'Agents', tickets: 'Spectator tickets', events: 'Event budget', payouts: 'Payouts', contracts: 'Player contracts', other: 'Other',
 };
 
 /** The canonical views an organisation reads its books by (#593). Every module maps to exactly one; an unmapped module is 'other', never dropped. */
@@ -24,7 +24,7 @@ export const CATEGORY_LABEL = {
   suppliers: 'Supplier spend', event_budget: 'Event budget spend', payouts: 'Settlements & payouts', commissions: 'Agent commissions', contracts: 'Player & official pay', travel: 'Travel & trips', other: 'Other',
 };
 const CATEGORY_OF_MODULE = {
-  registration: 'registration', tickets: 'tickets', venue: 'venue_service', coaching: 'venue_service', health: 'venue_service', insurance: 'venue_service', shop: 'venue_service',
+  registration: 'registration', academy_content: 'venue_service', tickets: 'tickets', venue: 'venue_service', coaching: 'venue_service', health: 'venue_service', insurance: 'venue_service', shop: 'venue_service',
   sponsorship: 'sponsorship', suppliers: 'suppliers', events: 'event_budget', payouts: 'payouts', officials: 'contracts', contracts: 'contracts', agents: 'commissions', travel: 'travel', wallet: 'venue_service',
 };
 export const categoryOf = (module) => CATEGORY_OF_MODULE[module] ?? 'other';

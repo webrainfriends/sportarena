@@ -8,6 +8,7 @@ import { audit } from '../helpers.js';
 import { encrypt, decrypt } from '../crypto.js';
 import { notify } from '../notify.js';
 import { badgesFor } from '../verification.js';
+import { adaptiveFor } from '../coach-adaptive.js';
 import { opsAccess, staffIssues, PERMS, TEMPLATES, ADMINS } from '../academy-ops.js';
 import { hhmm } from '../booking/time.js';
 
@@ -72,12 +73,14 @@ cap({
          FROM organisation_members m JOIN users u ON u.id=m.user_id LEFT JOIN org_staff_engagements e ON e.organisation_id=m.organisation_id AND e.user_id=m.user_id
         WHERE m.organisation_id=$1 AND m.status='active' AND m.role IN ('owner','admin','coach','staff','finance') ORDER BY u.display_name, m.user_id LIMIT $2 OFFSET $3`, [i.id, i.limit, i.offset]);
     const badges = await badgesFor('user', rows.map((r) => r.user_id));
+    const adaptive = await adaptiveFor(rows.map((r) => r.user_id));   // instructor validation (#837): credential state only, from the same verification cases; nothing about any athlete
     return {
       templates: Object.entries(TEMPLATES).map(([key, t]) => ({ key, title: t.title, permissions: t.permissions })),
       staff: rows.map((r) => {
         const b = (badges.get(r.user_id) ?? []).find((x) => x.type === 'coach');
         const days = b ? Math.ceil((new Date(b.expires_at) - Date.now()) / 86400000) : null;
-        return { ...r, credential: { coach_badge: b ? { verified_at: b.verified_at, expires_at: b.expires_at, days_left: days, expiring_soon: days != null && days <= 60 } : null, missing: (r.required_credentials ?? []).includes('coach_badge') && !b } };
+        const ad = adaptive.get(r.user_id);
+        return { ...r, adaptive: ad?.opted_in ? { state: ad.state, disciplines: ad.expertise.map((e) => e.discipline) } : null, credential: { coach_badge: b ? { verified_at: b.verified_at, expires_at: b.expires_at, days_left: days, expiring_soon: days != null && days <= 60 } : null, missing: (r.required_credentials ?? []).includes('coach_badge') && !b } };
       }),
     };
   },

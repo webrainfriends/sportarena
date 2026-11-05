@@ -11,6 +11,7 @@ import { FormSheet } from '../FormSheet';
 import { c } from '../theme';
 import { t } from '../i18n';
 import { addDays, dateTimeIn, moneyIn, todayIn } from '../vtime';
+import { VenueAccess } from './venue-access';
 
 const day = (d) => (d ? String(d).slice(0, 10) : '');
 const STATUS_COLOR = { ready: c.mintSoft, attention: c.sunSoft, not_ready: c.redSoft, unchecked: c.paper };
@@ -22,18 +23,19 @@ const pick = (x) => (Array.isArray(x) ? x[0] || undefined : x || undefined);
 /** The panel: sections for what the signed-in person may use (floor staff see the daily ones, managers everything). */
 export function FacilityPanel({ v, go }) {
   const me = useLoad(() => api.get(`/venues/${v.id}/me`), [v.id]);
+  const { toast } = useSession();
   const [sec, setSec] = useState('readiness');
   if (me.loading && !me.data) return <Loading />;
   if (me.error) return <ErrorBox error={me.error} onRetry={me.reload} />;
   const mgr = me.data.level === 'manager';
   const SECTIONS = [['readiness', t('vf.sec.readiness')], ['incidents', t('vf.sec.incidents')], ['shifts', t('vf.sec.shifts')], ['assets', t('vf.sec.assets')],
-    ...(mgr ? [['preventive', t('vf.sec.preventive')], ['series', t('vf.sec.series')], ['income', t('vf.sec.income')]] : [])];
+    ...(mgr ? [['access', t('inc.v_access')], ['preventive', t('vf.sec.preventive')], ['series', t('vf.sec.series')], ['income', t('vf.sec.income')]] : [])];
   const P = { v, mgr, me: me.data };
   return (
     <View style={{ gap: 10 }}>
       {go ? <Row onPress={() => go('access')} color={c.cyanSoft} title={`🚪 ${t('vf.sec.checkin')}`} sub="Doors & attendance" right={<T color={c.pink} weight="700">›</T>} /> : null}
       <Seg options={SECTIONS.map(([value, label]) => ({ value, label }))} value={sec} onChange={setSec} color={c.cyan} />
-      {sec === 'readiness' ? <Readiness {...P} /> : sec === 'incidents' ? <Incidents {...P} /> : sec === 'shifts' ? <Shifts {...P} /> : sec === 'assets' ? <Assets {...P} /> : sec === 'preventive' ? <Preventive {...P} /> : sec === 'series' ? <Series {...P} /> : <Income {...P} />}
+      {sec === 'access' ? <VenueAccess v={v} toast={toast} /> : sec === 'readiness' ? <Readiness {...P} /> : sec === 'incidents' ? <Incidents {...P} /> : sec === 'shifts' ? <Shifts {...P} /> : sec === 'assets' ? <Assets {...P} /> : sec === 'preventive' ? <Preventive {...P} /> : sec === 'series' ? <Series {...P} /> : <Income {...P} />}
     </View>
   );
 }

@@ -5,6 +5,7 @@ import React, { useEffect, useState } from 'react';
 import { View } from 'react-native';
 import { api } from '../api';
 import { useLoad } from '../hooks';
+import { useNav } from '../nav';
 import { useSession } from '../session';
 import { Btn, Card, Chip, Empty, ErrorBox, Loading, Row, Screen, Section, Seg, T, Tag } from '../ui';
 import { FormSheet } from '../FormSheet';
@@ -14,6 +15,7 @@ import { c } from '../theme';
 import { moneyIn } from '../vtime';
 import { locale } from '../locale';
 import { saveCsv } from './academy-ui';
+import { ParaPathwayEntry, SharedParaPathway } from './para-pathway';
 
 const STAGE_LIST = [['saved', 'Saved'], ['shortlisted', 'Shortlisted'], ['applying', 'Applying'], ['applied', 'Applied'], ['offered', 'Offered'], ['accepted', 'Accepted'], ['enrolled', 'Enrolled'], ['declined', 'Declined'], ['not_for_me', 'Not for me']];
 const SOURCES = { own: 'You added', target: 'Application date', trial: 'Trial booking', offer: 'Offer reply', scholarship: 'Scholarship' };
@@ -52,6 +54,7 @@ export function Plan({ athleteId, onExplore }) {
   const s = summary.data;
   return (
     <>
+      <ParaPathwayEntry />
       <View style={{ flexDirection: 'row', gap: 8, marginTop: 12 }}>
         <Card pad={12} style={{ flex: 1 }}><T weight="800" size={22}>{s ? s.targets : '–'}</T><T size={12} color={c.mute}>Targets</T></Card>
         <Card pad={12} style={{ flex: 1 }}><T weight="800" size={22}>{s ? s.next_deadlines.filter((d) => d.days_left <= 30).length : '–'}</T><T size={12} color={c.mute}>Deadlines ≤ 30 days</T></Card>
@@ -547,7 +550,24 @@ export function SharedPathways({ push }) {
   );
 }
 
+function ParaSection({ athleteId }) {
+  const { push } = useNav();
+  const pw = useLoad(() => api.get(`/coaching/para-pathway/${athleteId}`), [athleteId]);
+  if (!pw.data && !pw.error) return null;
+  if (pw.error) return null;
+  const totalMilestones = Object.values(pw.data?.milestones_by_stage ?? {}).reduce((n, arr) => n + arr.length, 0);
+  if (!totalMilestones) return null;
+  return (
+    <Section title="Para pathway" color={c.violet}>
+      <Row title={`${totalMilestones} milestone${totalMilestones !== 1 ? 's' : ''} shared`}
+           sub="Permitted stages only · read only"
+           onPress={() => push('SharedParaPathway', { athlete_id: athleteId })} />
+    </Section>
+  );
+}
+
 export function SharedPathway({ athlete_id: athleteId }) {
+  const { push } = useNav();
   const { toast } = useSession();
   const q = useLoad(() => api.get(`/pathway/shared/${athleteId}`), [athleteId]);
   const exportCsv = async () => { try { const r = await api.get(`/pathway/shared/${athleteId}/export`); await saveCsv(r.filename, r.csv); toast(`Exported ${r.rows} rows`); } catch (e) { toast('' + e.message); } };
@@ -563,6 +583,7 @@ export function SharedPathway({ athlete_id: athleteId }) {
       {d.scholarships ? <Section title="Scholarships" color={c.mint}>{d.scholarships.length ? d.scholarships.map((s) => <Card key={s.id} pad={12}><T weight="800">{s.name}</T><T size={12} color={c.mute}>{s.status} · {s.met} of {s.total} requirements met{s.amount_minor != null ? ` · ${moneyIn(s.amount_minor, s.currency)} ${PERIOD[s.period]}` : ''}</T>{s.items.map((it) => <T key={it.id} size={12}>{it.met ? '✔' : '○'} {it.requirement}{it.met ? ` — ${it.provenance_label}` : ''}</T>)}</Card>) : <Empty emoji="🎓" title="No scholarships" />}</Section> : null}
       {d.offers ? <Section title="Offers" color={c.violet}>{d.offers.length ? <Compare data={{ groups: d.offers, notice: d.offers.length > 1 ? 'Shown per currency and period; never converted.' : null }} /> : <Empty emoji="📬" title="No offers" />}</Section> : null}
       {d.outcomes ? <Outcomes out={{ data: d.outcomes }} /> : null}
+      <ParaSection athleteId={athleteId} />
     </Screen>
   );
 }

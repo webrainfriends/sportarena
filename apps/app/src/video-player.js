@@ -26,7 +26,7 @@ export function sourceKind(url) {
   if (!url || typeof url !== 'string') return null;
   if (!isHttps(url) && !isOwn(url)) return null;
   if (HLS.test(url)) return webHls() ? 'hls' : 'page';
-  if (FILE.test(url) || (isOwn(url) && /\/(media|passport-videos)\//.test(url))) return 'file';
+  if (FILE.test(url) || (isOwn(url) && /\/(media|passport-videos|academy\/clip-links)\//.test(url))) return 'file';
   return 'page';
 }
 
