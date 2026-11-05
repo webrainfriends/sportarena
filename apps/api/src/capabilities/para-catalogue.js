@@ -14,8 +14,8 @@ const TAG = 'Para classification';
 
 cap({
   name: 'get_para_sport', method: 'GET', path: '/para/sports/:sport', tag: TAG, auth: 'public',
-  summary: 'One para sport for discovery and registration: its governed rule versions with governing body, publisher, official source URL, effective/expiry dates, scope, event categories, adaptations, permitted participant and support roles, classes and a rule reference (version id + content hash). Also states which participation contexts exist: recreational and mixed-ability never require classification; sanctioned requires it only where the governing rule says so.',
-  input: z.object({ sport: z.string().trim().min(1).max(80) }),
+  summary: 'One para sport for discovery and registration: its governed rule versions with governing body, publisher, official source URL, effective/expiry dates, scope, event categories, adaptations, permitted participant and support roles, classes and a rule reference (version id + content hash). Also states which participation contexts exist: recreational and mixed-ability never require classification; sanctioned requires it only where the governing rule says so. Optionally pass country_iso to include regional governance metadata for that country.',
+  input: z.object({ sport: z.string().trim().min(1).max(80), country_iso: z.string().trim().length(2).toUpperCase().optional() }),
   handler: async (_, i) => {
     const s = await one(
       `SELECT s.id, s.slug, s.name, s.emoji, s.play_type, s.programmes, b.slug AS base_slug, b.name AS base_name, ${STATE_SQL} AS state FROM sports s LEFT JOIN sports b ON b.id=s.base_sport_id
@@ -29,9 +29,19 @@ cap({
               coalesce((SELECT json_agg(json_build_object('action', h.action, 'from', h.from_status, 'to', h.to_status, 'at', h.created_at) ORDER BY h.id) FROM para_history h WHERE h.subject_type='version' AND h.subject_id=v.id), '[]') AS history
          FROM para_class_versions v JOIN governing_bodies b ON b.id=v.body_id JOIN organisations org ON org.id=b.organisation_id
         WHERE v.sport_id=$1 AND v.status <> 'draft' ORDER BY v.discipline, v.version DESC`, [s.id]);
+    // PS-29: optional country-scoped regional governance records
+    const regionalGovernance = i.country_iso
+      ? await many(
+          `SELECT id, country_iso, governing_body, source_url, source_ref, effective_from::text AS effective_from, effective_to::text AS effective_to,
+                  event_divisions, accreditation_refs, federation_connection_type, review_status
+             FROM para_regional_governance
+            WHERE sport_id=$1 AND country_iso=$2 AND review_status IN ('sourced','verified')`,
+          [s.id, i.country_iso])
+      : [];
     return {
       sport: { ...s, label: LABEL[s.state] },
       versions: versions.map((v) => ({ ...v, rule_ref: { version_id: v.id, hash: sha({ id: v.id, version: v.version, source_url: v.source_url, classes: v.classes, event_categories: v.event_categories }) } })),
+      regional_governance: regionalGovernance,
       contexts: [
         { key: 'sanctioned', classification: 'only where the pinned governing rule requires it', needs_version: true },
         { key: 'recreational', classification: 'never required', needs_version: false },
