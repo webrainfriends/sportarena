@@ -246,7 +246,7 @@ cap({
 
 cap({
   name: 'upsert_functional_goal', credential: true, method: 'POST', path: '/treatment-plans/:plan_id/functional-goals', tag: TAG, auth: ['physio', 'doctor'], status: 201,
-  summary: 'Physio/doctor: add or update a functional goal on an adapted plan. Goals use clinician-selected measures appropriate to this athlete's functional profile; no universal impairment score is applied. Requires current credential and active full consent.',
+  summary: 'Physio/doctor: add or update a functional goal on an adapted plan. Goals use clinician-selected measures appropriate to this athlete\'s functional profile; no universal impairment score is applied. Requires current credential and active full consent.',
   input: z.object({
     plan_id: id,
     id: id.optional(),

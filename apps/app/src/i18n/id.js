@@ -11773,7 +11773,7 @@ export default {
   'pp.metrics.done': 'Selesai',
   'pp.metrics.pending': 'Ulasan tertunda',
   'nav.title.ParaPathway': 'Jalur para',
-  'nav.title.SharedParaPathway': 'Jalur para',,
+  'nav.title.SharedParaPathway': 'Jalur para',
 
   // ── PS-16 Para-sport physio & adapted rehabilitation (machine-drafted, reviewed: false) ─
   'pr.adaptive_tab_title': 'Adaptive Rehab',

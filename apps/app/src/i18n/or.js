@@ -11773,7 +11773,7 @@ export default {
   'pp.metrics.done': 'ସମ୍ପୂର୍ଣ',
   'pp.metrics.pending': 'ସମୀକ୍ଷା ଅପେକ୍ଷାରତ',
   'nav.title.ParaPathway': 'ପ୍ୟାରା ପଥ',
-  'nav.title.SharedParaPathway': 'ପ୍ୟାରା ପଥ',,
+  'nav.title.SharedParaPathway': 'ପ୍ୟାରା ପଥ',
 
   // ── PS-16 Para-sport physio & adapted rehabilitation (machine-drafted, reviewed: false) ─
   'pr.adaptive_tab_title': 'Adaptive Rehab',
