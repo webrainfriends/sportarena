@@ -10,6 +10,7 @@ import { moneyIn } from '../vtime';
 import { explain } from '../access';
 import { useLayout } from '../layout';
 import { t } from '../i18n';
+import { IntlPanel } from './academy-international';
 import { Block, Fact, Initials, Split, StageBadge, StageTrack, Timeline, TrialSlots, STAGE, ago, hoursLeft, when } from './academy-ui';
 
 const COLUMNS = [
@@ -22,7 +23,7 @@ const COLUMNS = [
 ];
 const CLOSED = ['declined', 'withdrawn', 'expired', 'cancelled'];
 
-export function Admissions({ o, archived, toast, openId, setOpenId, onOpenScouting }) {
+export function Admissions({ o, archived, toast, openId, setOpenId, onOpenScouting, onOpenIntl }) {
   const [view, setView] = useState('board');
   const [programme, setProgramme] = useState(null);
   const [q, setQ] = useState('');
@@ -50,7 +51,7 @@ export function Admissions({ o, archived, toast, openId, setOpenId, onOpenScouti
   );
   return (
     <Split open={!!open} onClose={() => sel(null)} detailTitle="Application" list={body}
-      detail={open ? <Review id={open} archived={archived} toast={toast} onChanged={list.reload} onClose={() => sel(null)} onOpenAthlete={null} onOpenScouting={onOpenScouting} /> : null} />
+      detail={open ? <Review id={open} o={o} archived={archived} toast={toast} onChanged={list.reload} onClose={() => sel(null)} onOpenAthlete={null} onOpenScouting={onOpenScouting} onOpenIntl={onOpenIntl} /> : null} />
   );
 }
 
@@ -118,7 +119,7 @@ function Table({ apps, open, onOpen }) {
 }
 
 /** The review panel: everything staff need to decide, in one place. */
-export function Review({ id, archived, toast, onChanged, onClose, onOpenScouting }) {
+export function Review({ id, o, archived, toast, onChanged, onClose, onOpenScouting, onOpenIntl }) {
   const app = useLoad(() => api.get(`/academy/applications/${id}`), [id]);
   const desk = useLoad(() => (app.data ? api.get(`/academy/programmes/${app.data.programme_id}`) : Promise.resolve(null)), [app.data?.programme_id]);
   const bill = useLoad(() => (app.data ? api.get(`/academy/programmes/${app.data.programme_id}/agreements`, { athlete_id: app.data.athlete_id }).catch(() => []) : Promise.resolve([])), [app.data?.athlete_id, app.data?.programme_id]);
@@ -155,6 +156,7 @@ export function Review({ id, archived, toast, onChanged, onClose, onOpenScouting
           {onOpenScouting ? <Btn small title={t('scout.source.open')} color={c.paper} ink={c.ink} onPress={() => onOpenScouting(a.source.campaign_id)} style={{ alignSelf: 'flex-start' }} /> : null}
         </Block>
       ) : null}
+      {o && live ? <IntlPanel app={a} o={o} archived={archived} toast={toast} onOpen={onOpenIntl} /> : null}
       <Block title="Application">
         <Fact k="Programme" v={desk.data?.title ?? '…'} />
         <Fact k="Seats" v={seats ? (seats.capacity ? `${seats.seats_taken}/${seats.capacity} taken${seats.waitlisted ? ` · ${seats.waitlisted} waiting` : ''}` : 'No limit') : null} />

@@ -46,13 +46,13 @@ const chargeContext = async (c, chargeId) => (await c.query(
      LEFT JOIN academy_programmes pr ON pr.id = coalesce(e.programme_id, a.programme_id)
      JOIN users u ON u.id=ch.payer_id WHERE ch.id=$1`, [chargeId])).rows[0];
 
-const KIND = { registration: 'Joining fee', deposit: 'Deposit', tuition: 'Tuition', instalment: 'Instalment', trial: 'Trial fee', pack: 'Session pack', dues: 'Dues', late_fee: 'Late fee' };
+const KIND = { registration: 'Joining fee', deposit: 'Deposit', tuition: 'Tuition', instalment: 'Instalment', trial: 'Trial fee', pack: 'Session pack', dues: 'Dues', late_fee: 'Late fee', kit: 'Kit', kit_deposit: 'Kit deposit' };
 const sellerOf = async (c, ctx) => {
   const p = (await c.query('SELECT legal_name, tax_id, billing_address FROM academy_profiles WHERE organisation_id=$1', [ctx.org_id])).rows[0] ?? {};
   return { name: p.legal_name ?? ctx.org_name, tax_id: p.tax_id ?? null, address: p.billing_address ?? null, phone: null, email: null };
 };
 const linesOf = (ctx) => {
-  const t = KIND[ctx.kind] ?? ctx.kind;
+  const t = ctx.terms?.label ?? KIND[ctx.kind] ?? ctx.kind;
   const rows = [{ description: `${ctx.programme ?? 'Academy'} · ${t}`, amount_cents: Number(ctx.gross_minor), tax_cents: Number(ctx.tax_minor) }];
   if (Number(ctx.discount_minor) > 0) rows.push({ description: ctx.terms?.discount_reason === 'promo' ? `Promo code ${ctx.terms.promo?.code ?? ''}`.trim() : `Discount (${String(ctx.terms?.discount_reason ?? 'offer').replace('_', ' ')})`, amount_cents: -Number(ctx.discount_minor), tax_cents: ZERO });
   if (Number(ctx.funded_minor) > 0) rows.push({ description: `Funded by ${ctx.funding_source}${ctx.funding_ref ? ` (${ctx.funding_ref})` : ''}`, amount_cents: -Number(ctx.funded_minor), tax_cents: ZERO });

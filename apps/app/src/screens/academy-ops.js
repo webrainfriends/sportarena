@@ -6,6 +6,7 @@ import { Platform, Pressable, ScrollView, View } from 'react-native';
 import { api } from '../api';
 import { useLoad } from '../hooks';
 import { useNav } from '../nav';
+import { t } from '../i18n';
 import { useLayout } from '../layout';
 import { explain, LoadError } from '../access';
 import { Btn, Card, Chip, Empty, Loading, Row, Seg, Sheet, T, Tag } from '../ui';
@@ -13,6 +14,7 @@ import { FormSheet } from '../FormSheet';
 import { c } from '../theme';
 import { addDays, dateTimeIn, localToIso, moneyIn, timeIn, todayIn } from '../vtime';
 import { Block, Fact, Kpi } from './academy-ui';
+import { TransportTab } from './academy-transport';
 
 const uid = () => `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 10)}`;
 const LEVEL = { compliant: ['✓', 'Staffed'], warning: ['⚠', 'Needs attention'], blocked: ['⛔', 'Rule not met'] };
@@ -216,7 +218,7 @@ function StaffTab({ o, toast, admin, perms }) {
       {cover.data?.length ? <Block title={`Cover needed (${cover.data.length})`}>{cover.data.map((r) => <Row key={r.id} title={`${r.title}`} sub={`${dateTimeIn(r.starts_at, 'UTC')} · ${r.requester_name}${r.reason ? ` · ${r.reason}` : ''}`} right={<Btn small title="Find substitute" onPress={() => push('AcademySession', { id: r.session_id, tab: 'staff', find: true })} />} />)}</Block> : null}
       <Block title={`Staff (${staff.length})`} right={perms.includes('schedule') ? <Btn small title="＋ Roster a shift" color={c.paper} ink={c.ink} onPress={() => setShift(true)} /> : undefined}>
         {staff.map((p) => (
-          <Row key={p.user_id} title={`${p.display_name}${p.job_title ? ` · ${p.job_title}` : ''}`} sub={`${p.engagement_type ?? 'no engagement set'} · ${hrs(p.week_minutes)} this week${p.unconfirmed ? ` · ${p.unconfirmed} unconfirmed` : ''}${p.credential.coach_badge ? ` · ✓ coach credential${p.credential.coach_badge.expiring_soon ? ` (expires in ${p.credential.coach_badge.days_left} days)` : ''}` : ''}${p.credential.missing ? ' · ⚠ required credential missing' : ''}`}
+          <Row key={p.user_id} title={`${p.display_name}${p.job_title ? ` · ${p.job_title}` : ''}`} sub={`${p.engagement_type ?? 'no engagement set'} · ${hrs(p.week_minutes)} this week${p.unconfirmed ? ` · ${p.unconfirmed} unconfirmed` : ''}${p.credential.coach_badge ? ` · ✓ coach credential${p.credential.coach_badge.expiring_soon ? ` (expires in ${p.credential.coach_badge.days_left} days)` : ''}` : ''}${p.credential.missing ? ' · ⚠ required credential missing' : ''}${p.adaptive ? ` · ${t('adp.f_title')}: ${t(`adp.state_${p.adaptive.state}`)}` : ''}`}
             right={<View style={{ alignItems: 'flex-end', gap: 4 }}>{p.state && p.state !== 'active' ? <Tag label={p.state} color={c.orangeSoft} /> : null}<T size={11} color={c.mute}>{(p.permissions ?? []).map((x) => PERM_LABEL[x]).join(', ')}</T></View>}
             onPress={admin ? () => setEdit(p) : undefined} />
         ))}
@@ -396,12 +398,13 @@ export function Operations({ o, role, toast }) {
     ...(has('schedule', 'attendance', 'roster') ? [['today', 'Today'], ['week', 'Week']] : []),
     ...(has('schedule', 'timesheets') ? [['staff', 'Staff & leave']] : []),
     ['pay', 'Time & pay'], ...(has('schedule') ? [['insights', 'Insights']] : []),
+    ...(admin || has('suppliers') ? [['transport', t('transport.title')]] : []),
   ];
   const cur = tabs.some(([k]) => k === tab) ? tab : tabs[0][0];
   return (
     <View style={{ gap: 12 }}>
       <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }} accessibilityRole="tablist">{tabs.map(([k, l]) => <Chip key={k} label={l} active={cur === k} onPress={() => setTab(k)} />)}<Btn small title="My academy week" color={c.paper} ink={c.ink} onPress={() => push('AcademyAgenda')} /></View>
-      {cur === 'today' ? <Today o={o} toast={toast} setTab={setTab} /> : cur === 'week' ? <Week o={o} toast={toast} perms={perms} cohorts={probe.data.cohorts ?? []} /> : cur === 'staff' ? <StaffTab o={o} toast={toast} admin={admin} perms={perms} /> : cur === 'pay' ? <Pay o={o} toast={toast} perms={perms} /> : <Insights o={o} />}
+      {cur === 'today' ? <Today o={o} toast={toast} setTab={setTab} /> : cur === 'week' ? <Week o={o} toast={toast} perms={perms} cohorts={probe.data.cohorts ?? []} /> : cur === 'staff' ? <StaffTab o={o} toast={toast} admin={admin} perms={perms} /> : cur === 'pay' ? <Pay o={o} toast={toast} perms={perms} /> : cur === 'transport' ? <TransportTab o={o} toast={toast} admin={admin} perms={perms} /> : <Insights o={o} />}
     </View>
   );
 }

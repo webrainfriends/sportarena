@@ -6,7 +6,7 @@ import { one, many, tx } from '../db.js';
 import { badRequest, conflict, notFound } from '../errors.js';
 import { audit } from '../helpers.js';
 import { orgFor } from '../org-access.js';
-import { STAFF_MONEY } from '../academy.js';
+import { STAFF, STAFF_MONEY } from '../academy.js';
 import { pnl, ageing, pnlLines, runScenario, scenarioBaseline } from '../academy-finance.js';
 
 const day = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Use a calendar date (YYYY-MM-DD)');
@@ -133,11 +133,12 @@ cap({
 
 cap({
   name: 'list_academy_scenarios', method: 'GET', path: '/organisations/:id/academy/scenarios', tag: 'Academy',
-  summary: 'Saved forecast scenarios (owner/admin/finance). They are projections only; nothing in them is an actual.',
-  input: z.object({ id, programme_id: id.optional(), ...page }),
+  summary: 'Saved forecast scenarios (owner/admin/finance), commercial (#395) and capacity & workforce (#805) in one list; filter with kind. Finance sees the commercial ones only. They are projections only; nothing in them is an actual.',
+  input: z.object({ id, programme_id: id.optional(), kind: z.enum(['commercial', 'capacity']).optional(), ...page }),
   async handler({ user }, i) {
-    await orgFor(user, i.id, STAFF_MONEY);
-    return many('SELECT s.*, p.title AS programme FROM academy_scenarios s JOIN academy_programmes p ON p.id=s.programme_id WHERE s.organisation_id=$1 AND s.archived_at IS NULL AND ($2::uuid IS NULL OR s.programme_id=$2) ORDER BY s.created_at DESC, s.id LIMIT $3 OFFSET $4', [i.id, i.programme_id ?? null, i.limit, i.offset]);
+    const { role } = await orgFor(user, i.id, STAFF_MONEY);
+    const kind = role === 'finance' ? 'commercial' : i.kind ?? null;
+    return many('SELECT s.*, p.title AS programme FROM academy_scenarios s LEFT JOIN academy_programmes p ON p.id=s.programme_id WHERE s.organisation_id=$1 AND s.archived_at IS NULL AND ($2::uuid IS NULL OR s.programme_id=$2) AND ($5::text IS NULL OR s.kind=$5) ORDER BY s.created_at DESC, s.id LIMIT $3 OFFSET $4', [i.id, i.programme_id ?? null, i.limit, i.offset, kind]);
   },
 });
 
@@ -148,7 +149,7 @@ cap({
   async handler({ user }, i) {
     const s = await one('SELECT * FROM academy_scenarios WHERE id=$1', [i.id]);
     if (!s) throw notFound('Scenario');
-    await orgFor(user, s.organisation_id, STAFF_MONEY, { write: true });
+    await orgFor(user, s.organisation_id, s.kind === 'capacity' ? STAFF : STAFF_MONEY, { write: true });
     return one('UPDATE academy_scenarios SET archived_at=coalesce(archived_at, now()) WHERE id=$1 RETURNING id, archived_at', [s.id]);
   },
 });

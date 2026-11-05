@@ -37,6 +37,9 @@ export const RULES = z.object({
   // accepts a second-officer-verified external reference and, last, the manual audited dependency. An organiser can never type an athlete into a class.
   classification_mode: z.enum(['governed', 'external_reference']).default('external_reference'),
   allowed_classes: z.array(z.string().trim().min(1).max(20)).max(60).default([]),
+  // PS-02 (#832): classes accepted per category (division id -> class codes); a category without an entry falls back to allowed_classes. Provisional participation is off unless the policy says so.
+  category_classes: z.record(z.string().uuid(), z.array(z.string().trim().min(1).max(20)).max(60)).default({}),
+  allow_provisional: z.boolean().default(false),
   require_contract: z.boolean().default(false),
   require_guardian_consent: z.boolean().default(true),
   require_compliance: z.boolean().default(true), // obligations of the compliance rulebook (#595) that block registration; no obligations configured = no effect
@@ -69,13 +72,21 @@ async function waiver(c, eventId, userId, rule, at) {
 }
 
 const PARA_SRC = (kind, o) => ({ kind, id: o.id, class_code: o.class_code, class_status: o.status, label: o.authority, ...(o.version ? { version: o.version } : {}), ...(o.decision_ref ? { decision_ref: o.decision_ref } : {}) });
-async function paraCheck(c, rules, event, userId, at, manual) {
-  const allowed = (rules.allowed_classes ?? []).map((x) => x.toUpperCase());
+export const classesFor = (rules, divisionId) => ((divisionId && rules.category_classes?.[divisionId]?.length ? rules.category_classes[divisionId] : rules.allowed_classes) ?? []).map((x) => x.toUpperCase());
+const NO_RECORD = /no (authorised )?classification on record|classification is awaiting|needs review|unverified/i;
+/** Policy-approved provisional participation: only where the policy allows it, only while a classification is pending/under review/not yet on record, never over a "not eligible". */
+async function provisionalFor(c, rules, event, userId, at, r) {
+  if (!rules.allow_provisional || !r || !['pending', 'fail'].includes(r.status) || !NO_RECORD.test(r.reason)) return r;
+  const p = (await q(c).query('SELECT id, valid_until::text AS valid_until FROM para_provisional WHERE event_id=$1 AND user_id=$2 AND revoked_at IS NULL AND valid_until >= $3::date ORDER BY created_at DESC LIMIT 1', [event.id, userId, dayOf(at)])).rows[0];
+  return p ? { ...r, status: 'waived', code: 'classification.waived', reason: `Provisional participation approved under policy until ${p.valid_until} (${r.reason})`, source: { kind: 'para_provisional', id: p.id, valid_until: p.valid_until } } : r;
+}
+async function paraCheck(c, rules, event, userId, at, manual, divisionId) {
+  const allowed = classesFor(rules, divisionId);
   const judge = (o, kind) => {
     const src = PARA_SRC(kind, o);
-    if (o.status === 'not_eligible') return check('classification', 'fail', 'Classification: not eligible for this sport', src);
+    if (o.status === 'not_eligible') return check('classification', 'fail', 'Classification: not eligible for this sport (not a diagnosis)', src);
     if (o.status === 'review_required' || (o.review_by && o.review_by < dayOf(at))) return check('classification', 'pending', `Classification ${o.class_code ?? ''} needs review`.replace('  ', ' '), src);
-    if (allowed.length && !allowed.includes(String(o.class_code).toUpperCase())) return check('classification', 'fail', `Class ${o.class_code} is not a class of this competition`, src);
+    if (allowed.length && !allowed.includes(String(o.class_code).toUpperCase())) return check('classification', 'fail', `Class ${o.class_code} is not a class of this category`, src);
     return check('classification', 'pass', `Class ${o.class_code}${o.status === 'temporary' ? ' (temporary)' : ''} confirmed by ${o.authority}`, src);
   };
   const o = await outcomeAt(q(c), userId, event.sport_id, at);
@@ -84,6 +95,48 @@ async function paraCheck(c, rules, event, userId, at, manual) {
   const x = await verifiedExternalAt(q(c), userId, event.sport_id, at);
   if (x) return judge(x, 'para_external_reference');
   return null; // fall through to the audited manual dependency, then "none on record"
+}
+
+/**
+ * PS-02 (#832): the governed classification check for one person in one category, outside a full evaluation (used at entry, at registration and by the organiser's category check).
+ * Returns null when the competition does not use classification for that category. Never infers a class: governed outcome, then verified external reference, then an unverified dependency (pending).
+ */
+export async function entryClassCheck(c, event, policy, { user_id, division_id = null }, at = new Date()) {
+  const rules = policy.rules, classes = classesFor(rules, division_id);
+  if (!((rules.required_clearances ?? []).includes('classification') || classes.length)) return null;
+  const when = at instanceof Date ? at : new Date(at);
+  const dep = (await q(c).query("SELECT id, status, source_label FROM reg_dependencies WHERE event_id=$1 AND user_id=$2 AND kind='classification' AND superseded_at IS NULL ORDER BY created_at DESC LIMIT 1", [event.id, user_id])).rows[0];
+  let r = await paraCheck(c, rules, event, user_id, when, dep, division_id);
+  if (!r) {
+    const src = dep ? { kind: 'dependency', id: dep.id, label: dep.source_label ?? undefined } : null;
+    r = dep?.status === 'blocked' ? check('classification', 'fail', 'Classification is blocked', src)
+      : dep ? check('classification', 'pending', 'Classification reference is unverified: only a governed outcome or a verified external reference counts', src)
+      : check('classification', 'fail', 'No classification on record', null);
+  }
+  r = await provisionalFor(c, rules, event, user_id, when, r);
+  if (['fail', 'pending', 'unknown'].includes(r.status) && (rules.waivable ?? []).includes('classification')) {
+    const w = await waiver(c, event.id, user_id, 'classification', when);
+    if (w) r = { ...r, status: 'waived', code: 'classification.waived', reason: `${r.reason} (waived by an authorised exception until ${dayOf(w.effective_to)})`, source: { kind: 'exception', id: w.id } };
+  }
+  return r;
+}
+export const checkDecision = (r) => (r.status === 'fail' ? 'ineligible' : r.status === 'unknown' ? 'unknown' : r.status === 'pending' ? 'pending' : 'eligible');
+/** A definitive refusal (not eligible / class outside the category), as opposed to a missing or pending class which is flagged, never guessed. */
+export const isDefinitive = (r) => r.status === 'fail' && !NO_RECORD.test(r.reason);
+
+/** Freeze the class and rule version used for an entry at a stage. Append-only; one row per registration and stage. `enforce`: 'definitive' blocks only a definitive refusal, 'full' applies the policy's block_on. */
+export async function bindEntryClass(c, event, policy, reg, stage, actorId, enforce = 'definitive') {
+  if (!policy) return null;
+  const r = await entryClassCheck(c, event, policy, reg);
+  if (!r) return null;
+  const decision = checkDecision(r);
+  const blocked = policy.enforcement === 'blocking' && (enforce === 'full' ? (policy.rules.block_on ?? ['ineligible']).includes(decision) : isDefinitive(r));
+  if (blocked) throw conflict('The classification does not allow this entry', { code: 'classification_blocked', decision, reason: r.reason, policy_version: policy.version });
+  await q(c).query(
+    `INSERT INTO para_entry_snapshots(event_id, registration_id, user_id, stage, division_id, decision, check_status, reason, source, policy_id, policy_version, allowed_classes, created_by)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13) ON CONFLICT (registration_id, stage) DO NOTHING`,
+    [event.id, reg.id, reg.user_id, stage, reg.division_id ?? null, decision, r.status, r.reason, r.source ? JSON.stringify(r.source) : null, policy.id, policy.version, JSON.stringify(classesFor(policy.rules, reg.division_id)), actorId]);
+  return { check: r, decision };
 }
 
 // `code` is the stable, machine-readable reason (rule + status); `reason` stays the human sentence. Additive: existing consumers keep reading rule/status/reason.
@@ -175,16 +228,17 @@ export async function evaluate(c, ctx, teamId, userId) {
   const NAME = { licence: 'Licence', transfer: 'Transfer clearance', loan: 'Loan clearance', classification: 'Classification', disciplinary: 'Disciplinary status' };
   for (const kind of DEP_KINDS) {
     let d = byKind.get(kind);
-    const required = (rules.required_clearances ?? []).includes(kind) || (kind === 'classification' && (rules.allowed_classes ?? []).length > 0);
+    const required = (rules.required_clearances ?? []).includes(kind) || (kind === 'classification' && classesFor(rules, reg?.division_id).length > 0);
     if (kind === 'classification' && required) {
       // para classification (#488): the authorised outcome in force at `at`, read live; its identity is kept in the check source so the lock snapshot reproduces it
-      const r = await paraCheck(c, rules, event, userId, when, d);
-      if (r) { checks.push(await withWaiver('classification', r)); continue; }
+      const r = await paraCheck(c, rules, event, userId, when, d, reg?.division_id);
+      if (r) { checks.push(await withWaiver('classification', await provisionalFor(c, rules, event, userId, when, r))); continue; }
     }
     const src = d ? { kind: 'dependency', id: d.id, label: d.source_label ?? undefined } : null;
     let r = null;
     if (d?.status === 'blocked') r = check(kind === 'disciplinary' ? 'suspension' : kind, 'fail', kind === 'disciplinary' ? `Suspended${d.valid_until ? ` until ${dayOf(d.valid_until)}` : ''}` : `${NAME[kind]} is blocked`, src);
     else if (d?.status === 'pending') r = check(kind, 'pending', `${NAME[kind]} is awaiting confirmation`, src);
+    else if (d?.status === 'clear' && kind === 'classification') r = check(kind, 'pending', 'Classification reference is unverified: only a governed outcome or a verified external reference counts', src);
     else if (d?.status === 'clear') r = check(kind === 'disciplinary' ? 'suspension' : kind, 'pass', `${NAME[kind]} is clear`, src);
     else if (required) {
       let onFile = false;
@@ -193,7 +247,7 @@ export async function evaluate(c, ctx, teamId, userId) {
     }
     if (!r) continue;
     const key = r.rule === 'suspension' ? 'disciplinary' : r.rule;
-    checks.push(await withWaiver(key, r));
+    checks.push(await withWaiver(key, kind === 'classification' ? await provisionalFor(c, rules, event, userId, when, r) : r));
   }
 
   // 6 contract (reference to #333): only when the competition requires it

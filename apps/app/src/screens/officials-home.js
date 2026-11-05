@@ -2,6 +2,7 @@
 // my officiating history and "ask the rules" - all read from the canonical assignment, fixture and rulebook capabilities (the same ones agents use over MCP).
 // The live scoring console is the existing Match Centre and the result goes through the existing score sheet; this screen links to them rather than copying them.
 // The server decides every permission; this only shows what comes back and keeps touch targets large for pitch-side use.
+import { FixtureParaSummary } from './para-competition';
 import React, { useMemo, useState } from 'react';
 import { View } from 'react-native';
 import { api } from '../api';
@@ -582,7 +583,7 @@ export function OfficialMatch({ id, report: openReport }) {
       <H1>Match briefing</H1>
       {matchInfo}
       <View style={{ height: 12 }} />
-      {L.tablet ? <Cols a={<>{checks}{actions}</>} b={<>{crew}{rulesCard}{lineups}</>} /> : <>{checks}{actions}{crew}{rulesCard}{lineups}</>}
+      {L.tablet ? <Cols a={<>{checks}{actions}</>} b={<>{crew}<FixtureParaSummary fixtureId={id} />{rulesCard}{lineups}</>} /> : <>{checks}{actions}{crew}<FixtureParaSummary fixtureId={id} />{rulesCard}{lineups}</>}
       {(due.data ?? []).filter((x) => x.fixture_id === id).length ? (
         <Section title="Give feedback on the officials" color={c.sun}>
           <View style={{ gap: 8 }}>{(due.data ?? []).filter((x) => x.fixture_id === id).map((x) => <Card key={x.official_assignment_id} pad={14}><View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}><View style={{ flex: 1 }}><T weight="800">{x.official_name}</T>{roleTag(x.role)}</View><Btn small title="Rate" onPress={() => setRate(x)} style={{ minHeight: 44 }} /></View></Card>)}</View>

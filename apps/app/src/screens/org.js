@@ -16,6 +16,7 @@ import { AcademyDesk } from './academy';
 import { SchoolDesk } from './academics';
 import { Campuses } from './campuses';
 import { MyAcademyCard } from './academy-portal';
+import { MyAuditsCard } from './academy-accreditation';
 import { IncomingSponsorship } from './sponsor-beneficiaries';
 import { HandOverBrand } from './sponsor-ownership';
 import { Confirm } from './coaching';
@@ -73,6 +74,7 @@ export function Orgs() {
             </Section>
           ) : null}
           <MyAcademyCard onOpen={() => push('AcademyFamily')} />
+          <MyAuditsCard onOpen={() => push('AcademyAudits')} />
           <Section title="Workspaces" color={c.cyan}>
             {mine.length ? mine.map((o) => (
               <Row key={o.id} title={o.name} sub={`${KINDS.find(([k]) => k === o.kind)?.[1] ?? o.kind}${o.city ? ` · ${o.city}` : ''}`}

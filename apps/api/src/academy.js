@@ -1,6 +1,7 @@
 // Academy OS: the rules shared by every academy capability (REST, OpenAPI and MCP all go through them).
 // Athletes, guardians, consent, money and notifications stay in their canonical modules; this file only decides
 // admissions stages, seats, charges and who is told.
+import { assertReadyToEnrol } from './intl-readiness.js';
 import { z } from 'zod';
 import { audit, isAdmin } from './helpers.js';
 import { conflict, forbidden, notFound, unprocessable } from './errors.js';
@@ -247,6 +248,7 @@ export async function raiseRenewalCharge(c, up, planId) {
 
 /** Turn an accepted offer into an enrolment (seat is already reserved by the offer). Idempotent per application. */
 export async function enrol(c, app, { actor }) {
+  await assertReadyToEnrol(c, app.id);   // international admissions (#799): nothing mandatory may be open
   const programme = (await c.query('SELECT * FROM academy_programmes WHERE id=$1', [app.programme_id])).rows[0];
   await requireConsent(app.athlete_id, 'participation', 'joining this programme', c);
   const v = (await c.query('SELECT * FROM academy_programme_versions WHERE id=$1', [app.version_id])).rows[0];
