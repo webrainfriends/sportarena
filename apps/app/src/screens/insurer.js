@@ -17,7 +17,7 @@ const cur = (cents, currency) => (currency ? moneyIn(Number(cents), currency) : 
 const major = (cents, currency) => { let d = 2; try { d = new Intl.NumberFormat('en', { style: 'currency', currency: currency ?? 'INR' }).resolvedOptions().maximumFractionDigits; } catch { /* keep 2 */ } return String(Number(cents) / 10 ** d); };
 const list = (v) => String(v ?? '').split(',').map((x) => x.trim()).filter(Boolean);
 const COVER = { individual: 'Individual', team: 'Team', event: 'Event / tournament', venue: 'Venue' };
-const TABS = [['today', 'Today'], ['requests', 'Requests'], ['quotes', 'Quotes'], ['policies', 'Policies'], ['claims', 'Claims'], ['plans', 'Plans'], ['panel', 'Panel'], ['profile', 'Profile']];
+const TABS = [['today', 'Today'], ['requests', 'Requests'], ['quotes', 'Quotes'], ['policies', 'Policies'], ['claims', 'Claims'], ['plans', 'Plans'], ['para', 'Para cover'], ['panel', 'Panel'], ['profile', 'Profile']];
 
 const profileFields = (cur_) => [
   { key: 'name', label: 'Insurer name' },
@@ -157,12 +157,13 @@ export function InsuranceMarket({ onAsk }) {
   const [ask, setAsk] = useState(null);
   const [tick, setTick] = useState(0);
   const [planAsk, setPlanAsk] = useState(null);
+  const [paraFilter, setParaFilter] = useState(false);
   const { refresh, setActiveRole, toast } = useSession();
   const offers = useLoad(() => api.get('/insurance/plans', { limit: 30 }), [tick]);
   const becomeInsurer = async () => {
     try { await api.patch('/me/roles', { add: ['insurer'] }); await refresh(); setActiveRole('insurer'); push('InsurerDesk'); toast('Insurer role added: set up your profile'); } catch (e) { toast(e.message); }
   };
-  const m = useLoad(() => (isInsurer ? api.get('/insurance/market', { limit: 50, ...(cover ? { cover_for: cover } : {}) }) : Promise.resolve([])), [isInsurer, cover, tick]);
+  const m = useLoad(() => (isInsurer ? api.get('/insurance/market', { limit: 50, ...(cover ? { cover_for: cover } : {}), ...(paraFilter ? { para_capable: true } : {}) }) : Promise.resolve([])), [isInsurer, cover, tick, paraFilter]);
   return (
     <>
       <Card color={c.cyanSoft} pad={14}>
@@ -175,6 +176,9 @@ export function InsuranceMarket({ onAsk }) {
       </Card>
       {!isInsurer ? <Card pad={12}><T size={13} color={c.mute}>Are you an insurer or an agent? You can add the Insurer role next to your other roles (player, coach, referee, sponsor, event or venue manager), publish plans and answer these requests.</T><Btn small title="Become an insurer" onPress={becomeInsurer} style={{ marginTop: 8, alignSelf: 'flex-start' }} /></Card> : <>
         <View style={{ flexDirection: 'row', gap: 6, flexWrap: 'wrap' }}>{[['', 'All'], ...Object.entries(COVER)].map(([v, l]) => <Chip key={v} label={l} active={cover === v} onPress={() => setCover(v)} />)}</View>
+        <View style={{ flexDirection: 'row', gap: 6, flexWrap: 'wrap', marginTop: 4 }}>
+          <Chip label="Para cover" active={paraFilter} onPress={() => setParaFilter((x) => !x)} accessibilityLabel="Filter requests needing para-sport cover" />
+        </View>
         <InboxHint reloadKey={tick} />
         {m.loading && !m.data ? <Loading /> : m.error ? <ErrorBox error={m.error} onRetry={m.reload} /> : m.data?.length ? m.data.map((x) => (
           <Card key={x.id} pad={12} onPress={() => setOpen(x.id)}>
@@ -309,6 +313,77 @@ const PLAN_FIELDS = (p) => [
   { key: 'promo_text', label: 'Advertise an offer', optional: true, hint: 'A short line shown on the plan card, labelled "Offer". It never changes where the plan ranks.' },
   { key: 'promo_ends_on', label: 'Offer ends', type: 'date', optional: true },
 ];
+const PARA_EVENT_TYPE_LABELS = { sanctioned_competition: 'Sanctioned competition', recreational: 'Recreational', training_camp: 'Training camp', trial: 'Trial', mixed_ability: 'Mixed ability' };
+
+function ParaPlanAttributesPanel() {
+  const { toast } = useSession();
+  const plans = useLoad(() => api.get('/insurance/my-plans', { limit: 100 }), []);
+  const capability = useLoad(() => api.get('/insurance/para/insurers', { limit: 1 }), []);
+  const [editPara, setEditPara] = useState(null);
+  const isCap = !!(capability.data?.[0]?.para_capable);
+  return (
+    <Section title="Para-sport cover" color={c.violet}>
+      <Card pad={12}>
+        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+          <T weight="800">Accepts para-sport insurance</T>
+          <Btn small title={isCap ? 'Declared ✓' : 'Declare capability'} color={isCap ? c.mint : c.paper} ink={isCap ? c.ink : c.violet}
+            onPress={async () => { try { await api.patch(`/insurance/para/insurers/${capability.data?.[0]?.id ?? 'me'}/para`, { para_capable: !isCap, para_disciplines: [] }); capability.reload(); toast(isCap ? 'Para capability removed' : 'Para capability declared'); } catch (e) { toast(e.message); } }} />
+        </View>
+        <T size={12} color={c.mute} style={{ marginTop: 4 }}>Athletes and event managers filter by this when searching for para-sport cover.</T>
+      </Card>
+      {plans.data?.length ? plans.data.map((p) => (
+        <Card key={p.id} pad={12}>
+          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
+            <T weight="800" style={{ flex: 1 }}>{p.emoji} {p.name}</T>
+            <Btn small title="Edit para cover" color={c.paper} ink={c.violet} accessibilityLabel={`Edit para cover for ${p.name}`} onPress={() => setEditPara(p)} />
+          </View>
+          {p.para_disciplines?.length ? (
+            <View style={{ flexDirection: 'row', gap: 4, flexWrap: 'wrap', marginTop: 4 }}>
+              {p.para_disciplines.map((d) => <Tag key={d} label={d} color={c.violetSoft} />)}
+            </View>
+          ) : <T size={12} color={c.mute}>No para disciplines set — this plan won&apos;t appear in para-sport searches.</T>}
+          {p.para_exclusions ? <T size={12} color={c.mute} style={{ marginTop: 4 }}>Exclusions: {p.para_exclusions}</T> : <Tag label="Exclusions not stated" color={c.sun} style={{ marginTop: 4 }} />}
+        </Card>
+      )) : plans.loading ? <Loading /> : <Empty emoji="🛡️" title="No plans yet" sub="Publish a plan in the Plans tab first." />}
+      <FormSheet visible={!!editPara} onClose={() => setEditPara(null)} title="Edit para cover"
+        submitLabel="Save"
+        initial={editPara ? {
+          para_disciplines: (editPara.para_disciplines ?? []).join(', '),
+          para_event_types: (editPara.para_event_types ?? []).join(', '),
+          para_equipment_cover: editPara.para_equipment_cover ?? false,
+          para_travel_cover: editPara.para_travel_cover ?? false,
+          para_exclusions: editPara.para_exclusions ?? '',
+          para_coverage_unknowns: editPara.para_coverage_unknowns ?? '',
+          para_coverage_notes: '',
+        } : {}}
+        fields={[
+          { key: 'para_disciplines', label: 'Para-sport disciplines', hint: 'Sport slugs separated by commas, e.g. para_athletics, sitting_volleyball', optional: true },
+          { key: 'para_event_types', label: 'Event types covered', hint: `One or more of: ${Object.keys(PARA_EVENT_TYPE_LABELS).join(', ')}`, optional: true },
+          { key: 'para_equipment_cover', label: 'Equipment cover included', type: 'switch' },
+          { key: 'para_travel_cover', label: 'Travel cover included', type: 'switch' },
+          { key: 'para_exclusions', label: 'Para exclusions', type: 'multiline', hint: 'What is NOT covered. Shown to buyers. Leave empty to show a "not stated" warning.', optional: true },
+          { key: 'para_coverage_unknowns', label: 'Coverage unknowns', type: 'multiline', hint: 'Areas where coverage has not yet been determined. Shown verbatim to buyers.', optional: true },
+          { key: 'para_coverage_notes', label: 'Private notes (encrypted, insurer-only)', type: 'multiline', optional: true },
+        ]}
+        onSubmit={async (v) => {
+          const disciplines = list(v.para_disciplines);
+          const event_types = list(v.para_event_types);
+          await api.patch(`/insurance/para/plans/${editPara.id}/para`, {
+            para_disciplines: disciplines,
+            para_event_types: event_types,
+            para_equipment_cover: v.para_equipment_cover,
+            para_travel_cover: v.para_travel_cover,
+            para_exclusions: v.para_exclusions || null,
+            para_coverage_unknowns: v.para_coverage_unknowns || null,
+            ...(v.para_coverage_notes ? { para_coverage_notes: v.para_coverage_notes } : {}),
+          });
+          plans.reload();
+          return 'Para cover saved';
+        }} />
+    </Section>
+  );
+}
+
 function Plans() {
   const { toast } = useSession();
   const plans = useLoad(() => api.get('/insurance/my-plans', { limit: 100 }), []);
@@ -415,6 +490,7 @@ export function InsurerDesk({ tab: startTab }) {
       {tab === 'policies' ? <Policies /> : null}
       {tab === 'claims' ? <Claims /> : null}
       {tab === 'plans' ? <Plans /> : null}
+      {tab === 'para' ? <ParaPlanAttributesPanel /> : null}
       {tab === 'panel' ? <InsurerPanel /> : null}
       {tab === 'profile' ? <Profile me={m} onChanged={me.reload} /> : null}
       <Btn small title="See my public page" color={c.paper} ink={c.ink} onPress={() => push('InsurerPage', { id: m.id })} style={{ marginTop: 24, alignSelf: 'flex-start' }} />

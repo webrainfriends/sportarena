@@ -20,6 +20,29 @@ const EMOJI = { individual: '🧍', team: '🛡️', event: '🎟️', venue: '�
 export const nice = (s = '') => String(s).replace(/_/g, ' ');
 const TONE = { offered: c.cyan, accepted: c.mint, active: c.mint, approved: c.mint, paid: c.mint, quoted: c.cyan, open: c.sun, submitted: c.sun, under_review: c.sun, pending_payment: c.sun, declined: c.violetSoft, withdrawn: c.violetSoft, cancelled: c.violetSoft, expired: c.violetSoft, rejected: c.red };
 export const StatusTag = ({ s }) => <Tag label={nice(s)} color={TONE[s] ?? c.violetSoft} />;
+
+export function ParaAttributeRow({ plan, t }) {
+  if (!plan || (!plan.para_disciplines?.length && !plan.para_equipment_cover && !plan.para_travel_cover && !plan.disclosure_gap)) return null;
+  return (
+    <View style={{ marginTop: 6, gap: 4 }}>
+      {plan.disclosure_gap ? (
+        <Tag label={t ? t('insurance.para.disclosure_gap') : 'Exclusions not stated'} color={c.sun} accessibilityLabel="Para exclusions not stated by insurer" />
+      ) : null}
+      {plan.para_disciplines?.length ? (
+        <View style={{ flexDirection: 'row', gap: 4, flexWrap: 'wrap' }}>
+          {plan.para_disciplines.map((d) => <Tag key={d} label={d} color={c.violetSoft} />)}
+        </View>
+      ) : null}
+      <View style={{ flexDirection: 'row', gap: 4, flexWrap: 'wrap' }}>
+        {plan.para_equipment_cover ? <Tag label="Equipment ✓" color={c.cyanSoft} /> : null}
+        {plan.para_travel_cover ? <Tag label="Travel ✓" color={c.cyanSoft} /> : null}
+      </View>
+      {plan.para_coverage_unknowns ? (
+        <T size={11} color={c.mute} style={{ marginTop: 2 }}>{plan.para_coverage_unknowns}</T>
+      ) : null}
+    </View>
+  );
+}
 const cur = (cents, currency) => (currency ? moneyIn(Number(cents), currency) : money(Number(cents)));
 export const dayY = (v) => new Date(v).toLocaleDateString(locale, { day: 'numeric', month: 'short', year: 'numeric' });
 const ACTION = { requested: 'Request sent', quote_sent: 'Quote received', quote_accepted: 'Quote accepted, cover assigned', quote_declined: 'Quote declined', quote_withdrawn: 'Quote withdrawn', quote_expired: 'Quote expired', accepted: 'Request closed', cancelled: 'Request cancelled', insurer_declined: 'Insurer passed' };
@@ -102,6 +125,38 @@ export function DocumentsSheet({ parent, subject, canEdit, linkable, title, kind
           {img ? <Image source={{ uri: `${API}${base}/${img.id}/file`, headers: authHeader() }} resizeMode="contain" style={{ width: '100%', height: 520 }} /> : null}
         </View>
       </Modal>
+    </Sheet>
+  );
+}
+
+export function EquipmentSheet({ policy, visible, onClose }) {
+  const { t, toast } = useSession();
+  const eq = useLoad(() => (visible && policy?.id ? api.get(`/insurance/para/policies/${policy.id}/equipment`) : Promise.resolve([])), [visible, policy?.id]);
+  const [adding, setAdding] = useState(false);
+  if (!visible) return null;
+  return (
+    <Sheet visible={visible} onClose={onClose} title={t('insurance.para.equipment_sheet_title')}>
+      {eq.loading ? <Loading /> : eq.error ? <ErrorBox error={eq.error} onRetry={eq.reload} /> : eq.data?.length ? eq.data.map((e) => (
+        <Card key={e.id} pad={12}>
+          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
+            <T weight="800" style={{ flex: 1 }}>{e.description}</T>
+            <Btn small title="Remove" color={c.paper} ink={c.red} accessibilityLabel={`Remove ${e.description}`} onPress={async () => { try { await api.delete(`/insurance/para/policies/${policy.id}/equipment/${e.id}`); eq.reload(); toast(t('insurance.para.equipment_removed')); } catch (err) { toast(err.message); } }} />
+          </View>
+          <T size={12} color={c.mute}>{t('insurance.para.serial_no')}: {e.serial_masked} · {t('insurance.para.insured_value')}: {cur(e.insured_value_cents, policy?.currency)}</T>
+        </Card>
+      )) : <Empty emoji="🔧" title={t('insurance.para.equipment_sheet_title')} sub={t('insurance.para.add_equipment')} />}
+      <Btn small title={t('insurance.para.add_equipment')} color={c.violet} style={{ marginTop: 8, alignSelf: 'flex-start' }} onPress={() => setAdding(true)} />
+      <FormSheet visible={adding} onClose={() => setAdding(false)} title={t('insurance.para.add_equipment')} submitLabel="Add"
+        initial={{}} fields={[
+          { key: 'description', label: 'Description' },
+          { key: 'serial_no', label: t('insurance.para.serial_no'), optional: true },
+          { key: 'insured_value_cents', label: t('insurance.para.insured_value'), type: 'money', currency: policy?.currency },
+        ]}
+        onSubmit={async (v) => {
+          await api.post(`/insurance/para/policies/${policy.id}/equipment`, v);
+          eq.reload();
+          return t('insurance.para.equipment_saved');
+        }} />
     </Sheet>
   );
 }
@@ -212,6 +267,7 @@ export function PlanCard({ p, i = 0, picked, onPick, onBuy, onQuote, onInsurer }
       <T size={12} color={c.mute} style={{ marginTop: 6 }}>Excess {cur(p.deductible_cents, p.currency)} · waiting period {p.waiting_period_days} days · {p.term_months.min}–{p.term_months.max} months{p.eligibility.min_age != null || p.eligibility.max_age != null ? ` · ages ${p.eligibility.min_age ?? 0}–${p.eligibility.max_age ?? 'any'}` : ''}{p.eligibility.sports.length ? ` · ${p.eligibility.sports.join(', ')}` : ''}</T>
       {p.exclusions ? <T size={12} style={{ marginTop: 4 }}><T size={12} weight="800">Not covered: </T>{p.exclusions}</T> : null}
       {p.conditions ? <T size={12} style={{ marginTop: 2 }}><T size={12} weight="800">Conditions: </T>{p.conditions}</T> : null}
+      <ParaAttributeRow plan={p} />
       <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 8, gap: 8, flexWrap: 'wrap' }}>
         <T weight="900">{cur(p.premium_cents, p.currency)}<T size={12} color={c.mute}>/mo · cover {cur(p.coverage_cents, p.currency)}</T></T>
         <View style={{ flexDirection: 'row', gap: 6, flexWrap: 'wrap' }}>
@@ -354,7 +410,7 @@ function QuotesSection({ reloadKey, onChanged, onPay }) {
 
 // ------------------------------------------------------------------------------------------------------ policies
 
-function PolicyCard({ p, onClaim, onDocs, onRenew, onPay }) {
+function PolicyCard({ p, onClaim, onDocs, onRenew, onPay, onEquipment }) {
   const lapsed = p.effective_status === 'expired';
   const left = p.days_left;
   return (
@@ -368,6 +424,7 @@ function PolicyCard({ p, onClaim, onDocs, onRenew, onPay }) {
         {p.status === 'active' && !p.renewed_by && left <= 60 && left >= -30 ? <Btn small title={p.renewal_due || lapsed ? 'Renew now' : 'Renew early'} color={p.renewal_due || lapsed ? c.pink : c.paper} ink={c.pink} onPress={() => onRenew(p)} /> : null}
         {p.status === 'active' && !lapsed ? <Btn small title="File a claim" color={c.ink} onPress={() => onClaim(p)} /> : null}
         <Btn small title={`Documents${p.documents ? ` (${p.documents})` : ''}`} color={c.paper} ink={c.ink} onPress={() => onDocs(p)} />
+        {p.terms?.para_equipment_cover ? <Btn small title="Equipment" color={c.paper} ink={c.violet} accessibilityLabel="Manage insured equipment" onPress={() => onEquipment?.(p)} /> : null}
       </View>
     </Card>
   );
@@ -383,6 +440,7 @@ export function Insurance() {
   const [claim, setClaim] = useState(null);
   const [renew, setRenew] = useState(null);
   const [docs, setDocs] = useState(null);
+  const [equipment, setEquipment] = useState(null);
   const [tick, setTick] = useState(0);
   const [f, setF] = useState({ q: '', sort: 'premium', cover_for: '', verified: false });
   const [picked, setPicked] = useState([]);
@@ -401,7 +459,7 @@ export function Insurance() {
       {due.length ? <Card color={c.sunSoft} style={{ marginTop: 14 }} pad={12}><T weight="800">⏰ {due.length === 1 ? '1 policy is' : `${due.length} policies are`} due for renewal</T><T size={13} color={c.mute}>Renew before the end date so there is no gap in cover.</T></Card> : null}
 
       <Section title="Your policies" color={c.cyan}>
-        {pol.data?.length ? pol.data.map((p) => <PolicyCard key={p.id} p={p} onPay={setPaying} onClaim={setClaim} onRenew={setRenew} onDocs={(x) => setDocs({ policy_id: x.id, name: x.plan_name, linkable: x.subject_type !== 'individual' })} />) : <Empty emoji="🛡️" title="Not covered yet" sub="Pick a plan below, or ask for a quote." />}
+        {pol.data?.length ? pol.data.map((p) => <PolicyCard key={p.id} p={p} onPay={setPaying} onClaim={setClaim} onRenew={setRenew} onDocs={(x) => setDocs({ policy_id: x.id, name: x.plan_name, linkable: x.subject_type !== 'individual' })} onEquipment={setEquipment} />) : <Empty emoji="🛡️" title="Not covered yet" sub="Pick a plan below, or ask for a quote." />}
       </Section>
 
       <QuotesSection reloadKey={tick} onChanged={changed} onPay={setPaying} />
@@ -460,6 +518,7 @@ export function Insurance() {
       <PlanSheets state={state} setState={setState} onChanged={changed} onPay={setPaying} />
       {paying ? <PaySheet target={paying} onClose={() => setPaying(null)} onDone={changed} /> : null}
       <DocumentsSheet linkable={!!docs?.linkable} parent={docs ? (docs.policy_id ? { policy_id: docs.policy_id } : { claim_id: docs.claim_id }) : null} title={docs?.name ?? ''} kinds={docs?.policy_id ? ['policy_schedule', 'certificate', 'receipt', 'other'] : ['claim_evidence']} onClose={() => setDocs(null)} onChanged={changed} />
+      <EquipmentSheet policy={equipment} visible={!!equipment} onClose={() => setEquipment(null)} />
       <FormSheet visible={!!claim} onClose={() => setClaim(null)} title="File a claim" submitLabel="Submit claim"
         fields={[{ key: 'amount_cents', label: 'Claim amount', type: 'money', currency: () => claim?.terms?.currency ?? claim?.currency, hint: 'In the currency of your policy.' }, { key: 'incident_on', label: 'Date of the incident', type: 'date', optional: true }, { key: 'description', label: 'What happened?', type: 'multiline', hint: 'Encrypted at rest. Add photos or reports under Evidence once it is filed.' }]}
         onSubmit={async (v) => { await api.post(`/insurance/policies/${claim.id}/claims`, { description: v.description, amount_cents: v.amount_cents, ...(v.incident_on ? { incident_on: v.incident_on } : {}) }); claims.reload(); return 'Claim submitted'; }} />
