@@ -38,7 +38,7 @@ export function AdaptiveFilters({ value, onChange }) {
         <MultiMenuField label={t('adp.f_disc')} value={value.disc} onChange={(v) => set('disc', v)} options={discOptions(cat)} />
         <MultiMenuField label={t('adp.f_format')} value={value.format} onChange={(v) => set('format', v)} options={fmtOptions(cat)} />
         <MultiMenuField label={t('adp.f_comm')} value={value.comm} onChange={(v) => set('comm', v)} options={commOptions()} />
-        <View style={{ flexDirection: 'row', flexWrap: 'wrap' }}><Chip label={`✓ ${t('adp.f_verified')}`} active={value.verified} onPress={() => set('verified', !value.verified)} /></View>
+        <View style={{ flexDirection: 'row', flexWrap: 'wrap' }}><Chip label={['✓', t('adp.f_verified')].join(' ')} active={value.verified} onPress={() => set('verified', !value.verified)} /></View>
         <T size={12} color={c.mute}>{t('adp.f_note')}</T>
       </View>
     </Card>
@@ -152,7 +152,7 @@ export function CoachAdaptive() {
           {k.decision_reason && k.status === 'revoked' ? <T size={12} color={c.mute}>{k.decision_reason}</T> : null}
         </Card>
       )) : <Empty emoji="🪪" title={t('adp.credentials')} sub={t('adp.no_cred')} />}
-      <Btn title={`+ ${t('adp.add_cred')}`} onPress={() => setAsk(true)} style={{ alignSelf: 'flex-start', marginTop: 8 }} />
+      <Btn title={['+', t('adp.add_cred')].join(' ')} onPress={() => setAsk(true)} style={{ alignSelf: 'flex-start', marginTop: 8 }} />
       <T size={12} color={c.mute} style={{ marginTop: 10 }}>{t('adp.disclaimer')}</T>
       {rules.data ? <RequestSheet visible={ask} onClose={() => setAsk(false)} rules={rules.data} preset="coach" onDone={mine.reload} /> : null}
     </Screen>

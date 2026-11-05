@@ -431,6 +431,7 @@ function Session({ h, who, children }) {
   const { user } = useSession();
   const [hist, setHist] = useState(false), [shared, setShared] = useState(false), [adj, setAdj] = useState(false);
   const ran = ['confirmed', 'completed'].includes(h.status);
+  const upcoming = ['requested', 'confirmed'].includes(h.status) && new Date(h.starts_at) > new Date();
   return (
     <Card pad={14}>
       <View style={{ flexDirection: 'row', gap: 12, alignItems: 'center' }}>
@@ -450,7 +451,7 @@ function Session({ h, who, children }) {
         </View>
       </View>
       <View style={{ flexDirection: 'row', gap: 8, marginTop: 10, flexWrap: 'wrap' }}>{children}<Btn small title="History" color={c.paper} ink={c.mute} accessibilityLabel="Show the history of this session" onPress={() => setHist(true)} />
-        {['requested', 'confirmed'].includes(h.status) && new Date(h.starts_at) > new Date() ? <Btn small title={t('adp.adj_title')} color={c.paper} ink={c.ink} accessibilityLabel={t('adp.adj_title')} onPress={() => setAdj(true)} /> : null}
+        {upcoming ? <Btn small title={t('adp.adj_title')} color={c.paper} ink={c.ink} accessibilityLabel={t('adp.adj_title')} onPress={() => setAdj(true)} /> : null}
         {ran && who === 'athlete' ? <Btn small title={t('swk.open')} accessibilityLabel={t('swk.open')} onPress={() => push('SessionWorkspace', { source_type: 'coach_hire', source_id: h.id })} /> : null}
         {ran && who === 'coach' ? <Btn small title={t('swk.athlete.open')} color={c.paper} ink={c.ink} accessibilityLabel={t('swk.athlete.open')} onPress={() => setShared(true)} /> : null}
       </View>
