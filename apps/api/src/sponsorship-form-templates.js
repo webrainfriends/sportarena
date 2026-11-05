@@ -21,6 +21,9 @@ const money = (what) => ({
   ],
 });
 
+/** PS-19: privacy constraint metadata carried on the para_athlete template. The API capability enforces these; the template declares intent. */
+export const PARA_TEMPLATE_PRIVACY = { privacyFence: true, sponsorDataScope: 'financial_operational_only', prohibitDisabilityInference: true };
+
 export const FORM_TEMPLATES = [
   {
     key: 'general', name: 'General sponsorship application', best_for: 'Any program',
@@ -128,8 +131,35 @@ export const FORM_TEMPLATES = [
       money('the programme'),
     ],
   },
+  {
+    key: 'para_athlete', name: 'Para-athlete funding', best_for: 'Individual para-athletes',
+    summary: 'Covers specialised equipment, accessible transport, classification travel, training camps and competition fees. Sponsor receives financial and delivery evidence only — no clinical, classification medical or disability detail is shared.',
+    privacy: PARA_TEMPLATE_PRIVACY,
+    sections: () => [
+      contact([T('age_group', 'Are you under 18?', 'yesno', { required: true }),
+        T('guardian_name', 'Parent or guardian name', 'text', { required: true, confidential: true, when: { field: 'age_group', op: 'eq', value: true } })]),
+      { id: 'athlete', title: 'Your sport', fields: [
+        T('sport', 'Para sport', 'text', { required: true, hint: 'e.g. Wheelchair Basketball, Para Athletics, Para Swimming' }),
+        T('level', 'Current competition level', 'choice', { required: true, options: opts('Club', 'Regional', 'National', 'International', 'Paralympic/World Class') }),
+        T('achievements', 'Results and achievements so far', 'longtext', { required: true }),
+        T('coach', 'Who coaches you?', 'text'),
+        T('goals', 'Goals for the next 12 months', 'longtext', { required: true }),
+        T('story', 'Why should a sponsor back you?', 'longtext', { required: true }),
+      ] },
+      { id: 'para_needs', title: 'Operational needs and costs', fields: [
+        T('para_need_types', 'What operational support do you need funding for?', 'multi', { required: true, options: opts('Specialised Equipment (sport wheelchair, prosthetics, adaptive kit)', 'Accessible Transport (door-to-door, accessible vehicle)', 'Classification Travel (approved classification appointments only)', 'Training Camp — Accessible Facility', 'Competition Entry Fees', 'General Coaching') }),
+        T('accessible_transport_details', 'Accessible transport details', 'longtext', { hint: 'Route, frequency and provider. No medical or clinical detail is asked for or shared with the sponsor.' }),
+        T('classification_travel_details', 'Classification travel details', 'longtext', { hint: 'Appointment location and governing body only. Medical or clinical classification outcomes are not shared with the sponsor.' }),
+        T('equipment_spec', 'Equipment specification', 'longtext', { hint: 'Make, model and sport use. No medical prescription or clinical detail.' }),
+        T('supplier', 'Preferred supplier or provider', 'text'),
+        T('budget', 'Itemised season budget', 'budget', { required: true }),
+        T('proof', 'Supplier quote, travel booking or entry confirmation', 'file', { max_files: 4 }),
+        T('refs', 'References (coach or club)', 'references', { required: true, max_items: 2 }),
+      ] },
+    ],
+  },
 ];
 
-export const templateDefinition = (key) => { const t = FORM_TEMPLATES.find((x) => x.key === key); return t ? { sections: t.sections() } : null; };
+export const templateDefinition = (key) => { const t = FORM_TEMPLATES.find((x) => x.key === key); return t ? { sections: t.sections(), ...(t.privacy ? { privacy: t.privacy } : {}) } : null; };
 export const templateList = () => FORM_TEMPLATES.map((t) => { const definition = { sections: t.sections() };
   return { key: t.key, name: t.name, best_for: t.best_for, summary: t.summary, sections: definition.sections.length, questions: definition.sections.reduce((n, s) => n + s.fields.length, 0), definition }; });

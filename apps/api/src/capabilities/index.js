@@ -255,6 +255,7 @@ import './academy-reconciliation.js';
 import './academy-branches.js';
 import './academy-follow-through.js';
 import './academy-packs.js';
+import './academy-report-packs.js';
 import './academy-insights.js';
 import './academy-executive.js';
 import './academy-letters.js';

@@ -149,3 +149,50 @@ export function ApplicationEvidence({ application, side, onChanged }) {
     </View>
   );
 }
+
+const fmtPence = (pence) => { try { return new Intl.NumberFormat(undefined, { style: 'currency', currency: 'GBP' }).format(pence / 100); } catch { return `${pence}p`; } };
+
+/**
+ * PS-19: Para-sport delivery evidence panel for a sponsor viewing a para-sport programme.
+ * Shows financial and operational evidence only — no clinical, classification medical or disability detail.
+ * Sponsor confirms receipt of each item; every read is audit-logged server-side.
+ */
+export function ParaDeliveryEvidence({ programmeId, may }) {
+  const { toast } = useSession();
+  const [confirmId, setConfirmId] = useState(null);
+  const q = useLoad(() => api.get('/para-sport-funding/delivery-evidence', { programme_id: programmeId, limit: 50 }), [programmeId]);
+  const ev = q.data?.evidence ?? [];
+  const summary = useLoad(() => api.get('/para-sport-funding/impact-summary', { programme_id: programmeId }), [programmeId]);
+  const s = summary.data;
+  const confirm = async (id) => {
+    try { await api.post(`/para-sport-funding/delivery-evidence/${id}/confirm`); toast(t('psf.delivery.confirmed')); setConfirmId(null); q.reload(); summary.reload(); } catch (e) { toast(explain(e)); }
+  };
+  return (
+    <Section title={t('psf.delivery.title')} color={c.violet}>
+      {s ? (
+        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginBottom: 8 }}>
+          {[[t('psf.impact.awarded'), fmtPence(s.budget_pence ?? 0)], [t('psf.impact.disbursed'), fmtPence(s.disbursed_pence ?? 0)], [t('psf.impact.athletesSupported'), String(s.athletes_supported ?? 0)], [t('psf.impact.deliveryConfirmed'), `${s.evidence_confirmed ?? 0}/${s.evidence_items ?? 0}`]].map(([l, v]) => (
+            <View key={l} style={{ minWidth: 110, backgroundColor: c.paper, borderRadius: 10, padding: 10 }}>
+              <T size={11} color={c.mute}>{l}</T><T size={15} weight="800">{v}</T>
+            </View>))}
+        </View>) : null}
+      {q.error ? <LoadError error={q.error} onRetry={q.reload} /> : q.loading && !q.data ? <Loading /> : ev.length ? ev.map((item) => (
+        <Card key={item.id} color={item.confirmed_at ? c.limeSoft : c.sunSoft}>
+          <View style={{ flexDirection: 'row', gap: 8, alignItems: 'center' }}>
+            <View style={{ flex: 1 }}>
+              <T weight="900">{item.need_type?.replace(/_/g, ' ')}</T>
+              <T size={12} color={c.mute}>{item.evidence_type?.replace(/_/g, ' ')}{item.supplier_name ? ` · ${item.supplier_name}` : ''} · {fmtPence(item.amount_pence ?? 0)}</T>
+              {item.confirmed_at ? <T size={12} color={c.mute}>{day(item.confirmed_at)}</T> : null}
+            </View>
+            <Tag label={item.confirmed_at ? t('psf.delivery.confirmed') : t('psf.delivery.pending')} color={item.confirmed_at ? c.lime : c.sun} />
+          </View>
+          {may && !item.confirmed_at ? <Btn small title={t('psf.delivery.confirmed')} color={c.mint} ink={c.ink} style={{ alignSelf: 'flex-start', marginTop: 8 }} onPress={() => confirm(item.id)} accessibilityLabel={`Confirm delivery evidence ${item.need_type}`} /> : null}
+        </Card>
+      )) : <Empty emoji="📦" title="No delivery evidence yet" sub="Athletes submit supplier invoices, transport receipts and facility confirmations here." />}
+      <View accessibilityRole="note" style={{ backgroundColor: c.cyanSoft, borderRadius: 10, padding: 12, marginTop: 8 }}>
+        <T size={12}>{t('psf.delivery.privacyBanner')}</T>
+      </View>
+      {ev.length ? <Btn small title={t('psf.delivery.downloadReport')} color={c.paper} ink={c.ink} style={{ alignSelf: 'flex-start' }} onPress={() => toast('Report download is handled by the sponsorship reports module')} /> : null}
+    </Section>
+  );
+}

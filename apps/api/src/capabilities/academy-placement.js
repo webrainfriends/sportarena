@@ -12,7 +12,8 @@ import { one, many, tx } from '../db.js';
 import { badRequest, conflict, forbidden, notFound } from '../errors.js';
 import { audit } from '../helpers.js';
 import { orgFor } from '../org-access.js';
-import { isYouth, youthGate } from '../youth.js';
+import { isYouth } from '../youth.js';
+import { youthGate } from '../pathway.js';
 import { encrypt, decrypt } from '../crypto.js';
 import { STAFF } from '../academy.js';
 

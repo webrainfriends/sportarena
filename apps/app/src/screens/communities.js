@@ -61,6 +61,8 @@ function CommunityCard({ cm, onOpen, onChanged }) {
         {cm.description ? <T size={13.5} numberOfLines={3}>{cm.description}</T> : null}
         <View style={{ flexDirection: 'row', gap: 6, flexWrap: 'wrap' }}>
           {cm.sport ? <Tag label={cm.sport.name} color={c.violetSoft} /> : null}
+          {cm.adaptive ? <Tag label={t('comm.adaptive_badge')} color={c.cyanSoft} textColor={c.cyan} /> : null}
+          {(cm.para_sports ?? []).map((ps) => <Tag key={ps} label={ps} color={c.cyanSoft} textColor={c.cyan} />)}
           <Tag label={t(`community.vis_${cm.visibility}`)} color={c.cyanSoft ?? c.violetSoft} />
           {cm.audience === 'all' ? <Tag label={t('community.aud_all_short')} color={c.mintSoft} /> : null}
           {cm.invited ? <Tag label={t('community.invited')} color={c.sunSoft} /> : null}
@@ -102,9 +104,10 @@ export default function Communities({ section }) {
   const [tab, setTab] = useState(['discover', 'mine', 'invitations'].includes(section) ? section : 'discover');
   const [q, setQ] = useState('');
   const [term, setTerm] = useState('');
+  const [adaptiveOnly, setAdaptiveOnly] = useState(false);
   const [create, setCreate] = useState(false);
   useEffect(() => { const h = setTimeout(() => setTerm(q.trim().length > 1 ? q.trim() : ''), 300); return () => clearTimeout(h); }, [q]);
-  const list = usePaged('/communities', { scope: tab === 'mine' ? 'mine' : 'discover', limit: 20, ...(term ? { q: term } : {}) }, tab !== 'invitations');
+  const list = usePaged('/communities', { scope: tab === 'mine' ? 'mine' : 'discover', limit: 20, ...(term ? { q: term } : {}), ...(adaptiveOnly ? { adaptive: true } : {}) }, tab !== 'invitations');
   const inv = useLoad(() => api.get('/me/community-invitations', { limit: 50 }), []);
   const answer = (v, decision) => async () => {
     try { await api.post(`/me/community-invitations/${v.id}`, { decision }); await inv.reload(); list.reload(); if (decision === 'accept') push('CommunityDetail', { slug: v.slug }); }
@@ -119,7 +122,18 @@ export default function Communities({ section }) {
       </View>
       <Seg options={options} value={tab} onChange={setTab} />
       <View style={{ marginTop: 14, gap: 10 }}>
-        {tab !== 'invitations' ? <Field value={q} onChangeText={setQ} placeholder={t('community.search')} accessibilityLabel={t('community.search')} /> : null}
+        {tab !== 'invitations' ? (
+          <View style={{ gap: 8 }}>
+            <Field value={q} onChangeText={setQ} placeholder={t('community.search')} accessibilityLabel={t('community.search')} />
+            <Pressable onPress={() => setAdaptiveOnly((v) => !v)} accessibilityRole="checkbox" accessibilityLabel={t('comm.filter_adaptive')}
+              style={{ flexDirection: 'row', alignItems: 'center', gap: 8, minHeight: 36 }}>
+              <View style={{ width: 20, height: 20, borderRadius: 5, borderWidth: 1.5, borderColor: adaptiveOnly ? c.cyan : c.cyanSoft, backgroundColor: adaptiveOnly ? c.cyan : c.paper, alignItems: 'center', justifyContent: 'center' }}>
+                {adaptiveOnly ? <T style={{ color: c.paper, fontSize: 12, fontWeight: '900' }}>✓</T> : null}
+              </View>
+              <T style={{ fontSize: 13, color: c.ink }}>{t('comm.filter_adaptive')}</T>
+            </Pressable>
+          </View>
+        ) : null}
         {tab === 'invitations' ? (
           inv.loading && !inv.data ? <Loading /> : inv.error ? <ErrorBox error={inv.error} onRetry={inv.reload} /> : !inv.data?.length ? <Empty emoji="✉️" title={t('community.no_invitations')} /> : inv.data.map((v) => (
             <Card key={v.id} pad={14}>

@@ -157,7 +157,7 @@ id: 'wellbeing', title: 'Support student wellbeing and development',
     why: 'Let disabled and para athletes join and progress in your programmes without disclosing a diagnosis: set what a programme offers, check every adaptive session is ready, and let athletes share only the operational needs they choose.',
     steps: ['Open Academy, then Inclusion, then Programme setup, pick a programme and choose who can join, the sport adaptation templates, the adjustments offered, the venue features and the support-person ratio it needs.', 'Ask venue managers to record each venue\'s access features (lift, step-free route, accessible changing room, pool hoist) so sessions can be checked against them.', 'Athletes, or the verified guardian of a young person, open My academy, then Accommodations, and share only what staff need, with whom and until when. They can withdraw it at any moment.', 'Open Inclusion, then Session readiness, choose a session and resolve every gap: venue, support persons, duty cover and the lead coach credential. Coaches and venue staff see only what was shared with them, and every look is logged for the athlete.', 'Record adapted, coach-led assessments with descriptor levels, never a single score, and have a second assessor sign them off. Directors see counts only on the Overview.', 'Open Academy, then Inclusion, then Para pathways, to see which enrolled athletes have shared their athlete-owned para-sport pathway with you. View their milestones and evidence for the stages they granted you, and leave feedback on a checkpoint when asked. The athlete controls what you can see and can revoke access at any moment.'],
     target: { academy: 'inclusion' },
-    modules: ['academy-inclusion.js', 'para-pathway.js', 'para-physio.js'], sources: ['apps/app/src/screens/academy-inclusion.js', 'apps/app/src/screens/inclusion-family.js', 'apps/app/src/screens/para-pathway.js', 'apps/app/src/screens/physio-para-rehab.js'],
+    modules: ['academy-inclusion.js', 'para-pathway.js', 'para-physio.js', 'para-sport-funding.js'], sources: ['apps/app/src/screens/academy-inclusion.js', 'apps/app/src/screens/inclusion-family.js', 'apps/app/src/screens/para-pathway.js', 'apps/app/src/screens/physio-para-rehab.js', 'apps/app/src/screens/sponsor-programs.js', 'apps/app/src/screens/player-funding.js'],
   },
   {
     id: 'placement', title: 'Manage placement pathways',
@@ -173,15 +173,23 @@ id: 'wellbeing', title: 'Support student wellbeing and development',
     target: { academy: 'accreditation' },
     modules: ['academy-accreditation.js'], sources: ['apps/app/src/screens/academy-accreditation.js'],
   },
+  {
+    id: 'report_packs', title: 'Issue reviewed report packs',
+    why: 'Send families, boards and finance branded PDF packs that a second person has checked and approved, with the data basis and any gaps shown.',
+    steps: ['Open Academy, then Reports. Choose a pack: development report, term report, board management pack, P&L pack or campus quality pack.', 'Tap New draft and pick the athlete, campus and period. The figures are frozen when the draft is created and nothing is shared yet.', 'Tap Schedule to have drafts prepared weekly, monthly or each quarter for a group or campus. A schedule only drafts; it never issues.', 'Send the draft to review. A different owner or admin checks the data basis, evidence versions, gaps and who can read it, then approves or asks for changes.', 'Issue the approved pack. Guardians (or the adult athlete) get a notice with no figures and open the PDF securely from My academy.', 'To withdraw a pack, open it and tap Revoke with a reason. The file stops opening at once and the history is kept.'],
+    target: { academy: 'reports' },
+    modules: ['academy-report-packs.js', 'academy-packs.js'], sources: ['apps/app/src/screens/academy-reports.js'],
+  },
 ];
 
 /** Org/academy API modules with no step of their own, and why. Anything not here and not in a step fails the guard test. */
 export const NOT_IN_GUIDE = {
   'academy-curriculum.js': 'Curriculum, methodology and coaching-philosophy governance is set up by the academy after the first setup; it is described in docs/academy-curriculum.md, not in this onboarding guide.',
+  'para-mentoring.js': 'Para peer mentoring is an athlete-facing feature (athletes discover and connect with peer mentors directly), not an org-onboarding step. It is not part of setting up an academy.',
 };
 
 /** The directories/files the guard test watches for org/academy/venue/coach/tax capability modules. */
-export const WATCHED_MODULES = /^(academy-.*|org-.*|organisations|venue-coaches|gst|provider-tax|coach-classes)\.js$/;
+export const WATCHED_MODULES = /^(academy-.*|org-.*|organisations|venue-coaches|gst|provider-tax|coach-classes|para-sport-funding|para-pathway)\.js$/;
 
 export const SHOT_SIZES = { phone: { width: 390, height: 1100 }, desktop: { width: 1280, height: 900 } };
 export const shotFile = (stepId, size) => `${String(ACADEMY_STEPS.findIndex((s) => s.id === stepId) + 1).padStart(2, '0')}-${stepId}-${size}.png`;
