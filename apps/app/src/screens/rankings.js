@@ -23,7 +23,8 @@ const score = (r, unit) => (unit && unit !== 'count' ? withUnit(r.score, unit) :
 const scopeText = (v) => {
   const s = v.scope ?? {};
   return [s.season && `Season ${s.season}`, s.region && s.region, s.venue_id && 'One venue', s.format && s.format, s.position && s.position, s.event_id && 'One event',
-    v.window_days && `Last ${v.window_days} days`, v.window_games && `Last ${v.window_games} games`].filter(Boolean).join(' · ') || 'All time, all competitions';
+    v.window_days && `Last ${v.window_days} days`, v.window_games && `Last ${v.window_games} games`,
+    s.sport_class && `Class ${s.sport_class}`].filter(Boolean).join(' · ') || 'All time, all competitions';
 };
 
 export function RankingsPanel({ sport, sports, onOfficial, region, venueId }) {

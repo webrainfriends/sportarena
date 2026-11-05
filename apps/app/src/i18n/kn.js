@@ -6492,6 +6492,26 @@ export default {
   'para.action.evidence_retired': 'Evidence hidden',
   'para.action.decision_issued': 'Decision issued',
   'para.action.withdrawn': 'Withdrawn',
+  'para.res.title': 'Para Sport Results', /* reviewed: false */
+  'para.res.standings_title': 'Class Standings', /* reviewed: false */
+  'para.res.records_title': 'Official Records', /* reviewed: false */
+  'para.res.class_label': 'Class {code}', /* reviewed: false */
+  'para.res.select_class': 'Select a sport class to view standings', /* reviewed: false */
+  'para.res.not_comparable': 'Results across different sport classes cannot be compared. Each class is ranked separately.', /* reviewed: false */
+  'para.res.empty_class': 'No results in this class yet', /* reviewed: false */
+  'para.res.empty_records': 'No records on file for this class', /* reviewed: false */
+  'para.res.guide_attr': 'With guide: {name}', /* reviewed: false */
+  'para.res.snapshot_label': 'Class at competition: {code} ({status})', /* reviewed: false */
+  'para.res.official': 'Official', /* reviewed: false */
+  'para.res.self_reported': 'Self-reported', /* reviewed: false */
+  'para.res.record_world_short': 'WR', /* reviewed: false */
+  'para.res.record_national_short': 'NR', /* reviewed: false */
+  'para.res.record_personal_short': 'PB', /* reviewed: false */
+  'para.res.record_pending_short': 'Pending', /* reviewed: false */
+  'para.res.ratified': 'Ratified {date}', /* reviewed: false */
+  'para.res.superseded': 'Superseded', /* reviewed: false */
+  'para.res.provenance_official': 'From an official competition', /* reviewed: false */
+  'para.res.provenance_self': 'Self-reported by athlete', /* reviewed: false */
   'fin.tab.tax': 'ತೆರಿಗೆ',
   'fin.tax.title': 'ತೆರಿಗೆ',
   'fin.tax.intro': 'ನಿಮ್ಮ ಸಂಸ್ಥೆ ಸ್ವೀಕರಿಸಿದ ಮತ್ತು ಪಾವತಿಸಿದ ಹಣದಲ್ಲಿ ಒಳಗೊಂಡಿರುವ ತೆರಿಗೆ, ಲೆಡ್ಜರ್‌ನಿಂದ. ಮರುಪಾವತಿಗಳು ತೆರಿಗೆಯ ತಮ್ಮ ಪಾಲನ್ನು ಹಿಂತಿರುಗಿಸುತ್ತವೆ.',
