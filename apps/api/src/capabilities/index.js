@@ -253,6 +253,7 @@ import './academy-capacity.js';
 import './academy-reconciliation.js';
 import './academy-branches.js';
 import './academy-follow-through.js';
+import './academy-promotions.js';
 import './academy-packs.js';
 import './academy-report-packs.js';
 import './academy-insights.js';

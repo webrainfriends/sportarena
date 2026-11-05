@@ -30,6 +30,7 @@ cap({
     await orgFor(user, d.organisation_id, STAFF, { write: true, c });
     if (d.decision !== FOR[i.action]) throw conflict(`"${i.action}" follows a "${FOR[i.action]}" decision, not "${d.decision}"`);
     await c.query('SELECT pg_advisory_xact_lock(hashtextextended($1, 0))', [`follow:${d.id}:${i.action}`]);
+    if ((await c.query('SELECT 1 FROM academy_promotion_runs WHERE decision_id=$1', [d.id])).rows.length) throw conflict('This decision is carried through by its promotion run (Academy > Progress > Promotions)', { code: 'managed_by_promotion' });
     const prior = (await c.query('SELECT * FROM academy_decision_follow_ups WHERE decision_id=$1 AND kind=$2', [d.id, i.action])).rows[0];
     if (prior) return { ...prior, replayed: true };
     if ((i.action === 'issue_certificate' || i.action === 'move_cohort') && i.enrolment_id) {
