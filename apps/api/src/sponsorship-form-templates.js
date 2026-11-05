@@ -131,8 +131,6 @@ export const FORM_TEMPLATES = [
       money('the programme'),
     ],
   },
-];
-
   {
     key: 'para_athlete', name: 'Para-athlete funding', best_for: 'Individual para-athletes',
     summary: 'Covers specialised equipment, accessible transport, classification travel, training camps and competition fees. Sponsor receives financial and delivery evidence only — no clinical, classification medical or disability detail is shared.',
