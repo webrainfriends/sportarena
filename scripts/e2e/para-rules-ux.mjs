@@ -42,7 +42,7 @@ const call = async (method, p, { token, body } = {}) => {
 const stamp = Date.now().toString(36);
 const reg = async (h, name, roles) => { const r = await call('POST', '/auth/register', { body: { handle: `${h}_${stamp}`, display_name: name, email: `${h}_${stamp}@example.com`, password: 'correct-horse-battery', roles } }); return { ...r.user, token: r.token, email: `${h}_${stamp}@example.com`, handle: `${h}_${stamp}` }; };
 const wait = (p, ms = 1500) => p.waitForTimeout(ms);
-const click = async (p, text, opts = {}) => { await p.getByText(text, { exact: true, ...opts }).first().click({ timeout: 8000 }); await wait(p, 1500); };
+const click = async (p, text, opts = {}) => { await p.getByText(text, { exact: true, ...opts }).locator('visible=true').first().click({ timeout: 8000 }); await wait(p, 1500); };
 const db = new pg.Pool({ connectionString: DB });
 let failures = 0;
 try {
@@ -100,14 +100,17 @@ try {
   const shot = async (name, size, fn, { who = org, dark = false, full = false } = {}) => {
     const page = await open(SIZES[size], who, dark);
     try { await fn(page); await page.screenshot({ path: path.join(OUT, `para-${name}-${size}${dark ? '-dark' : ''}.png`), fullPage: full }); log(`PASS  ${name} ${size}${dark ? ' dark' : ''}`); }
-    catch (e) { failures++; log(`FAIL  ${name} ${size}: ${e.message.split('\n')[0]}`); await page.screenshot({ path: `/tmp/para-fail-${name}-${size}.png` }); }
+    catch (e) { failures++; log(`FAIL  ${name} ${size}: ${e.message.split('\n').slice(0, 9).join(' | ')}`); await page.screenshot({ path: `/tmp/para-fail-${name}-${size}.png` }); }
     await page.context().close();
   };
   const registration = async (p, who) => { await navTo(p, 'EventCommand', { id: ev.id }); await click(p, 'Registration', { exact: false }); };
-  const paraTab = async (p, tab) => { await registration(p); await click(p, 'Para rules'); if (tab) await click(p, tab); };
-  for (const size of ['phone', 'tablet', 'desktop']) {
+  const paraTab = async (p, tab, org = true) => { await registration(p); if (org) await click(p, 'Para rules'); if (tab) await click(p, tab); };
+  for (const size of (process.env.SIZES ?? 'phone,tablet,desktop').split(',')) {
     await shot('1-rules', size, (p) => paraTab(p), { full: size === 'phone' });
-    await shot('2-lineup', size, async (p) => { await paraTab(p, 'Lineup check'); await click(p, 'Match'); await p.getByText('Madrid Rollers', { exact: false }).first().click(); await wait(p); await click(p, 'Team'); await p.getByText('Madrid Rollers', { exact: true }).last().click(); await wait(p, 2500); }, { who: mgr, full: true });
+    await shot('2-lineup', size, async (p) => { await paraTab(p, 'Lineup check', false);
+      const pick = async (i, text) => { await p.getByText('Choose', { exact: true }).locator('visible=true').nth(i).click({ timeout: 8000 }); await wait(p, 800); await p.getByText(text, { exact: false }).locator('visible=true').last().click({ timeout: 8000 }); await wait(p, 1200); };
+      await pick(0, 'Madrid Rollers'); await pick(0, 'Madrid Rollers'); await wait(p, 2500);
+    }, { who: mgr, full: true });
     await shot('3-overrides', size, (p) => paraTab(p, 'Overrides'));
     await shot('4-entries', size, (p) => paraTab(p, 'Entries'), { full: size === 'phone' });
   }
