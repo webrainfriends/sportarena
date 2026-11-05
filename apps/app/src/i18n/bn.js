@@ -12324,4 +12324,89 @@ export default {
   'guide.para_doctor.s4': 'সাপোর্ট সারসংক্ষেপ প্রস্তুত করুন।',
   // reviewed: false
   'guide.para_doctor.s5': 'ক্রীড়াবিদ সম্মতি দেন।',
+  // PS-29 regional para-sport — reviewed: false (machine-drafted, pending native speaker review)
+  // reviewed: false
+  'psr.title': 'Regional Para-Sport',
+  // reviewed: false
+  'psr.subtitle': 'India & APAC · Governed · Source-backed',
+  // reviewed: false
+  'psr.country_filter': 'Filter by Country',
+  // reviewed: false
+  'psr.all_regions': 'All Regions',
+  // reviewed: false
+  'psr.india': 'India',
+  // reviewed: false
+  'psr.singapore': 'Singapore',
+  // reviewed: false
+  'psr.malaysia': 'Malaysia',
+  // reviewed: false
+  'psr.australia': 'Australia',
+  // reviewed: false
+  'psr.japan': 'Japan',
+  // reviewed: false
+  'psr.sri_lanka': 'Sri Lanka',
+  // reviewed: false
+  'psr.bangladesh': 'Bangladesh',
+  // reviewed: false
+  'psr.federation_connections': 'Federation Connections',
+  // reviewed: false
+  'psr.local_programmes': 'Local Programmes & Funding',
+  // reviewed: false
+  'psr.verified_api': 'Verified Federation API',
+  // reviewed: false
+  'psr.manual_offline': 'Manual / Offline Process',
+  // reviewed: false
+  'psr.pending_mou': 'Pending MOU',
+  // reviewed: false
+  'psr.connection_type': 'Integration Type',
+  // reviewed: false
+  'psr.last_sync': 'Last Sync',
+  // reviewed: false
+  'psr.source': 'Source',
+  // reviewed: false
+  'psr.effective': 'Effective',
+  // reviewed: false
+  'psr.event_divisions': 'Event Divisions',
+  // reviewed: false
+  'psr.accreditation': 'Accreditation',
+  // reviewed: false
+  'psr.grant_range': 'Grant Range',
+  // reviewed: false
+  'psr.eligibility': 'Eligibility',
+  // reviewed: false
+  'psr.issuing_body': 'Issuing Body',
+  // reviewed: false
+  'psr.verification_status_verified': 'Verified Source',
+  // reviewed: false
+  'psr.verification_status_sourced': 'Sourced',
+  // reviewed: false
+  'psr.verification_status_unverified': 'Pending Review',
+  // reviewed: false
+  'psr.disclaimer_prefix': 'Source: ',
+  // reviewed: false
+  'psr.not_official_partner': 'This is not an official partnership or government endorsement.',
+  // reviewed: false
+  'psr.no_api_notice': 'No verified API integration. Contact the federation directly.',
+  // reviewed: false
+  'psr.source_review_title': 'Source Verification',
+  // reviewed: false
+  'psr.source_review_subtitle': 'Platform Admin · Para-sport claims',
+  // reviewed: false
+  'psr.pending': 'Pending',
+  // reviewed: false
+  'psr.verified_tab': 'Verified',
+  // reviewed: false
+  'psr.flagged_tab': 'Flagged',
+  // reviewed: false
+  'psr.rejected_tab': 'Rejected',
+  // reviewed: false
+  'psr.verify_source': 'Verify Source',
+  // reviewed: false
+  'psr.flag_outdated': 'Flag Outdated',
+  // reviewed: false
+  'psr.reject_claim': 'Reject Claim',
+  // reviewed: false
+  'psr.no_programmes': 'No programmes listed for this region yet.',
+  // reviewed: false
+  'psr.no_governance': 'No governance records for this region yet.',
 };

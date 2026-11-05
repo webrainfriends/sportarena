@@ -119,8 +119,8 @@ cap({
 
 cap({
   name: 'para_sport_coverage', method: 'GET', path: '/para/coverage', tag: TAG,
-  summary: 'Which catalogue sports have a governed classification definition and which do not. Sports without one are labelled as a gap; no generic default is applied. Filter with para (only para / adaptive sports), q, programme or state; the summary counts para sports by governance state (PS-01).',
-  input: z.object({ para: qbool().optional(), q: z.string().trim().max(80).optional(), programme: z.enum(PROGRAMMES).optional(), state: z.enum(['governed', 'awaiting', 'deprecated', 'gap']).optional() }),
+  summary: 'Which catalogue sports have a governed classification definition and which do not. Sports without one are labelled as a gap; no generic default is applied. Filter with para (only para / adaptive sports), q, programme, state or country_iso (PS-29: returns regional_governance for each sport when a country is specified); the summary counts para sports by governance state (PS-01).',
+  input: z.object({ para: qbool().optional(), q: z.string().trim().max(80).optional(), programme: z.enum(PROGRAMMES).optional(), state: z.enum(['governed', 'awaiting', 'deprecated', 'gap']).optional(), country_iso: z.string().trim().length(2).toUpperCase().optional() }),
   handler: async (_, i) => {
     const rows = await many(
       `SELECT * FROM (SELECT s.id, s.slug, s.name, s.emoji, s.category, s.play_type, s.is_para, s.programmes, b.slug AS base_slug, b.name AS base_name, ${STATE_SQL} AS state,
@@ -130,9 +130,18 @@ cap({
         ORDER BY x.name`, [i.para ?? null, i.q ?? null, i.programme ?? null, i.state ?? null]);
     const para = await many(`SELECT ${STATE_SQL} AS state FROM sports s WHERE s.is_para`);
     const n = (st) => para.filter((r) => r.state === st).length;
+    // PS-29: when country_iso is provided, annotate each sport with its regional governance record
+    let regionalMap = {};
+    if (i.country_iso) {
+      const rg = await many(
+        `SELECT sport_id, governing_body, source_url, federation_connection_type, review_status, effective_from::text AS effective_from
+           FROM para_regional_governance WHERE country_iso=$1 AND review_status IN ('sourced','verified')`,
+        [i.country_iso]);
+      for (const r of rg) regionalMap[r.sport_id] = r;
+    }
     return {
       summary: { para_sports: para.length, governed: n('governed'), awaiting: n('awaiting'), deprecated: n('deprecated'), gap: n('gap') },
-      sports: rows.map((r) => ({ ...r, coverage: r.has_definition ? 'governed' : 'gap', label: LABEL[r.state] })),
+      sports: rows.map((r) => ({ ...r, coverage: r.has_definition ? 'governed' : 'gap', label: LABEL[r.state], regional_governance: regionalMap[r.id] ?? null })),
     };
   },
 });
