@@ -5,7 +5,8 @@ import React, { useState } from 'react';
 import { View } from 'react-native';
 import { api } from '../api';
 import { useLoad } from '../hooks';
-import { Btn, Chip, Empty, ErrorBox, Loading, Row, Seg, T, Tag } from '../ui';
+import { useNav } from '../nav';
+import { Btn, Card, Chip, Empty, ErrorBox, Loading, Row, Seg, T, Tag } from '../ui';
 import { FormSheet } from '../FormSheet';
 import { c } from '../theme';
 import { Block, Fact, Initials, Origin, Split, Timeline, when } from './academy-ui';
@@ -122,6 +123,7 @@ function AthleteProgress({ o, pathway_id, athlete_id, staff, archived, toast, on
       </Block>
       {staff && !archived ? <FollowThrough o={o} athleteId={athlete_id} history={p.history} toast={toast} /> : null}
       <PackButton label={tr('aco.pack.progress')} path={`/organisations/${o.id}/academy/athletes/${athlete_id}/progress-report`} name="progress-report" toast={toast} />
+      <ParaPathwayLink athleteId={athlete_id} />
       <FormSheet visible={form === 'assess'} onClose={() => setForm(null)} title="Record an assessment" submitLabel="Save assessment" initial={{ level_key: p.evaluating ?? levels[0]?.key, from: win.from, to: win.to, comment_visibility: 'staff' }}
         fields={[{ key: 'level_key', label: 'Assessed against', type: 'chips', options: lvlOpts }, { key: 'from', toKey: 'to', label: 'Period assessed', type: 'daterange' },
           { key: 'comment', label: 'Assessor comment', type: 'multiline', optional: true }, { key: 'comment_visibility', label: 'Who may read the comment', type: 'choice', options: [{ value: 'staff', label: 'Staff only' }, { value: 'athlete', label: 'The athlete / guardian too' }] }]}
@@ -133,6 +135,23 @@ function AthleteProgress({ o, pathway_id, athlete_id, staff, archived, toast, on
           { key: 'acknowledge_unmet_criteria', label: 'Promote even though the criteria are not all met', type: 'switch', show: (v) => v.decision === 'promote' && unmet }]}
         onSubmit={async (v) => { const r = await api.post(`/academy/pathways/${pathway_id}/decisions`, { athlete_id, decision: v.decision, to_level: v.to_level, reason: v.reason, acknowledge_unmet_criteria: !!v.acknowledge_unmet_criteria, expected_from_level: p.level ?? null, assessment_id: p.assessments.find((a) => a.status === 'approved')?.id, idempotency_key: dkey }); await after(); return r.follow_up ? r.follow_up.note : 'Decision recorded'; }} />
     </View>
+  );
+}
+
+function ParaPathwayLink({ athleteId }) {
+  const { push } = useNav();
+  const d = useLoad(() => api.get(`/coaching/para-pathway/${athleteId}`), [athleteId]);
+  if (d.error || !d.data) return null;
+  const pp = d.data;
+  return (
+    <Card pad={12} style={{ borderLeftWidth: 3, borderLeftColor: c.violet, marginTop: 4 }}>
+      <T size={11} weight="700" color={c.violet} style={{ letterSpacing: 0.6 }}>{tr('pp.title').toUpperCase()}</T>
+      <T size={13} weight="700" style={{ marginTop: 2 }}>{pp.sport} · {tr(`pp.stage.${pp.current_stage}`)}</T>
+      <T size={12} color={c.mute}>{tr('pp.metrics.milestones')}: {pp.milestone_count ?? 0} · {tr('pp.metrics.done')}: {pp.done_count ?? 0}</T>
+      <View style={{ marginTop: 8 }}>
+        <Btn small title={`${tr('pp.shared.milestones')} →`} onPress={() => push('SharedParaPathway', { athlete_id: athleteId })} />
+      </View>
+    </Card>
   );
 }
 
