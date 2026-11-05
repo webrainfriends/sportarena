@@ -43,6 +43,7 @@ function SessionCard({ s, onAction, tz }) {
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
           <T weight="800" size={16} style={{ flex: 1 }}>{timeIn(s.starts_at, tz)} · {s.title}</T>
           <Tag label={PHASE[s.phase]} color={s.phase === 'current' ? c.lime : undefined} /><Tag label={`${icon} ${text}`} color={s.compliance.level === 'compliant' ? c.lime : s.compliance.level === 'blocked' ? c.orangeSoft : c.sunSoft} />
+          {s.readiness_level ? <Tag label={t(`incops.inclusion_${s.readiness_level}`)} color={s.readiness_level === 'ready' ? c.lime : s.readiness_level === 'attention' ? c.sunSoft : c.orangeSoft} accessibilityLabel={`Inclusion: ${s.readiness_level}`} /> : null}
           {s.status === 'draft' ? <Tag label="Draft" /> : null}
         </View>
         <T size={13} color={c.mute}>{s.cohort}{s.programme ? ` · ${s.programme}` : ''}{s.venue ? ` · 📍 ${s.venue.name}${s.venue.confirmed ? '' : ' (not confirmed)'}` : ' · no venue booked'}</T>

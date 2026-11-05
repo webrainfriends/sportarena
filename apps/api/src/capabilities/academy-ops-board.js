@@ -9,6 +9,8 @@ import { createHash } from 'node:crypto';
 import { notify } from '../notify.js';
 import { opsAccess, sessionFor, checkSession, evaluateSession, staffingExceptions } from '../academy-ops.js';
 import { audience } from './academy-sessions.js';
+import { readiness as inclusionReadiness } from './academy-inclusion.js';
+import { hasInclusion } from './academy-inclusion-ops.js';
 
 const TAG = 'Academy operations';
 const day = z.string().date();
@@ -40,6 +42,9 @@ cap({
     const now = Date.now(), sessions = [];
     for (const s of rows.filter((x) => all ? a.scopeOk(x) : true)) {
       const chk = await checkSession(pool, s);
+      const qc = { query: pool.query.bind(pool) };
+      s._has_inclusion = s.programme_id ? await hasInclusion(qc, s.programme_id) : false;
+      s._readiness_level = s._has_inclusion ? (await inclusionReadiness(qc, s).catch(() => null))?.level ?? null : null;
       const staff = chk.compliance.staff.map((x) => ({ user_id: x.user_id, display_name: x.display_name, role: x.role, status: x.status, duty_label: x.duty_label }));
       const venue = chk.venue;
       sessions.push({
@@ -49,6 +54,8 @@ cap({
         compliance: { level: chk.compliance.level, issues: chk.compliance.checks.filter((c) => c.severity !== 'ok') }, conflicts: chk.conflicts,
         venue: venue ? { reservation_id: venue.reservation_id, booking_id: venue.booking_id, name: `${venue.venue_name} · ${venue.resource_name}`, confirmed: venue.booking_status === 'confirmed' } : null,
         cover_open: s.cover_open,
+        has_inclusion: s._has_inclusion,
+        readiness_level: s._readiness_level,
         actions: [
           { key: 'attendance', label: 'Take attendance', screen: 'AcademySession', params: { id: s.id, tab: 'attendance' }, enabled: s.status === 'published' },
           { key: 'assign', label: 'Assign / replace coach', screen: 'AcademySession', params: { id: s.id, tab: 'staff' }, enabled: a.has('schedule') },
