@@ -28,7 +28,10 @@ export const NEEDS_SUPPORT = ['support_person', 'sighted_guide', 'tapper', 'pers
 export const ELIGIBILITY = ['open', 'class_optional', 'class_required', 'mixed_ability'];
 export const VARIANTS = ['standard', 'adapted', 'age_flexible'];
 export const LEVELS = ['emerging', 'developing', 'secure', 'exceeding'];
-export const AUDIENCE_ROLES = ['coach', 'venue'];
+export const AUDIENCE_ROLES = ['coach', 'venue', 'event_staff'];
+export const SHARE_CONTEXTS = ['academy', 'event'];
+export const PURPOSE_KEYS = ['competition_day', 'training_session', 'transport', 'arrival', 'other'];
+export const CONTACT_MODES = ['app', 'email', 'sms', 'bsl_interpreter'];
 export const SHARE_MONTHS_MAX = 18;
 
 /**
@@ -50,7 +53,7 @@ export const SPORT_TEMPLATES = {
 export const SCHEMES = [...new Set(Object.values(SPORT_TEMPLATES).flatMap((t) => t.schemes))];
 
 export const catalogue = () => ({
-  need_types: NEED_TYPES, venue_features: VENUE_FEATURES, eligibility_modes: ELIGIBILITY, pathway_variants: VARIANTS, descriptor_levels: LEVELS, audience_roles: AUDIENCE_ROLES,
+  need_types: NEED_TYPES, venue_features: VENUE_FEATURES, eligibility_modes: ELIGIBILITY, pathway_variants: VARIANTS, descriptor_levels: LEVELS, audience_roles: AUDIENCE_ROLES, share_contexts: SHARE_CONTEXTS, purpose_keys: PURPOSE_KEYS, contact_modes: CONTACT_MODES,
   class_schemes: SCHEMES, share_months_max: SHARE_MONTHS_MAX,
   sport_templates: Object.entries(SPORT_TEMPLATES).map(([key, t]) => ({ key, sports: t.sports, needs: t.needs, venue_features: t.features, class_schemes: t.schemes, fallback: !!t.fallback })),
 });
