@@ -11596,4 +11596,29 @@ export default {
   'pp.metrics.pending': 'மதிப்பாய்வு நிலுவையில்',
   'nav.title.ParaPathway': 'பாரா பாதை',
   'nav.title.SharedParaPathway': 'பாரா பாதை',
+  // PS-19 para-sport funding (machine-drafted, awaiting native review)
+  'psf.title': 'பாரா விளையாட்டு நிதி',
+  'psf.programme.paraToggle': 'பாரா விளையாட்டு திட்டம்',
+  'psf.programme.paraToggleHint': 'பாரா வீரர் உபகரணங்கள், போக்குவரத்து மற்றும் பயிற்சி செலவுகளுக்கு மட்டுமே',
+  'psf.programme.costCategories': 'தகுதியான செலவு வகைகள்',
+  'psf.programme.privacyNote': 'வீரர்களின் மருத்துவ மற்றும் வகைப்பாடு பதிவுகள் நிதியளிப்பாளர்களுக்கு காட்டப்படாது.',
+  'psf.need.paraType': 'பாரா விளையாட்டு தேவை வகை',
+  'psf.need.privacyNote': 'உங்கள் மருத்துவ பதிவுகள் நிதியளிப்பாளர்களுடன் பகிரப்படாது',
+  'psf.need.specialisedEquipment': 'சிறப்பு உபகரணங்கள்',
+  'psf.need.accessibleTransport': 'அணுகல் போக்குவரத்து',
+  'psf.need.classificationTravel': 'வகைப்பாடு பயணம்',
+  'psf.need.accessibleTrainingCamp': 'அணுகல் பயிற்சி முகாம்',
+  'psf.delivery.title': 'வழங்கல் சான்று',
+  'psf.delivery.privacyBanner': 'தனியுரிமை பாதுகாக்கப்பட்டது: நிதி மற்றும் வழங்கல் சான்றுகளை மட்டுமே நீங்கள் காண்கிறீர்கள்.',
+  'psf.delivery.confirmed': 'உறுதிப்படுத்தப்பட்டது',
+  'psf.delivery.pending': 'நிலுவையில்',
+  'psf.delivery.downloadReport': 'தாக்கல் அறிக்கையை பதிவிறக்கவும்',
+  'psf.impact.title': 'திட்ட தாக்கம்',
+  'psf.impact.awarded': 'வழங்கப்பட்டது',
+  'psf.impact.disbursed': 'விநியோகிக்கப்பட்டது',
+  'psf.impact.athletesSupported': 'ஆதரிக்கப்பட்ட வீரர்கள்',
+  'psf.impact.deliveryConfirmed': 'வழங்கல் உறுதிப்படுத்தப்பட்டது',
 };
+
+// PS-19: Para-sport funding (machine-drafted, awaiting native-speaker review)
+// psf keys appended

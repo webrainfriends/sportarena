@@ -157,7 +157,7 @@ id: 'wellbeing', title: 'Support student wellbeing and development',
     why: 'Let disabled and para athletes join and progress in your programmes without disclosing a diagnosis: set what a programme offers, check every adaptive session is ready, and let athletes share only the operational needs they choose.',
     steps: ['Open Academy, then Inclusion, then Programme setup, pick a programme and choose who can join, the sport adaptation templates, the adjustments offered, the venue features and the support-person ratio it needs.', 'Ask venue managers to record each venue\'s access features (lift, step-free route, accessible changing room, pool hoist) so sessions can be checked against them.', 'Athletes, or the verified guardian of a young person, open My academy, then Accommodations, and share only what staff need, with whom and until when. They can withdraw it at any moment.', 'Open Inclusion, then Session readiness, choose a session and resolve every gap: venue, support persons, duty cover and the lead coach credential. Coaches and venue staff see only what was shared with them, and every look is logged for the athlete.', 'Record adapted, coach-led assessments with descriptor levels, never a single score, and have a second assessor sign them off. Directors see counts only on the Overview.', 'Open Academy, then Inclusion, then Para pathways, to see which enrolled athletes have shared their athlete-owned para-sport pathway with you. View their milestones and evidence for the stages they granted you, and leave feedback on a checkpoint when asked. The athlete controls what you can see and can revoke access at any moment.'],
     target: { academy: 'inclusion' },
-    modules: ['academy-inclusion.js', 'para-pathway.js'], sources: ['apps/app/src/screens/academy-inclusion.js', 'apps/app/src/screens/inclusion-family.js', 'apps/app/src/screens/para-pathway.js'],
+    modules: ['academy-inclusion.js', 'para-pathway.js', 'para-sport-funding.js'], sources: ['apps/app/src/screens/academy-inclusion.js', 'apps/app/src/screens/inclusion-family.js', 'apps/app/src/screens/para-pathway.js', 'apps/app/src/screens/sponsor-programs.js', 'apps/app/src/screens/player-funding.js'],
   },
   {
     id: 'placement', title: 'Manage placement pathways',
@@ -188,7 +188,7 @@ export const NOT_IN_GUIDE = {
 };
 
 /** The directories/files the guard test watches for org/academy/venue/coach/tax capability modules. */
-export const WATCHED_MODULES = /^(academy-.*|org-.*|organisations|venue-coaches|gst|provider-tax|coach-classes)\.js$/;
+export const WATCHED_MODULES = /^(academy-.*|org-.*|organisations|venue-coaches|gst|provider-tax|coach-classes|para-sport-funding|para-pathway)\.js$/;
 
 export const SHOT_SIZES = { phone: { width: 390, height: 1100 }, desktop: { width: 1280, height: 900 } };
 export const shotFile = (stepId, size) => `${String(ACADEMY_STEPS.findIndex((s) => s.id === stepId) + 1).padStart(2, '0')}-${stepId}-${size}.png`;
