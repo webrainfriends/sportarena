@@ -11948,4 +11948,210 @@ export default {
   'insurance.para.serial_masked': 'S/N {masked}',
   'insurance.para.linked_event_label': 'Linked event: {name}',
   'insurance.para.best_para_cover': 'Best para cover',
+  // PS-10 Para-sport operational readiness (machine-drafted, reviewed: false)
+  'pr.safety_critical': 'सुरक्षा-महत्वपूर्ण',
+  'pr.derived': 'लाइव जांच',
+  'pr.bar_a11y': 'तैयारी {{percent}}%, {{blockers}} सुरक्षा-महत्वपूर्ण आइटम खुले',
+  'pr.gate_clear': 'गेट साफ — आयोजन खुल सकता है',
+  'pr.gate_blocked': '{{n}} सुरक्षा-महत्वपूर्ण आइटम रोक रहा है',
+  'pr.state.met': 'पूर्ण',
+  'pr.state.open': 'खुला',
+  'pr.state.waived': 'माफ',
+  'pr.state.exception': 'अपवाद',
+  'pr.cat.accessible_facilities': 'सुलभ सुविधाएं',
+  'pr.cat.classification': 'वर्गीकरण',
+  'pr.cat.support_roles': 'सहायता भूमिकाएं',
+  'pr.cat.medical': 'चिकित्सा',
+  'pr.cat.equipment': 'उपकरण',
+  'pr.cat.transport_access': 'परिवहन पहुंच',
+  'pr.cat.communication': 'संचार',
+  'pr.stat_total': 'आवश्यकताएं',
+  'pr.stat_met': 'पूर्ण',
+  'pr.stat_critical': 'महत्वपूर्ण खुला',
+  'pr.stat_pending_exc': 'अपवाद लंबित',
+  'pr.blockers_label': 'गेट अवरोधक:',
+  'pr.exception_valid': 'अपवाद अनुमोदित · {{until}} तक वैध',
+  'pr.indefinite': 'अनिश्चितकाल',
+  'pr.changed_alert': '⚠️ अंतिम साइन-ऑफ के बाद बदल गया',
+  'pr.signed': '{{who}} द्वारा {{when}} को साइन किया',
+  'pr.sign_off': 'साइन ऑफ',
+  'pr.sign_off_a11y': 'साइन ऑफ: {{title}}',
+  'pr.exception': 'अपवाद दस्तावेज़',
+  'pr.exception_a11y': 'अपवाद दर्ज करें: {{title}}',
+  'pr.tab_checklist': 'चेकलिस्ट',
+  'pr.tab_exceptions': 'अपवाद',
+  'pr.empty_title': 'अभी तक कोई पैरा आवश्यकता नहीं',
+  'pr.empty_sub': 'इस आयोजन के लिए मानक पहुंच-योग्यता आवश्यकताएं जोड़ें।',
+  'pr.notify_btn': 'सूचना भेजें',
+  'pr.add_standards': 'मानक आइटम जोड़ें',
+  'pr.role.organiser': 'आयोजक',
+  'pr.role.venue': 'स्थल',
+  'pr.role.official': 'अधिकारी',
+  'pr.role.athlete': 'एथलीट',
+  'pr.signoff_title': 'आवश्यकता साइन ऑफ',
+  'pr.signoff_submit': 'साइन ऑफ',
+  'pr.signoff_note': 'प्रमाण संदर्भ दें — बुकिंग आईडी, स्टाफ असाइनमेंट आईडी, आपूर्तिकर्ता संदर्भ।',
+  'pr.evidence_ref': 'प्रमाण संदर्भ',
+  'pr.evidence_placeholder': 'उदा. booking/WBA-2048, supplier/ESP-110',
+  'pr.signoff_note_label': 'नोट (वैकल्पिक)',
+  'pr.signoff_note_ph': 'अतिरिक्त संदर्भ',
+  'pr.exc_title': 'अपवाद दस्तावेज़',
+  'pr.exc_submit': 'अपवाद सबमिट करें',
+  'pr.exc_critical_warning': 'यह सुरक्षा-महत्वपूर्ण आइटम है। दूसरे अधिकारी की समीक्षा आवश्यक है।',
+  'pr.exc_justification': 'औचित्य (न्यूनतम 20 अक्षर)',
+  'pr.exc_justification_ph': 'स्पष्ट करें कि मानक आवश्यकता क्यों पूरी नहीं हो सकती',
+  'pr.second_officer': 'दूसरे अधिकारी की आईडी',
+  'pr.second_officer_ph': 'दूसरे अनुमोदन अधिकारी की आईडी',
+  'pr.valid_until': 'मान्य तक (वैकल्पिक)',
+  'pr.exc_status.pending': 'समीक्षा लंबित',
+  'pr.exc_status.approved': 'अनुमोदित',
+  'pr.exc_status.rejected': 'अस्वीकृत',
+  'pr.exc_status.expired': 'समाप्त',
+  'pr.no_exceptions': 'कोई अपवाद दर्ज नहीं',
+  'pr.no_exceptions_sub': 'आवश्यकता अपवाद यहाँ दर्ज होंगे।',
+  'pr.rejection_reason': 'अस्वीकृति कारण',
+  'pr.raised_by': 'उठाया गया',
+  'pr.notify_title': 'पहुंच-योग्यता सूचना भेजें',
+  'pr.notify_submit': 'भेजें',
+  'pr.notify_role': 'किसे भेजें:',
+  'pr.notify_message': 'संदेश',
+  'pr.contingency_plan': 'आकस्मिक योजना (वैकल्पिक)',
+  'pr.contingency_ph': 'पहुंच-योग्यता व्यवस्था बाधित होने पर योजना बताएं',
+  'pr.access_title': 'पहुंच-योग्यता और प्रवेश जानकारी',
+  'pr.access_note': 'केवल परिचालन जानकारी। कोई चिकित्सा विवरण नहीं।',
+  'pr.access_empty_title': 'प्रवेश जानकारी अभी उपलब्ध नहीं',
+  'pr.access_empty_sub': 'आयोजक जल्द ही पहुंच-योग्यता विवरण प्रकाशित करेंगे।',
+  'pr.access_confirmed': 'पुष्टि',
+  'pr.confirmed_at': '{{date}} को पुष्टि हुई',
+  // PS-14 inclusive delivery integration — machine translated, reviewed: false
+  'incops.enrolment_prompt_title': 'अपनी सहायता ज़रूरतें साझा करें',
+  'incops.enrolment_prompt_body': 'यह कार्यक्रम अनुकूली एथलीटों का समर्थन करता है। कोचिंग टीम को तैयार करने के लिए अपनी ज़रूरतें साझा करें।',
+  'incops.enrolment_prompt_share': 'मेरी ज़रूरतें साझा करें',
+  'incops.enrolment_prompt_later': 'बाद में करें',
+  'incops.enrolment_prompt_already_shared': 'ज़रूरतें कोचिंग टीम के साथ साझा की गई हैं',
+  'incops.enrolment_prompt_privacy': 'केवल आपके चुने हुए कोच ही इसे देखते हैं।',
+  'incops.session_readiness_title': 'समावेश तत्परता',
+  'incops.session_readiness_ready': 'तैयार',
+  'incops.session_readiness_attention': 'ध्यान चाहिए',
+  'incops.session_readiness_gap': 'अंतर',
+  'incops.session_staff_match': 'कोच योग्यता मिलान',
+  'incops.staff_match_full': 'पूर्ण मिलान',
+  'incops.staff_match_partial': 'आंशिक',
+  'incops.staff_match_none': 'कोई मिलान नहीं',
+  'incops.consented_access_title': 'सहमति पहुँच',
+  'incops.consented_access_note': 'केवल अनुकूली योग्यता वाले कर्मचारियों को दिखा रहा है।',
+  'incops.consented_access_audit': 'हर डेटा पहुँच लॉग की जाती है।',
+  'incops.change_programme_title': 'कार्यक्रम बदलें',
+  'incops.change_programme_new': 'नया कार्यक्रम',
+  'incops.change_programme_reason': 'कारण (वैकल्पिक)',
+  'incops.change_programme_carry': 'सहायता शेयर आगे ले जाए गए',
+  'incops.change_programme_revoke': 'सहायता शेयर रद्द किए गए',
+  'incops.change_programme_reshare': 'नए कोचों को शेयर चाहिए',
+  'incops.change_programme_confirm': 'परिवर्तन की पुष्टि करें',
+  'incops.change_programme_cancel': 'रद्द करें',
+  'incops.change_programme_revoke_note': 'अब नहीं रहे कोचों के शेयर तुरंत रद्द होते हैं।',
+  'incops.guardian_progress_title': 'अभिभावक प्रगति',
+  'incops.guardian_progress_programme': 'कार्यक्रम',
+  'incops.guardian_progress_attendance': 'उपस्थिति',
+  'incops.guardian_progress_assessments': 'अनुकूलित मील के पत्थर',
+  'incops.guardian_progress_assessments_note': 'सत्र आयोजित',
+  'incops.guardian_progress_credits': 'बकाया शुल्क',
+  'incops.guardian_progress_upcoming': 'आगामी सत्र',
+  'incops.guardian_progress_accommodations': 'सहायता ज़रूरतें',
+  'incops.guardian_progress_manage': 'सहायता ज़रूरतें प्रबंधित करें',
+  'incops.inclusion_ready': '✓ समावेश तैयार',
+  'incops.inclusion_attention': '⚠ समावेश ध्यान',
+  'incops.inclusion_gap': '⛔ समावेश अंतर',
+  'incops.milestone_achieved': 'प्राप्त किया',
+  'incops.milestone_in_progress': 'प्रगति में',
+  'incops.milestone_upcoming': 'आने वाला',
+  'guide.inclusive_delivery.title': 'समावेशी कार्यक्रम वितरण',
+  'guide.inclusive_delivery.why': 'हर सत्र से पहले आवास, योग्य कोच और सुलभ स्थान जोड़ें।',
+  'guide.inclusive_delivery.s1': 'Academy, फिर Inclusion खोलें और कार्यक्रम कौन से ज़रूरत प्रकारों को समर्थन देता है यह कॉन्फ़िगर करें।',
+  'guide.inclusive_delivery.s2': 'नामांकन के बाद, अभिभावकों को ज़रूरतें साझा करने के लिए प्रेरित किया जाता है।',
+  'guide.inclusive_delivery.s3': 'आने वाला सत्र खोलें और समावेश तत्परता पैनल देखें।',
+  'guide.inclusive_delivery.s4': 'यदि एथलीट कार्यक्रम बदलता है, Change programme का उपयोग करें।',
+  'guide.inclusive_delivery.s5': 'अभिभावक Guardian progress दृश्य खोल सकते हैं।',
+  // reviewed: false
+  'paraDoctor.tab_label': 'अनुकूली',
+  // reviewed: false
+  'paraDoctor.specialism_title': 'पैरा-खेल विशेषज्ञताएं',
+  // reviewed: false
+  'paraDoctor.specialism_hint': 'वे खेल जिनमें आपको अनुकूली एथलीटों के लिए नैदानिक विशेषज्ञता है।',
+  // reviewed: false
+  'paraDoctor.specialism_edit': 'संपादित करें',
+  // reviewed: false
+  'paraDoctor.specialism_none': 'कोई विशेषज्ञता घोषित नहीं',
+  // reviewed: false
+  'paraDoctor.specialism_none_sub': 'अपने खेल जोड़ें।',
+  // reviewed: false
+  'paraDoctor.template_title': 'परामर्श टेम्पलेट',
+  // reviewed: false
+  'paraDoctor.template_new': '＋ नया',
+  // reviewed: false
+  'paraDoctor.template_none': 'अभी तक कोई टेम्पलेट नहीं',
+  // reviewed: false
+  'paraDoctor.template_none_sub': 'खेल-विशिष्ट टेम्पलेट बनाएं।',
+  // reviewed: false
+  'paraDoctor.episode_title': 'पैरा एपिसोड',
+  // reviewed: false
+  'paraDoctor.episode_none': 'कोई सक्रिय पैरा एपिसोड नहीं',
+  // reviewed: false
+  'paraDoctor.episode_none_sub': 'एपिसोड यहाँ दिखाई देंगे।',
+  // reviewed: false
+  'paraDoctor.summary_title': 'गैर-नैदानिक सहायता सारांश',
+  // reviewed: false
+  'paraDoctor.summary_new': '＋ ड्राफ्ट',
+  // reviewed: false
+  'paraDoctor.summary_none': 'कोई सारांश तैयार नहीं',
+  // reviewed: false
+  'paraDoctor.summary_none_sub': 'सहमति देने वाले एथलीट के लिए सारांश तैयार करें।',
+  // reviewed: false
+  'paraDoctor.boundary_title': '⚠️ वर्गीकरण सीमा',
+  // reviewed: false
+  'paraDoctor.boundary_body': 'यहाँ दर्ज नैदानिक परामर्श पैरा-खेल वर्गीकरण निर्णयों से पूरी तरह अलग हैं।',
+  // reviewed: false
+  'paraDoctor.support_tab_label': 'सहायता',
+  // reviewed: false
+  'paraDoctor.support_privacy_title': 'आपकी नैदानिक जानकारी निजी रहती है',
+  // reviewed: false
+  'paraDoctor.support_privacy_body': 'कोच केवल स्थिति देखते हैं — कारण नहीं।',
+  // reviewed: false
+  'paraDoctor.support_classification_note': 'आपका पैरा-खेल वर्गीकरण पूरी तरह अलग है।',
+  // reviewed: false
+  'paraDoctor.support_summaries_title': 'सहायता सारांश',
+  // reviewed: false
+  'paraDoctor.support_summaries_hint': 'आपका डॉक्टर परिचालन सारांश तैयार कर सकता है।',
+  // reviewed: false
+  'paraDoctor.support_summaries_none': 'कोई सहायता सारांश नहीं',
+  // reviewed: false
+  'paraDoctor.support_summaries_none_sub': 'यदि आपका डॉक्टर कोई तैयार करता है तो यहाँ दिखेगा।',
+  // reviewed: false
+  'paraDoctor.support_approve': 'स्वीकृत करें',
+  // reviewed: false
+  'paraDoctor.support_decline': 'अस्वीकार करें',
+  // reviewed: false
+  'paraDoctor.support_revoke_all': 'सभी पहुँच रद्द करें',
+  // reviewed: false
+  'paraDoctor.support_history_title': 'परामर्श इतिहास',
+  // reviewed: false
+  'paraDoctor.support_history_hint': 'आपके अनुकूली खेल से जुड़े परामर्श।',
+  // reviewed: false
+  'paraDoctor.support_history_none': 'कोई एपिसोड दर्ज नहीं',
+  // reviewed: false
+  'paraDoctor.support_history_none_sub': 'जब आपका डॉक्टर परामर्श जोड़ता है तो यहाँ दिखेगा।',
+  // reviewed: false
+  'guide.para_doctor.title': 'पैरा-एथलीट नैदानिक समन्वय',
+  // reviewed: false
+  'guide.para_doctor.why': 'पैरा-एथलीटों को विशेषज्ञ नैदानिक देखभाल प्रदान करें।',
+  // reviewed: false
+  'guide.para_doctor.s1': 'डॉक्टर कार्यक्षेत्र → अनुकूली टैब खोलें।',
+  // reviewed: false
+  'guide.para_doctor.s2': 'परामर्श के दौरान पैरा एपिसोड बनाएं।',
+  // reviewed: false
+  'guide.para_doctor.s3': 'रेफरल का उपयोग करें।',
+  // reviewed: false
+  'guide.para_doctor.s4': 'सहायता सारांश तैयार करें।',
+  // reviewed: false
+  'guide.para_doctor.s5': 'एथलीट सहमति देता है।',
 };

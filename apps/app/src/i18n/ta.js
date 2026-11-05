@@ -11949,5 +11949,210 @@ export default {
   'insurance.para.best_para_cover': 'Best para cover',
 };
 
-// PS-19: Para-sport funding (machine-drafted, awaiting native-speaker review)
-// psf keys appended
+  // PS-10 Para-sport operational readiness (machine-drafted, reviewed: false)
+  'pr.safety_critical': 'SAFETY CRITICAL',
+  'pr.derived': 'LIVE CHECK',
+  'pr.bar_a11y': 'Readiness {{percent}}%, {{blockers}} safety-critical items open',
+  'pr.gate_clear': 'Gate clear — event may open',
+  'pr.gate_blocked': '{{n}} safety-critical item blocking',
+  'pr.state.met': 'Met',
+  'pr.state.open': 'Open',
+  'pr.state.waived': 'Waived',
+  'pr.state.exception': 'Exception',
+  'pr.cat.accessible_facilities': 'Accessible Facilities',
+  'pr.cat.classification': 'Classification',
+  'pr.cat.support_roles': 'Support Roles',
+  'pr.cat.medical': 'Medical',
+  'pr.cat.equipment': 'Equipment',
+  'pr.cat.transport_access': 'Transport Access',
+  'pr.cat.communication': 'Communication',
+  'pr.stat_total': 'Requirements',
+  'pr.stat_met': 'Met',
+  'pr.stat_critical': 'Critical Open',
+  'pr.stat_pending_exc': 'Exceptions Pending',
+  'pr.blockers_label': 'Blocking gate open:',
+  'pr.exception_valid': 'Exception approved · valid until {{until}}',
+  'pr.indefinite': 'indefinitely',
+  'pr.changed_alert': '⚠️ Changed since last sign-off — please review',
+  'pr.signed': 'Signed off by {{who}} on {{when}}',
+  'pr.sign_off': 'Sign Off',
+  'pr.sign_off_a11y': 'Sign off: {{title}}',
+  'pr.exception': 'Document Exception',
+  'pr.exception_a11y': 'Document exception for: {{title}}',
+  'pr.tab_checklist': 'Checklist',
+  'pr.tab_exceptions': 'Exceptions',
+  'pr.empty_title': 'No para requirements yet',
+  'pr.empty_sub': 'Add standard accessibility requirements for this event.',
+  'pr.notify_btn': 'Send Notification',
+  'pr.add_standards': 'Add Standard Items',
+  'pr.role.organiser': 'Organiser',
+  'pr.role.venue': 'Venue',
+  'pr.role.official': 'Official',
+  'pr.role.athlete': 'Athlete',
+  'pr.signoff_title': 'Sign Off Requirement',
+  'pr.signoff_submit': 'Sign Off',
+  'pr.signoff_note': 'Provide an evidence reference — a booking ID, staff assignment ID, supplier contract ref, or document reference. This creates a permanent audit record.',
+  'pr.evidence_ref': 'Evidence Reference',
+  'pr.evidence_placeholder': 'e.g. booking/WBA-2048, supplier/ESP-110',
+  'pr.signoff_note_label': 'Note (optional)',
+  'pr.signoff_note_ph': 'Additional context',
+  'pr.exc_title': 'Document Exception',
+  'pr.exc_submit': 'Submit Exception',
+  'pr.exc_critical_warning': 'This is a safety-critical item. A second officer must review and approve this exception before it takes effect.',
+  'pr.exc_justification': 'Justification (min 20 characters)',
+  'pr.exc_justification_ph': 'Explain why the standard requirement cannot be met and what equivalent provision is in place',
+  'pr.second_officer': 'Second Officer User ID',
+  'pr.second_officer_ph': 'ID of the second approving officer',
+  'pr.valid_until': 'Valid Until (optional)',
+  'pr.exc_status.pending': 'Pending Review',
+  'pr.exc_status.approved': 'Approved',
+  'pr.exc_status.rejected': 'Rejected',
+  'pr.exc_status.expired': 'Expired',
+  'pr.no_exceptions': 'No exceptions documented',
+  'pr.no_exceptions_sub': 'Exceptions to para requirements are logged here when standard provisions cannot be met.',
+  'pr.rejection_reason': 'Rejection reason',
+  'pr.raised_by': 'Raised by',
+  'pr.notify_title': 'Send Accessibility Notification',
+  'pr.notify_submit': 'Send',
+  'pr.notify_role': 'Send to:',
+  'pr.notify_message': 'Message',
+  'pr.contingency_plan': 'Contingency Plan (optional)',
+  'pr.contingency_ph': 'Describe the contingency plan if accessibility provisions are disrupted',
+  'pr.access_title': 'Accessibility & Access Information',
+  'pr.access_note': 'Operational access information only. Clinical details are never shared.',
+  'pr.access_empty_title': 'Access information not yet confirmed',
+  'pr.access_empty_sub': 'The event organiser will publish accessibility details once confirmed.',
+  'pr.access_confirmed': 'Confirmed',
+  'pr.confirmed_at': 'Confirmed {{date}}',
+  // PS-14 inclusive delivery integration — machine translated, reviewed: false
+  'incops.enrolment_prompt_title': 'உங்கள் ஆதரவு தேவைகளை பகிரவும்',
+  'incops.enrolment_prompt_body': 'இந்த திட்டம் தழுவல் வீரர்களை ஆதரிக்கிறது. பயிற்சிக் குழு தயாராக இருக்க உங்கள் செயல்பாட்டு தேவைகளை பகிரவும்.',
+  'incops.enrolment_prompt_share': 'என் தேவைகளை பகிர',
+  'incops.enrolment_prompt_later': 'பிறகு செய்யுங்கள்',
+  'incops.enrolment_prompt_already_shared': 'தேவைகள் பயிற்சிக் குழுவுடன் பகிரப்பட்டுள்ளன',
+  'incops.enrolment_prompt_privacy': 'நீங்கள் தேர்ந்தெடுக்கும் பயிற்சியாளர்கள் மட்டுமே இதைப் பார்க்கிறார்கள்.',
+  'incops.session_readiness_title': 'சேர்க்கை தயார்நிலை',
+  'incops.session_readiness_ready': 'தயார்',
+  'incops.session_readiness_attention': 'கவனம் தேவை',
+  'incops.session_readiness_gap': 'இடைவெளி',
+  'incops.session_staff_match': 'பயிற்சியாளர் தகுதி பொருத்தம்',
+  'incops.staff_match_full': 'முழு பொருத்தம்',
+  'incops.staff_match_partial': 'பகுதி பொருத்தம்',
+  'incops.staff_match_none': 'பொருத்தம் இல்லை',
+  'incops.consented_access_title': 'ஒப்புதல் அணுகல்',
+  'incops.consented_access_note': 'தழுவல் தகுதிகள் உள்ள ஊழியர்களை மட்டும் காட்டுகிறது.',
+  'incops.consented_access_audit': 'ஒவ்வொரு தரவு அணுகலும் பதிவு செய்யப்படுகிறது.',
+  'incops.change_programme_title': 'திட்டத்தை மாற்று',
+  'incops.change_programme_new': 'புதிய திட்டம்',
+  'incops.change_programme_reason': 'காரணம் (விருப்பத்தேர்வு)',
+  'incops.change_programme_carry': 'ஆதரவு பகிர்வுகள் முன்னோக்கி கொண்டு செல்லப்பட்டன',
+  'incops.change_programme_revoke': 'ஆதரவு பகிர்வுகள் திரும்பப் பெறப்பட்டன',
+  'incops.change_programme_reshare': 'புதிய பயிற்சியாளர்களுக்கு பகிர்வு தேவை',
+  'incops.change_programme_confirm': 'மாற்றத்தை உறுதிப்படுத்து',
+  'incops.change_programme_cancel': 'ரத்துசெய்',
+  'incops.change_programme_revoke_note': 'இனி இல்லாத பயிற்சியாளர்களின் பகிர்வுகள் உடனடியாக திரும்பப் பெறப்படுகின்றன.',
+  'incops.guardian_progress_title': 'பாதுகாவலர் முன்னேற்றம்',
+  'incops.guardian_progress_programme': 'திட்டம்',
+  'incops.guardian_progress_attendance': 'வருகை',
+  'incops.guardian_progress_assessments': 'தழுவல் மைல்கற்கள்',
+  'incops.guardian_progress_assessments_note': 'நடைபெற்ற அமர்வுகள்',
+  'incops.guardian_progress_credits': 'நிலுவையுள்ள கட்டணங்கள்',
+  'incops.guardian_progress_upcoming': 'வரவிருக்கும் அமர்வுகள்',
+  'incops.guardian_progress_accommodations': 'ஆதரவு தேவைகள்',
+  'incops.guardian_progress_manage': 'ஆதரவு தேவைகளை நிர்வகி',
+  'incops.inclusion_ready': '✓ சேர்க்கை தயார்',
+  'incops.inclusion_attention': '⚠ சேர்க்கை கவனம்',
+  'incops.inclusion_gap': '⛔ சேர்க்கை இடைவெளி',
+  'incops.milestone_achieved': 'அடையப்பட்டது',
+  'incops.milestone_in_progress': 'நடைபெறுகிறது',
+  'incops.milestone_upcoming': 'வரவிருக்கிறது',
+  'guide.inclusive_delivery.title': 'சேர்க்கை திட்ட வழங்கல்',
+  'guide.inclusive_delivery.why': 'ஒவ்வொரு அமர்வுக்கு முன்பும் தங்குமிட வசதிகள், தகுதிவாய்ந்த பயிற்சியாளர்கள் மற்றும் அணுகக்கூடிய இடங்களை இணைக்கவும்.',
+  'guide.inclusive_delivery.s1': 'Academy, பின்னர் Inclusion திறந்து திட்டம் ஆதரிக்கும் தேவை வகைகளை உள்ளமைக்கவும்.',
+  'guide.inclusive_delivery.s2': 'சேர்க்கைக்கு பிறகு, பாதுகாவலர்களை ஆதரவு தேவைகளை பகிர்ந்துகொள்ள கேட்கும்.',
+  'guide.inclusive_delivery.s3': 'வரவிருக்கும் அமர்வை திறந்து சேர்க்கை தயார்நிலை பலகத்தைப் பாருங்கள்.',
+  'guide.inclusive_delivery.s4': 'ஒரு வீரர் திட்டத்தை மாற்றினால், Change programme பயன்படுத்தி பகிர்வுகளை நிர்வகிக்கவும்.',
+  'guide.inclusive_delivery.s5': 'பாதுகாவலர்கள் Guardian progress பார்வையைத் திறக்கலாம்.',
+  // reviewed: false
+  'paraDoctor.tab_label': 'தகவமைப்பு',
+  // reviewed: false
+  'paraDoctor.specialism_title': 'பாரா-விளையாட்டு சிறப்பு நிபுணத்துவங்கள்',
+  // reviewed: false
+  'paraDoctor.specialism_hint': 'தகவமைப்பு விளையாட்டு வீரர்களுக்கான மருத்துவ நிபுணத்துவம்.',
+  // reviewed: false
+  'paraDoctor.specialism_edit': 'திருத்து',
+  // reviewed: false
+  'paraDoctor.specialism_none': 'சிறப்பு நிபுணத்துவம் அறிவிக்கப்படவில்லை',
+  // reviewed: false
+  'paraDoctor.specialism_none_sub': 'உங்கள் விளையாட்டுகளை சேர்க்கவும்.',
+  // reviewed: false
+  'paraDoctor.template_title': 'ஆலோசனை வார்ப்புருக்கள்',
+  // reviewed: false
+  'paraDoctor.template_new': '＋ புதியது',
+  // reviewed: false
+  'paraDoctor.template_none': 'இன்னும் வார்ப்புருக்கள் இல்லை',
+  // reviewed: false
+  'paraDoctor.template_none_sub': 'விளையாட்டு-குறிப்பிட்ட வார்ப்புருக்கள் உருவாக்கவும்.',
+  // reviewed: false
+  'paraDoctor.episode_title': 'பாரா அத்தியாயங்கள்',
+  // reviewed: false
+  'paraDoctor.episode_none': 'செயலில் உள்ள பாரா அத்தியாயங்கள் இல்லை',
+  // reviewed: false
+  'paraDoctor.episode_none_sub': 'அத்தியாயங்கள் இங்கே தோன்றும்.',
+  // reviewed: false
+  'paraDoctor.summary_title': 'மருத்துவமற்ற ஆதரவு சுருக்கங்கள்',
+  // reviewed: false
+  'paraDoctor.summary_new': '＋ வரைவு',
+  // reviewed: false
+  'paraDoctor.summary_none': 'சுருக்கங்கள் வரையப்படவில்லை',
+  // reviewed: false
+  'paraDoctor.summary_none_sub': 'தகவமைப்பு விளையாட்டு வீரருக்கு சுருக்கம் வரைக.',
+  // reviewed: false
+  'paraDoctor.boundary_title': '⚠️ வகைப்பாட்டு எல்லை',
+  // reviewed: false
+  'paraDoctor.boundary_body': 'இங்கு பதிவு செய்யப்பட்ட மருத்துவ ஆலோசனைகள் பாரா-விளையாட்டு வகைப்பாட்டு முடிவுகளிலிருந்து முற்றிலும் தனியானவை.',
+  // reviewed: false
+  'paraDoctor.support_tab_label': 'ஆதரவு',
+  // reviewed: false
+  'paraDoctor.support_privacy_title': 'உங்கள் மருத்துவ தகவல் தனிப்பட்டது',
+  // reviewed: false
+  'paraDoctor.support_privacy_body': 'பயிற்சியாளர்கள் நிலையை மட்டுமே காண்கிறார்கள்.',
+  // reviewed: false
+  'paraDoctor.support_classification_note': 'உங்கள் வகைப்பாடு முற்றிலும் தனியானது.',
+  // reviewed: false
+  'paraDoctor.support_summaries_title': 'ஆதரவு சுருக்கங்கள்',
+  // reviewed: false
+  'paraDoctor.support_summaries_hint': 'உங்கள் மருத்துவர் செயல்பாட்டு சுருக்கத்தை வரையலாம்.',
+  // reviewed: false
+  'paraDoctor.support_summaries_none': 'ஆதரவு சுருக்கங்கள் இல்லை',
+  // reviewed: false
+  'paraDoctor.support_summaries_none_sub': 'உங்கள் மருத்துவர் வரைந்தால் இங்கே தோன்றும்.',
+  // reviewed: false
+  'paraDoctor.support_approve': 'அனுமதி',
+  // reviewed: false
+  'paraDoctor.support_decline': 'நிராகரி',
+  // reviewed: false
+  'paraDoctor.support_revoke_all': 'அனைத்து அணுகலையும் திரும்பப் பெறுக',
+  // reviewed: false
+  'paraDoctor.support_history_title': 'ஆலோசனை வரலாறு',
+  // reviewed: false
+  'paraDoctor.support_history_hint': 'தகவமைப்பு விளையாட்டுடன் இணைக்கப்பட்ட ஆலோசனைகள்.',
+  // reviewed: false
+  'paraDoctor.support_history_none': 'அத்தியாயங்கள் பதிவு இல்லை',
+  // reviewed: false
+  'paraDoctor.support_history_none_sub': 'ஆலோசனை இணைக்கப்படும்போது இங்கே தோன்றும்.',
+  // reviewed: false
+  'guide.para_doctor.title': 'பாரா-விளையாட்டு வீரர் மருத்துவ ஒருங்கிணைப்பு',
+  // reviewed: false
+  'guide.para_doctor.why': 'பாரா விளையாட்டு வீரர்களுக்கு நிபுணத்துவ மருத்துவ பராமரிப்பு வழங்கவும்.',
+  // reviewed: false
+  'guide.para_doctor.s1': 'மருத்துவர் பணியிடம் → தகவமைப்பு தாவலை திறக்கவும்.',
+  // reviewed: false
+  'guide.para_doctor.s2': 'ஆலோசனையின்போது பாரா அத்தியாயம் உருவாக்கவும்.',
+  // reviewed: false
+  'guide.para_doctor.s3': 'பரிந்துரைகளை பயன்படுத்தவும்.',
+  // reviewed: false
+  'guide.para_doctor.s4': 'ஆதரவு சுருக்கம் வரைக.',
+  // reviewed: false
+  'guide.para_doctor.s5': 'விளையாட்டு வீரர் சம்மதிக்கிறார்.',
+};

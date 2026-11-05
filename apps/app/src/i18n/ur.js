@@ -11948,4 +11948,210 @@ export default {
   'insurance.para.serial_masked': 'S/N {masked}',
   'insurance.para.linked_event_label': 'Linked event: {name}',
   'insurance.para.best_para_cover': 'Best para cover',
+  // PS-10 Para-sport operational readiness (machine-drafted, reviewed: false)
+  'pr.safety_critical': 'SAFETY CRITICAL',
+  'pr.derived': 'LIVE CHECK',
+  'pr.bar_a11y': 'Readiness {{percent}}%, {{blockers}} safety-critical items open',
+  'pr.gate_clear': 'Gate clear — event may open',
+  'pr.gate_blocked': '{{n}} safety-critical item blocking',
+  'pr.state.met': 'Met',
+  'pr.state.open': 'Open',
+  'pr.state.waived': 'Waived',
+  'pr.state.exception': 'Exception',
+  'pr.cat.accessible_facilities': 'Accessible Facilities',
+  'pr.cat.classification': 'Classification',
+  'pr.cat.support_roles': 'Support Roles',
+  'pr.cat.medical': 'Medical',
+  'pr.cat.equipment': 'Equipment',
+  'pr.cat.transport_access': 'Transport Access',
+  'pr.cat.communication': 'Communication',
+  'pr.stat_total': 'Requirements',
+  'pr.stat_met': 'Met',
+  'pr.stat_critical': 'Critical Open',
+  'pr.stat_pending_exc': 'Exceptions Pending',
+  'pr.blockers_label': 'Blocking gate open:',
+  'pr.exception_valid': 'Exception approved · valid until {{until}}',
+  'pr.indefinite': 'indefinitely',
+  'pr.changed_alert': '⚠️ Changed since last sign-off — please review',
+  'pr.signed': 'Signed off by {{who}} on {{when}}',
+  'pr.sign_off': 'Sign Off',
+  'pr.sign_off_a11y': 'Sign off: {{title}}',
+  'pr.exception': 'Document Exception',
+  'pr.exception_a11y': 'Document exception for: {{title}}',
+  'pr.tab_checklist': 'Checklist',
+  'pr.tab_exceptions': 'Exceptions',
+  'pr.empty_title': 'No para requirements yet',
+  'pr.empty_sub': 'Add standard accessibility requirements for this event.',
+  'pr.notify_btn': 'Send Notification',
+  'pr.add_standards': 'Add Standard Items',
+  'pr.role.organiser': 'Organiser',
+  'pr.role.venue': 'Venue',
+  'pr.role.official': 'Official',
+  'pr.role.athlete': 'Athlete',
+  'pr.signoff_title': 'Sign Off Requirement',
+  'pr.signoff_submit': 'Sign Off',
+  'pr.signoff_note': 'Provide an evidence reference — a booking ID, staff assignment ID, supplier contract ref, or document reference. This creates a permanent audit record.',
+  'pr.evidence_ref': 'Evidence Reference',
+  'pr.evidence_placeholder': 'e.g. booking/WBA-2048, supplier/ESP-110',
+  'pr.signoff_note_label': 'Note (optional)',
+  'pr.signoff_note_ph': 'Additional context',
+  'pr.exc_title': 'Document Exception',
+  'pr.exc_submit': 'Submit Exception',
+  'pr.exc_critical_warning': 'This is a safety-critical item. A second officer must review and approve this exception before it takes effect.',
+  'pr.exc_justification': 'Justification (min 20 characters)',
+  'pr.exc_justification_ph': 'Explain why the standard requirement cannot be met and what equivalent provision is in place',
+  'pr.second_officer': 'Second Officer User ID',
+  'pr.second_officer_ph': 'ID of the second approving officer',
+  'pr.valid_until': 'Valid Until (optional)',
+  'pr.exc_status.pending': 'Pending Review',
+  'pr.exc_status.approved': 'Approved',
+  'pr.exc_status.rejected': 'Rejected',
+  'pr.exc_status.expired': 'Expired',
+  'pr.no_exceptions': 'No exceptions documented',
+  'pr.no_exceptions_sub': 'Exceptions to para requirements are logged here when standard provisions cannot be met.',
+  'pr.rejection_reason': 'Rejection reason',
+  'pr.raised_by': 'Raised by',
+  'pr.notify_title': 'Send Accessibility Notification',
+  'pr.notify_submit': 'Send',
+  'pr.notify_role': 'Send to:',
+  'pr.notify_message': 'Message',
+  'pr.contingency_plan': 'Contingency Plan (optional)',
+  'pr.contingency_ph': 'Describe the contingency plan if accessibility provisions are disrupted',
+  'pr.access_title': 'Accessibility & Access Information',
+  'pr.access_note': 'Operational access information only. Clinical details are never shared.',
+  'pr.access_empty_title': 'Access information not yet confirmed',
+  'pr.access_empty_sub': 'The event organiser will publish accessibility details once confirmed.',
+  'pr.access_confirmed': 'Confirmed',
+  'pr.confirmed_at': 'Confirmed {{date}}',
+  // PS-14 inclusive delivery integration — machine translated, reviewed: false
+  'incops.enrolment_prompt_title': 'اپنی معاونت کی ضروریات شیئر کریں',
+  'incops.enrolment_prompt_body': 'یہ پروگرام موافق کھلاڑیوں کی مدد کرتا ہے۔ کوچنگ ٹیم کی تیاری کے لیے اپنی ضروریات شیئر کریں۔',
+  'incops.enrolment_prompt_share': 'میری ضروریات شیئر کریں',
+  'incops.enrolment_prompt_later': 'بعد میں کریں',
+  'incops.enrolment_prompt_already_shared': 'ضروریات کوچنگ ٹیم کے ساتھ شیئر کی گئی ہیں',
+  'incops.enrolment_prompt_privacy': 'صرف آپ کے منتخب کوچ ہی یہ دیکھتے ہیں۔',
+  'incops.session_readiness_title': 'شمولیت کی تیاری',
+  'incops.session_readiness_ready': 'تیار',
+  'incops.session_readiness_attention': 'توجہ درکار',
+  'incops.session_readiness_gap': 'خلاء',
+  'incops.session_staff_match': 'کوچ اہلیت مطابقت',
+  'incops.staff_match_full': 'مکمل مطابقت',
+  'incops.staff_match_partial': 'جزوی',
+  'incops.staff_match_none': 'کوئی مطابقت نہیں',
+  'incops.consented_access_title': 'رضامندی کے ساتھ رسائی',
+  'incops.consented_access_note': 'صرف موافق اہلیت والے عملہ دکھا رہا ہے۔',
+  'incops.consented_access_audit': 'ہر ڈیٹا رسائی لاگ کی جاتی ہے۔',
+  'incops.change_programme_title': 'پروگرام تبدیل کریں',
+  'incops.change_programme_new': 'نیا پروگرام',
+  'incops.change_programme_reason': 'وجہ (اختیاری)',
+  'incops.change_programme_carry': 'معاونت شیئر آگے منتقل کیے گئے',
+  'incops.change_programme_revoke': 'معاونت شیئر منسوخ کیے گئے',
+  'incops.change_programme_reshare': 'نئے کوچ کو شیئر درکار ہے',
+  'incops.change_programme_confirm': 'تبدیلی کی تصدیق کریں',
+  'incops.change_programme_cancel': 'منسوخ کریں',
+  'incops.change_programme_revoke_note': 'جو کوچ اب نہیں رہے ان کے ساتھ شیئر فوری منسوخ ہو جاتے ہیں۔',
+  'incops.guardian_progress_title': 'سرپرست کی پیشرفت',
+  'incops.guardian_progress_programme': 'پروگرام',
+  'incops.guardian_progress_attendance': 'حاضری',
+  'incops.guardian_progress_assessments': 'موافق سنگ میل',
+  'incops.guardian_progress_assessments_note': 'سیشن منعقد ہوئے',
+  'incops.guardian_progress_credits': 'واجب الادا فیس',
+  'incops.guardian_progress_upcoming': 'آنے والے سیشن',
+  'incops.guardian_progress_accommodations': 'معاونت کی ضروریات',
+  'incops.guardian_progress_manage': 'معاونت کی ضروریات کا انتظام',
+  'incops.inclusion_ready': '✓ شمولیت تیار',
+  'incops.inclusion_attention': '⚠ شمولیت توجہ',
+  'incops.inclusion_gap': '⛔ شمولیت خلاء',
+  'incops.milestone_achieved': 'حاصل کیا',
+  'incops.milestone_in_progress': 'جاری ہے',
+  'incops.milestone_upcoming': 'آنے والا',
+  'guide.inclusive_delivery.title': 'جامع پروگرام فراہمی',
+  'guide.inclusive_delivery.why': 'ہر سیشن سے پہلے رہائش، اہل کوچ اور قابل رسائی مقامات کو جوڑیں۔',
+  'guide.inclusive_delivery.s1': 'Academy، پھر Inclusion کھولیں اور پروگرام کی ضروریات ترتیب دیں۔',
+  'guide.inclusive_delivery.s2': 'داخلے کے بعد سرپرستوں کو ضروریات شیئر کرنے کی ترغیب دی جاتی ہے۔',
+  'guide.inclusive_delivery.s3': 'آنے والا سیشن کھولیں اور شمولیت تیاری پینل دیکھیں۔',
+  'guide.inclusive_delivery.s4': 'اگر کھلاڑی پروگرام تبدیل کرے تو Change programme استعمال کریں۔',
+  'guide.inclusive_delivery.s5': 'سرپرست Guardian progress دیکھ سکتے ہیں۔',
+  // reviewed: false
+  'paraDoctor.tab_label': 'موافق',
+  // reviewed: false
+  'paraDoctor.specialism_title': 'پیرا-اسپورٹ تخصصات',
+  // reviewed: false
+  'paraDoctor.specialism_hint': 'وہ کھیل جن میں آپ کو موافق کھلاڑیوں کے لیے طبی مہارت ہے۔',
+  // reviewed: false
+  'paraDoctor.specialism_edit': 'ترمیم',
+  // reviewed: false
+  'paraDoctor.specialism_none': 'کوئی تخصص اعلان نہیں کیا',
+  // reviewed: false
+  'paraDoctor.specialism_none_sub': 'اپنے کھیل شامل کریں۔',
+  // reviewed: false
+  'paraDoctor.template_title': 'مشاورتی سانچے',
+  // reviewed: false
+  'paraDoctor.template_new': '＋ نیا',
+  // reviewed: false
+  'paraDoctor.template_none': 'ابھی کوئی سانچہ نہیں',
+  // reviewed: false
+  'paraDoctor.template_none_sub': 'کھیل مخصوص سانچے بنائیں۔',
+  // reviewed: false
+  'paraDoctor.episode_title': 'پیرا واقعات',
+  // reviewed: false
+  'paraDoctor.episode_none': 'کوئی فعال پیرا واقعہ نہیں',
+  // reviewed: false
+  'paraDoctor.episode_none_sub': 'واقعات یہاں ظاہر ہوں گے۔',
+  // reviewed: false
+  'paraDoctor.summary_title': 'غیر طبی معاونت خلاصے',
+  // reviewed: false
+  'paraDoctor.summary_new': '＋ مسودہ',
+  // reviewed: false
+  'paraDoctor.summary_none': 'کوئی خلاصہ تیار نہیں',
+  // reviewed: false
+  'paraDoctor.summary_none_sub': 'کھلاڑی کے لیے خلاصہ تیار کریں۔',
+  // reviewed: false
+  'paraDoctor.boundary_title': '⚠️ درجہ بندی کی حد',
+  // reviewed: false
+  'paraDoctor.boundary_body': 'یہاں درج طبی مشاورتیں پیرا-اسپورٹ درجہ بندی کے فیصلوں سے بالکل الگ ہیں۔',
+  // reviewed: false
+  'paraDoctor.support_tab_label': 'معاونت',
+  // reviewed: false
+  'paraDoctor.support_privacy_title': 'آپ کی طبی معلومات ذاتی ہیں',
+  // reviewed: false
+  'paraDoctor.support_privacy_body': 'کوچ صرف حیثیت دیکھتے ہیں۔',
+  // reviewed: false
+  'paraDoctor.support_classification_note': 'آپ کی درجہ بندی بالکل الگ ہے۔',
+  // reviewed: false
+  'paraDoctor.support_summaries_title': 'معاونت خلاصے',
+  // reviewed: false
+  'paraDoctor.support_summaries_hint': 'آپ کا ڈاکٹر آپریشنل خلاصہ تیار کر سکتا ہے۔',
+  // reviewed: false
+  'paraDoctor.support_summaries_none': 'کوئی معاونت خلاصہ نہیں',
+  // reviewed: false
+  'paraDoctor.support_summaries_none_sub': 'ڈاکٹر نے تیار کیا تو یہاں دکھے گا۔',
+  // reviewed: false
+  'paraDoctor.support_approve': 'منظور',
+  // reviewed: false
+  'paraDoctor.support_decline': 'رد کریں',
+  // reviewed: false
+  'paraDoctor.support_revoke_all': 'تمام رسائی منسوخ کریں',
+  // reviewed: false
+  'paraDoctor.support_history_title': 'مشاورت کی تاریخ',
+  // reviewed: false
+  'paraDoctor.support_history_hint': 'موافق کھیل سے منسلک مشاورتیں۔',
+  // reviewed: false
+  'paraDoctor.support_history_none': 'کوئی واقعہ درج نہیں',
+  // reviewed: false
+  'paraDoctor.support_history_none_sub': 'مشاورت منسلک ہونے پر یہاں دکھے گا۔',
+  // reviewed: false
+  'guide.para_doctor.title': 'پیرا-کھلاڑی طبی ہم آہنگی',
+  // reviewed: false
+  'guide.para_doctor.why': 'پیرا کھلاڑیوں کو ماہر طبی خدمات فراہم کریں۔',
+  // reviewed: false
+  'guide.para_doctor.s1': 'ڈاکٹر ورک اسپیس → موافق ٹیب کھولیں۔',
+  // reviewed: false
+  'guide.para_doctor.s2': 'مشاورت کے دوران پیرا واقعہ بنائیں۔',
+  // reviewed: false
+  'guide.para_doctor.s3': 'ریفرلز استعمال کریں۔',
+  // reviewed: false
+  'guide.para_doctor.s4': 'معاونت خلاصہ تیار کریں۔',
+  // reviewed: false
+  'guide.para_doctor.s5': 'کھلاڑی رضامندی دیتا ہے۔',
 };

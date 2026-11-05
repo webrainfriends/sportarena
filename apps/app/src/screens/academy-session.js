@@ -14,6 +14,7 @@ import { EntityPicker } from '../entity-picker';
 import { c } from '../theme';
 import { dateTimeIn, localDate, localHHMM, localToIso, timeIn } from '../vtime';
 import { Block, Fact, Timeline } from './academy-ui';
+import { needLabel, typeLabel, featureLabel } from './academy-inclusion';
 import { SessionObjectives } from './academy-curriculum-session';
 import { LicensedSessionContent } from './academy-content-session';
 import { PickupTab } from './academy-safety';
@@ -22,6 +23,49 @@ import { CourtPicker } from './training-venue';
 import { HeldList, PassSheet, ScanPanel, SiteCodeSheet } from '../access-ui';
 
 const uid = () => `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 10)}`;
+const INC_TONE = { ready: '#2F8F5F', attention: '#D97706', gap: '#EA580C' };
+const STATE_TONE = { met: '#2F8F5F', short: '#D97706', gap: '#EA580C', manual: c.cyan };
+const reqLabelLocal = (r) => r.kind === 'venue_feature' ? `Venue: ${featureLabel(r.feature)}` : r.kind === 'support' ? `Support: ${r.assigned}/${r.needed} assigned` : r.kind === 'credential' ? `Credential: ${r.credential.replace(/_/g, ' ')}` : `Equipment: ${r.athletes} athletes`;
+
+function InclusionReadiness({ id }) {
+  const r = useLoad(() => api.get(`/academy/sessions/${id}/readiness`).catch((e) => ({ error: e })), [id]);
+  const sm = useLoad(() => api.get(`/academy/sessions/${id}/staff-match`).catch(() => null), [id]);
+  if (!r.data) return null;
+  if (r.data?.error) return null;
+  const level = r.data.level;
+  return (
+    <View style={{ marginTop: 10, gap: 8 }}>
+      <Card pad={12}>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+          <T weight="800" size={14}>{t('incops.session_readiness_title')}</T>
+          <Tag label={t(`incops.session_readiness_${level}`)} color={INC_TONE[level]} accessibilityLabel={`Inclusion readiness: ${level}`} />
+          <T size={12} color={c.mute}>{r.data.athletes_with_needs} with needs · {r.data.enrolled} enrolled</T>
+        </View>
+        {r.data.requirements?.length > 0 ? (
+          <View style={{ gap: 4, marginTop: 6 }}>
+            {r.data.requirements.filter((x) => x.state !== 'met').map((x) => (
+              <View key={x.code} style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                <Tag label={x.state} color={STATE_TONE[x.state]} />
+                <T size={12}>{reqLabelLocal(x)}</T>
+              </View>
+            ))}
+          </View>
+        ) : null}
+        {sm.data?.staff?.length > 0 ? (
+          <View style={{ marginTop: 8, gap: 4 }}>
+            <T size={12} weight="800" color={c.mute}>{t('incops.session_staff_match')}</T>
+            {sm.data.staff.map((p) => (
+              <View key={p.user_id} style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                <Tag label={t(`incops.staff_match_${p.match_state}`)} color={p.match_state === 'full' ? INC_TONE.ready : p.match_state === 'partial' ? INC_TONE.attention : c.line} />
+                <T size={12}>{p.name}</T>
+              </View>
+            ))}
+          </View>
+        ) : null}
+      </Card>
+    </View>
+  );
+}
 const STATUS = [['present', 'Present'], ['late', 'Late'], ['left_early', 'Left early'], ['absent', 'Absent'], ['excused', 'Excused']];
 const MARK = { expected: 'Expected', present: 'Present', late: 'Late', left_early: 'Left early', absent: 'Absent', excused: 'Excused', not_held: 'Not held' };
 const MARK_ICON = { expected: '•', present: '✓', late: '⏱', left_early: '↪', absent: '✕', excused: '✉', not_held: '—' };
@@ -271,6 +315,7 @@ export function AcademySession({ id, tab: want, find }) {
         <T color={c.mute}>{dateTimeIn(s.starts_at, tz)} – {timeIn(s.ends_at, tz)}{s.venue ? ` · 📍 ${s.venue.venue_name} · ${s.venue.resource_name}` : ' · no venue yet'}</T>
       </View>
       {s.status !== 'cancelled' ? <View style={{ marginTop: 10 }}><Compliance compliance={s.compliance} conflicts={s.conflicts ?? []} /></View> : null}
+      {s.has_inclusion && s.status !== 'cancelled' ? <InclusionReadiness id={s.id} /> : null}
       {mine && ['lead', 'assistant'].includes(mine.role) && s.status !== 'draft' && s.status !== 'cancelled' ? (
         <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 10 }}>
           <Btn small title="Track a scrimmage or game" color={c.violet} onPress={() => nav.push('ScoringTool', { tab: 'start', contextType: 'academy_session', contextId: s.id })} />

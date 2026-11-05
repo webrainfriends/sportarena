@@ -20,11 +20,11 @@ const PLAIN = { requested: 'Waiting for your result', received: 'Received — wa
 
 export function MyHealthFile() {
   const [sec, setSec] = useState('plans');
-  const Body = { plans: MyPlans, results: MyResults, context: MyContext, referrals: MyReferrals, fit: MyFit }[sec];
+  const Body = { plans: MyPlans, results: MyResults, context: MyContext, referrals: MyReferrals, fit: MyFit, support: MySupport }[sec];
   return (
     <View style={{ gap: 12 }}>
       <Card color={c.mintSoft} pad={12}><T weight="800">Your health file</T><T size={12} color={c.mute}>What your doctors have shared with you, and what you tell them. Doctors only see your file while you give them access — change that any time in Access.</T></Card>
-      <Seg options={[{ value: 'plans', label: 'Care plans', emoji: '🗂️' }, { value: 'results', label: 'Tests', emoji: '🧪' }, { value: 'context', label: 'Allergies & meds', emoji: '💊' }, { value: 'referrals', label: 'Referrals', emoji: '↗️' }, { value: 'fit', label: 'Fit to play', emoji: '✅' }]} value={sec} onChange={setSec} color={c.mint} />
+      <Seg options={[{ value: 'plans', label: 'Care plans', emoji: '🗂️' }, { value: 'results', label: 'Tests', emoji: '🧪' }, { value: 'context', label: 'Allergies & meds', emoji: '💊' }, { value: 'referrals', label: 'Referrals', emoji: '↗️' }, { value: 'fit', label: 'Fit to play', emoji: '✅' }, { value: 'support', label: 'Support', emoji: '♿' }]} value={sec} onChange={setSec} color={c.mint} />
       <Body key={sec} />
     </View>
   );
@@ -147,5 +147,77 @@ function MyFit() {
         {(me.data ?? []).map((x) => <ClearanceCard key={x.id} x={x}>{x.doctor_name ? <T size={12} color={c.mute}>Dr {x.doctor_name}</T> : null}{x.internal_note ? <T size={12} color={c.mute}>Note: {x.internal_note}</T> : null}</ClearanceCard>)}
       </Wait>
     </Block>
+  );
+}
+
+// ---------- Adaptive support tab (PS-17) ----------
+
+function MySupport() {
+  const summaries = useLoad(() => api.get('/para-doctor/summaries', { role: 'athlete', limit: 50 }), []);
+  const episodes = useLoad(() => api.get('/para-doctor/episodes', { as_athlete: true, limit: 50 }), []);
+  const act = useAct(summaries.reload);
+
+  const SUMMARY_TAG = { pending_consent: ['Needs your consent', c.sun], active: ['Active — shared with staff', c.lime], revoked: ['Revoked', NEUTRAL] };
+
+  const approve = (id) => act(() => api.post(`/para-doctor/summary/${id}/consent`), 'Summary approved — staff can now see it');
+  const decline = (id) => act(() => api.post(`/para-doctor/summary/${id}/decline`), 'Summary declined');
+  const revokeAll = (id) => act(() => api.post(`/para-doctor/summary/${id}/revoke-all`), 'All access revoked — no one can see it');
+
+  return (
+    <View style={{ gap: 14 }}>
+      {/* Clinical privacy notice */}
+      <Card color="#FEF3C7" pad={12} style={{ borderLeftWidth: 4, borderLeftColor: '#D97706' }}>
+        <T weight="900" size={13} color="#92400E">Your clinical information stays private</T>
+        <T size={12} color="#92400E" style={{ marginTop: 4 }}>Fit-to-play decisions are shared with coaches as "cleared / restricted / not cleared" only — never the medical reason. The nonclinical support summaries below are operational only (access needs, emergency contacts) and are only shared if you explicitly approve them. You can revoke access at any time.</T>
+        <T size={12} color="#92400E" style={{ marginTop: 4 }}>Your para-sport classification is entirely separate and is never handled here.</T>
+      </Card>
+
+      {/* Support summaries pending consent */}
+      <Block title="Support summaries">
+        <T size={12} color={c.mute}>Your doctor may draft an operational summary to share with coaching or event staff. You decide whether it goes ahead, and can revoke it at any time.</T>
+        <Wait q={summaries} empty={<Empty emoji="📄" title="No support summaries" sub="If your doctor drafts one, it appears here for your approval first." />}>
+          {(summaries.data ?? []).map((s) => {
+            const [tagLabel, tagColor] = SUMMARY_TAG[s.status] ?? [s.status, NEUTRAL];
+            return (
+              <Card key={s.id} pad={12}>
+                <View style={{ flexDirection: 'row', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+                  <T weight="900">Dr {s.author_name ?? 'Your doctor'}</T>
+                  <Tag label={tagLabel} color={tagColor} />
+                </View>
+                <T size={13} color={c.mute}>For: {s.audience_label}</T>
+                {s.status === 'active' && s.access_count ? <T size={12} color={c.mute}>{s.access_count} person(s) currently have access</T> : null}
+                <Bar>
+                  {s.status === 'pending_consent' ? (
+                    <>
+                      <Btn small title="Approve" color={c.mint} ink={c.ink} onPress={() => approve(s.id)} accessibilityLabel="Approve this summary" />
+                      <Btn small title="Decline" color={c.paper} ink={c.red} onPress={() => decline(s.id)} accessibilityLabel="Decline this summary" />
+                    </>
+                  ) : null}
+                  {s.status === 'active' ? <Btn small title="Revoke all access" color={c.paper} ink={c.red} onPress={() => revokeAll(s.id)} accessibilityLabel="Revoke all access to this summary" /> : null}
+                </Bar>
+              </Card>
+            );
+          })}
+        </Wait>
+      </Block>
+
+      {/* Para episode history */}
+      <Block title="Consultation history">
+        <T size={12} color={c.mute}>Consultations your doctor has linked to your adaptive sport. Each episode is part of your clinical record and is not shared with coaches.</T>
+        <Wait q={episodes} empty={<Empty emoji="🗂️" title="No episodes recorded" sub="When your doctor links a consultation to your adaptive sport, it appears here." />}>
+          {(episodes.data ?? []).map((ep) => (
+            <Card key={ep.id} pad={12}>
+              <View style={{ flexDirection: 'row', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+                <T weight="900">Dr {ep.doctor_name ?? 'Doctor'}</T>
+                <Tag label={ep.sport.replace(/_/g, ' ')} color={c.cyanSoft} />
+                <Tag label={ep.status} color={ep.status === 'active' ? c.lime : NEUTRAL} />
+              </View>
+              {ep.template_name ? <T size={12} color={c.mute}>Template: {ep.template_name}</T> : null}
+              <T size={12} color={c.mute}>{ep.created_at ? `Started ${day(ep.created_at)}` : ''}</T>
+            </Card>
+          ))}
+        </Wait>
+      </Block>
+    </View>
   );
 }

@@ -55,6 +55,21 @@ export const ACADEMY_STEPS = [
     modules: ['venue-coaches.js', 'coach-classes.js', 'coaching-para.js'], sources: ['apps/app/src/screens/venue-coaches.js', 'apps/app/src/screens/manage.js', 'apps/app/src/screens/coaching-para.js'],
   },
   {
+    id: 'inclusive_delivery',
+    title: 'Inclusive programme delivery',
+    why: 'Connect accommodations, qualified coaches and accessible venues before each session, so every athlete trains safely and the right support is in place before the first whistle.',
+    steps: [
+      'Open Academy, then Inclusion to configure which need types a programme supports and what venue features are required.',
+      'After enrolling an athlete, the enrolment flow prompts guardians or the athlete to share their operational needs with the coaching team.',
+      'Open any upcoming session to see the Inclusion Readiness panel: requirements are marked met, short or gap so you can act before the session.',
+      'If an athlete changes programme, use Change programme in Inclusion to carry their accommodation shares to the new team, revoke access for coaches who leave and prompt re-share where needed.',
+      'Guardians open the Guardian progress view under Inclusion to see attendance, adapted assessment milestones and upcoming sessions without seeing the coaching team\'s operational notes.',
+    ],
+    target: { academy: 'inclusion' },
+    modules: ['academy-inclusion.js', 'academy-sessions.js', 'coach-adaptive.js'],
+    sources: ['apps/app/src/screens/academy-inclusion.js', 'apps/app/src/screens/academy-session.js', 'apps/app/src/screens/academy-admissions.js'],
+  },
+  {
     id: 'students', title: 'Invite students',
     why: 'Move people from enquiry to enrolled. Parents and guardians consent for children.',
     steps: ['Open Academy, then Admissions.', 'Invite a family to a programme, or review the applications and trials that arrive.', 'Make an offer, then enrol once they accept. Enrolment letters are produced for you.', 'For an athlete joining from abroad, open Start international checklist on the application, then track permissions, passport and visa status, school, residence and arrival under International. Enrolment waits until every mandatory item is met.', 'Use Families to see everyone enrolled and who pays.'],
@@ -155,9 +170,9 @@ id: 'wellbeing', title: 'Support student wellbeing and development',
   {
     id: 'inclusion', title: 'Run inclusive and adaptive programmes',
     why: 'Let disabled and para athletes join and progress in your programmes without disclosing a diagnosis: set what a programme offers, check every adaptive session is ready, and let athletes share only the operational needs they choose.',
-    steps: ['Open Academy, then Inclusion, then Programme setup, pick a programme and choose who can join, the sport adaptation templates, the adjustments offered, the venue features and the support-person ratio it needs.', 'Ask venue managers to record each venue\'s access features (lift, step-free route, accessible changing room, pool hoist) so sessions can be checked against them.', 'Athletes, or the verified guardian of a young person, open My academy, then Accommodations, and share only what staff need, with whom and until when. They can withdraw it at any moment.', 'Open Inclusion, then Session readiness, choose a session and resolve every gap: venue, support persons, duty cover and the lead coach credential. Coaches and venue staff see only what was shared with them, and every look is logged for the athlete.', 'Record adapted, coach-led assessments with descriptor levels, never a single score, and have a second assessor sign them off. Directors see counts only on the Overview.', 'Open Academy, then Inclusion, then Para pathways, to see which enrolled athletes have shared their athlete-owned para-sport pathway with you. View their milestones and evidence for the stages they granted you, and leave feedback on a checkpoint when asked. The athlete controls what you can see and can revoke access at any moment.'],
+    steps: ['Open Academy, then Inclusion, then Programme setup, pick a programme and choose who can join, the sport adaptation templates, the adjustments offered, the venue features and the support-person ratio it needs.', 'Ask venue managers to record each venue\'s access features (lift, step-free route, accessible changing room, pool hoist) so sessions can be checked against them.', 'Athletes, or the verified guardian of a young person, open My academy, then Accommodations, and share only what staff need, with whom and until when. They can withdraw it at any moment.', 'Open Inclusion, then Session readiness, choose a session and resolve every gap: venue, support persons, duty cover and the lead coach credential. Coaches and venue staff see only what was shared with them, and every look is logged for the athlete.', 'Record adapted, coach-led assessments with descriptor levels, never a single score, and have a second assessor sign them off. Directors see counts only on the Overview.', 'Open Academy, then Inclusion, then Para pathways, to see which enrolled athletes have shared their athlete-owned para-sport pathway with you. View their milestones and evidence for the stages they granted you, and leave feedback on a checkpoint when asked. The athlete controls what you can see and can revoke access at any moment.', 'Before opening any para-sport event, complete the accessibility readiness gate: open the event console, tap the Para Readiness tab, tap Add Standard Items to import the full accessibility checklist (accessible entrance, adapted facilities, classification, support roles, medical station, evacuation plan, equipment, transport and communication), and sign off each item with an evidence reference (booking ID, staff assignment, supplier contract). Safety-critical items (medical station and evacuation plan) block the event from opening until met or a second-officer-approved documented exception is in place. Document unavoidable exceptions with a justification and evidence; safety-critical exceptions require a named second officer who reviews independently before the exception is activated. Use Send Notification to push role-appropriate accessibility briefings (organiser, venue, official, athlete) with a contingency plan. Accepted para athletes see their confirmed operational access information in the event\'s Accessibility tab — venue details, transport and communication arrangements — without any clinical or classification data.'],
     target: { academy: 'inclusion' },
-    modules: ['academy-inclusion.js', 'para-pathway.js', 'para-physio.js', 'para-sport-funding.js'], sources: ['apps/app/src/screens/academy-inclusion.js', 'apps/app/src/screens/inclusion-family.js', 'apps/app/src/screens/para-pathway.js', 'apps/app/src/screens/physio-para-rehab.js', 'apps/app/src/screens/sponsor-programs.js', 'apps/app/src/screens/player-funding.js'],
+    modules: ['academy-inclusion.js', 'para-pathway.js', 'para-physio.js', 'para-sport-funding.js', 'para-readiness.js'], sources: ['apps/app/src/screens/academy-inclusion.js', 'apps/app/src/screens/inclusion-family.js', 'apps/app/src/screens/para-pathway.js', 'apps/app/src/screens/physio-para-rehab.js', 'apps/app/src/screens/sponsor-programs.js', 'apps/app/src/screens/player-funding.js', 'apps/app/src/screens/para-readiness.js'],
   },
   {
     id: 'placement', title: 'Manage placement pathways',
@@ -182,6 +197,15 @@ id: 'wellbeing', title: 'Support student wellbeing and development',
   },
 ];
 
+  {
+    id: 'para_doctor', title: 'Para-athlete clinical coordination',
+    why: 'Enable specialist doctors to declare para-sport expertise, structure consultations with sport-specific templates, coordinate referrals to prosthetists and rehabilitation clinicians, and share nonclinical operational summaries with coaches and event staff — entirely separate from classification and always with athlete consent.',
+    steps: ['Open Doctor workspace → Adaptive tab. Declare the para-sports you have clinical expertise in; this appears on your profile and is not a classification credential.', 'Create consult templates for each relevant sport: name the template, write a description, and define the structured fields you use each session.', 'When consulting a para-athlete, open their patient file and create a para episode, linking it to the appropriate sport and template.', 'To extend the care pathway, use Health → Referrals to refer to prosthetists, rehabilitation clinicians or sports medicine providers already on the platform.', 'Draft a nonclinical support summary for operational staff (access needs, emergency contacts, general support). The athlete receives a consent request; only after they approve can staff see the summary.', 'Athletes manage consent from Health → Support tab: approve, decline or revoke individual access per person at any time.'],
+    target: { health: 'doctor', athlete: 'support' },
+    modules: ['para-doctor-consult.js'], sources: ['apps/app/src/screens/doctor.js', 'apps/app/src/screens/health-file.js'],
+  },
+];
+
 /** Org/academy API modules with no step of their own, and why. Anything not here and not in a step fails the guard test. */
 export const NOT_IN_GUIDE = {
   'academy-curriculum.js': 'Curriculum, methodology and coaching-philosophy governance is set up by the academy after the first setup; it is described in docs/academy-curriculum.md, not in this onboarding guide.',
@@ -189,7 +213,7 @@ export const NOT_IN_GUIDE = {
 };
 
 /** The directories/files the guard test watches for org/academy/venue/coach/tax capability modules. */
-export const WATCHED_MODULES = /^(academy-.*|org-.*|organisations|venue-coaches|gst|provider-tax|coach-classes|para-sport-funding|para-pathway)\.js$/;
+export const WATCHED_MODULES = /^(academy-.*|org-.*|organisations|venue-coaches|gst|provider-tax|coach-classes|para-sport-funding|para-pathway|para-readiness)\.js$/;
 
 export const SHOT_SIZES = { phone: { width: 390, height: 1100 }, desktop: { width: 1280, height: 900 } };
 export const shotFile = (stepId, size) => `${String(ACADEMY_STEPS.findIndex((s) => s.id === stepId) + 1).padStart(2, '0')}-${stepId}-${size}.png`;
