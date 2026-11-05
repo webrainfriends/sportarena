@@ -3,6 +3,7 @@
 // Identity, guardian authority and payments are the canonical records; nothing here is a copy.
 import { FamilyChecklist } from './academy-international';
 import { FamilyKit } from './academy-kit-family';
+import { FamilyReports } from './academy-reports';
 import React, { useState } from 'react';
 import { Pressable, ScrollView, View } from 'react-native';
 import { api } from '../api';
@@ -97,6 +98,7 @@ export function AcademyFamily() {
                 </Block>
               </Panel>
               {p.enrolments.length ? <FamilyKit key={p.athlete.id} athleteId={p.athlete.id} /> : null}
+              {p.enrolments.length ? <FamilyReports key={`r${p.athlete.id}`} athleteId={p.athlete.id} /> : null}
               {p.certificates?.length ? (
                 <Panel>
                   <Block title="Certificates">

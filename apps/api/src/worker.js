@@ -36,6 +36,7 @@ import { runAcademicSweeps } from './capabilities/academy-academics.js';
 import { runDueTransfers } from './campus-transfers.js';
 import { runTenderJobs, sendTenderReminders } from './capabilities/tender-reports.js';
 import { deliverDueReports } from './sponsor-report-schedules.js';
+import { draftDueReports } from './academy-report-schedules.js';
 import { deliverDueKpiReports } from './kpi/service.js';
 import { growthMaintenance } from './growth/service.js';
 import { accrueActiveContracts } from './player-contracts.js';
@@ -111,6 +112,7 @@ export const STEPS = [
   ['tender_reminders', 'tender_deadline_reminders', sendTenderReminders, 0],
   ['sponsor_tasks', 'sponsor_task_reminders', processSponsorTasks, 0],
   ['sponsor_reports', 'sponsor_reports_delivered', deliverDueReports, 0],
+  ['academy_report_drafts', 'academy_report_drafts_made', draftDueReports, 0],
   ['kpi_reports', 'kpi_reports_delivered', deliverDueKpiReports, 0],
   ['growth_analytics', 'growth_analytics', growthMaintenance, null],
   ['player_contracts', 'contract_earnings_posted', accrueActiveContracts, 0],
