@@ -28,6 +28,33 @@ export async function expireAcademyOffers() {
   return n;
 }
 
+/**
+ * International admissions (#799): nudge the family about checklist items due within a week (or overdue) and evidence expiring within 30 days, and the
+ * assigned owner about arrival tasks due within two days. Generic wording, one message per person per item per ISO week, so a re-run never doubles up.
+ */
+export async function remindIntlDeadlines() {
+  const week = String(Math.floor(Date.now() / (7 * 864e5)));
+  let n = 0;
+  const items = await many(`SELECT i.id AS item_id, k.id AS case_id, k.application_id, k.organisation_id, a.applicant_id, k.athlete_id
+      FROM academy_intl_items i JOIN academy_intl_cases k ON k.id=i.case_id JOIN academy_applications a ON a.id=k.application_id
+     WHERE a.stage NOT IN ('withdrawn','declined','expired','enrolled') AND i.status IN ('open','rejected')
+       AND i.due_on IS NOT NULL AND i.due_on <= CURRENT_DATE + 7
+    UNION
+    SELECT i.id, k.id, k.application_id, k.organisation_id, a.applicant_id, k.athlete_id
+      FROM academy_intl_items i JOIN academy_intl_cases k ON k.id=i.case_id JOIN academy_applications a ON a.id=k.application_id
+     WHERE a.stage NOT IN ('withdrawn','declined','expired','enrolled') AND i.status='verified' AND i.expires_on IS NOT NULL AND i.expires_on <= CURRENT_DATE + 30
+     LIMIT 500`);
+  for (const r of items) {
+    for (const uid of await recipients(pool, { applicant_id: r.applicant_id, athlete_id: r.athlete_id })) {
+      await notify(null, uid, { kind: 'academy_intl_deadline', title: 'A relocation item needs attention', body: 'Open Gotmygame to see the details.', data: { organisation_id: r.organisation_id, application_id: r.application_id, case_id: r.case_id }, dedupe_key: `intl:deadline:${r.item_id}:${week}:${uid}` });
+      n++;
+    }
+  }
+  const tasks = await many("SELECT t.id, t.owner_id, t.case_id, t.organisation_id FROM academy_arrival_tasks t WHERE t.status='open' AND t.owner_id IS NOT NULL AND t.due_on IS NOT NULL AND t.due_on <= CURRENT_DATE + 2 LIMIT 500");
+  for (const t of tasks) { await notify(null, t.owner_id, { kind: 'academy_intl_task', title: 'An arrival task is due soon', body: 'Open Gotmygame to see the details.', data: { organisation_id: t.organisation_id, case_id: t.case_id }, dedupe_key: `intl:task:${t.id}:${week}` }); n++; }
+  return n;
+}
+
 const handlers = {
   'academy.announce': async (p) => {
     const apps = await many('SELECT id, organisation_id, programme_id, athlete_id, applicant_id FROM academy_applications WHERE organisation_id=$1 AND stage = ANY($2) AND ($3::uuid IS NULL OR programme_id=$3) ORDER BY id', [p.organisation_id, p.stages, p.programme_id]);

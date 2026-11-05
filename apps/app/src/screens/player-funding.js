@@ -19,8 +19,28 @@ import { OfferSheet } from './sponsor-awards';
 const PAGE = 25;
 const inDays = (n) => new Date(Date.now() + n * 864e5).toISOString().slice(0, 10);
 const when = (d) => (d ? new Date(`${String(d).slice(0, 10)}T00:00:00`).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' }) : '');
-const CATEGORY = [['equipment', 'Equipment'], ['travel', 'Travel'], ['coaching', 'Coaching'], ['competition_fees', 'Competition fees'], ['medical_rehab', 'Medical & rehab'], ['education', 'Education'], ['living_training', 'Living & training'], ['other', 'Other']]
-  .map(([value, label]) => ({ value, label }));
+const CATEGORY = [
+  ['equipment', 'Equipment'], ['travel', 'Travel'], ['coaching', 'Coaching'], ['competition_fees', 'Competition fees'],
+  ['medical_rehab', 'Medical & rehab'], ['education', 'Education'], ['living_training', 'Living & training'],
+  ['specialised_equipment', t('psf.need.specialisedEquipment')], ['accessible_transport', t('psf.need.accessibleTransport')],
+  ['classification_travel', t('psf.need.classificationTravel')], ['accessible_training_camp', t('psf.need.accessibleTrainingCamp')],
+  ['other', 'Other'],
+].map(([value, label]) => ({ value, label }));
+
+const PARA_NEED_TYPE_OPTS = [
+  { value: 'specialised_equipment',   label: t('psf.need.specialisedEquipment') },
+  { value: 'accessible_transport',    label: t('psf.need.accessibleTransport') },
+  { value: 'classification_travel',   label: t('psf.need.classificationTravel') },
+  { value: 'accessible_training_camp',label: t('psf.need.accessibleTrainingCamp') },
+  { value: 'competition_fees',        label: 'Competition Entry Fees' },
+  { value: 'sport_wheelchair',        label: 'Sport Wheelchair' },
+  { value: 'prosthetic_support',      label: 'Prosthetic Support' },
+  { value: 'adaptive_kit',            label: 'Adaptive Kit' },
+  { value: 'guide_equipment',         label: 'Guide Equipment' },
+  { value: 'pool_hoist',              label: 'Pool Hoist' },
+];
+
+const PARA_CATEGORIES_SET = new Set(['specialised_equipment', 'accessible_transport', 'classification_travel', 'accessible_training_camp']);
 const PURPOSE = [{ value: 'funding_planning', label: 'Funding planning' }, { value: 'application_support', label: 'Help with applications' }, { value: 'paperwork', label: 'Paperwork' }];
 const SECTION_OPTS = [{ value: 'needs', label: 'Funding needs' }, { value: 'applications', label: 'Applications' }, { value: 'support', label: 'Agreements & terms' }, { value: 'dues', label: 'Dues, paid & confirmed' }];
 const SECTION_NAME = { needs: 'Needs', applications: 'Applications', support: 'Support', dues: 'Dues' };
@@ -105,7 +125,11 @@ export function PlayerFunding({ athlete_id, name }) {
       {w.needs?.length ? w.needs.map((n) => (
         <Card key={n.id} style={{ opacity: n.status === 'withdrawn' ? 0.6 : 1 }}>
           <View style={{ flexDirection: 'row', gap: 8, alignItems: 'center' }}>
-            <View style={{ flex: 1 }}><T weight="900">{n.title}</T><T size={12} color={c.mute}>{CATEGORY.find((x) => x.value === n.category)?.label}{n.needed_by ? ` · needed by ${when(n.needed_by)}` : ''}</T></View>
+            <View style={{ flex: 1 }}>
+              <T weight="900">{n.title}</T>
+              <T size={12} color={c.mute}>{CATEGORY.find((x) => x.value === n.category)?.label}{n.para_sport_code ? ` · ${n.para_sport_code}` : ''}{n.needed_by ? ` · needed by ${when(n.needed_by)}` : ''}</T>
+              {n.para_need_types?.length ? <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 4, marginTop: 4 }}>{n.para_need_types.map((pt) => <Tag key={pt} label={PARA_NEED_TYPE_OPTS.find((x) => x.value === pt)?.label ?? pt} color={c.violetSoft} />)}</View> : null}
+            </View>
             <T weight="800">{cash(n.amount_cents, n.currency)}</T>
           </View>
           {n.status === 'open' ? <>
@@ -241,6 +265,8 @@ function NeedForm({ form, athleteId, mine, close, done, w }) {
       initial={n ? { category: n.category, title: n.title, amount_cents: n.amount_cents, currency: n.currency, needed_by: n.needed_by, note: n.note } : { category: 'equipment', needed_by: inDays(60) }}
       fields={[
         { key: 'category', label: 'What is it for?', type: 'chips', options: CATEGORY },
+        { key: 'para_need_types', label: t('psf.need.paraType'), type: 'multi', options: PARA_NEED_TYPE_OPTS, show: (v) => PARA_CATEGORIES_SET.has(v.category), hint: t('psf.need.privacyNote') },
+        { key: 'para_sport_code', label: 'Para sport', optional: true, show: (v) => PARA_CATEGORIES_SET.has(v.category), hint: 'e.g. Wheelchair Basketball, Para Athletics' },
         { key: 'title', label: 'Short title' },
         { key: 'currency', label: 'Currency', type: 'currency' },
         { key: 'amount_cents', label: 'How much do you need?', type: 'money', currency: (v) => v.currency },
@@ -248,7 +274,11 @@ function NeedForm({ form, athleteId, mine, close, done, w }) {
         { key: 'note', label: 'Notes (private to you and your guardian)', type: 'multiline', optional: true },
       ]}
       onSubmit={async (v) => {
-        const body = { category: v.category, title: v.title, amount_cents: v.amount_cents, currency: v.currency, needed_by: v.needed_by || null, note: v.note || null };
+        const isParaCat = PARA_CATEGORIES_SET.has(v.category);
+        const body = { category: v.category, title: v.title, amount_cents: v.amount_cents, currency: v.currency, needed_by: v.needed_by || null, note: v.note || null,
+          ...(isParaCat && v.para_need_types?.length ? { para_need_types: v.para_need_types } : {}),
+          ...(isParaCat && v.para_sport_code ? { para_sport_code: v.para_sport_code } : {}),
+        };
         if (n) await api.patch(`/funding-needs/${n.id}`, { rev: n.rev, ...body });
         else await api.post('/funding-needs', { ...(mine ? {} : { athlete_id: athleteId }), ...body, needed_by: body.needed_by ?? undefined, note: body.note ?? undefined, client_key: form.key });
         done(); close(); return n ? 'Saved' : 'Need added';

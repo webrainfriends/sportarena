@@ -13,8 +13,10 @@ const TAG = 'Coach';
 const COACH = ['coach'];
 const text = (n) => z.string().trim().max(n);
 
-/** Remove everything that points at a person or is for the coach's eyes only. */
-const scrub = (b) => ({ id: undefined, kind: b.kind, title: b.title, objective: b.objective, duration_min: b.duration_min, instructions: b.instructions, setup: b.setup, cues: b.cues ?? [], success_criteria: b.success_criteria, target_rpe: b.target_rpe, tags: b.tags ?? [], trains: b.trains, area: b.area, equipment: b.equipment, work_rest: b.work_rest, progression: b.progression, regression: b.regression, drill_id: b.drill_id, drill_version: b.drill_version });
+/** Remove everything that points at a person or is for the coach's eyes only.
+ *  para_adaptations and accessible_media are stripped: they may reference athlete IDs or private media URLs.
+ *  athlete_difficulty is kept as a range hint; para_adaptations are re-added by the coach per session. */
+export const scrub = (b) => ({ id: undefined, kind: b.kind, title: b.title, objective: b.objective, duration_min: b.duration_min, instructions: b.instructions, setup: b.setup, cues: b.cues ?? [], success_criteria: b.success_criteria, target_rpe: b.target_rpe, tags: b.tags ?? [], trains: b.trains, area: b.area, equipment: b.equipment, work_rest: b.work_rest, progression: b.progression, regression: b.regression, drill_id: b.drill_id, drill_version: b.drill_version, athlete_difficulty: b.athlete_difficulty });
 const clean = (blocks) => blocks.map(scrub).map((b) => JSON.parse(JSON.stringify(b)));
 
 /** A template the coach may read: their own, or one shared with a team they coach or an organisation where they hold a coaching grant. */

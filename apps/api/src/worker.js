@@ -28,7 +28,7 @@ import { processSponsorTasks } from './sponsor-collaboration.js';
 import { sweepAccessGrants } from './access-grants.js';
 import { syncMembershipGrants } from './access-layer.js';
 import { sweepTickets } from './ticketing.js';
-import { expireAcademyOffers, remindTrials, runAcademyJobs } from './academy-sweeps.js';
+import { expireAcademyOffers, remindTrials, remindIntlDeadlines, runAcademyJobs } from './academy-sweeps.js';
 import { sweepPickups } from './pickup-sweeps.js';
 import { expireAcademyContent } from './academy-content.js';
 import { sweepKit } from './kit-sweeps.js';
@@ -36,6 +36,7 @@ import { runAcademicSweeps } from './capabilities/academy-academics.js';
 import { runDueTransfers } from './campus-transfers.js';
 import { runTenderJobs, sendTenderReminders } from './capabilities/tender-reports.js';
 import { deliverDueReports } from './sponsor-report-schedules.js';
+import { draftDueReports } from './academy-report-schedules.js';
 import { deliverDueKpiReports } from './kpi/service.js';
 import { growthMaintenance } from './growth/service.js';
 import { accrueActiveContracts } from './player-contracts.js';
@@ -97,6 +98,7 @@ export const STEPS = [
   ['academic_exceptions', 'academic_exceptions_raised', runAcademicSweeps, 0],
   ['campus_transfers', 'campus_transfers_applied', runDueTransfers, 0],
   ['academy_trial_reminders', 'academy_trial_reminders_sent', remindTrials, 0],
+  ['academy_intl_deadlines', 'academy_intl_reminders_sent', remindIntlDeadlines, 0],
   ['academy_jobs', 'academy_jobs', runAcademyJobs, null],
   ['academy_pickup_safety', 'academy_pickup_safety_events', sweepPickups, 0],
   ['academy_content_licences', 'academy_content_licence_events', async () => (await expireAcademyContent()).expired, 0],
@@ -110,6 +112,7 @@ export const STEPS = [
   ['tender_reminders', 'tender_deadline_reminders', sendTenderReminders, 0],
   ['sponsor_tasks', 'sponsor_task_reminders', processSponsorTasks, 0],
   ['sponsor_reports', 'sponsor_reports_delivered', deliverDueReports, 0],
+  ['academy_report_drafts', 'academy_report_drafts_made', draftDueReports, 0],
   ['kpi_reports', 'kpi_reports_delivered', deliverDueKpiReports, 0],
   ['growth_analytics', 'growth_analytics', growthMaintenance, null],
   ['player_contracts', 'contract_earnings_posted', accrueActiveContracts, 0],

@@ -66,6 +66,9 @@ try {
   const tt = await call('POST', `/cohorts/${u12.id}/academy/timetable`, { token: owner.token, body: { idempotency_key: `g-${stamp}`, starts_on: monday, ends_on: end, weekdays: [1, 3], start_time: '17:00', duration_min: 60, delivery_type: 'training', lead_id: coach.id } });
   if (tt?.created) await call('POST', `/organisations/${org.id}/academy/sessions/publish`, { token: owner.token, body: { session_ids: tt.created.map((x) => x.id), acknowledge_warnings: true } });
 
+  // a real management-pack draft, built from the academy's own records through the public API, so the Reports step is photographed with a live review queue
+  await call('POST', `/organisations/${org.id}/academy/report-packs`, { token: owner.token, body: { kind: 'management' } });
+
   // a real scouting campaign (a draft with its brief) so the guide step photographs live figures, not an empty screen
   const sports = await call('GET', '/sports', { token: owner.token });
   const football = (sports ?? []).find((x) => x.slug === 'football');
@@ -151,12 +154,14 @@ try {
     tax: async (p) => { await navTo(p, 'Finance', { id: org.id }); await click(p, 'Tax').catch(() => {}); },
     revenue: (p) => inOrg(p, async () => { await click(p, 'Academy'); await click(p, 'Finance'); await click(p, 'Reconciliation'); }),
     reports: (p) => inOrg(p, async () => { await click(p, 'Academy'); }),
+    report_packs: (p) => inOrg(p, async () => { await click(p, 'Academy'); await click(p, 'Reports'); }),
     academics: (p) => inOrg(p, async () => { await click(p, 'Academy'); await click(p, 'Academics'); await click(p, 'Athletes').catch(() => {}); }),   // the Academy tab opens on its Home (executive view)
     competition: (p) => inOrg(p, async () => { await click(p, 'Academy'); await click(p, 'Competition & Squads'); }),
     campuses: (p) => inOrg(p, async () => { await click(p, 'Campuses'); }),   // the Academy tab opens on its Home (executive view)
     safety: (p) => inOrg(p, async () => { await click(p, 'Academy'); await click(p, 'Safety & pickup'); }),
     kit: (p) => inOrg(p, async () => { await click(p, 'Academy'); await click(p, 'Kit'); }),   // the Academy tab opens on its Home (executive view)
     wellbeing: (p) => inOrg(p, async () => { await click(p, 'Academy'); await click(p, 'Wellbeing'); }),
+    inclusion: (p) => inOrg(p, async () => { await click(p, 'Academy'); await click(p, 'Inclusion'); }),
     accreditation: (p) => inOrg(p, async () => { await click(p, 'Academy'); await click(p, 'Accreditation'); }),
     placement: (p) => inOrg(p, async () => { await click(p, 'Academy'); await click(p, 'Placement'); }),
   };

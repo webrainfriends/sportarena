@@ -1,7 +1,9 @@
 // The family / athlete side of the academy: what needs your attention, where each application stands, your programmes, what is due,
 // and a programme browser with a step-by-step application (details, questions, agreements, exact price, confirm).
 // Identity, guardian authority and payments are the canonical records; nothing here is a copy.
+import { FamilyChecklist } from './academy-international';
 import { FamilyKit } from './academy-kit-family';
+import { FamilyReports } from './academy-reports';
 import React, { useState } from 'react';
 import { Pressable, ScrollView, View } from 'react-native';
 import { api } from '../api';
@@ -20,6 +22,7 @@ import { FamilyCurriculum } from './academy-curriculum-session';
 import { FamilyVideoReview } from './academy-video';
 import { MySessions } from './academy-session';
 import { WellbeingFamily } from './wellbeing-family';
+import { InclusionFamily } from './inclusion-family';
 import { FamilyPlacement } from './academy-placement';
 import { t } from '../i18n';
 import { Block, TrialSlots, FORMATS, FOCUS, Initials, Meter, StageBadge, StageTrack, Timeline, STAGE, hoursLeft, lab, openEnrolmentLetter, openInvoicePdf, priceLine, when } from './academy-ui';
@@ -64,7 +67,7 @@ export function AcademyFamily() {
           ))}
         </ScrollView>
       ) : null}
-      <View style={{ marginTop: 6 }}><Seg value={tab} onChange={setTab} color={c.violet} options={[{ value: 'overview', label: 'Overview' }, { value: 'sessions', label: 'Sessions' }, { value: 'browse', label: 'Find a programme' }, { value: 'progress', label: 'Progress' }, { value: 'placement', label: t('pl.nav.title') }, { value: 'wellbeing', label: t('wb.nav') }, { value: 'payments', label: `Payments${due.length ? ` (${due.length})` : ''}` }]} /></View>
+      <View style={{ marginTop: 6 }}><Seg value={tab} onChange={setTab} color={c.violet} options={[{ value: 'overview', label: 'Overview' }, { value: 'sessions', label: 'Sessions' }, { value: 'browse', label: 'Find a programme' }, { value: 'progress', label: 'Progress' }, { value: 'placement', label: t('pl.nav.title') }, { value: 'wellbeing', label: t('wb.nav') }, { value: 'inclusion', label: t('inc.f_nav') }, { value: 'payments', label: `Payments${due.length ? ` (${due.length})` : ''}` }]} /></View>
       {tab === 'sessions' ? <View style={{ marginTop: 10 }}><MySessions key={p.athlete.id} athleteId={p.athlete.is_me ? undefined : p.athlete.id} toast={toast} /></View> : null}
       {tab === 'overview' ? (
         <View style={{ gap: 14, marginTop: 12 }}>
@@ -95,6 +98,7 @@ export function AcademyFamily() {
                 </Block>
               </Panel>
               {p.enrolments.length ? <FamilyKit key={p.athlete.id} athleteId={p.athlete.id} /> : null}
+              {p.enrolments.length ? <FamilyReports key={`r${p.athlete.id}`} athleteId={p.athlete.id} /> : null}
               {p.certificates?.length ? (
                 <Panel>
                   <Block title="Certificates">
@@ -113,6 +117,7 @@ export function AcademyFamily() {
                     <View key={a.id} style={{ padding: 12, borderRadius: 16, backgroundColor: c.bg, gap: 8 }}>
                       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}><View style={{ flex: 1 }}><T weight="800" size={14}>{a.programme}</T><T size={12} color={c.mute}>{a.organisation}</T></View><StageBadge stage={a.stage} /></View>
                       <StageTrack stage={a.stage} />
+                      <FamilyChecklist applicationId={a.id} toast={toast} />
                       {a.trial?.session ? <T size={13} weight="700">🎽 Trial: {when(a.trial.session.local_date)} · {a.trial.session.local_start}–{a.trial.session.local_end}</T> : a.stage === 'trial_requested' ? <T size={13} color={c.mute}>Trial requested. Pick a time that suits you.</T> : null}
                       {a.waitlist_position ? <T size={13} weight="700">You are number {a.waitlist_position} on the waitlist. We will offer a place when one opens; we cannot promise a date.</T> : null}
                       {a.stage === 'offered' && a.offer_expires_at ? <T size={13} weight="700">Offer ends {when(a.offer_expires_at)} ({hoursLeft(a.offer_expires_at)})</T> : null}
@@ -137,6 +142,7 @@ export function AcademyFamily() {
       {tab === 'progress' ? <><FamilyProgress key={p.athlete.id} athlete={p.athlete} toast={toast} /><FamilyCurriculum key={`c${p.athlete.id}`} athlete={p.athlete} /><FamilyVideoReview key={`v${p.athlete.id}`} athlete={p.athlete} toast={toast} /></> : null}
       {tab === 'placement' ? <View style={{ marginTop: 12 }}><FamilyPlacement key={p.athlete.id} athleteId={p.athlete.is_me ? undefined : p.athlete.id} toast={toast} /></View> : null}
       {tab === 'wellbeing' ? <View style={{ marginTop: 12 }}><WellbeingFamily key={p.athlete.id} athleteId={p.athlete.is_me ? undefined : p.athlete.id} toast={toast} /></View> : null}
+      {tab === 'inclusion' ? <View style={{ marginTop: 12 }}><InclusionFamily key={p.athlete.id} athleteId={p.athlete.is_me ? undefined : p.athlete.id} toast={toast} /></View> : null}
       {tab === 'browse' ? <Browse people={people} who={who} onApply={(prog, athlete) => setApply({ prog, athlete })} /> : null}
       {tab === 'payments' ? (
         <View style={{ gap: 14, marginTop: 12 }}>
