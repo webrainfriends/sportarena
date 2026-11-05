@@ -48,7 +48,7 @@ test('families are listed honestly: only invoices, coaching reports, sponsorship
   const u = await signup();
   const f = must(await api('GET', '/branded-documents/families', { token: u.token }));
   assert.equal(f.families.find((x) => x.family === 'invoice').source.available, true);
-  assert.ok(f.families.filter((x) => !['invoice', 'coaching_report', 'season_report', 'sponsorship_agreement', 'enrolment_letter', 'federation_document', 'academy_progress_report', 'academy_management_review', 'academy_finance_pack'].includes(x.family)).every((x) => x.source.available === false && x.source.reason));
+  assert.ok(f.families.filter((x) => !['invoice', 'coaching_report', 'season_report', 'sponsorship_agreement', 'enrolment_letter', 'federation_document', 'academy_progress_report', 'academy_management_review', 'academy_finance_pack', 'academy_term_report', 'academy_campus_quality'].includes(x.family)).every((x) => x.source.available === false && x.source.reason));
   const t = await api('POST', '/document-templates', { token: u.token, body: { family: 'rehab_plan', name: 'Rehab' } });
   assert.equal(t.status, 409);
 });

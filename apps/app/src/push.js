@@ -104,6 +104,8 @@ export function targetFor(data = {}) {
 export function parseTarget(t) {
   const [kind, id, extra] = String(t ?? '').split(':');
   if (kind === 'health') return ['Health', {}];
+  if (kind === 'para-classification') return ['ParaClassification', {}];
+  if (kind === 'official-match' && id) return ['OfficialMatch', { id }];
   if (kind === 'wellness-shared') return ['SharedWellness', {}];
   if (kind === 'registration') return ['RegistrationHome', id ? { tab: id } : {}];
   if (kind === 'registration-programme' && id) return ['RegistrationApply', { id }];

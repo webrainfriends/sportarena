@@ -51,7 +51,6 @@ export function ParaEntries({ athleteId }) {
             {x.frozen.map((f) => <T key={f.stage} size={12} color={c.mute}>{t('pc.frozen_at', { stage: t(`pc.stage.${f.stage}`), cls: f.source?.class_code ?? '—', day: short(f.at) })}</T>)}
           </Card>))}
         </Row>)}
-      <ParaNote />
     </View>
   );
 }

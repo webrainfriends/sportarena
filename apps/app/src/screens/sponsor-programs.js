@@ -18,7 +18,7 @@ import { ProgramAwards, MyOffers } from './sponsor-awards';
 import { ProgramBudget } from './sponsor-budgets';
 import { fieldsOf, filled, fmtMoney } from '../application-forms';
 import { SponsorTasks, ApplicationThread } from './sponsor-collaboration';
-import { ApplicationEvidence } from './sponsor-impact';
+import { ApplicationEvidence, ParaDeliveryEvidence } from './sponsor-impact';
 import { EligibilityCheckSheet, EligibilityRules, OutcomeTag, ScreeningPanel } from './sponsor-screening';
 import { t } from '../i18n';
 
@@ -64,13 +64,26 @@ const programFields = (brands, create) => [
     { key: 'offer_validity_days', label: 'An issued offer can be accepted for (days)', type: 'stepper', min: 1, max: 365, default: 14 },
     { key: 'waitlist_enabled', label: 'Waitlist awards that do not fit the budget', type: 'switch' },
   ]),
+  { key: 'is_para_sport', label: t('psf.programme.paraToggle'), type: 'switch', hint: t('psf.programme.paraToggleHint') },
+  { key: 'para_cost_categories', label: t('psf.programme.costCategories'), type: 'multi',
+    options: [
+      { value: 'specialised_equipment', label: t('psf.need.specialisedEquipment') },
+      { value: 'accessible_transport',  label: t('psf.need.accessibleTransport') },
+      { value: 'classification_travel', label: t('psf.need.classificationTravel') },
+      { value: 'accessible_training_camp', label: t('psf.need.accessibleTrainingCamp') },
+      { value: 'competition_fees', label: 'Competition Entry Fees' },
+    ],
+    show: (v) => !!v.is_para_sport,
+    hint: t('psf.programme.privacyNote'),
+  },
   { key: 'recurring', label: 'Runs in recurring rounds', type: 'switch' },
   { key: 'cadence', label: 'A new round every', type: 'chips', options: [{ value: 'monthly', label: 'Month' }, { value: 'quarterly', label: 'Quarter' }, { value: 'yearly', label: 'Year' }], default: 'monthly', show: (v) => v.recurring },
   { key: 'open_days', label: 'Each round stays open for (days)', type: 'stepper', min: 1, max: 365, default: 14, show: (v) => v.recurring },
 ];
 const toBody = (v) => {
-  const { recurring, cadence, open_days, max_awards, ...rest } = v;
-  return { ...rest, max_awards: max_awards || undefined, recurrence: recurring ? { cadence, open_days } : undefined };
+  const { recurring, cadence, open_days, max_awards, is_para_sport, para_cost_categories, ...rest } = v;
+  return { ...rest, max_awards: max_awards || undefined, recurrence: recurring ? { cadence, open_days } : undefined,
+    is_para_sport: !!is_para_sport, para_cost_categories: is_para_sport ? (para_cost_categories ?? []) : [] };
 };
 
 const Bar = ({ done, total }) => (
@@ -135,7 +148,11 @@ export function SponsorProgram({ id }) {
     <Screen onRefresh={reloadAll} refreshing={prog.loading && !!p}>
       <View style={{ flexDirection: 'row', gap: 8, alignItems: 'center' }}><H1 style={{ flex: 1 }}>{p.name}</H1><Tag label={p.status} color={STATUS_TONE[p.status]} /></View>
       {stale ? <Banner action="Dismiss" onAction={() => setStale(false)}>Someone else changed this program while you were working. The latest version is shown now — review it and try again.</Banner> : null}
-      <T size={12} color={c.mute}>{VISIBILITY_LABEL[p.visibility]} · {p.sponsor_name} · you: {p.my_role}{p.starts_on ? ` · ${when(p.starts_on)} – ${p.ends_on ? when(p.ends_on) : 'open'}` : ''}</T>
+      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginBottom: 4 }}>
+        <T size={12} color={c.mute}>{VISIBILITY_LABEL[p.visibility]} · {p.sponsor_name} · you: {p.my_role}{p.starts_on ? ` · ${when(p.starts_on)} – ${p.ends_on ? when(p.ends_on) : 'open'}` : ''}</T>
+        {p.is_para_sport ? <Tag label={t('psf.title')} color={c.violetSoft} accessibilityLabel={t('psf.title')} /> : null}
+      </View>
+      {p.is_para_sport ? <View accessibilityRole="note" style={{ backgroundColor: c.cyanSoft, borderRadius: 8, padding: 10, marginBottom: 6 }}><T size={12}>{t('psf.programme.privacyNote')}</T></View> : null}
       <Card>
         <T weight="900">{fmt(p.awarded_cents, p.currency)} of {fmt(p.budget_cents, p.currency)} awarded</T>
         <Bar done={p.awarded_cents} total={p.budget_cents} />
@@ -154,6 +171,7 @@ export function SponsorProgram({ id }) {
           </View>
         ) : <T size={12} color={c.mute} style={{ marginTop: 8 }}>Your role can read this program; managers and approvers run it.</T>}
       </Card>
+      {p.is_para_sport ? <ParaDeliveryEvidence programmeId={p.id} may={may} /> : null}
       <SponsorTasks target={{ program_id: p.id }} shareable={false} />
       <EligibilityRules program={p} may={may} onChanged={reloadAll} />
       <Section title="Rounds" color={c.sun} action={may && ['draft', 'published'].includes(p.status) ? '+ Round' : undefined} onAction={() => setForm('round')}>

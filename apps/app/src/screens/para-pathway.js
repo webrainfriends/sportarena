@@ -567,7 +567,7 @@ export function SharedParaPathway({ athlete_id, athlete_name }) {
   );
   if (!pw.data) return <Screen><Loading /></Screen>;
   return (
-    <Screen onRefresh={pw.reload} title={athlete_name ? t('pp.shared.title').replace('{name}', athlete_name) : t('pp.title')}>
+    <Screen onRefresh={pw.reload} title={athlete_name ? t('pp.shared.title', { name: athlete_name }) : t('pp.title')}>
       <T size={11} color={c.cyan} weight="700" style={{ padding: 12, letterSpacing: 1 }}>
         {t('pp.shared.milestones')}
       </T>

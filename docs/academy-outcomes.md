@@ -121,6 +121,8 @@ calling the new capabilities; the tables can stay (they hold decisions and entri
 - **Evidence completeness** (`data_quality`): % of sessions with a confirmed venue booking, % of approved timesheets inside an approved payroll run, % of programmes placed in a branch. A missing denominator is null.
 - **Executive Home** gains `status` (same rules) and the UI renders them as chips with an icon and a word, never colour alone. Branch profile fields (code, manager, address, opening date, athlete target) live on `academy_branches`; the manager must be an active member of the academy.
 
+> Update (#807): the one-step PDFs below now also have a governed draft → review → approve → issue → revoke flow, a term report and a campus quality pack. See `academy-reports.md`.
+
 ## Known limitations and approved deferrals
 - Status thresholds are fixed product defaults, not per-academy configuration; a performance director who wants different bands cannot change them yet.
 - The trend and scorecard read live from canonical tables on each request (no snapshot tables); very large academies may want caching later.
