@@ -31,6 +31,7 @@ import { sweepTickets } from './ticketing.js';
 import { expireAcademyOffers, remindTrials, runAcademyJobs } from './academy-sweeps.js';
 import { sweepPickups } from './pickup-sweeps.js';
 import { expireAcademyContent } from './academy-content.js';
+import { sweepKit } from './kit-sweeps.js';
 import { runAcademicSweeps } from './capabilities/academy-academics.js';
 import { runDueTransfers } from './campus-transfers.js';
 import { runTenderJobs, sendTenderReminders } from './capabilities/tender-reports.js';
@@ -99,6 +100,7 @@ export const STEPS = [
   ['academy_jobs', 'academy_jobs', runAcademyJobs, null],
   ['academy_pickup_safety', 'academy_pickup_safety_events', sweepPickups, 0],
   ['academy_content_licences', 'academy_content_licence_events', async () => (await expireAcademyContent()).expired, 0],
+  ['academy_kit', 'academy_kit_reminders', sweepKit, 0],
   ['billing_schedules', 'billing_periods_raised', raiseScheduledCharges, 0],
   ['collections', 'collection_cases_advanced', runCollections, 0],
   ['access_grants', 'access_grants_revoked', sweepAccessGrants, 0],

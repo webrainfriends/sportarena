@@ -68,7 +68,7 @@
       [
         "expo-camera",
         {
-          "cameraPermission": "Scan event accreditation badges at the gate.",
+          "cameraPermission": "Scan event accreditation badges at the gate, and academy kit barcodes at the desk.",
           "microphonePermission": false,
           "recordAudioAndroid": false
         }

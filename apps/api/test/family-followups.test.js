@@ -121,7 +121,7 @@ test('custody scopes: a guardian without pay/register/consent/rsvp/calendar scop
   const co = await signup(); await verifiedGuardian(co, h.c1, { exceptional: true });
   const links = must(await api('GET', '/youth/guardian-links', { token: co.token }));
   const coLink = links.find((l) => l.child_id === h.c1.id);
-  assert.deepEqual(coLink.scopes.sort(), ['calendar', 'consent', 'pay', 'register', 'rsvp', 'social', 'travel_consent'], 'existing and new links keep full authority');
+  assert.deepEqual(coLink.scopes.sort(), ['calendar', 'consent', 'pay', 'pickup', 'register', 'rsvp', 'social', 'travel_consent'], 'existing and new links keep full authority');
   // a co-guardian cannot narrow another guardian; the primary guardian can; the co-guardian can reduce only themselves
   assert.equal((await api('PATCH', `/youth/guardian-links/${h.link.id}/scopes`, { token: co.token, body: { scopes: [] } })).status, 404);
   assert.equal((await api('PATCH', `/youth/guardian-links/${coLink.id}/scopes`, { token: (await signup()).token, body: { scopes: [] } })).status, 404);

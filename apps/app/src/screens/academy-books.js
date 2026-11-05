@@ -16,6 +16,8 @@ import { Billing } from './academy-money';
 import { Collections } from './collections';
 import { BranchFilter, ByBranch, CostSources, PackButton, sourceLabel } from './academy-closeout';
 import { FinanceOverview } from './academy-overview';
+import { CapacityScenarios } from './academy-capacity';
+import { ByCohort, ProvenanceStrip, Reconciliation } from './academy-reconciliation';
 
 const Panel = ({ children }) => <View style={{ backgroundColor: c.paper, borderRadius: 20, padding: 16, gap: 10, borderWidth: 1, borderColor: c.line }}>{children}</View>;
 const day = (n) => new Date(Date.now() - n * 864e5).toISOString().slice(0, 10);
@@ -25,7 +27,7 @@ const idem = (p) => `${p}-${Date.now().toString(36)}${Math.random().toString(36)
 export function Finance({ o, role, archived, toast }) {
   const staff = role === 'owner' || role === 'admin' || role === 'finance';
   const [tab, setTab] = useState(staff ? 'overview' : 'charges');
-  const opts = [...(staff ? [{ value: 'overview', label: tr('aco.ov.tab') }] : []), { value: 'charges', label: 'Charges' }, ...(staff ? [{ value: 'pnl', label: 'Profit & loss' }, { value: 'collections', label: 'Collections' }, { value: 'costs', label: 'Costs' }, { value: 'forecast', label: 'Forecast' }] : [])];
+  const opts = [...(staff ? [{ value: 'overview', label: tr('aco.ov.tab') }] : []), { value: 'charges', label: 'Charges' }, ...(staff ? [{ value: 'pnl', label: 'Profit & loss' }, { value: 'collections', label: 'Collections' }, { value: 'costs', label: 'Costs' }, { value: 'reconciliation', label: tr('arc.tab') }, { value: 'forecast', label: 'Forecast' }] : [])];
   return (
     <View style={{ gap: 12 }}>
       <Seg value={tab} onChange={setTab} color={c.violet} options={opts} />
@@ -34,7 +36,8 @@ export function Finance({ o, role, archived, toast }) {
       {tab === 'pnl' ? <Pnl o={o} toast={toast} /> : null}
       {tab === 'collections' ? <Collections target={{ organisation_id: o.id }} archived={archived} /> : null}
       {tab === 'costs' ? <Costs o={o} archived={archived} toast={toast} /> : null}
-      {tab === 'forecast' ? <Forecast o={o} archived={archived} toast={toast} /> : null}
+      {tab === 'reconciliation' ? <Reconciliation o={o} archived={archived} toast={toast} /> : null}
+      {tab === 'forecast' ? <Forecast o={o} role={role} archived={archived} toast={toast} /> : null}
     </View>
   );
 }
@@ -54,6 +57,7 @@ function Pnl({ o, toast }) {
           <PackButton label={tr('aco.pack.finance')} path={`/organisations/${o.id}/academy/finance-pack`} body={{ from, to }} name="finance-pack" toast={toast} />
         </View>
         <BranchFilter o={o} value={branch} onChange={setBranch} />
+        {r.data ? <ProvenanceStrip provenance={r.data.provenance} currencies={r.data.currencies.map((x) => x.currency)} /> : null}
         {r.data ? <CostSources sources={r.data.cost_sources} /> : null}
         {r.data ? <T size={12} color={c.mute}>{r.data.definitions.basis} Currencies are never added together.</T> : null}
       </Panel>
@@ -69,13 +73,14 @@ function Pnl({ o, toast }) {
                 <Kpi label="Outstanding" value={M(t.outstanding_minor, k)} sub="awaiting payment" />
               </View>
               <Fact k="Funded" v={`scholarship ${M(t.funded_minor.scholarship, k)} · bursary ${M(t.funded_minor.bursary, k)} · sponsor ${M(t.funded_minor.sponsor, k)}`} />
-              <Fact k="Direct costs" v={`staff ${M(t.staff_cost_minor, k)} · venue ${M(t.venue_cost_minor, k)} · other ${M(t.other_direct_cost_minor, k)}`} />
+              <Fact k="Direct costs" v={`staff ${M(t.staff_cost_minor, k)} · venue ${M(t.venue_cost_minor, k)} · other ${M(t.other_direct_cost_minor, k)} · ${tr('arc.cost.supplier')} ${M(t.supplier_cost_minor, k)} · ${tr('arc.cost.fees')} ${M(t.payment_fee_minor, k)}`} />
               <Fact k="Contribution" v={`${M(t.contribution_minor, k)}${t.cost_picture_complete ? '' : ' (incomplete — a programme has no staff cost)'}`} />
               {t.unattributed_cost_minor ? <Fact k={tr('aco.fund.unattributed')} v={`${M(t.unattributed_cost_minor, k)} · ${tr('aco.fund.unattributed_note')}`} /> : null}
               <Fact k="Overhead allocated" v={`${M(t.allocated_overhead_minor, k)}${t.unallocated_overhead_minor ? ` · ${M(t.unallocated_overhead_minor, k)} could not be allocated` : ''}`} />
               <Fact k="Operating result" v={`${M(t.operating_result_minor, k)} · margin ${pct(t.margin_pct)}`} />
             </Block>
             <ByBranch rows={cur.by_branch} currency={k} />
+            <ByCohort rows={cur.by_cohort} currency={k} />
             <Block title="By programme">
               <Bars label={`Operating result by programme in ${k}`} rows={cur.programmes.map((p) => ({ label: p.title, value: p.operating_result_minor, text: `${M(p.operating_result_minor, k)}${p.contribution_complete ? '' : ' (incomplete)'}`, tone: p.operating_result_minor < 0 ? c.orange : undefined }))} />
               {cur.programmes.map((p) => (
@@ -142,8 +147,8 @@ function Costs({ o, archived, toast }) {
   );
 }
 
-function Forecast({ o, archived, toast }) {
-  const list = useLoad(() => api.get(`/organisations/${o.id}/academy/scenarios`, { limit: 50 }), [o.id]);
+function Forecast({ o, role, archived, toast }) {
+  const list = useLoad(() => api.get(`/organisations/${o.id}/academy/scenarios`, { kind: 'commercial', limit: 50 }), [o.id]);
   const progs = useLoad(() => api.get(`/organisations/${o.id}/academy/programmes`, { limit: 100 }), [o.id]);
   const profile = useLoad(() => api.get(`/organisations/${o.id}/academy`), [o.id]);
   const cur = () => profile.data?.currency ?? 'GBP';
@@ -185,6 +190,7 @@ function Forecast({ o, archived, toast }) {
           await api.post(`/organisations/${o.id}/academy/scenarios`, { programme_id: v.programme_id, name: v.name, assumptions: a, idempotency_key: key });
           list.reload(); return 'Scenario saved. Nothing in your academy changed.';
         }} />
+      {role === 'owner' || role === 'admin' ? <CapacityScenarios o={o} archived={archived} /> : null}
     </Panel>
   );
 }

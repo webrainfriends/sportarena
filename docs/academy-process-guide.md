@@ -1,6 +1,9 @@
 # Academy Process card and PDF guide
 
 A new academy owner sees a **Process card** on the Organisation Command centre and the Academy Home. It walks the steps from an empty
+account to the first reports (create the academy, venues, staff, suppliers, programmes, hiring coaches, inviting students, tracking
+classes, taxation, revenue sharing, reports, connecting schools and studies, campuses, running pickup and daily safety, and issuing uniforms and kit), each with the instructions, a screenshot of the real screen (phone or desktop), an
+classes, taxation, revenue sharing, reports, connecting schools and studies, campuses, running pickup and daily safety, and supporting student wellbeing and development), each with the instructions, a screenshot of the real screen (phone or desktop), an
 account to the first reports (create the academy, venues, staff, suppliers, programmes, hiring coaches, inviting students, planning athlete development, tracking
 classes, taxation, revenue sharing, reports, connecting schools and studies, campuses, and running pickup and daily safety), each with the instructions, a screenshot of the real screen (phone or desktop), an
 **Open this screen** button, and a **Download PDF** of the whole guide with screenshots. It complements Guided setup (`setup.js`), which

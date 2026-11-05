@@ -36,7 +36,7 @@ export const ACADEMY_STEPS = [
   {
     id: 'suppliers', title: 'Add suppliers',
     why: 'Keep maintenance contractors and kit suppliers in one place, linked to the venues they serve, with requests tracked to done.',
-    steps: ['Open Academy, then Partners, then Suppliers.', 'Tap the add button, choose the kind (maintenance, sporting goods and so on) and enter the details.', 'Pick one, several or all venues the supplier serves.', 'Use Request on a supplier to ask for a quote or delivery and follow it through to done.'],
+    steps: ['Open Academy, then Partners, then Suppliers.', 'Tap the add button, choose the kind (maintenance, sporting goods and so on) and enter the details.', 'Pick one, several or all venues the supplier serves.', 'Use Request on a supplier to ask for a quote or delivery and follow it through to done.', 'When you mark a request delivered or done, enter its final cost and invoice reference: that cost reaches the academy profit and loss once, and the Reconciliation tab reminds you if it is missing.'],
     target: { academy: 'partners' },
     modules: ['academy-suppliers.js'], sources: ['apps/app/src/screens/academy-suppliers.js', 'apps/app/src/screens/academy-partners.js'],
   },
@@ -60,6 +60,13 @@ export const ACADEMY_STEPS = [
     steps: ['Open Academy, then Admissions.', 'Invite a family to a programme, or review the applications and trials that arrive.', 'Make an offer, then enrol once they accept. Enrolment letters are produced for you.', 'Use Families to see everyone enrolled and who pays.'],
     target: { academy: 'admissions' },
     modules: ['academy-admissions.js', 'academy-trials.js', 'academy-letters.js'], sources: ['apps/app/src/screens/academy-admissions.js', 'apps/app/src/screens/academy-families.js'],
+  },
+  {
+    id: 'scouting', title: 'Scout and recruit talent',
+    why: 'Find athletes before they apply: run a scouting campaign with scouts, a committee that votes in the open, and an invitation straight into your admissions, with the source and the guardian\'s consent kept.',
+    steps: ['Open Academy, then Scouting, and tap New campaign. Work through the eight steps: brief, player profile, territory, scouting team, evaluation rubric, safeguarding, committee and review. Every step is saved as a draft.', 'Fix anything the review step lists, then launch. Scouts must be verified recruiters linked to your academy; committee members must belong to it.', 'Scouts save athletes they hold access to in their Talent CRM list, add them to the campaign, evaluate them and submit them to the committee.', 'The committee votes (a safeguarding officer can stop an advance for a young person), the chair or an admin records the decision, and you invite the athlete into a programme as a trial or an offer. They appear in Admissions with their source.', 'Open Outcomes for the funnel, conversion, referral sources, regions and scout capacity. Reports show counts only, never names.'],
+    target: { academy: 'scouting' },
+    modules: ['academy-scouting.js', 'academy-scouting-pipeline.js'], sources: ['apps/app/src/screens/academy-scouting.js', 'apps/app/src/screens/academy-scouting-wizard.js', 'apps/app/src/screens/academy-scouting-entry.js'],
   },
   {
     id: 'development', title: 'Plan athlete development',
@@ -92,9 +99,9 @@ export const ACADEMY_STEPS = [
   {
     id: 'revenue', title: 'Share revenue',
     why: 'Agree how money is shared with coaches and how shared costs are spread across programmes.',
-    steps: ['For coaches: in the venue workspace, Coaches tab, choose Revenue share as the pay model and set the percentage.', 'For shared costs: in Academy, Finance, open Costs, add a cost and choose how it is spread (participants, revenue share or evenly).', 'Open Profit & loss to review the result per programme; staff cost is read from approved payroll and venue cost from confirmed bookings.'],
+    steps: ['For coaches: in the venue workspace, Coaches tab, choose Revenue share as the pay model and set the percentage.', 'For shared costs: in Academy, Finance, open Costs, add a cost and choose how it is spread (participants, revenue share or evenly).', 'Open Profit & loss to review the result per programme, branch and cohort; staff cost is read from approved payroll, venue cost from confirmed bookings, supplier cost from delivered supplier requests and payment fees from the Finance ledger.', 'Open Reconciliation: it lists every cost or charge with no programme and records that could be counted twice; decide each one with a reason.', 'Before adding a cohort or promoting athletes, open Forecast and choose New capacity scenario: pick the period, programme changes, promotions, venue, days, times and coaches. It shows real venue, coach and School timetable conflicts, coaches and hours needed, pathway bottlenecks and cost, and lists what is missing. It changes nothing; you decide on each recommendation.'],
     target: { academy: 'billing' },
-    modules: ['academy-finance.js', 'academy-payroll.js'], sources: ['apps/app/src/screens/academy-books.js'],
+    modules: ['academy-finance.js', 'academy-payroll.js', 'academy-reconciliation.js', 'academy-capacity.js'], sources: ['apps/app/src/screens/academy-books.js', 'apps/app/src/screens/academy-reconciliation.js', 'apps/app/src/screens/academy-capacity.js'],
   },
   {
     id: 'reports', title: 'Read reports',
@@ -111,6 +118,13 @@ export const ACADEMY_STEPS = [
     modules: ['academy-academics.js', 'academy-attainment.js'], sources: ['apps/app/src/screens/academics.js'],
   },
   {
+    id: 'competition', title: 'Plan competitions and squads',
+    why: 'Connect your teams to real fixtures and tournaments, check clashes with training, staff, venues, school exams and travel consent, and publish squads through the Team once your selection committee approves.',
+    steps: ['Open Academy, then Competition & Squads, and tap New season plan. Give it a name and the season dates.', 'Tap Link a squad to an event or match. Pick the team, the match or event it plays in, the cohort that trains it and, if there is one, the trip. Teams, fixtures and trips are entered elsewhere (the event console and Trips); this only links them.', 'Work through the readiness checklist, set the selection committee and the participation objectives. Training, staff, venue, school-exam and guardian-consent clashes are listed before you publish.', 'Once the committee has approved and no blocking clash remains, tap Publish squad. People are invited through the Team, and the Participation tab then shows matches and minutes from the official records, never a ranking.'],
+    target: { academy: 'competition' },
+    modules: ['academy-competition.js'], sources: ['apps/app/src/screens/academy-competition.js', 'apps/app/src/screens/academy-plan-strip.js'],
+  },
+  {
     id: 'campuses', title: 'Organise campuses and transfers',
     why: 'Run more than one location as one academy: regions, campuses and sport departments, directors with their own view, shared policies, and transfers that follow your own approval process.',
     steps: ['Open the Campuses tab and tap Set up campuses to make your academy one campus without changing any record, or add a region and a campus yourself.', 'Place venues, teams, cohorts, programmes and coaches on a campus or sport department. Each keeps its identity and history; only a dated pointer is added.', 'Give each campus a director, finance, sports lead, operations or auditor role, and set policies that its sport departments inherit.', 'Under Transfers, configure your process (approvals, finance clearance, athlete or guardian acknowledgement, handover checklist), then move athletes, coaches or programmes between campuses with a request that follows it.'],
@@ -122,7 +136,28 @@ export const ACADEMY_STEPS = [
     why: 'Know who arrived, who is in your care and who took each young athlete home. Guardians decide who may collect, staff hand over with checks, and late pickups and no-shows escalate on your timings.',
     steps: ['Open Academy, then Safety & pickup, then Settings, and set when guardians, the second guardian with emergency contacts, and the safeguarding officer are alerted.', 'Ask families to open Family & guardians, then Pickup & safety, to list who may collect, with days, times, a passphrase and emergency contacts.', 'On session day, open the session and its Pickup & handover tab. Check the collector by QR, passphrase or ID, then tap Confirm handover. The guardian confirms on their phone, and the athlete stays in your care until they do.', 'Follow late pickups, no-shows and concerns under Safety & pickup. Details are shown only to staff with the safeguarding permission, and every read is audit-logged.'],
     target: { academy: 'safety' },
-    modules: ['academy-pickup.js'], sources: ['apps/app/src/screens/academy-safety.js'],
+    modules: ['academy-pickup.js', 'academy-transport.js'], sources: ['apps/app/src/screens/academy-safety.js', 'apps/app/src/screens/academy-transport-board.js', 'apps/app/src/screens/academy-transport.js'],
+  },
+  {
+    id: 'kit', title: 'Issue uniforms and kit',
+    why: 'Give every programme, group and squad the kit it is owed, in the right size, and keep stock, deposits and reorders in one place instead of a spreadsheet.',
+    steps: ['Open Academy, then Kit, then Stock, and add each product with its sizes, barcode and opening quantity at the venue that holds it.', 'Open Entitlements and say what each programme, group or squad is owed: included in the fee, charged on top, or loaned against a refundable deposit, and when it is due.', 'Open Issue & return, record each athlete\'s size, then hand the kit over (scan its barcode or serial number on a phone, or type it at the desk). A fee or deposit is raised on the family\'s account and the receipt can be shared.', 'Take kit back, exchange sizes, and report damaged or lost kit: a manager approves it under Approvals before anything is written off or a deposit is kept.', 'Open Replenishment to see what is short by size and order it from your supplier. Parents and athletes see their own kit, where to collect it and their receipts under My academy.'],
+    target: { academy: 'kit' },
+    modules: ['academy-kit.js'], sources: ['apps/app/src/screens/academy-kit.js', 'apps/app/src/screens/academy-kit-desk.js'],
+  },
+  {
+id: 'wellbeing', title: 'Support student wellbeing and development',
+    why: 'Offer mentoring, check-ins, development goals and optional tracks with the family\'s consent, and see what is due without ever seeing what was said.',
+    steps: ['Open Academy, then Wellbeing, then Tracks, and create optional tracks in values, leadership, life skills, nutrition education or study skills, with an age band and ordered modules.', 'In Staff & leave, give mentors the Mentor template (the wellbeing permission). Then open People, ask families for their choices, and assign a mentor once the family has chosen mentoring.', 'Mentors schedule check-ins from People, record what was agreed (never what was said) and close follow-ups. A concern goes privately to safeguarding staff, and counselling or clinical wording is refused in notes.', 'Families see their choices, mentor, check-ins, goals and who has opened the record under My academy, then Wellbeing, and can withdraw any choice at any time. Overview shows what is due and participation counts, never content or a score about a person.'],
+    target: { academy: 'wellbeing' },
+    modules: ['academy-wellbeing.js', 'academy-wellbeing-family.js', 'academy-wellbeing-overview.js'], sources: ['apps/app/src/screens/academy-wellbeing.js', 'apps/app/src/screens/academy-wellbeing-tracks.js', 'apps/app/src/screens/wellbeing-family.js'],
+  },
+  {
+    id: 'placement', title: 'Manage placement pathways',
+    why: 'Give every graduating athlete a consented bridge from academy progression to university, scholarship and professional opportunities, managed by a placement advisor with an auditable funnel, evidence checklist, reference requests and revocable institution sharing.',
+    steps: ['Open Academy, then Placement, and tap Add opportunity for an enrolled athlete.', 'Choose the type (university place, scholarship, grant or professional contract), set the institution, sport, deadline and intake year.', 'Build the evidence checklist: add items for academic transcript, sport CV, performance video, references and any passport or ranking documents.', 'Request references from coaches, academic coordinators or other referees and track their submission status.', 'Ask the athlete (or their guardian for under-18s) to grant the institution access to specific evidence fields. They choose exactly what to share and can revoke at any time.', 'Advance the opportunity through its stages — identified, eligibility check, evidence gathering, applied, offer received, outcome — as the process progresses.', 'Link a sponsorship award to the opportunity for attribution tracking across the finance module.', 'Use the Action Queue to triage urgent items: references due, missing evidence and pending guardian consents. Use Analytics for seasonal outcome and scholarship reports.'],
+    target: { academy: 'placement' },
+    modules: ['academy-placement.js'], sources: ['apps/app/src/screens/academy-placement.js'],
   },
 ];
 

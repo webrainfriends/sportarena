@@ -257,7 +257,10 @@ cap({
     if (!staffRole) return base;
     await audit(null, user.id, 'read_pii', 'academy_applications', a.id);
     const notes = await many('SELECT n.id, n.author_id, n.body_enc, n.created_at FROM academy_notes n WHERE n.application_id=$1 ORDER BY n.created_at, n.id', [a.id]);
-    return { ...base, assignee_id: a.assignee_id, assignee_name: a.assignee_id ? (await one('SELECT display_name FROM users WHERE id=$1', [a.assignee_id]))?.display_name ?? null : null, next_action: a.next_action, next_action_on: a.next_action_on, tags: a.tags, decision_reason: a.decision_reason,
+    const source = a.source_campaign_id ? await one(`SELECT c.id AS campaign_id, c.name AS campaign, rs.name AS referral_source, rs.kind AS referral_kind, $2::text AS region,
+        (SELECT json_build_object('advance', count(*) FILTER (WHERE x.vote='advance'), 'hold', count(*) FILTER (WHERE x.vote='hold'), 'decline', count(*) FILTER (WHERE x.vote='decline')) FROM (SELECT DISTINCT ON (v.voter_id) v.vote FROM academy_committee_votes v WHERE v.campaign_entry_id=$3 ORDER BY v.voter_id, v.created_at DESC) x) AS committee
+        FROM academy_scouting_campaigns c LEFT JOIN academy_referral_sources rs ON rs.id=$4 WHERE c.id=$1`, [a.source_campaign_id, a.source_region, a.source_entry_id, a.source_referral_id]) : null;
+    return { ...base, source: source ? { ...source, kind: a.source_kind, consent: a.source_consent } : null, assignee_id: a.assignee_id, assignee_name: a.assignee_id ? (await one('SELECT display_name FROM users WHERE id=$1', [a.assignee_id]))?.display_name ?? null : null, next_action: a.next_action, next_action_on: a.next_action_on, tags: a.tags, decision_reason: a.decision_reason,
       notes: notes.map(({ body_enc, ...n }) => ({ ...n, body: decrypt(body_enc, 'academy_notes.body') })),
       athlete: await one('SELECT id, handle, display_name FROM users WHERE id=$1', [a.athlete_id]), applicant: await one('SELECT id, handle, display_name FROM users WHERE id=$1', [a.applicant_id]) };
   },
@@ -271,7 +274,7 @@ cap({
     await orgFor(user, i.id, STAFF);
     return many(
       `SELECT a.id, a.stage, a.programme_id, p.title AS programme, p.sport, a.athlete_id, u.handle, u.display_name, u.avatar_emoji, u.avatar_color, a.applicant_id, ap.display_name AS applicant_name, a.assignee_id, asg.display_name AS assignee_name,
-              a.next_action, a.next_action_on, a.tags, a.offer_expires_at, a.waitlist_seq, a.row_version, a.created_at, a.updated_at,
+              a.next_action, a.next_action_on, a.tags, a.offer_expires_at, a.waitlist_seq, a.row_version, a.created_at, a.updated_at, a.source_kind, a.source_campaign_id,
               GREATEST(0, floor(extract(epoch FROM (now() - a.updated_at)) / 86400))::int AS days_in_stage,
               (a.applicant_id <> a.athlete_id) AS via_guardian,
               (SELECT count(*)::int FROM academy_charges ch WHERE (ch.application_id=a.id OR ch.enrolment_id IN (SELECT id FROM org_enrolments WHERE application_id=a.id)) AND ch.status='awaiting_payment') AS unpaid_charges,

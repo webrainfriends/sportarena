@@ -445,7 +445,7 @@ test('loyalty has zero impact on rankings: no ranking or standings code reads or
   const walk = (dir) => readdirSync(dir, { withFileTypes: true }).flatMap((e) => (e.isDirectory() ? walk(new URL(`${e.name}/`, dir)) : [new URL(e.name, dir)]));
   const files = walk(src).filter((f) => f.pathname.endsWith('.js'));
   // kpi/catalogue.js reads loyalty_referrals (who invited whom) read-only, to split activation by how people arrived (#73); it never touches the points ledger
-  const allowed = /\/(rewards\/|kpi\/catalogue\.js|cover\.js|scopes\.js|booking\/(loyalty|credits)\.js|capabilities\/(loyalty|venues)\.js|academy-invoices\.js|payments\/service\.js|worker\.js|capabilities\/(hire|academy-billing)\.js|(capabilities\/)?coach-series\.js|migrate\.js)/;
+  const allowed = /\/(rewards\/|kpi\/catalogue\.js|cover\.js|scopes\.js|booking\/(loyalty|credits)\.js|capabilities\/(loyalty|venues)\.js|academy-invoices\.js|kit\.js|payments\/service\.js|worker\.js|capabilities\/(hire|academy-billing)\.js|(capabilities\/)?coach-series\.js|migrate\.js)/;
   const users = files.filter((f) => /loyalty_|rewards\//.test(readFileSync(f, 'utf8'))).map((f) => f.pathname.split('/src/')[1]).filter((p) => !allowed.test(`/${p}`));
   assert.deepEqual(users, [], 'only the loyalty engine and the bills it settles touch the ledger');
   const ranking = files.filter((f) => /standings|leaderboard|ranking|rating/i.test(f.pathname)).map((f) => readFileSync(f, 'utf8')).join('\n');

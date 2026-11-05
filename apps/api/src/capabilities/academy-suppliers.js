@@ -153,8 +153,8 @@ cap({
 
 cap({
   name: 'update_academy_supplier_request', method: 'PATCH', path: '/academy/supplier-requests/:id', tag: TAG,
-  summary: 'Move a request along (requested → quoted → approved → in progress → delivered → done, or cancelled), record the quote and the final cost. The server enforces the allowed moves.',
-  input: z.object({ id, row_version: z.number().int(), status: z.enum(REQUEST_STATUSES).optional(), due_on: z.string().date().optional(), priority: z.enum(['low', 'normal', 'high', 'urgent']).optional(), details: short(2000).optional(), currency: z.string().length(3).toUpperCase().optional(), estimated_cost_minor: z.number().int().min(0).max(1e12).optional(), actual_cost_minor: z.number().int().min(0).max(1e12).optional() }),
+  summary: 'Move a request along (requested → quoted → approved → in progress → delivered → done, or cancelled), record the quote, the final cost and the invoice reference (the final cost of a delivered or done request flows into the academy P&L). The server enforces the allowed moves.',
+  input: z.object({ id, row_version: z.number().int(), status: z.enum(REQUEST_STATUSES).optional(), due_on: z.string().date().optional(), priority: z.enum(['low', 'normal', 'high', 'urgent']).optional(), details: short(2000).optional(), currency: z.string().length(3).toUpperCase().optional(), estimated_cost_minor: z.number().int().min(0).max(1e12).optional(), actual_cost_minor: z.number().int().min(0).max(1e12).optional(), invoice_ref: short(80).optional() }),
   handler: ({ user }, i) => tx(async (c) => {
     const cur = (await c.query('SELECT * FROM academy_supplier_requests WHERE id=$1 FOR UPDATE', [i.id])).rows[0];
     if (!cur) throw notFound('Request');
@@ -165,8 +165,8 @@ cap({
     if ((i.estimated_cost_minor != null || i.actual_cost_minor != null) && !currency) throw badRequest('Choose a currency for the amounts');
     if (currency && !isSupportedCurrency(currency)) throw badRequest('Unsupported currency');
     const r = (await c.query(
-      `UPDATE academy_supplier_requests SET status=$2, due_on=$3, priority=$4, details=$5, currency=$6, estimated_cost_minor=$7, actual_cost_minor=$8, row_version=row_version+1, updated_at=now() WHERE id=$1 RETURNING *`,
-      [cur.id, i.status ?? cur.status, i.due_on ?? cur.due_on, i.priority ?? cur.priority, i.details ?? cur.details, currency ?? null, i.estimated_cost_minor ?? cur.estimated_cost_minor, i.actual_cost_minor ?? cur.actual_cost_minor])).rows[0];
+      `UPDATE academy_supplier_requests SET status=$2, due_on=$3, priority=$4, details=$5, currency=$6, estimated_cost_minor=$7, actual_cost_minor=$8, invoice_ref=$9, delivered_at=CASE WHEN delivered_at IS NULL AND $2 IN ('delivered','done') THEN now() ELSE delivered_at END, row_version=row_version+1, updated_at=now() WHERE id=$1 RETURNING *`,
+      [cur.id, i.status ?? cur.status, i.due_on ?? cur.due_on, i.priority ?? cur.priority, i.details ?? cur.details, currency ?? null, i.estimated_cost_minor ?? cur.estimated_cost_minor, i.actual_cost_minor ?? cur.actual_cost_minor, i.invoice_ref ?? cur.invoice_ref])).rows[0];
     await audit(c, user.id, 'update_academy_supplier_request', 'academy_supplier_requests', r.id, { from: cur.status, to: r.status });
     return r;
   }),

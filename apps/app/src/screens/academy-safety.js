@@ -17,6 +17,7 @@ import { c } from '../theme';
 import { locale } from '../locale';
 import { Bars, Block, Initials, Kpi } from './academy-ui';
 import { isOffline, newKey, flushQueue, dismissItem, queueHandover, useQueue } from '../pickup-queue';
+import { TransportBoardTab } from './academy-transport-board';
 
 // ------------------------------------------------------------------------------------------------------------------ words
 const phaseInfo = () => ({
@@ -25,7 +26,7 @@ const phaseInfo = () => ({
 });
 const reasonText = (code) => ({
   not_on_list: t('pk.r_not_on_list'), revoked: t('pk.r_revoked'), expired: t('pk.r_expired'), already_used: t('pk.r_already_used'), outside_allowed_time: t('pk.r_outside_time'), guardian_pickup_scope_withheld: t('pk.r_scope'),
-  passphrase_missing: t('pk.r_phrase_missing'), passphrase_wrong: t('pk.r_phrase_wrong'), verify_identity: t('pk.r_verify'), choose_collector: t('pk.r_choose'), no_guardian_permission_walks_home: t('pk.r_no_walk'), no_guardian_permission_transport: t('pk.r_no_transport'),
+  passphrase_missing: t('pk.r_phrase_missing'), passphrase_wrong: t('pk.r_phrase_wrong'), too_many_attempts: t('pk.r_too_many'), verify_identity: t('pk.r_verify'), choose_collector: t('pk.r_choose'), no_guardian_permission_walks_home: t('pk.r_no_walk'), no_guardian_permission_transport: t('pk.r_no_transport'),
 }[code] ?? t('pk.r_unknown'));
 const kindText = (k) => ({
   blocked_pickup: t('pk.k_blocked'), late_pickup: t('pk.k_late'), no_show: t('pk.k_no_show'), override: t('pk.k_override'), unconfirmed_handover: t('pk.k_unconfirmed'), disputed_handover: t('pk.k_disputed'),
@@ -267,18 +268,24 @@ const TABS = () => [['overview', t('pk.tab_overview')], ['exceptions', t('pk.tab
 const LATE_KINDS = ['late_pickup', 'no_show', 'unconfirmed_handover'];
 
 export function SafetyDesk({ o, role, toast }) {
+  const [mainTab, setMainTab] = useState('pickup');
   const [tab, setTab] = useState('overview');
   const { tablet } = useLayout();
   const admin = role === 'owner' || role === 'admin';
   const ov = useLoad(() => api.get(`/organisations/${o.id}/academy/safety`), [o.id]);
   const tabs = [...TABS(), ...(admin ? [['settings', t('pk.tab_settings')]] : [])];
-  if (ov.error) return <LoadError error={ov.error} onRetry={ov.reload} />;
-  if (!ov.data) return <Loading />;
-  const d = ov.data, k = d.kpis;
-  const anyLate = d.trend.some((x) => x.late_pickups > 0);
   return (
     <View style={{ gap: 12 }}>
       <View><T weight="800" size={22} style={{ letterSpacing: -0.5 }}>{t('pk.title')}</T><T color={c.mute}>{t('pk.subtitle')}</T></View>
+      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }} accessibilityRole="tablist">
+        <Chip label={t('transport.pickupBoard')} active={mainTab === 'pickup'} onPress={() => setMainTab('pickup')} />
+        <Chip label={t('transport.boardingBoard')} active={mainTab === 'transport'} onPress={() => setMainTab('transport')} />
+      </View>
+      {mainTab === 'transport' ? <TransportBoardTab o={o} toast={toast} /> : (
+      <>{!ov.data && !ov.error ? <Loading /> : ov.error ? <LoadError error={ov.error} onRetry={ov.reload} /> : (() => {
+      const d = ov.data, k = d.kpis;
+      const anyLate = d.trend.some((x) => x.late_pickups > 0);
+      return (<>
       <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }} accessibilityRole="tablist">{tabs.map(([key, label]) => <Chip key={key} label={label} active={tab === key} onPress={() => setTab(key)} />)}</View>
       {tab === 'overview' ? (
         <>
@@ -315,6 +322,8 @@ export function SafetyDesk({ o, role, toast }) {
         </Card>
       ) : null}
       {tab === 'settings' && admin ? <PolicyForm o={o} toast={toast} onSaved={ov.reload} /> : null}
+      </>);})()}</>
+      )}
     </View>
   );
 }
