@@ -28,7 +28,7 @@ import { processSponsorTasks } from './sponsor-collaboration.js';
 import { sweepAccessGrants } from './access-grants.js';
 import { syncMembershipGrants } from './access-layer.js';
 import { sweepTickets } from './ticketing.js';
-import { expireAcademyOffers, remindTrials, remindIntlDeadlines, runAcademyJobs } from './academy-sweeps.js';
+import { expireAcademyOffers, expireAcademyPromotions, remindTrials, remindIntlDeadlines, runAcademyJobs } from './academy-sweeps.js';
 import { sweepPickups } from './pickup-sweeps.js';
 import { expireAcademyContent } from './academy-content.js';
 import { sweepKit } from './kit-sweeps.js';
@@ -95,6 +95,7 @@ export const STEPS = [
   ['sponsor_terminations', 'sponsor_terminations_ended', endDueTerminations, 0],
   ['sponsor_terms', 'sponsor_terms_processed', processSponsorshipTerms, 0],
   ['academy_offers', 'academy_offers_expired', expireAcademyOffers, 0],
+  ['academy_promotions', 'academy_promotions_expired', expireAcademyPromotions, 0],
   ['academic_exceptions', 'academic_exceptions_raised', runAcademicSweeps, 0],
   ['campus_transfers', 'campus_transfers_applied', runDueTransfers, 0],
   ['academy_trial_reminders', 'academy_trial_reminders_sent', remindTrials, 0],

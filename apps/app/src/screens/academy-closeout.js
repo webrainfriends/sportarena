@@ -14,6 +14,7 @@ import { t } from '../i18n';
 import { moneyIn } from '../vtime';
 import { Bars, Block, Kpi, pct } from './academy-ui';
 import { StatusChip } from './academy-elite';
+import { PlanPromotion, PROMOTION_DECISIONS } from './academy-promotions';
 
 const Panel = ({ children }) => <View style={{ backgroundColor: c.paper, borderRadius: 20, padding: 16, gap: 10, borderWidth: 1, borderColor: c.line }}>{children}</View>;
 const idem = (p) => `${p}-${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`;
@@ -169,40 +170,27 @@ export function Branches({ o, archived, toast }) {
 // ------------------------------------------------------------------ decision follow-through (Progress)
 const ACTION = { graduate: 'issue_certificate', invite_squad: 'invite_squad', move_programme: 'move_cohort' };
 
-/** One recorded decision that has a canonical next step. The work is done by the certificate, team-invitation or enrolment-transfer capability. */
-function FollowRow({ o, athleteId, d, toast }) {
-  const action = ACTION[d.decision];
-  const ups = useLoad(() => api.get(`/academy/decisions/${d.id}/follow-ups`).catch(() => []), [d.id]);
+/** One recorded decision that has a canonical next step. The decision becomes a tracked promotion run (Progress > Promotions): approval, pre-flight, steps, rollback. */
+function FollowRow({ o, athleteId, d }) {
+  const runs = useLoad(() => api.get(`/organisations/${o.id}/academy/promotions`, { athlete_id: athleteId, limit: 50 }).then((x) => x.items).catch(() => []), [d.id]);
   const [open, setOpen] = useState(false);
-  const mem = useLoad(() => (open ? api.get(`/organisations/${o.id}/academy/athletes/${athleteId}/360`).then((x) => x.sections?.memberships?.data ?? []).catch(() => []) : Promise.resolve([])), [open, athleteId]);
-  const cohorts = useLoad(() => (open && action === 'move_cohort' ? api.get(`/organisations/${o.id}/cohorts`, { limit: 100 }).catch(() => []) : Promise.resolve([])), [open, action]);
-  const done = (ups.data ?? []).some((x) => x.kind === action);
-  const enrol = (mem.data ?? []).filter((m) => (action === 'issue_certificate' ? ['completed', 'graduated'] : ['enrolled', 'paused']).includes(m.status)).map((m) => ({ value: m.id, label: `${m.programme ?? m.group_name} · ${m.group_name}`, sub: m.status }));
-  const fields = action === 'invite_squad'
-    ? [{ key: 'team_id', label: t('aco.ft.team'), type: 'entity', entityKind: 'team', noun: t('aco.ft.team_noun') }, { key: 'role', label: t('aco.ft.role'), type: 'chips', options: [{ value: 'player', label: t('aco.ft.role_player') }, { value: 'captain', label: t('aco.ft.role_captain') }] }, { key: 'message', label: t('aco.ft.message'), optional: true }]
-    : action === 'issue_certificate'
-      ? [{ key: 'enrolment_id', label: t('aco.ft.enrolment'), type: 'choice', options: enrol, hint: enrol.length ? undefined : t('aco.ft.cert_needs') }, { key: 'kind', label: t('aco.ft.kind'), type: 'chips', options: ['certificate', 'badge', 'diploma'].map((value) => ({ value, label: t(`aco.ft.kind.${value}`) })) }, { key: 'title', label: t('aco.ft.cert_title'), optional: true }]
-      : [{ key: 'enrolment_id', label: t('aco.ft.enrolment'), type: 'choice', options: enrol }, { key: 'to_cohort_id', label: t('aco.ft.cohort'), type: 'choice', options: (cohorts.data ?? []).map((k) => ({ value: k.id, label: k.name })) }, { key: 'reason', label: t('aco.ft.reason'), optional: true }];
+  const run = (runs.data ?? []).find((r) => r.decision_id === d.id);
   return (
     <>
-      <Row title={t(`aco.ft.title.${action}`)} sub={done ? t(`aco.ft.done.${action}`) : t('aco.ft.sub')}
-        right={done ? <Tag label={t('aco.ft.tag_done')} color={c.lime} /> : <Btn small title={t(`aco.ft.btn.${action}`)} onPress={() => setOpen(true)} />} />
-      {open ? (
-        <FormSheet visible onClose={() => setOpen(false)} title={t(`aco.ft.title.${action}`)} submitLabel={t(`aco.ft.btn.${action}`)} fields={fields}
-          initial={{ role: 'player', kind: 'certificate', enrolment_id: enrol[0]?.value }}
-          onSubmit={async (v) => { const body = { action }; for (const f of fields) if (v[f.key]) body[f.key] = v[f.key]; await api.post(`/academy/decisions/${d.id}/follow-through`, body); ups.reload(); return t(`aco.ft.done.${action}`); }} />
-      ) : null}
+      <Row title={t(`promo.decision.${d.decision}`)} sub={run ? t('promo.progress', { done: run.progress.done, total: run.progress.total }) : t('promo.follow.sub')}
+        right={run ? <Tag label={t(`promo.status.${run.status}`)} color={run.status === 'completed' ? c.lime : undefined} /> : <Btn small title={t('promo.plan')} onPress={() => setOpen(true)} accessibilityLabel={t('promo.plan')} />} />
+      {open ? <PlanPromotion o={o} decision={d} athleteId={athleteId} onClose={() => setOpen(false)} onPlanned={() => runs.reload()} /> : null}
     </>
   );
 }
 
-/** The next steps for an athlete's graduation / squad / programme-move decisions. Nothing runs by itself: a person presses the button. */
+/** The next steps for an athlete's promotion / graduation / squad / programme-move decisions. Nothing runs by itself: a person plans it, then a person approves it. */
 export function FollowThrough({ o, athleteId, history, toast }) {
-  const rows = (history ?? []).filter((h) => ACTION[h.decision]).slice(0, 3);
+  const rows = (history ?? []).filter((h) => PROMOTION_DECISIONS.includes(h.decision)).slice(0, 3);
   if (!rows.length) return null;
   return (
-    <Block title={t('aco.ft.block')}>
-      <T size={12} color={c.mute}>{t('aco.ft.intro')}</T>
+    <Block title={t('promo.follow.block')}>
+      <T size={12} color={c.mute}>{t('promo.follow.intro')}</T>
       {rows.map((d) => <FollowRow key={d.id} o={o} athleteId={athleteId} d={d} toast={toast} />)}
     </Block>
   );
