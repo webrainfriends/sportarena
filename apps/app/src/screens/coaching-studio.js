@@ -40,6 +40,21 @@ const Chips = ({ wide, children }) => (wide ? <View style={{ flexDirection: 'row
 const Cols = ({ wide, children }) => <View style={{ flexDirection: wide ? 'row' : 'column', gap: 16, alignItems: 'flex-start' }}>{children.map((ch, n) => <View key={n} style={{ flex: 1, width: '100%', minWidth: 0 }}>{ch}</View>)}</View>;
 const Status = ({ s }) => <Tag label={label(s)} color={s === 'completed' || s === 'present' ? c.lime : c.violetSoft} />;
 
+function SharedParaPathwaysList({ athlete_id, push }) {
+  const d = useLoad(() => api.get(`/coaching/para-pathway/${athlete_id}`), [athlete_id]);
+  if (d.error || !d.data) return null;
+  const pp = d.data;
+  return (
+    <Section title={t('pp.coach.shared')} color={c.violet}>
+      <Row
+        title={`${pp.sport} · ${t(`pp.stage.${pp.current_stage}`)}`}
+        sub={`${t('pp.metrics.milestones')}: ${pp.milestone_count ?? 0} · ${t('pp.metrics.done')}: ${pp.done_count ?? 0}`}
+        onPress={() => push('SharedParaPathway', { athlete_id })}
+      />
+    </Section>
+  );
+}
+
 export function PerformanceStudio() {
   const { push } = useNav();
   const { tablet: wide } = useLayout();
@@ -448,6 +463,7 @@ export function CoachGoals({ athlete_id, team_id, name, programme_id }) {
         </>
       </Cols>
       {athlete_id ? <SharedByPlayers athlete_id={athlete_id} /> : null}
+      {athlete_id ? <SharedParaPathwaysList athlete_id={athlete_id} push={push} /> : null}
       <FormSheet visible={form === 'goal'} onClose={() => setForm(null)} title={t('cs.new_goal')} submitLabel={t('cs.create_goal')}
         fields={[
           { key: 'title', label: t('cs.goal_label') },

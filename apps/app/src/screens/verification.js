@@ -7,6 +7,9 @@ import { useSession } from '../session';
 import { docMaxBytes, docMaxMb } from '../upload-limits';
 import { Btn, Card, Chip, Empty, ErrorBox, Field, Loading, Row, Section, Seg, Sheet, T, Tag } from '../ui';
 import { c } from '../theme';
+import { t as i18n } from '../i18n';
+import { MultiMenuField } from '../menu-field';
+import { DateField } from '../pickers';
 
 const isWeb = Platform.OS === 'web';
 const STATE = { submitted: ['In queue', c.sunSoft], in_review: ['Being reviewed', c.cyanSoft], needs_info: ['More info needed', c.orangeSoft], approved: ['Verified ✓', c.lime], rejected: ['Declined', c.pinkSoft], revoked: ['Revoked', c.pinkSoft], withdrawn: ['Withdrawn', c.violetSoft], expired: ['Expired', c.orangeSoft] };
@@ -69,7 +72,7 @@ async function buildEvidence(inputs) {
 }
 
 // ------------------------------------------------------------------ requester
-function RequestSheet({ visible, onClose, rules, onDone, preset, presetSubject }) {
+export function RequestSheet({ visible, onClose, rules, onDone, preset, presetSubject }) {
   const { user, toast } = useSession();
   // sponsor staff do not hold the global sponsor role: what counts is being owner or admin of a brand's team (the server decides again)
   const brands = useLoad(() => (visible ? api.get('/sponsors', { mine: true, limit: 50 }) : Promise.resolve([])), [visible]);
@@ -81,6 +84,8 @@ function RequestSheet({ visible, onClose, rules, onDone, preset, presetSubject }
   const [inputs, setInputs] = useState({});
   const [note, setNote] = useState('');
   const [country, setCountry] = useState(null);
+  const [cred, setCred] = useState({ authority: '', title: '', scope: [], expires: null });   // coach credential detail (#837): issuer, name, disciplines covered, own expiry
+  const disc = useLoad(() => (visible ? api.get('/coaches/adaptive/catalogue') : Promise.resolve(null)), [visible]);
   const legalPacks = useLoad(() => (visible ? api.get('/legal/packs') : Promise.resolve(null)), [visible]);
   const [err, setErr] = useState(null);
   const [busy, setBusy] = useState(false);
@@ -91,7 +96,7 @@ function RequestSheet({ visible, onClose, rules, onDone, preset, presetSubject }
     setBusy(true); setErr(null);
     try {
       const evidence = await buildEvidence(inputs);
-      await api.post('/verification/cases', { type: t.type, subject_id: t.subject === 'user' ? undefined : subject, claim_note: note || undefined, ...(t.type === 'lawyer' ? { jurisdiction: country } : {}), evidence });
+      await api.post('/verification/cases', { type: t.type, subject_id: t.subject === 'user' ? undefined : subject, claim_note: note || undefined, ...(t.type === 'lawyer' ? { jurisdiction: country } : {}), ...(t.type === 'coach' ? { ...(cred.authority.trim() ? { issuing_authority: cred.authority.trim() } : {}), ...(cred.title.trim() ? { credential_title: cred.title.trim() } : {}), scope_disciplines: cred.scope, ...(cred.expires ? { credential_expires_on: cred.expires } : {}) } : {}), evidence });
       toast('Sent to the platform team'); onDone(); onClose();
     } catch (e) { setErr(e.message); } finally { setBusy(false); }
   };
@@ -104,6 +109,12 @@ function RequestSheet({ visible, onClose, rules, onDone, preset, presetSubject }
           <T size={13} color={c.mute}>{t.summary} The badge lasts {t.validity_months} months.</T>
           {t.subject !== 'user' ? (subjects.data?.length ? <View style={{ gap: 6 }}><T weight="800" size={13}>{t.subject === 'sponsor' ? 'Which brand?' : 'Which event?'}</T><View style={{ flexDirection: 'row', gap: 6, flexWrap: 'wrap' }}>{subjects.data.map((s) => <Chip key={s.id} label={s.name} active={subject === s.id} onPress={() => setSubject(s.id)} />)}</View></View> : <T color={c.mute}>{subjects.loading ? 'Loading…' : `You don't have a ${t.subject} yet — create one first.`}</T>) : null}
           {t.type === 'lawyer' ? <View style={{ gap: 6 }}><T weight="800" size={13}>Which country are you admitted in?</T><View style={{ flexDirection: 'row', gap: 6, flexWrap: 'wrap' }}>{(legalPacks.data?.packs ?? []).map((p) => <Chip key={p.code} label={p.name} active={country === p.code} onPress={() => setCountry(p.code)} />)}</View><T size={12} color={c.mute}>Admission in one country does not cover another. Request again for each.</T></View> : null}
+          {t.type === 'coach' ? <View style={{ gap: 8 }}>
+            <Field label={i18n('adp.c_authority')} value={cred.authority} onChangeText={(x) => setCred({ ...cred, authority: x })} maxLength={120} />
+            <Field label={i18n('adp.c_title')} value={cred.title} onChangeText={(x) => setCred({ ...cred, title: x })} maxLength={160} />
+            <MultiMenuField label={i18n('adp.c_scope')} value={cred.scope} onChange={(v) => setCred({ ...cred, scope: v })} options={(disc.data?.disciplines ?? []).map((d) => ({ value: d.key, label: i18n(`inc.tpl_${d.key}`) }))} />
+            <DateField label={i18n('adp.c_expiry')} value={cred.expires} onChange={(v) => setCred({ ...cred, expires: v })} optional />
+          </View> : null}
           <T weight="800" size={13}>Evidence — {t.required.length ? 'all required' : 'at least one'}{t.one_of?.length && t.required.length ? ', plus one of the optional proofs' : ''}</T>
           {t.required.map((k) => <EvidenceInput key={k} kind={k} label={`${rules.evidence_kinds[k]} · required`} value={inputs[k]} onChange={(v) => setInputs({ ...inputs, [k]: v })} />)}
           {(t.one_of ?? []).map((k) => <EvidenceInput key={k} kind={k} label={`${rules.evidence_kinds[k]} · give at least one of these`} value={inputs[k]} onChange={(v) => setInputs({ ...inputs, [k]: v })} />)}

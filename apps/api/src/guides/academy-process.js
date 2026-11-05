@@ -28,7 +28,7 @@ export const ACADEMY_STEPS = [
   {
     id: 'staff', title: 'Add staff',
     why: 'Give coaches, front desk and finance their own access. Each person only sees what their role needs.',
-    steps: ['Open the People tab and tap Invite someone, or use Import people to bring a list across.', 'Search for the person and choose their role and department.', 'In Academy, Operations, Staff & leave, set the job title, engagement (employee, contractor or volunteer) and what they can do.', 'They appear under Waiting for a reply until they accept.'],
+    steps: ['Open the People tab and tap Invite someone, or use Import people to bring a list across.', 'Search for the person and choose their role and department.', 'In Academy, Operations, Staff & leave, set the job title, engagement (employee, contractor or volunteer) and what they can do.', 'They appear under Waiting for a reply until they accept.', 'Coaches who list themselves for adaptive coaching show their credential state (verified, self-declared, expired or revoked) on the staff list, so you can check instructors before assigning para sessions. It is a coaching credential only, never medical authorisation or a classification.'],
     target: { org: 'people' },
     modules: ['academy-staff.js', 'academy-payroll.js', 'org-agreements.js'],
     sources: ['apps/app/src/screens/org.js', 'apps/app/src/screens/academy-ops.js'],
@@ -43,7 +43,7 @@ export const ACADEMY_STEPS = [
   {
     id: 'programmes', title: 'Build programmes',
     why: 'A programme is what families buy: a squad, a term course or a camp, with a price and places.',
-    steps: ['Open Academy, then Programmes, and tap New programme.', 'Work through the steps: sport and venue, schedule, price and places, application questions and agreements.', 'Check the family price preview in Review.', 'Publish to open applications, or save as a draft.', 'After a graduation or squad decision, open the athlete on the Progress page to issue the certificate, send the squad invitation or move them to another cohort.'],
+    steps: ['Open Academy, then Programmes, and tap New programme.', 'Work through the steps: sport and venue, schedule, price and places, application questions and agreements. Para and adaptive sports are in the same sport list: tap the Para & adaptive filter to find them.', 'Check the family price preview in Review.', 'Publish to open applications, or save as a draft.', 'After a graduation or squad decision, open the athlete on the Progress page to issue the certificate, send the squad invitation or move them to another cohort.'],
     target: { academy: 'programmes' },
     modules: ['academy-programmes.js', 'academy-pathways.js', 'academy-follow-through.js'], sources: ['apps/app/src/screens/academy-programmes.js'],
   },
@@ -57,9 +57,9 @@ export const ACADEMY_STEPS = [
   {
     id: 'students', title: 'Invite students',
     why: 'Move people from enquiry to enrolled. Parents and guardians consent for children.',
-    steps: ['Open Academy, then Admissions.', 'Invite a family to a programme, or review the applications and trials that arrive.', 'Make an offer, then enrol once they accept. Enrolment letters are produced for you.', 'Use Families to see everyone enrolled and who pays.'],
+    steps: ['Open Academy, then Admissions.', 'Invite a family to a programme, or review the applications and trials that arrive.', 'Make an offer, then enrol once they accept. Enrolment letters are produced for you.', 'For an athlete joining from abroad, open Start international checklist on the application, then track permissions, passport and visa status, school, residence and arrival under International. Enrolment waits until every mandatory item is met.', 'Use Families to see everyone enrolled and who pays.'],
     target: { academy: 'admissions' },
-    modules: ['academy-admissions.js', 'academy-trials.js', 'academy-letters.js'], sources: ['apps/app/src/screens/academy-admissions.js', 'apps/app/src/screens/academy-families.js'],
+    modules: ['academy-admissions.js', 'academy-trials.js', 'academy-letters.js', 'academy-international.js'], sources: ['apps/app/src/screens/academy-admissions.js', 'apps/app/src/screens/academy-families.js', 'apps/app/src/screens/academy-international.js'],
   },
   {
     id: 'scouting', title: 'Scout and recruit talent',
@@ -71,9 +71,16 @@ export const ACADEMY_STEPS = [
   {
     id: 'development', title: 'Plan athlete development',
     why: 'Give every athlete one season plan that coordinates coaches, conditioning, psychology, school and family, without copying their private records.',
-    steps: ['Open Academy, then Progress, then Development plans, and tap New plan for an enrolled athlete.', 'Name the accountable lead, the season dates and the pathway it serves, then add the specialists who work on it.', 'Add objectives with the guided builder: pick the domain and the sport-specific competency, check the athlete\'s current figure and the anonymised peer benchmark, set the target, and tick the usual tasks.', 'Set the season phases (pre-season, competition, exams, recovery) so clashes are flagged, then activate the plan.', 'Run a review each cycle: specialists add their view, the lead signs off and can share it with the athlete and guardians, who acknowledge it.', 'Use the Squad board to see who needs attention across all six domains, with the reasons spelled out.'],
+    steps: ['Open Academy, then Progress, then Development plans, and tap New plan for an enrolled athlete.', 'Name the accountable lead, the season dates and the pathway it serves, then add the specialists who work on it.', 'Add objectives with the guided builder: pick the domain and the sport-specific competency, check the athlete\'s current figure and the anonymised peer benchmark, set the target, and tick the usual tasks.', 'Set the season phases (pre-season, competition, exams, recovery) so clashes are flagged, then activate the plan.', 'Run a review each cycle: specialists add their view, the lead signs off and can share it with the athlete and guardians, who acknowledge it.', 'Use the Squad board to see who needs attention across all six domains, with the reasons spelled out.', 'Review technique with video: open a session, then the Video tab, and link a clip the athlete has shared, add timed annotations, and create the shared development action it belongs to. Athletes and guardians reply from their Progress tab; Progress, then Video feedback, lists every reply. Viewing stops at once if sharing is revoked or guardian media consent is withdrawn.'],
     target: { academy: 'progress' },
-    modules: ['academy-dev-plan.js'], sources: ['apps/app/src/screens/academy-dev-plan.js', 'apps/app/src/screens/academy-dev-builder.js', 'apps/app/src/screens/dev-plan-trend.js'],
+    modules: ['academy-dev-plan.js', 'academy-video.js'], sources: ['apps/app/src/screens/academy-dev-plan.js', 'apps/app/src/screens/academy-video.js', 'apps/app/src/screens/academy-dev-builder.js', 'apps/app/src/screens/dev-plan-trend.js'],
+  },
+  {
+    id: 'content', title: 'License your curriculum',
+    why: 'Package your approved methodology, curricula, drills and micro-courses as a licensed pack, so affiliated and independent organisations can buy seats for their coaches while you keep the rights, the versions and the revenue record.',
+    steps: ['Open Academy, then Content, then Packs, and tap New pack. Choose the sport, level, ages and languages, credit the authors, and set who may license it (open, affiliated or by invitation), the territory, the seat limit and whether offline copies are allowed.', 'Add items: pick your published curriculum versions, methodology versions and approved drills (they are linked, never copied), then add micro-courses and video references. Mark footage that shows young people: it is stream-only, watermarked and never offline.', 'State the learning objectives, assessment and coach development hours, set the price per seat, the term, the grace period and the revenue split, then publish. A published version never changes.', 'When an organisation requests a pack, open Licences granted, set the terms (seats, dates, version, price) and send the offer. The buyer accepts and pays through the normal checkout, then assigns seats to its coaches. A coach then opens a session, goes to its Curriculum tab, links licensed items under Licensed content and adds them to their own coaching plan.', 'Watch Overview and a pack’s Usage and Money tabs for seats, completion, renewals due and the revenue statement. Suspend, revoke or renew a licence with a reason: access ends at once and the buyer’s own academy data is untouched. Handle support and takedown cases under Support & takedowns.'],
+    target: { academy: 'content' },
+    modules: ['academy-content.js'], sources: ['apps/app/src/screens/academy-content.js', 'apps/app/src/screens/academy-content-pack.js'],
   },
   {
     id: 'classes', title: 'Track classes',
@@ -106,7 +113,7 @@ export const ACADEMY_STEPS = [
   {
     id: 'academics', title: 'Connect schools and studies',
     why: 'Sport-plus-study academies run on both calendars. Link each athlete to their school, let the athlete or guardian choose what to share, and clashes appear before a session is published.',
-    steps: ['Open Academy, then Academics, and tap Link an athlete to a school. Pick the athlete and the school already on the platform.', 'The athlete, or a minor\u2019s guardian, is asked what to share (timetable, attendance, progress), with whom and for how long. Nothing is shared until they decide.', 'The school adds exams, lesson blocks and attendance summaries, or sends them by file or API. A school exam that clashes with a session is flagged and blocks publishing.', 'Open an athlete to see sport progress and academic progress side by side as separate blocks, each with its source. Grades are only read with the academics_detail permission and the athlete\u2019s consent.'],
+    steps: ['Open Academy, then Academics, and tap Link an athlete to a school. Pick the athlete and the school already on the platform.', 'The athlete, or a minor’s guardian, is asked what to share (timetable, attendance, progress), with whom and for how long. Nothing is shared until they decide.', 'The school adds exams, lesson blocks and attendance summaries, or sends them by file or API. A school exam that clashes with a session is flagged and blocks publishing.', 'Open an athlete to see sport progress and academic progress side by side as separate blocks, each with its source. Grades are only read with the academics_detail permission and the athlete’s consent.'],
     target: { academy: 'academics' },
     modules: ['academy-academics.js', 'academy-attainment.js'], sources: ['apps/app/src/screens/academics.js'],
   },
@@ -146,6 +153,13 @@ id: 'wellbeing', title: 'Support student wellbeing and development',
     modules: ['academy-wellbeing.js', 'academy-wellbeing-family.js', 'academy-wellbeing-overview.js'], sources: ['apps/app/src/screens/academy-wellbeing.js', 'apps/app/src/screens/academy-wellbeing-tracks.js', 'apps/app/src/screens/wellbeing-family.js'],
   },
   {
+    id: 'inclusion', title: 'Run inclusive and adaptive programmes',
+    why: 'Let disabled and para athletes join and progress in your programmes without disclosing a diagnosis: set what a programme offers, check every adaptive session is ready, and let athletes share only the operational needs they choose.',
+    steps: ['Open Academy, then Inclusion, then Programme setup, pick a programme and choose who can join, the sport adaptation templates, the adjustments offered, the venue features and the support-person ratio it needs.', 'Ask venue managers to record each venue\'s access features (lift, step-free route, accessible changing room, pool hoist) so sessions can be checked against them.', 'Athletes, or the verified guardian of a young person, open My academy, then Accommodations, and share only what staff need, with whom and until when. They can withdraw it at any moment.', 'Open Inclusion, then Session readiness, choose a session and resolve every gap: venue, support persons, duty cover and the lead coach credential. Coaches and venue staff see only what was shared with them, and every look is logged for the athlete.', 'Record adapted, coach-led assessments with descriptor levels, never a single score, and have a second assessor sign them off. Directors see counts only on the Overview.', 'Open Academy, then Inclusion, then Para pathways, to see which enrolled athletes have shared their athlete-owned para-sport pathway with you. View their milestones and evidence for the stages they granted you, and leave feedback on a checkpoint when asked. The athlete controls what you can see and can revoke access at any moment.'],
+    target: { academy: 'inclusion' },
+    modules: ['academy-inclusion.js', 'para-pathway.js'], sources: ['apps/app/src/screens/academy-inclusion.js', 'apps/app/src/screens/inclusion-family.js', 'apps/app/src/screens/para-pathway.js'],
+  },
+  {
     id: 'placement', title: 'Manage placement pathways',
     why: 'Give every graduating athlete a consented bridge from academy progression to university, scholarship and professional opportunities, managed by a placement advisor with an auditable funnel, evidence checklist, reference requests and revocable institution sharing.',
     steps: ['Open Academy, then Placement, and tap Add opportunity for an enrolled athlete.', 'Choose the type (university place, scholarship, grant or professional contract), set the institution, sport, deadline and intake year.', 'Build the evidence checklist: add items for academic transcript, sport CV, performance video, references and any passport or ranking documents.', 'Request references from coaches, academic coordinators or other referees and track their submission status.', 'Ask the athlete (or their guardian for under-18s) to grant the institution access to specific evidence fields. They choose exactly what to share and can revoke at any time.', 'Advance the opportunity through its stages — identified, eligibility check, evidence gathering, applied, offer received, outcome — as the process progresses.', 'Link a sponsorship award to the opportunity for attribution tracking across the finance module.', 'Use the Action Queue to triage urgent items: references due, missing evidence and pending guardian consents. Use Analytics for seasonal outcome and scholarship reports.'],
@@ -158,6 +172,13 @@ id: 'wellbeing', title: 'Support student wellbeing and development',
     steps: ['Open Academy, then Reports. Choose a pack: development report, term report, board management pack, P&L pack or campus quality pack.', 'Tap New draft and pick the athlete, campus and period. The figures are frozen when the draft is created and nothing is shared yet.', 'Tap Schedule to have drafts prepared weekly, monthly or each quarter for a group or campus. A schedule only drafts; it never issues.', 'Send the draft to review. A different owner or admin checks the data basis, evidence versions, gaps and who can read it, then approves or asks for changes.', 'Issue the approved pack. Guardians (or the adult athlete) get a notice with no figures and open the PDF securely from My academy.', 'To withdraw a pack, open it and tap Revoke with a reason. The file stops opening at once and the history is kept.'],
     target: { academy: 'reports' },
     modules: ['academy-report-packs.js', 'academy-packs.js'], sources: ['apps/app/src/screens/academy-reports.js'],
+  },
+  {
+    id: 'accreditation', title: 'Manage accreditation and audits',
+    why: 'Track every external accreditation, licence and quality mark your academy holds, keep the evidence for each one linked to records you already maintain, and run audits with findings and corrective actions that cannot be quietly changed.',
+    steps: ['Open Academy, then Accreditation, and tap Configure to add a framework: the accrediting body, type, level, owner, renewal cycle and reminder lead time.', 'Open the framework, choose Evidence, add what it requires, then link coach credentials and compliance records. Nothing is copied, and validity is read live.', 'Tap Schedule audit, choose the type, date and areas to verify, and optionally name an inspector, who sees that audit only.', 'Record each finding with its severity and corrective actions, give every action an owner and a due date, and mark them done as the work is finished.', 'Resubmit once every high and medium finding is resolved, then record the inspector decision. Every step is kept in a locked trail.'],
+    target: { academy: 'accreditation' },
+    modules: ['academy-accreditation.js'], sources: ['apps/app/src/screens/academy-accreditation.js'],
   },
 ];
 

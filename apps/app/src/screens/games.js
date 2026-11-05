@@ -9,6 +9,8 @@ import { useLoad } from '../hooks';
 import { useSession } from '../session';
 import { Btn, Chip, Empty, ErrorBox, Field, GradCard, H1, Loading, Row, Screen, Seg, Section, Sheet, StatPill, T, Tag } from '../ui';
 import { FormSheet } from '../FormSheet';
+import { ParaRules, paraInput } from './para-event-rules';
+import { t } from '../i18n';
 import { SessionLive } from './session-live';
 import { c } from '../theme';
 import { locale } from '../locale';
@@ -190,23 +192,24 @@ function Sports({ id, toast }) {
       <Section title="Sports in this event" color={c.pink}>
         {list.error ? <ErrorBox error={list.error} onRetry={list.reload} /> : !list.data ? <Loading /> : list.data.length ? list.data.map((d) => (
           <Row key={d.id} left={<T size={26}>{d.emoji}</T>} title={d.name} onPress={() => setSel(d)}
-            sub={`${d.mode === 'team' ? `${d.teams} teams` : `${d.entrants} entered`}${d.gender !== 'any' ? ` · ${d.gender}` : ''} · ${d.sessions_done}/${d.sessions} sessions`} right={<Tag label={d.status} />} />
+            sub={`${d.mode === 'team' ? `${d.teams} teams` : `${d.entrants} entered`}${d.gender !== 'any' ? ` · ${d.gender}` : ''} · ${d.sessions_done}/${d.sessions} sessions${d.participation_context && d.participation_context !== 'standard' ? ` · ♿ ${t(`ps.ctx.${d.participation_context}`)}` : ''}`} right={<Tag label={d.status} />} />
         )) : <Empty emoji="🏅" title="No sports yet" sub="Add athletics events, team games, anything — one person can enter several." />}
       </Section>
       <FormSheet visible={add} onClose={() => setAdd(false)} title="Add a sport" submitLabel="Add" initial={{ mode: 'individual', gender: 'any', officials_required: 1, team_size_min: 5, team_size_max: 7 }}
         fields={[{ key: 'sport', label: 'Sport', type: 'sport' }, { key: 'name', label: 'Name', placeholder: 'e.g. 100m U14 girls' },
+          { key: 'para', type: 'custom', render: ({ v, set }) => <ParaRules v={v} set={set} /> },
           { key: 'mode', label: 'Entered as', type: 'choice', options: [{ value: 'individual', label: 'Individuals' }, { value: 'team', label: 'Teams' }] },
           { key: 'gender', label: 'Open to', type: 'choice', options: [{ value: 'any', label: 'Anyone' }, { value: 'male', label: 'Boys / men' }, { value: 'female', label: 'Girls / women' }] },
           { key: 'team_size_min', label: 'Team size — minimum', type: 'stepper', min: 1, max: 50, show: (v) => v.mode === 'team' }, { key: 'team_size_max', label: 'Team size — maximum', type: 'stepper', min: 1, max: 50, show: (v) => v.mode === 'team' },
           { key: 'max_per_house', label: 'Entries per house (blank = no limit)', type: 'number', optional: true }, { key: 'officials_required', label: 'Officials per session', type: 'stepper', min: 0, max: 20 }]}
-        onSubmit={async (v) => { await api.post(`/events/${id}/disciplines`, { ...v, ...(v.mode === 'individual' ? { team_size_min: undefined, team_size_max: undefined } : {}) }); list.reload(); return 'Sport added'; }} />
+        onSubmit={async (v) => { await api.post(`/events/${id}/disciplines`, { ...v, para: undefined, ...paraInput(v), ...(v.mode === 'individual' ? { team_size_min: undefined, team_size_max: undefined } : {}) }); list.reload(); return 'Sport added'; }} />
       {sel ? <DisciplineSheet d={sel} id={id} toast={toast} onClose={() => { setSel(null); list.reload(); }} /> : null}
     </>
   );
 }
 
 function DisciplineSheet({ d, id, toast, onClose }) {
-  const [nom, setNom] = useState(false), [advance, setAdvance] = useState(false), [heats, setHeats] = useState(false), [draw, setDraw] = useState(false), [prog, setProg] = useState(false);
+  const [para, setPara] = useState(false), [nom, setNom] = useState(false), [advance, setAdvance] = useState(false), [heats, setHeats] = useState(false), [draw, setDraw] = useState(false), [prog, setProg] = useState(false);
   const people = useLoad(() => api.get(`/events/${id}/participants`, { limit: 100 }), [id]);
   const noms = useLoad(() => api.get(`/disciplines/${d.id}/nominations`), [d.id]);
   const teams = useLoad(() => (d.mode === 'team' ? api.get(`/disciplines/${d.id}/teams`) : Promise.resolve([])), [d.id]);
@@ -216,7 +219,17 @@ function DisciplineSheet({ d, id, toast, onClose }) {
   const made = res.data?.sessions?.length > 0;
   return (
     <Sheet visible onClose={onClose} title={d.name}>
+      <FormSheet visible={para} onClose={() => setPara(false)} title={t('ps.change_version')} notice={t('ps.change_notice')} initial={{ para: [{ context: d.participation_context, version: d.para_version_id ?? undefined, categories: d.para_categories ?? [] }] }}
+        fields={[{ key: 'para', type: 'custom', render: ({ v, set }) => <ParaRules v={v} set={set} sportSlug={d.sport} /> }, { key: 'reason', label: t('ps.reason'), type: 'multiline' }]}
+        onSubmit={async (v) => { await api.patch(`/disciplines/${d.id}`, { ...paraInput(v), para_change_reason: v.reason }); toast(t('ps.version_changed')); onClose(); }} />
       <View style={{ gap: 10 }}>
+        {d.participation_context && d.participation_context !== 'standard' ? (
+          <View style={{ gap: 4 }} accessible accessibilityLabel={t('ps.pinned_a11y')}>
+            <View style={{ flexDirection: 'row', gap: 6, flexWrap: 'wrap' }}><Tag label={`♿ ${t(`ps.ctx.${d.participation_context}`)}`} color={c.pinkSoft} />{d.para_snapshot ? <Tag label={`${d.para_snapshot.authority ?? ''} · ${t('ps.version_n', { n: d.para_snapshot.version })}`} color={c.limeSoft} /> : null}{d.para_snapshot ? <Tag label={d.para_snapshot.classification_required ? t('ps.class_req') : t('ps.class_not_req')} color={c.cyanSoft} /> : null}</View>
+            {d.para_snapshot ? <T size={12} color={c.mute}>{t('ps.snapshot_note')}</T> : <T size={12} color={c.mute}>{t('ps.no_class_note')}</T>}
+            {['nominations', 'scheduled'].includes(d.status) ? <View style={{ flexDirection: 'row' }}><Btn small color={c.paper} ink={c.ink} title={t('ps.change_version')} onPress={() => setPara(true)} /></View> : null}
+          </View>
+        ) : null}
         <T color={c.mute}>{d.sport_name} · {d.mode === 'team' ? `teams of ${d.team_size_min}–${d.team_size_max}` : 'individual'} · points {Object.entries(d.points_table).map(([k, v]) => `${k}:${v}`).join(' ')}</T>
         <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
           <Btn small title="Nominate people" onPress={() => setNom(true)} />

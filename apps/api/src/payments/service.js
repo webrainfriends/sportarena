@@ -15,6 +15,7 @@ import { fulfilChargePaid } from '../academy-invoices.js';
 import { fulfilServiceInvoicePaid } from '../svc/finance.js';
 import { fulfilMarketplacePaid } from '../marketplace/engine.js';
 import { fulfilMediaFeePaid } from '../media-fees.js';
+import { fulfilContentLicencePaid } from '../academy-content.js';
 import { fulfilContributionPaid, fulfilTeamChargePaid } from '../team-money.js';
 import { fulfilInstalmentPaid } from '../registration-money.js';
 import { checkGuardianScope } from '../youth.js';
@@ -123,6 +124,10 @@ export async function describePurpose(c, type, id) {
     const x = await q("SELECT f.payer_id, f.amount_minor AS amount, f.currency, f.status, f.number, o.name FROM mr_fees f JOIN mr_licences l ON l.id=f.licence_id JOIN media_partners m ON m.id=l.partner_id JOIN organisations o ON o.id=m.organisation_id WHERE f.id=$1 FOR UPDATE OF f");
     return x && { payerId: x.payer_id, amount: Number(x.amount), currency: x.currency, name: `Rights fee ${x.number} · ${x.name}`, payable: x.status === 'awaiting_payment' };
   }
+  if (type === 'content_licence') {
+    const x = await q("SELECT l.accepted_by AS payer_id, l.price_minor AS amount, l.currency, l.stage, p.title, o.name FROM academy_content_licences l JOIN academy_content_packs p ON p.id=l.pack_id JOIN organisations o ON o.id=l.licensee_org_id WHERE l.id=$1 FOR UPDATE OF l");
+    return x?.payer_id && { payerId: x.payer_id, amount: Number(x.amount), currency: x.currency, name: `Content licence · ${x.title} · ${x.name}`, payable: x.stage === 'awaiting_payment' && Number(x.amount) > 0 };
+  }
   if (type === 'ad_funding') {
     const x = await q("SELECT f.payer_id, f.amount_minor AS amount, f.currency, f.status, f.number, c.name, c.status AS camp_status FROM ad_fundings f JOIN ad_campaigns c ON c.id=f.campaign_id WHERE f.id=$1 FOR UPDATE OF f");
     return x && { payerId: x.payer_id, amount: Number(x.amount), currency: x.currency, name: `Advertising funds ${x.number} · ${x.name}`, payable: x.status === 'awaiting_payment' && !['ended', 'withdrawn'].includes(x.camp_status) };
@@ -168,6 +173,7 @@ async function fulfil(c, type, id, payment) {
   if (type === 'marketplace_engagement') return fulfilMarketplacePaid(c, id);
   if (type === 'media_rights_fee') return fulfilMediaFeePaid(c, id);
   if (type === 'ad_funding') return fulfilAdFundingPaid(c, id);
+  if (type === 'content_licence') return fulfilContentLicencePaid(c, id, payment.payer_id);
   if (type === 'commercial_subscription') return fulfilSubscriptionPaid(c, id, payment.payer_id);
   if (type === 'ticket_order') return confirmOrder(c, id, payment.payer_id);   // false (cancelled, sold out meanwhile) = the payment is refunded straight away
   if (type === 'registration_instalment') return fulfilInstalmentPaid(c, id, payment);

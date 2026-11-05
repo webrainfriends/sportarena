@@ -107,6 +107,14 @@ try {
   // the academy opts in to campuses (one default campus, no record changed) so the guide step photographs real figures
   await call('POST', `/organisations/${org.id}/campuses/adopt`, { token: owner.token, body: { name: 'Pune Campus', country: 'IN' } });
 
+  // one framework with a checklist, an audit and a finding, so the Accreditation step photographs real figures (all through the API)
+  const inDays = (n) => new Date(Date.now() + n * 864e5).toISOString().slice(0, 10);
+  const fw = await call('POST', `/organisations/${org.id}/academy/accreditation-frameworks`, { token: owner.token, body: { name: 'Coaching Centre Accreditation', body_name: 'National Tennis Federation', kind: 'coaching_standard', level: 'Level 3', next_due_on: inDays(40), requirements: [{ title: 'Coach qualification certificates', evidence_kind: 'coach_credentials' }, { title: 'Premises safety certificate', evidence_kind: 'facility' }, { title: 'Safeguarding policy', evidence_kind: 'policy' }] } });
+  if (fw) {
+    const au = await call('POST', `/academy/accreditation-frameworks/${fw.id}/audits`, { token: owner.token, body: { kind: 'on_site', scheduled_on: inDays(10), starts_at: '09:00', ends_at: '17:00', scope: ['coaches', 'premises'] } });
+    if (au) await call('POST', `/academy/audits/${au.id}/findings`, { token: owner.token, body: { severity: 'medium', title: 'Emergency action plan not signed off', actions: [{ title: 'Obtain the safety officer signature', due_on: inDays(20) }] } });
+  }
+
   // ------------------------------------------------------------------ the browser
   const browser = await chromium.launch({ executablePath: process.env.E2E_CHROMIUM ?? fs.globSync('/opt/pw-browsers/chromium-*/chrome-linux*/chrome')[0], args: ['--no-sandbox'] });
   const open = async (viewport) => {
@@ -138,6 +146,7 @@ try {
     suppliers: (p) => inOrg(p, async () => { await click(p, 'Academy'); await click(p, 'Partners'); }),
     programmes: (p) => inOrg(p, async () => { await click(p, 'Academy'); await click(p, 'Programmes'); }),
     coaches: async (p) => { await navTo(p, 'Manage', { id: venue.id, tab: 'coaches' }); await p.getByText('Tie-ups', { exact: true }).first().scrollIntoViewIfNeeded(); await wait(p, 600); },
+    content: (p) => inOrg(p, async () => { await click(p, 'Academy'); await click(p, 'Content'); }),
     development: (p) => inOrg(p, async () => { await click(p, 'Academy'); await click(p, 'Progress'); await click(p, 'Development plans'); }),
     students: (p) => inOrg(p, async () => { await click(p, 'Academy'); await click(p, 'Admissions'); }),
     scouting: (p) => inOrg(p, async () => { await click(p, 'Academy'); await click(p, 'Scouting'); }),
@@ -149,12 +158,12 @@ try {
     academics: (p) => inOrg(p, async () => { await click(p, 'Academy'); await click(p, 'Academics'); await click(p, 'Athletes').catch(() => {}); }),   // the Academy tab opens on its Home (executive view)
     competition: (p) => inOrg(p, async () => { await click(p, 'Academy'); await click(p, 'Competition & Squads'); }),
     campuses: (p) => inOrg(p, async () => { await click(p, 'Campuses'); }),   // the Academy tab opens on its Home (executive view)
-academics: (p) => inOrg(p, async () => { await click(p, 'Academy'); await click(p, 'Academics'); await click(p, 'Athletes'); }),   // the Academy tab opens on its Home (executive view)
-    campuses: (p) => inOrg(p, async () => { await click(p, 'Campuses'); }),
     safety: (p) => inOrg(p, async () => { await click(p, 'Academy'); await click(p, 'Safety & pickup'); }),
     kit: (p) => inOrg(p, async () => { await click(p, 'Academy'); await click(p, 'Kit'); }),   // the Academy tab opens on its Home (executive view)
     wellbeing: (p) => inOrg(p, async () => { await click(p, 'Academy'); await click(p, 'Wellbeing'); }),
-    safety: (p) => inOrg(p, async () => { await click(p, 'Academy'); await click(p, 'Safety & pickup'); }),   // the Academy tab opens on its Home (executive view)
+    inclusion: (p) => inOrg(p, async () => { await click(p, 'Academy'); await click(p, 'Inclusion'); }),
+    accreditation: (p) => inOrg(p, async () => { await click(p, 'Academy'); await click(p, 'Accreditation'); }),
+    placement: (p) => inOrg(p, async () => { await click(p, 'Academy'); await click(p, 'Placement'); }),
   };
   const manifest = { generated_at: new Date().toISOString(), steps: {} };
   for (const [size, viewport] of Object.entries(SHOT_SIZES)) {
