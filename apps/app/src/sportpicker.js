@@ -7,6 +7,7 @@ import { useLoad } from './hooks';
 import { useSession } from './session';
 import { Chip, ErrorBox, Field, T } from './ui';
 import { c } from './theme';
+import { t } from './i18n';
 
 // cache only a successful, non-empty answer: a failed or empty first load must be retried, not remembered
 let cache = null;
@@ -37,6 +38,9 @@ export function useFavSports() {
   return { slugs: user ? slugs : [], toggle, signedIn: !!user };
 }
 
+// PS-01: para / adaptive sports are rows of the same catalogue (is_para); one filter, with the programme as a second step.
+export const PARA_PROGRAMMES = ['paralympic_summer', 'paralympic_winter', 'other_adaptive'];
+
 export const TYPES = [
   { value: 'team', label: '👥 Team' },
   { value: 'individual', label: '🏃 Individual' },
@@ -48,9 +52,10 @@ function Panel({ all, value, onPick, allLabel, error, onRetry }) {
   const { slugs, toggle, signedIn } = useFavSports();
   const [type, setType] = useState(null); // null = all, 'fav' = favourites
   const [q, setQ] = useState('');
+  const [prog, setProg] = useState(null); // null = every para sport
   const term = q.trim().toLowerCase();
   const favSet = new Set(slugs);
-  const base = type === 'fav' ? all.filter((s) => favSet.has(s.slug)) : type ? all.filter((s) => s.play_type === type) : all;
+  const base = type === 'fav' ? all.filter((s) => favSet.has(s.slug)) : type === 'para' ? all.filter((s) => s.is_para && (!prog || (s.programmes ?? []).includes(prog))) : type ? all.filter((s) => s.play_type === type) : all;
   const rows = term ? base.filter((s) => s.name.toLowerCase().includes(term)) : base;
   const ordered = type === 'fav' || term ? rows : [...rows.filter((s) => favSet.has(s.slug)), ...rows.filter((s) => !favSet.has(s.slug))];
   return (
@@ -60,14 +65,21 @@ function Panel({ all, value, onPick, allLabel, error, onRetry }) {
       <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 6 }}>
         {signedIn ? <Chip label={`★ Favourites${slugs.length ? ` (${slugs.length})` : ''}`} active={type === 'fav'} onPress={() => setType('fav')} /> : null}
         <Chip label="All" active={type === null} onPress={() => setType(null)} />
-        {TYPES.map((t) => <Chip key={t.value} label={t.label} active={type === t.value} onPress={() => setType(t.value)} />)}
+        {TYPES.map((tp) => <Chip key={tp.value} label={tp.label} active={type === tp.value} onPress={() => setType(tp.value)} />)}
+        <Chip label={`♿ ${t('ps.chip_para')}`} active={type === 'para'} onPress={() => { setType('para'); setProg(null); }} />
       </ScrollView>
+      {type === 'para' ? (
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 6 }}>
+          <Chip label={t('ps.prog_all')} active={prog === null} onPress={() => setProg(null)} />
+          {PARA_PROGRAMMES.map((k) => <Chip key={k} label={t(`ps.prog_${k}`)} active={prog === k} onPress={() => setProg(k)} />)}
+        </ScrollView>
+      ) : null}
       <ScrollView style={{ maxHeight: 280 }} nestedScrollEnabled keyboardShouldPersistTaps="handled">
         {allLabel ? <Pressable onPress={() => onPick(null)} style={rowStyle(value == null)}><T weight="700">✨ {allLabel}</T></Pressable> : null}
         {ordered.map((s) => (
           <Pressable key={s.slug} onPress={() => onPick(s.slug)} style={rowStyle(s.slug === value)}>
-            <T weight="700" style={{ flex: 1 }}>{s.emoji} {s.name}</T>
-            <T size={11} color={c.mute} style={{ marginRight: 8 }}>{TYPES.find((t) => t.value === s.play_type)?.label.replace(/^\S+ /, '')}</T>
+            <T weight="700" style={{ flex: 1 }}>{s.emoji} {s.name}{s.is_para ? ' ♿' : ''}</T>
+            <T size={11} color={c.mute} style={{ marginRight: 8 }}>{TYPES.find((tp) => tp.value === s.play_type)?.label.replace(/^\S+ /, '')}</T>
             {signedIn ? <Pressable onPress={() => toggle(s.slug)} hitSlop={10}><T size={20} color={favSet.has(s.slug) ? '#F59E0B' : c.mute}>{favSet.has(s.slug) ? '★' : '☆'}</T></Pressable> : null}
           </Pressable>
         ))}
