@@ -13,6 +13,8 @@ import { MenuField } from '../menu-field';
 import { Kpi } from './academy-ui';
 import { ParaEntries } from './para-competition';
 import { ParaDisciplines } from './para-disciplines';
+import { ParaRegional } from './para-regional';
+import { ParaSourceReviews } from './para-source-reviews';
 import { c } from '../theme';
 import { t } from '../i18n';
 import { locale } from '../locale';
@@ -419,13 +421,21 @@ export function ParaClassification() {
   if (desk.error) return <Screen><ErrorBox error={desk.error} onRetry={desk.reload} /></Screen>;
   if (!desk.data) return <Screen><Loading /></Screen>;
   const d = desk.data;
-  const tabs = [['me', t('para.tab_me')], ['disciplines', t('ps.tab')], ...(d.classifier.length ? [['desk', t('para.tab_desk')]] : []), ...(d.governs.length ? [['authority', t('para.tab_authority')]] : [])];
+  const isPlatAdmin = desk.data ? (user?.roles?.includes('platform_admin') ?? false) : false;
+  const tabs = [
+    ['me', t('para.tab_me')],
+    ['disciplines', t('ps.tab')],
+    ['regional', t('psr.title')],
+    ...(d.classifier.length ? [['desk', t('para.tab_desk')]] : []),
+    ...(d.governs.length ? [['authority', t('para.tab_authority')]] : []),
+    ...(isPlatAdmin ? [['source_reviews', t('psr.source_review_title')]] : []),
+  ];
   return (
     <Screen wide onRefresh={desk.reload}>
       <View style={{ gap: 14 }}>
         <T size={26} weight="800" accessibilityRole="header">{t('para.title')}</T>
         {tabs.length > 1 ? <Seg options={tabs.map(([v, l]) => ({ value: v, label: l }))} value={tab} onChange={setTab} /> : null}
-        {tab === 'me' ? <Mine athleteId={ward} wards={d.wards} onWard={setWard} /> : tab === 'disciplines' ? <ParaDisciplines /> : tab === 'desk' ? <Desk desk={d} /> : <Authority desk={d} />}
+        {tab === 'me' ? <Mine athleteId={ward} wards={d.wards} onWard={setWard} /> : tab === 'disciplines' ? <ParaDisciplines /> : tab === 'regional' ? <ParaRegional /> : tab === 'desk' ? <Desk desk={d} /> : tab === 'authority' ? <Authority desk={d} /> : tab === 'source_reviews' ? <ParaSourceReviews /> : null}
       </View>
     </Screen>
   );

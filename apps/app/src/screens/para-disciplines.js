@@ -62,10 +62,23 @@ function Detail({ slug }) {
   );
 }
 
+const REGION_FILTER = [
+  { iso: null, flag: '🌍', label: 'psr.all_regions' },
+  { iso: 'IN', flag: '🇮🇳', label: 'psr.india' },
+  { iso: 'SG', flag: '🇸🇬', label: 'psr.singapore' },
+  { iso: 'MY', flag: '🇲🇾', label: 'psr.malaysia' },
+];
+
+const CONNECTION_TONE = {
+  verified_api:  { bg: c.limeSoft, label: 'psr.verified_api' },
+  manual_offline: { bg: c.sunSoft, label: 'psr.manual_offline' },
+  pending_mou:   { bg: c.pinkSoft, label: 'psr.pending_mou' },
+};
+
 export function ParaDisciplines() {
   const { tablet } = useLayout();
-  const [q, setQ] = useState(''), [state, setState] = useState(null), [prog, setProg] = useState(null), [pick, setPick] = useState(null);
-  const cat = useLoad(() => api.get('/para/coverage', { para: true, ...(q.trim() ? { q: q.trim() } : {}), ...(state ? { state } : {}), ...(prog ? { programme: prog } : {}) }), [q, state, prog]);
+  const [q, setQ] = useState(''), [state, setState] = useState(null), [prog, setProg] = useState(null), [pick, setPick] = useState(null), [country, setCountry] = useState(null);
+  const cat = useLoad(() => api.get('/para/coverage', { para: true, ...(q.trim() ? { q: q.trim() } : {}), ...(state ? { state } : {}), ...(prog ? { programme: prog } : {}), ...(country ? { country_iso: country } : {}) }), [q, state, prog, country]);
   const sum = cat.data?.summary;
   const sel = pick ?? (tablet ? cat.data?.sports?.[0]?.slug : null);
   const pct = sum?.para_sports ? Math.round((sum.governed / sum.para_sports) * 100) : 0;
@@ -83,6 +96,11 @@ export function ParaDisciplines() {
       </View>
       <Field value={q} onChangeText={setQ} placeholder={t('ps.search')} accessibilityLabel={t('ps.search')} />
       <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
+        {REGION_FILTER.map((rf) => (
+          <Chip key={rf.iso ?? 'all'} label={`${rf.flag} ${t(rf.label)}`} active={country === rf.iso} onPress={() => setCountry(rf.iso)} accessibilityLabel={t(rf.label)} />
+        ))}
+      </View>
+      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
         <Chip label={t('ps.f_all')} active={!state} onPress={() => setState(null)} />
         {STATES.map((s) => <Chip key={s} label={t(`ps.state.${s}`)} active={state === s} onPress={() => setState(s)} />)}
       </View>
@@ -98,6 +116,16 @@ export function ParaDisciplines() {
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, minHeight: 32 }}>
                   <T size={20}>{s.emoji}</T><T weight="800" style={{ flex: 1 }}>{s.name}</T><Tag label={t(`ps.state.${s.state}`)} color={TONE[s.state]} />
                 </View>
+                {s.regional_governance ? (
+                  <View style={{ flexDirection: 'row', gap: 6, flexWrap: 'wrap', marginTop: 6 }}>
+                    <Tag
+                      label={t((CONNECTION_TONE[s.regional_governance.federation_connection_type] ?? CONNECTION_TONE.manual_offline).label)}
+                      color={(CONNECTION_TONE[s.regional_governance.federation_connection_type] ?? CONNECTION_TONE.manual_offline).bg}
+                      accessibilityLabel={t((CONNECTION_TONE[s.regional_governance.federation_connection_type] ?? CONNECTION_TONE.manual_offline).label)}
+                    />
+                    {s.regional_governance.source_url ? <T size={11} color={c.cyan}>{s.regional_governance.source_url}</T> : null}
+                  </View>
+                ) : null}
                 {!tablet && sel === s.slug ? <View style={{ marginTop: 10 }}><Detail slug={s.slug} /></View> : null}
               </Card>
             )) : <Empty emoji="♿" title={t('ps.empty_title')} sub={t('ps.empty_sub')} />}

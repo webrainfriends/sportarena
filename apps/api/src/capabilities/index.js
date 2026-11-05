@@ -373,6 +373,8 @@ import './payouts.js';
 import './discovery.js';
 import './smart-clips.js';
 import './para-governance.js';
+import './para-regional-governance.js';
+import './para-local-programmes.js';
 import './para-cases.js';
 import './para-outcomes.js';
 import './coach-adaptive.js';
