@@ -17,6 +17,7 @@ import { explain } from '../access';
 import { useLayout } from '../layout';
 import { FamilyProgress } from './academy-progress';
 import { FamilyCurriculum } from './academy-curriculum-session';
+import { FamilyVideoReview } from './academy-video';
 import { MySessions } from './academy-session';
 import { WellbeingFamily } from './wellbeing-family';
 import { FamilyPlacement } from './academy-placement';
@@ -133,7 +134,7 @@ export function AcademyFamily() {
         </View>
       ) : null}
       <TrialSlots app={slots} onClose={() => setSlots(null)} onBooked={fam.reload} toast={toast} />
-      {tab === 'progress' ? <><FamilyProgress key={p.athlete.id} athlete={p.athlete} toast={toast} /><FamilyCurriculum key={`c${p.athlete.id}`} athlete={p.athlete} /></> : null}
+      {tab === 'progress' ? <><FamilyProgress key={p.athlete.id} athlete={p.athlete} toast={toast} /><FamilyCurriculum key={`c${p.athlete.id}`} athlete={p.athlete} /><FamilyVideoReview key={`v${p.athlete.id}`} athlete={p.athlete} toast={toast} /></> : null}
       {tab === 'placement' ? <View style={{ marginTop: 12 }}><FamilyPlacement key={p.athlete.id} athleteId={p.athlete.is_me ? undefined : p.athlete.id} toast={toast} /></View> : null}
       {tab === 'wellbeing' ? <View style={{ marginTop: 12 }}><WellbeingFamily key={p.athlete.id} athleteId={p.athlete.is_me ? undefined : p.athlete.id} toast={toast} /></View> : null}
       {tab === 'browse' ? <Browse people={people} who={who} onApply={(prog, athlete) => setApply({ prog, athlete })} /> : null}
