@@ -11,6 +11,7 @@ import { Btn, Card, Empty, ErrorBox, Loading, Screen, Seg, Sheet, T, Tag } from 
 import { FormSheet } from '../FormSheet';
 import { MenuField } from '../menu-field';
 import { Kpi } from './academy-ui';
+import { ParaEntries } from './para-competition';
 import { c } from '../theme';
 import { t } from '../i18n';
 import { locale } from '../locale';
@@ -165,6 +166,7 @@ function Mine({ athleteId, wards, onWard }) {
         <Kpi label={t('para.kpi_review')} value={short(next)} sub={t('para.kpi_review_sub')} tone={x.pending_actions.some((a) => a.kind === 'review_due') ? 'alert' : undefined} />
         <Kpi label={t('para.kpi_actions')} value={String(x.pending_actions.length)} sub={t('para.kpi_actions_sub')} />
       </Row2>
+      <ParaEntries athleteId={athleteId} />
       <Block title={t('para.current')} right={<Btn small title={t('para.start')} onPress={() => setForm('case')} />}>
         {x.outcomes.length ? (
           <Row2>{x.outcomes.map((o) => (
