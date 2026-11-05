@@ -21,6 +21,7 @@ import { AthleteBenchmarks } from './player-insights';
 import { SharedByPlayers } from './player-goals';
 import { t, tEnum } from '../i18n';
 import { VideoPlayer } from '../video-player';
+import { SessionGuidePanel, ParaAdaptationEditor, AccessibleMediaEditor, ParaTemplateToggle } from './coaching-para';
 
 const GOAL_CATEGORIES = ['technical', 'tactical', 'physical', 'mental_performance', 'teamwork', 'match_objective', 'custom'];
 const GOAL_STATUS = ['planned', 'active', 'achieved', 'paused', 'stopped'];
@@ -185,6 +186,7 @@ export function CoachSession(props) {
         <Btn small title={t('nav.tab.More')} color={c.paper} ink={c.ink} onPress={() => setMore('menu')} />
         {!done ? <Btn small title={t('cs.voice_note')} color={c.paper} ink={c.ink} onPress={() => setVoice(true)} /> : null}
         {!done ? <Btn small title={t('cs.draft_plan_ai')} color={c.paper} ink={c.ink} onPress={() => push('CoachCopilot', { task: 'plan_session', session_record_id: s.id })} /> : <Btn small title={t('cs.draft_summary_ai')} color={c.paper} ink={c.ink} onPress={() => push('CoachCopilot', { task: 'summarise_session', session_record_id: s.id })} />}
+        {s.sport?.is_para && blocks.length ? <Btn small title={t('copar.accessible_view_btn')} color={c.paper} ink={c.ink} onPress={() => push('AccessibleSession', { id: s.id })} accessibilityLabel={t('copar.accessible_view_btn')} /> : null}
         {!done || s.team_summary || s.private_summary ? null : <Btn small title={t('cs.add_review')} onPress={() => setFinishing(true)} />}
       </View>
 
@@ -228,6 +230,8 @@ export function CoachSession(props) {
           );
         })}
       </Section>
+
+      {s.sport?.is_para ? <SessionGuidePanel sessionId={s.id} wide={wide} /> : null}
 
       <Section title={t('cs.notes_from')} action={done ? undefined : t('cs.team_note')} onAction={() => setNote({ team_id: s.team_id })}>
         {!w.observations.length ? <T size={13} color={c.mute}>{t('cs.nothing_noted')}</T> : w.observations.map((o) => (
@@ -1024,8 +1028,9 @@ function MoreSheet({ more, setMore, w, reload }) {
   const { toast } = useSession();
   const { push } = useNav();
   const s = w.session;
+  const [paraFilter, setParaFilter] = useState(false);
   const saved = useLoad(() => (more === 'saved' ? api.get('/coaching/groups') : Promise.resolve([])), [more === 'saved']);
-  const tpls = useLoad(() => (more === 'use' ? api.get('/coach/templates?scope=session') : Promise.resolve([])), [more === 'use']);
+  const tpls = useLoad(() => (more === 'use' ? api.get(paraFilter ? '/coaching/para-templates?scope=session' : '/coach/templates?scope=session') : Promise.resolve([])), [more === 'use', paraFilter]);
   const roster = useLoad(() => (more === 'help' && s.team_id ? api.get(`/coach/teams/${s.team_id}/roster`) : Promise.resolve(null)), [more === 'help']);
   const close = () => setMore(null);
   const players = w.participants.map((p) => ({ value: p.id, label: p.display_name }));
@@ -1055,8 +1060,12 @@ function MoreSheet({ more, setMore, w, reload }) {
       <FormSheet visible={more === 'template'} onClose={close} title={t('cs.save_template')} submitLabel={t('common.save')}
         fields={[{ key: 'title', label: t('cs.template_name') }]} onSubmit={call(async (v) => api.post('/coaching/templates', { title: v.title, session_record_id: s.id }), t('cs.template_saved'))} />
       <Sheet visible={more === 'use'} onClose={close} title={t('cs.use_template')}>
+        <HScroll style={{ marginBottom: 8 }}>
+          <Chip label={t('cs.all_templates')} active={!paraFilter} onPress={() => setParaFilter(false)} />
+          {s.sport?.is_para ? <ParaTemplateToggle value={paraFilter} onChange={setParaFilter} /> : null}
+        </HScroll>
         {tpls.loading ? <Loading /> : !tpls.data?.length ? <T size={13} color={c.mute}>{t('cs.no_templates')}</T> :
-          tpls.data.map((tpl) => <Row key={tpl.id} title={tpl.title} sub={t('cs.tpl_line', { n: tpl.blocks.length, shared: tpl.mine ? '' : ` · ${t('cs.shared_by', { name: tpl.shared_by })}` })} onPress={async () => { try { await api.post(`/coaching/sessions/${s.id}/apply-template`, { template_id: tpl.id }); close(); toast(t('cs.blocks_added')); reload(); } catch (e) { toast(e.message); } }} />)}
+          tpls.data.map((tpl) => <Row key={tpl.id} title={tpl.title} sub={`${paraFilter && tpl.para_template ? `${tpl.para_template.replace(/_/g, ' ')} · ` : ''}${t('cs.tpl_line', { n: tpl.blocks?.length ?? tpl.block_count ?? 0, shared: tpl.mine ? '' : ` · ${t('cs.shared_by', { name: tpl.shared_by })}` })}`} onPress={async () => { try { await api.post(`/coaching/sessions/${s.id}/apply-template`, { template_id: tpl.id }); close(); toast(t('cs.blocks_added')); reload(); } catch (e) { toast(e.message); } }} />)}
       </Sheet>
       <FormSheet visible={more === 'clone'} onClose={close} title={t('cs.clone_title')} submitLabel={t('cs.create')}
         fields={[{ key: 'title', label: t('cs.block_title') }, { key: 'date', label: t('cs.date'), type: 'date' }, { key: 'time', label: t('cs.start_time'), type: 'time' }]} initial={{ title: s.title }}

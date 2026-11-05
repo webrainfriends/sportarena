@@ -50,9 +50,9 @@ export const ACADEMY_STEPS = [
   {
     id: 'coaches', title: 'Hire coaches',
     why: 'Bring coaches in as staff, contractors or revenue-share partners, and agree the terms in writing.',
-    steps: ['Open the venue workspace and choose your venue.', 'Open its Coaches tab and tap Invite a coach.', 'Search for the coach and choose how they are paid: revenue share, flat fee or staff.', 'For revenue share, set their percentage. The coach can accept or propose an amendment.', 'Once accepted, assign them as lead coach or assistant when you plan classes.'],
+    steps: ['Open the venue workspace and choose your venue.', 'Open its Coaches tab and tap Invite a coach.', 'Search for the coach and choose how they are paid: revenue share, flat fee or staff.', 'For revenue share, set their percentage. The coach can accept or propose an amendment.', 'Once accepted, assign them as lead coach or assistant when you plan classes.', 'For para sport sessions, pick a para-adapted template (wheelchair basketball, boccia, para athletics…) from the Template picker in the session editor — tap the Para sport filter chip to browse them. Inside each block, use the Adaptations panel to set alternative instructions, modified equipment and communication cues per support-need group. Add guide or personal-assistant assignments from the Guide assignments panel (shown when the session\'s sport is a para sport). Athletes with consented support needs see adapted instructions automatically in their accessible training view.'],
     target: { screen: 'VenueWorkspace' },
-    modules: ['venue-coaches.js', 'coach-classes.js'], sources: ['apps/app/src/screens/venue-coaches.js', 'apps/app/src/screens/manage.js'],
+    modules: ['venue-coaches.js', 'coach-classes.js', 'coaching-para.js'], sources: ['apps/app/src/screens/venue-coaches.js', 'apps/app/src/screens/manage.js', 'apps/app/src/screens/coaching-para.js'],
   },
   {
     id: 'students', title: 'Invite students',

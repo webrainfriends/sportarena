@@ -43,6 +43,22 @@ export const block = z.object({
   work_rest: text(60).optional().describe('work to rest structure, e.g. "40 s on / 20 s off x 6"'),
   progression: text(300).optional().describe('how to make it harder'),
   regression: text(300).optional().describe('how to make it easier'),
+  // PS-13: para-sport adaptation fields — all optional, additive, no clinical data
+  para_adaptations: z.array(z.object({
+    need_keys:     z.array(z.string().max(60)).min(1).max(12),
+    athlete_ids:   z.array(id).max(60).optional().describe('specific athletes; omit to apply to all with these need keys'),
+    instruction:   z.string().trim().max(1000).optional(),
+    equipment:     z.array(z.string().trim().max(60)).max(10).default([]),
+    cues:          z.array(z.string().trim().max(200)).max(6).default([]),
+    communication: z.enum(['spoken', 'written', 'sign_supported', 'visual_cue', 'tactile']).optional(),
+  })).max(8).optional().describe('adaptation alternatives for athletes with specific support needs; never contains clinical or diagnostic data'),
+  accessible_media: z.object({
+    caption_text:              z.string().trim().max(2000).optional(),
+    transcript_url:            z.string().url().optional(),
+    screen_reader_description: z.string().trim().max(500).optional(),
+  }).optional().describe('accessibility metadata for video or image media attached to this block'),
+  athlete_difficulty: z.enum(['maintained', 'reduced', 'progressed']).optional()
+    .describe('athlete-selectable difficulty; coach sets the available range, athlete adjusts within it'),
 });
 
 const activeCoachOf = (uid, teamId) => one("SELECT 1 FROM team_members WHERE team_id=$1 AND user_id=$2 AND status='active' AND role='coach'", [teamId, uid]);
