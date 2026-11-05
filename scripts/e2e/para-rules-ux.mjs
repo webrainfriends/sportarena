@@ -103,7 +103,7 @@ try {
     catch (e) { failures++; log(`FAIL  ${name} ${size}: ${e.message.split('\n')[0]}`); await page.screenshot({ path: `/tmp/para-fail-${name}-${size}.png` }); }
     await page.context().close();
   };
-  const registration = async (p, who) => { await navTo(p, 'EventCommand', { id: ev.id }); await click(p, 'Registration'); };
+  const registration = async (p, who) => { await navTo(p, 'EventCommand', { id: ev.id }); await click(p, 'Registration', { exact: false }); };
   const paraTab = async (p, tab) => { await registration(p); await click(p, 'Para rules'); if (tab) await click(p, tab); };
   for (const size of ['phone', 'tablet', 'desktop']) {
     await shot('1-rules', size, (p) => paraTab(p), { full: size === 'phone' });
