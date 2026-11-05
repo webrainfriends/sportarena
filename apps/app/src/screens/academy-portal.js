@@ -23,6 +23,9 @@ import { FamilyVideoReview } from './academy-video';
 import { MySessions } from './academy-session';
 import { WellbeingFamily } from './wellbeing-family';
 import { InclusionFamily } from './inclusion-family';
+import { SupportPreferences } from './support-preferences';
+import { AccessibleContactPreferences } from './accessible-contact-preferences';
+import { AccommodationHistory } from './accommodation-history';
 import { FamilyPlacement } from './academy-placement';
 import { t } from '../i18n';
 import { Block, TrialSlots, FORMATS, FOCUS, Initials, Meter, StageBadge, StageTrack, Timeline, STAGE, hoursLeft, lab, openEnrolmentLetter, openInvoicePdf, priceLine, when } from './academy-ui';
@@ -142,7 +145,7 @@ export function AcademyFamily() {
       {tab === 'progress' ? <><FamilyProgress key={p.athlete.id} athlete={p.athlete} toast={toast} /><FamilyCurriculum key={`c${p.athlete.id}`} athlete={p.athlete} /><FamilyVideoReview key={`v${p.athlete.id}`} athlete={p.athlete} toast={toast} /></> : null}
       {tab === 'placement' ? <View style={{ marginTop: 12 }}><FamilyPlacement key={p.athlete.id} athleteId={p.athlete.is_me ? undefined : p.athlete.id} toast={toast} /></View> : null}
       {tab === 'wellbeing' ? <View style={{ marginTop: 12 }}><WellbeingFamily key={p.athlete.id} athleteId={p.athlete.is_me ? undefined : p.athlete.id} toast={toast} /></View> : null}
-      {tab === 'inclusion' ? <View style={{ marginTop: 12 }}><InclusionFamily key={p.athlete.id} athleteId={p.athlete.is_me ? undefined : p.athlete.id} toast={toast} /></View> : null}
+      {tab === 'inclusion' ? <View style={{ marginTop: 12 }}><SupportPreferences key={p.athlete.id} athleteId={p.athlete.is_me ? undefined : p.athlete.id} toast={toast} navigation={navigation} /></View> : null}
       {tab === 'browse' ? <Browse people={people} who={who} onApply={(prog, athlete) => setApply({ prog, athlete })} /> : null}
       {tab === 'payments' ? (
         <View style={{ gap: 14, marginTop: 12 }}>

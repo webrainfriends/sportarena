@@ -70,6 +70,27 @@ export const ACADEMY_STEPS = [
     sources: ['apps/app/src/screens/academy-inclusion.js', 'apps/app/src/screens/academy-session.js', 'apps/app/src/screens/academy-admissions.js'],
   },
   {
+    id: 'consented_accommodations',
+    title: 'Athlete-consented accommodations and preferences',
+    why: 'Athletes and guardians control exactly who sees their operational support needs, for which sessions and for how long. Staff see only what they need; the athlete sees every access in their history.',
+    steps: [
+      'Open your Academy profile, then Support preferences to view, add or revise your operational accommodation shares. Each share states the audience (coaching team, venue, event staff), the context (academy-wide or one event) and the purpose.',
+      'To link a share to a specific event or competition day, tap the Event context toggle and choose the event. The share expires when the event ends and is never shown to other staff.',
+      'Open Accessible contact & arrival preferences to set how staff reach you at the venue: preferred contact mode (app notification, email, SMS or BSL interpreter), an alternative contact, your arrival instructions and the best entry point. These preferences are encrypted and shown only to staff whose share includes a communication need.',
+      'On session day, coaching and event staff open the session, then the Support checklist button, to see the per-athlete needs they are responsible for arranging. Tick each need as arranged and add a brief arrangement note; a progress bar shows readiness at a glance. No diagnosis or clinical detail is ever shown.',
+      'Athletes and guardians open Support history to review every access event: who viewed a share, when and why. Use Request a correction if a record is wrong, or Export my data for a full DSAR download.',
+    ],
+    target: { screen: 'SupportPreferences' },
+    modules: ['academy-inclusion.js', 'accommodations-ps03.js'],
+    sources: [
+      'apps/app/src/screens/support-preferences.js',
+      'apps/app/src/screens/accessible-contact-preferences.js',
+      'apps/app/src/screens/accommodation-checklist.js',
+      'apps/app/src/screens/accommodation-history.js',
+      'apps/app/src/screens/academy-session.js',
+    ],
+  },
+  {
     id: 'students', title: 'Invite students',
     why: 'Move people from enquiry to enrolled. Parents and guardians consent for children.',
     steps: ['Open Academy, then Admissions.', 'Invite a family to a programme, or review the applications and trials that arrive.', 'Make an offer, then enrol once they accept. Enrolment letters are produced for you.', 'For an athlete joining from abroad, open Start international checklist on the application, then track permissions, passport and visa status, school, residence and arrival under International. Enrolment waits until every mandatory item is met.', 'Use Families to see everyone enrolled and who pays.'],
