@@ -16,7 +16,7 @@ CREATE TABLE IF NOT EXISTS para_regional_governance (
   review_status   TEXT NOT NULL DEFAULT 'pending'
     CHECK (review_status IN ('pending','sourced','verified','flagged','rejected')),
   reviewed_at     TIMESTAMPTZ,
-  reviewed_by     UUID REFERENCES accounts(id),
+  reviewed_by     UUID REFERENCES users(id),
   notes           TEXT,
   created_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
