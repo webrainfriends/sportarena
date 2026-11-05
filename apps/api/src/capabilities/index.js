@@ -184,6 +184,7 @@ import './beneficiary-portfolio.js';
 import './sponsorship-beneficiaries.js';
 import './registration.js';
 import './registration-eligibility.js';
+import './para-rules.js';
 import './supply.js';
 import './medical.js';
 import './care-plans.js';
