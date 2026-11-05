@@ -15,7 +15,9 @@ import { c } from '../theme';
 import { dateTimeIn, localDate, localHHMM, localToIso, timeIn } from '../vtime';
 import { Block, Fact, Timeline } from './academy-ui';
 import { SessionObjectives } from './academy-curriculum-session';
+import { LicensedSessionContent } from './academy-content-session';
 import { PickupTab } from './academy-safety';
+import { SessionVideo } from './academy-video';
 import { CourtPicker } from './training-venue';
 import { HeldList, PassSheet, ScanPanel, SiteCodeSheet } from '../access-ui';
 
@@ -260,7 +262,7 @@ export function AcademySession({ id, tab: want, find }) {
   const mine = s.staff.find((x) => x.user_id === user.id && !['declined', 'removed'].includes(x.status));
   s.canEdit = !!d.data.can_edit;
   const tz = tzOf(s);
-  const tabs = [['attendance', 'Attendance'], ...(s.status === 'published' || s.status === 'completed' ? [['pickup', t('pk.tab_pickup')]] : []), ['staff', `Staff (${s.staff.filter((x) => !['declined', 'removed'].includes(x.status)).length})`], ['venue', 'Venue'], ['curriculum', t('cur.nav')], ['details', 'Details & history']];
+  const tabs = [['attendance', 'Attendance'], ...(s.status === 'published' || s.status === 'completed' ? [['pickup', t('pk.tab_pickup')]] : []), ['staff', `Staff (${s.staff.filter((x) => !['declined', 'removed'].includes(x.status)).length})`], ['venue', 'Venue'], ['curriculum', t('cur.nav')], ['video', t('vr.tab')], ['details', 'Details & history']];
   const reload = () => d.reload();
   return (
     <Screen wide>
@@ -282,7 +284,8 @@ export function AcademySession({ id, tab: want, find }) {
       {tab === 'pickup' ? <PickupTab s={s} /> : null}
       {tab === 'staff' ? <Staff s={s} reload={reload} toast={toast} me={user.id} openFind={!!find} /> : null}
       {tab === 'venue' ? <Venue s={s} reload={reload} toast={toast} /> : null}
-      {tab === 'curriculum' ? <SessionObjectives s={s} toast={toast} nav={nav} mine={!!mine && ['lead', 'assistant'].includes(mine.role)} /> : null}
+      {tab === 'curriculum' ? <View style={{ gap: 14 }}><SessionObjectives s={s} toast={toast} nav={nav} mine={!!mine && ['lead', 'assistant'].includes(mine.role)} /><LicensedSessionContent s={s} toast={toast} nav={nav} mine={!!mine && ['lead', 'assistant'].includes(mine.role)} /></View> : null}
+      {tab === 'video' ? <SessionVideo s={s} toast={toast} nav={nav} /> : null}
       {tab === 'details' ? <Details s={s} reload={reload} toast={toast} /> : null}
       <FormSheet visible={cover} onClose={() => setCover(false)} title="Ask for cover" submitLabel="Send request" fields={[{ key: 'reason', label: 'What happened? (shared with the managers)', optional: true }]}
         onSubmit={async (v) => { await api.post(`/academy/sessions/${s.id}/cover`, { reason: v.reason || undefined }); reload(); return 'Request sent. A manager will find a substitute.'; }} />
