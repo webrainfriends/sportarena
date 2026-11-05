@@ -43,7 +43,7 @@ export const ACADEMY_STEPS = [
   {
     id: 'programmes', title: 'Build programmes',
     why: 'A programme is what families buy: a squad, a term course or a camp, with a price and places.',
-    steps: ['Open Academy, then Programmes, and tap New programme.', 'Work through the steps: sport and venue, schedule, price and places, application questions and agreements.', 'Check the family price preview in Review.', 'Publish to open applications, or save as a draft.', 'After a graduation or squad decision, open the athlete on the Progress page to issue the certificate, send the squad invitation or move them to another cohort.'],
+    steps: ['Open Academy, then Programmes, and tap New programme.', 'Work through the steps: sport and venue, schedule, price and places, application questions and agreements. Para and adaptive sports are in the same sport list: tap the Para & adaptive filter to find them.', 'Check the family price preview in Review.', 'Publish to open applications, or save as a draft.', 'After a graduation or squad decision, open the athlete on the Progress page to issue the certificate, send the squad invitation or move them to another cohort.'],
     target: { academy: 'programmes' },
     modules: ['academy-programmes.js', 'academy-pathways.js', 'academy-follow-through.js'], sources: ['apps/app/src/screens/academy-programmes.js'],
   },

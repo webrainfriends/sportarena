@@ -1,3 +1,4 @@
+import { qbool } from '../para-catalogue.js';
 import { z } from 'zod';
 import { cap, id, page, roles } from '../registry.js';
 import { one, many, query, tx } from '../db.js';
@@ -226,11 +227,11 @@ cap({
 });
 
 cap({
-  name: 'list_sports', method: 'GET', path: '/sports', tag: 'Directory', auth: 'public', summary: 'All supported sports (Olympic summer/winter and Asian Games programmes and more). Each has a play_type (team, individual, board, esports). Filter by category, play_type or programme.',
-  input: z.object({ category: z.string().optional(), play_type: z.enum(['team', 'individual', 'board', 'esports']).optional(), programme: z.enum(['olympic_summer', 'olympic_winter', 'asian_games']).optional() }),
+  name: 'list_sports', method: 'GET', path: '/sports', tag: 'Directory', auth: 'public', summary: 'All supported sports (Olympic summer/winter, Asian Games, Paralympic and other adaptive programmes and more). Each has a play_type (team, individual, board, esports) and is_para. Filter by category, play_type, programme or para.',
+  input: z.object({ category: z.string().optional(), play_type: z.enum(['team', 'individual', 'board', 'esports']).optional(), programme: z.enum(['olympic_summer', 'olympic_winter', 'asian_games', 'paralympic_summer', 'paralympic_winter', 'other_adaptive']).optional(), para: qbool().optional().describe('true = only para / adaptive sports, false = only standard sports') }),
   handler: (_, i) => many(
-    'SELECT * FROM sports WHERE ($1::text IS NULL OR category = $1) AND ($2::text IS NULL OR play_type = $2) AND ($3::text IS NULL OR $3 = ANY(programmes)) ORDER BY name',
-    [i.category ?? null, i.play_type ?? null, i.programme ?? null],
+    'SELECT * FROM sports WHERE ($1::text IS NULL OR category = $1) AND ($2::text IS NULL OR play_type = $2) AND ($3::text IS NULL OR $3 = ANY(programmes)) AND ($4::boolean IS NULL OR is_para = $4) ORDER BY name',
+    [i.category ?? null, i.play_type ?? null, i.programme ?? null, i.para ?? null],
   ),
 });
 
