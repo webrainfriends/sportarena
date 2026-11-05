@@ -195,6 +195,7 @@ import './encounters.js';
 import './provider-services.js';
 import './provider-offers.js';
 import './treatment-plans.js';
+import './para-physio.js';
 import './physio-tracking.js';
 import './physio-reports.js';
 import './physio-insights.js';
