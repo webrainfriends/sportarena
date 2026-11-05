@@ -1,6 +1,7 @@
 // The family / athlete side of the academy: what needs your attention, where each application stands, your programmes, what is due,
 // and a programme browser with a step-by-step application (details, questions, agreements, exact price, confirm).
 // Identity, guardian authority and payments are the canonical records; nothing here is a copy.
+import { FamilyChecklist } from './academy-international';
 import { FamilyKit } from './academy-kit-family';
 import React, { useState } from 'react';
 import { Pressable, ScrollView, View } from 'react-native';
@@ -112,6 +113,7 @@ export function AcademyFamily() {
                     <View key={a.id} style={{ padding: 12, borderRadius: 16, backgroundColor: c.bg, gap: 8 }}>
                       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}><View style={{ flex: 1 }}><T weight="800" size={14}>{a.programme}</T><T size={12} color={c.mute}>{a.organisation}</T></View><StageBadge stage={a.stage} /></View>
                       <StageTrack stage={a.stage} />
+                      <FamilyChecklist applicationId={a.id} toast={toast} />
                       {a.trial?.session ? <T size={13} weight="700">🎽 Trial: {when(a.trial.session.local_date)} · {a.trial.session.local_start}–{a.trial.session.local_end}</T> : a.stage === 'trial_requested' ? <T size={13} color={c.mute}>Trial requested. Pick a time that suits you.</T> : null}
                       {a.waitlist_position ? <T size={13} weight="700">You are number {a.waitlist_position} on the waitlist. We will offer a place when one opens; we cannot promise a date.</T> : null}
                       {a.stage === 'offered' && a.offer_expires_at ? <T size={13} weight="700">Offer ends {when(a.offer_expires_at)} ({hoursLeft(a.offer_expires_at)})</T> : null}

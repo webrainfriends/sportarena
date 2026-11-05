@@ -263,6 +263,7 @@ import './academy-attendance.js';
 import './academy-pickup.js';
 import './academy-transport.js';
 import './academy-accreditation.js';
+import './academy-international.js';
 import './academy-wellbeing.js';
 import './academy-wellbeing-family.js';
 import './academy-wellbeing-overview.js';
