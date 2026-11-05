@@ -11937,7 +11937,7 @@ export default {
   'pr.derived': 'LIVE CHECK',
   'pr.bar_a11y': 'Readiness {{percent}}%, {{blockers}} safety-critical items open',
   'pr.gate_clear': 'Gate clear — event may open',
-  'pr.gate_blocked': '{{n}} safety-critical item{{n, plural, one {} other {s}}} blocking',
+  'pr.gate_blocked': '{{n}} safety-critical item(s) blocking',
   'pr.state.met': 'Met',
   'pr.state.open': 'Open',
   'pr.state.waived': 'Waived',
