@@ -19,6 +19,7 @@ import { activeSportingSanction } from './integrity.js';
 import { blockingSanction } from './discipline-live.js';
 import { gate, hasObligations } from './compliance.js';
 import { LIC_STATUS } from './federation.js';
+import { DEFINITION, applyOverrides, classOf, evaluateLineup, liveOverrides, loadMembers, memberCheck, packOfPolicy } from './para-rules.js';
 
 export const LISTS = ['active', 'reserve', 'development'];
 export const LIVE = ['submitted', 'under_review', 'registered', 'suspended'];
@@ -37,6 +38,8 @@ export const RULES = z.object({
   // accepts a second-officer-verified external reference and, last, the manual audited dependency. An organiser can never type an athlete into a class.
   classification_mode: z.enum(['governed', 'external_reference']).default('external_reference'),
   allowed_classes: z.array(z.string().trim().min(1).max(20)).max(60).default([]),
+  // para rule pack (#834): the published pack this policy version is locked to; absent = no para rules (every existing competition is unchanged)
+  para_pack_id: z.string().uuid().optional(),
   require_contract: z.boolean().default(false),
   require_guardian_consent: z.boolean().default(true),
   require_compliance: z.boolean().default(true), // obligations of the compliance rulebook (#595) that block registration; no obligations configured = no effect
@@ -196,6 +199,19 @@ export async function evaluate(c, ctx, teamId, userId) {
     checks.push(await withWaiver(key, r));
   }
 
+  // 5b para rule pack (#834): the person's class and status against the pack the policy is locked to (class code and administrative status only, read live)
+  if (rules.para_pack_id) {
+    const key = `para_pack:${rules.para_pack_id}`;
+    if (!(key in (ctx.cache ??= {}))) ctx.cache[key] = await packOfPolicy(q(c), event, policy);
+    const pack = ctx.cache[key];
+    if (pack) {
+      const def = DEFINITION.parse(pack.definition);
+      const m = memberCheck(def, { user_id: userId, ...(await classOf(q(c), def, event, userId, when)) });
+      const src = { kind: 'para_rule_pack', id: pack.id, version: pack.version, label: pack.publisher };
+      checks.push(await withWaiver('classification', check('para_pack', m.status, m.status === 'pass' ? `Class accepted under ${pack.title} v${pack.version}` : `${m.reason}${m.remediation ? ` — ${m.remediation}` : ''}`, src)));
+    }
+  }
+
   // 6 contract (reference to #333): only when the competition requires it
   if (rules.require_contract) {
     const k = (await q(c).query(
@@ -235,6 +251,30 @@ export async function fixtureSquadIds(c, fixture, teamId) {
   return (await q(c).query(`SELECT user_id FROM team_squads WHERE team_id=$1 AND event_id=$2 AND fixture_id IS NULL AND ${base}`, [teamId, fixture.event_id])).rows.map((r) => r.user_id);
 }
 
+/** Squad rows of a team for a fixture (match squad wins over the event squad), including staff roles and the discipline role kept in `position`. */
+export async function fixtureSquadRows(c, fixture, teamId) {
+  const base = "status IN ('selected','confirmed')";
+  const match = (await q(c).query(`SELECT user_id, role, position FROM team_squads WHERE team_id=$1 AND fixture_id=$2 AND ${base}`, [teamId, fixture.id])).rows;
+  if (match.length) return match;
+  return (await q(c).query(`SELECT user_id, role, position FROM team_squads WHERE team_id=$1 AND event_id=$2 AND fixture_id IS NULL AND ${base}`, [teamId, fixture.event_id])).rows;
+}
+
+/**
+ * The para rule-pack decision for one team's lineup in a fixture (#834), with approved overrides applied. null when the policy has no pack.
+ * `rows` may be supplied (a lineup being tried out) instead of the saved squad. Read-only.
+ */
+export async function paraLineup(c, event, policy, fixture, teamId, { at = new Date(), rows = null } = {}) {
+  const pack = await packOfPolicy(q(c), event, policy);
+  if (!pack) return null;
+  const def = DEFINITION.parse(pack.definition);
+  const names = new Map((await q(c).query('SELECT id, display_name FROM users WHERE id = ANY($1::uuid[])', [(rows ?? await fixtureSquadRows(c, fixture, teamId)).map((r) => r.user_id)])).rows.map((u) => [u.id, u.display_name]));
+  const hidden = await protectedIds([...names.keys()], c);
+  for (const k of hidden) names.set(k, PROTECTED_NAME);
+  const members = await loadMembers(q(c), def, event, rows ?? await fixtureSquadRows(c, fixture, teamId), at, names);
+  const result = applyOverrides(evaluateLineup(def, members), await liveOverrides(q(c), event.id, teamId, fixture?.id ?? null, at));
+  return { pack: { id: pack.id, version: pack.version, title: pack.title, publisher: pack.publisher, source_ref: pack.source_ref }, definition: def, people: members, ...result };
+}
+
 const blocks = (policy, decision) => policy.enforcement === 'blocking' && (policy.rules.block_on ?? ['ineligible']).includes(decision);
 
 /** Evaluate a list of people for a team in a competition. */
@@ -270,6 +310,21 @@ export async function lockFixtureEligibility(c, event, fixture, actorId, stage) 
   }
   const bad = all.filter((r) => blocks(policy, r.decision));
   if (bad.length) throw conflict('Some players in the squads are not eligible for this match', { code: 'eligibility_blocked', policy_version: policy.version, players: bad.map((b) => ({ user_id: b.user_id, team_id: b.team_id, decision: b.decision, reasons: b.checks.filter((x) => x.status !== 'pass').map((x) => x.reason) })) });
+  // para rule pack (#834): lineup-level validation for both teams; a blocking policy stops the lock / kick-off with explanations and remediation
+  const lineups = [];
+  for (const teamId of [fixture.home_team_id, fixture.away_team_id].filter(Boolean)) {
+    const l = await paraLineup(c, event, policy, fixture, teamId, { at: ctx.at });
+    if (l) lineups.push({ teamId, ...l });
+  }
+  const badLineups = lineups.filter((l) => !l.valid && policy.enforcement === 'blocking');
+  if (badLineups.length) throw conflict('A lineup does not meet the sport rules of this competition', { code: 'para_rules_blocked', policy_version: policy.version,
+    teams: badLineups.map((l) => ({ team_id: l.teamId, pack_version: l.pack.version, failures: [...l.checks, ...l.members].filter((k) => k.status === 'fail').map((k) => ({ rule: k.rule, user_id: k.user_id ?? null, reason: k.reason, remediation: k.remediation })) })) });
+  for (const l of lineups) {
+    await q(c).query(
+      `INSERT INTO para_lineup_snapshots(event_id, fixture_id, team_id, stage, pack_id, pack_version, valid, members, checks, overrides, locked_by) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
+       ON CONFLICT (fixture_id, team_id, stage) DO NOTHING`,
+      [event.id, fixture.id, l.teamId, stage, l.pack.id, l.pack.version, l.valid, JSON.stringify(l.people.map(({ name, ...m }) => m)), JSON.stringify({ definition: l.definition, results: l.checks, members: l.members.map((m) => ({ user_id: m.user_id, rule: m.rule, status: m.status, reason: m.reason })) }), JSON.stringify(l.applied_overrides ?? []), actorId]);
+  }
   let locked = 0;
   for (const r of all) {
     const ins = await q(c).query(
