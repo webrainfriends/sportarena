@@ -23,6 +23,7 @@ extended with governing-body evidence and an approval flow. Legacy standard spor
 - A pinned version or context changes only with a recorded reason, only before the discipline is ongoing, and never rewrites the stored snapshot of other events.
 - A version with an official source is submitted for approval before it is published; a second officer decides unless the actor holds platform authority.
 - Published versions are immutable (trigger); rollback drafts a NEW version; nothing is deleted.
+- Nomination: a sanctioned discipline whose frozen rule snapshot says `classification_required` admits only a participant with a governed outcome in force (class within the pinned version); a live provisional approval granted for the event (PS-02) is honoured; `not eligible`, a class outside the version, a review that is due, no record, or a participant without a linked athlete account are refused with `409 classification_required` and a stable `check` code. Recreational, mixed-ability, standard and `classification_required=false` disciplines are never asked. Event-wide registration policy (PS-02) is unchanged; this check applies to discipline nominations only.
 - Discovery exposes no actor identities. A class is an administrative sporting classification, never a diagnosis; AI never assigns one.
 
 ## UI

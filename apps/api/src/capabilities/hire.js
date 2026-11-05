@@ -12,6 +12,7 @@ import { notify } from '../notify.js';
 import { config } from '../config.js';
 import { coachCurrency, currenciesFor, effective } from '../coach-currency.js';
 import { coachSlotOk } from '../coach-slots.js';
+import { adaptiveFor } from '../coach-adaptive.js';
 import { AUDIENCES, INTRO_USED, assertIntroFree, cardFor, clientFor, introScopeOf, introStatus, mapIntroViolation, payModesFor, priceFor, seriesQuote } from '../coach-pricing.js';
 import { commitmentBusy, withCoachCalendar } from '../coach-commitments.js';
 import { expandDates, patternFields } from '../recurrence.js';
@@ -24,6 +25,7 @@ import { restoreForPurpose } from '../rewards/redeem.js';
 import { redeemSubscriptionSession, restoreSubscriptionSession } from '../coach-subscriptions.js';
 import { redeemCoachPackage } from '../coach-packages.js';
 
+const csv = z.preprocess((v) => (typeof v === 'string' ? v.split(',').map((x) => x.trim()).filter(Boolean) : v), z.array(z.string().max(40)).max(12));
 const esc = (x) => (x ? x.replace(/[%_\\]/g, '\\$&') : null);
 
 cap({
@@ -33,6 +35,8 @@ cap({
     sport: z.string().optional(), q: z.string().optional(), city: z.string().optional(), delivery: z.enum(['in_person', 'online']).optional(),
     max_rate_cents: z.coerce.number().int().min(0).optional(), min_rating: z.coerce.number().min(1).max(5).optional(),
     verified: z.coerce.boolean().optional(), has_hours: z.coerce.boolean().optional(), audience: z.enum(AUDIENCES).optional().describe('only coaches with a live rate card for this kind of client'), intro_offer: z.coerce.boolean().optional(),
+    adaptive_discipline: csv.optional().describe('para disciplines the coach declared (any of); only opted-in coaches match'), delivery_format: csv.optional().describe('accessible delivery formats the coach offers (any of)'), comm_support: csv.optional().describe('communication support the coach offers (all of)'),
+    credential_verified_only: z.coerce.boolean().optional().describe('only coaches whose adaptive credential is verified, current and covers the discipline'),
     sort: z.enum(['rating', 'rate', 'sessions', 'name']).default('rating'), ...page,
   }),
   async handler(_, i) {
@@ -56,10 +60,16 @@ cap({
             AND ($4::text IS NULL OR coalesce(cp.delivery, 'in_person') IN ($4, 'both'))
        ) q
        WHERE ($5::bigint IS NULL OR q.hourly_rate_cents <= $5) AND ($6::numeric IS NULL OR q.rating >= $6) AND (NOT $7 OR q.credential_verified) AND (NOT $8 OR q.has_hours) AND ($9::text IS NULL OR $9 = ANY(q.audiences)) AND (NOT $10 OR q.has_intro)
+         AND (($13::text[] IS NULL AND NOT $16) OR EXISTS (SELECT 1 FROM coach_adaptive_expertise e JOIN coach_profiles ap ON ap.user_id=e.coach_id AND ap.adaptive_opt_in LEFT JOIN verification_cases v ON v.id=e.case_id AND v.type='coach'
+              WHERE e.coach_id=q.id AND e.archived_at IS NULL AND ($13::text[] IS NULL OR e.discipline = ANY($13))
+                AND (NOT $16 OR (v.status='approved' AND v.expires_at > now() AND (v.credential_expires_on IS NULL OR v.credential_expires_on >= current_date) AND e.discipline = ANY(v.scope_disciplines)))))
+         AND ($14::text[] IS NULL OR EXISTS (SELECT 1 FROM coach_profiles ap WHERE ap.user_id=q.id AND ap.adaptive_opt_in AND ap.adaptive_formats && $14))
+         AND ($15::text[] IS NULL OR EXISTS (SELECT 1 FROM coach_profiles ap WHERE ap.user_id=q.id AND ap.adaptive_opt_in AND ap.adaptive_comm @> $15))
        ORDER BY ${order} LIMIT $11 OFFSET $12`,
-      [sport?.id ?? null, esc(i.q) ?? null, esc(i.city) ?? null, i.delivery ?? null, i.max_rate_cents ?? null, i.min_rating ?? null, !!i.verified, !!i.has_hours, i.audience ?? null, !!i.intro_offer, i.limit, i.offset]);
+      [sport?.id ?? null, esc(i.q) ?? null, esc(i.city) ?? null, i.delivery ?? null, i.max_rate_cents ?? null, i.min_rating ?? null, !!i.verified, !!i.has_hours, i.audience ?? null, !!i.intro_offer, i.limit, i.offset, i.adaptive_discipline?.length ? i.adaptive_discipline : null, i.delivery_format?.length ? i.delivery_format : null, i.comm_support?.length ? i.comm_support : null, !!i.credential_verified_only]);
     const curs = await currenciesFor(rows.map((r) => r.id));   // each coach quotes in their own country's currency
-    return rows.map((r) => ({ ...r, currency: curs.get(r.id) }));
+    const ad = await adaptiveFor(rows.map((r) => r.id));   // declared / verified coach attributes only: never used for ranking and never about the athlete
+    return rows.map((r) => ({ ...r, currency: curs.get(r.id), adaptive: ad.get(r.id).opted_in ? { state: ad.get(r.id).state, disciplines: ad.get(r.id).expertise.map((e) => e.discipline), formats: ad.get(r.id).formats, comm: ad.get(r.id).comm } : null }));
   },
 });
 
