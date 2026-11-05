@@ -55,6 +55,21 @@ export const ACADEMY_STEPS = [
     modules: ['venue-coaches.js', 'coach-classes.js', 'coaching-para.js'], sources: ['apps/app/src/screens/venue-coaches.js', 'apps/app/src/screens/manage.js', 'apps/app/src/screens/coaching-para.js'],
   },
   {
+    id: 'inclusive_delivery',
+    title: 'Inclusive programme delivery',
+    why: 'Connect accommodations, qualified coaches and accessible venues before each session, so every athlete trains safely and the right support is in place before the first whistle.',
+    steps: [
+      'Open Academy, then Inclusion to configure which need types a programme supports and what venue features are required.',
+      'After enrolling an athlete, the enrolment flow prompts guardians or the athlete to share their operational needs with the coaching team.',
+      'Open any upcoming session to see the Inclusion Readiness panel: requirements are marked met, short or gap so you can act before the session.',
+      'If an athlete changes programme, use Change programme in Inclusion to carry their accommodation shares to the new team, revoke access for coaches who leave and prompt re-share where needed.',
+      'Guardians open the Guardian progress view under Inclusion to see attendance, adapted assessment milestones and upcoming sessions without seeing the coaching team\'s operational notes.',
+    ],
+    target: { academy: 'inclusion' },
+    modules: ['academy-inclusion.js', 'academy-sessions.js', 'coach-adaptive.js'],
+    sources: ['apps/app/src/screens/academy-inclusion.js', 'apps/app/src/screens/academy-session.js', 'apps/app/src/screens/academy-admissions.js'],
+  },
+  {
     id: 'students', title: 'Invite students',
     why: 'Move people from enquiry to enrolled. Parents and guardians consent for children.',
     steps: ['Open Academy, then Admissions.', 'Invite a family to a programme, or review the applications and trials that arrive.', 'Make an offer, then enrol once they accept. Enrolment letters are produced for you.', 'For an athlete joining from abroad, open Start international checklist on the application, then track permissions, passport and visa status, school, residence and arrival under International. Enrolment waits until every mandatory item is met.', 'Use Families to see everyone enrolled and who pays.'],
