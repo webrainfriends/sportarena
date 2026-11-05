@@ -3,7 +3,7 @@
 import { createHash } from 'node:crypto';
 import { z } from 'zod';
 import { badRequest, conflict } from './errors.js';
-import { hist } from './para.js';
+import { hist, outcomeAt } from './para.js';
 import { audit } from './helpers.js';
 
 /** A boolean that also accepts the strings 'true' / 'false' (query strings). */
@@ -82,4 +82,27 @@ export async function savePara(c, user, discId, r, reason = null) {
     [discId, r.context, r.versionId, r.categories, r.snapshot, r.hash, user.id]);
   await hist(c, 'event_discipline', discId, null, r.changed ? 'rule_version_changed' : 'rule_version_pinned', { to: r.context, actor: user.id, detail: { version_id: r.versionId, hash: r.hash, reason } });
   await audit(c, user.id, 'para.discipline_pin', 'event_discipline', discId);
+}
+
+/**
+ * Does this person meet the classification requirement of a discipline's pinned governed rule? (PS-01 follow-up)
+ * Only a SANCTIONED discipline whose frozen snapshot says classification is required asks anything; standard, recreational and mixed-ability disciplines never do.
+ * Reads the governed outcome in force now (never a typed class), then a live provisional approval already granted for the event. Returns null when nothing is required.
+ */
+export async function disciplineClassCheck(c, d, userId, at = new Date()) {
+  if (d.participation_context !== 'sanctioned' || !d.para_snapshot?.classification_required) return null;
+  const src = (o) => ({ kind: 'para_outcome', id: o.id, class_code: o.class_code, class_status: o.status, label: o.authority, version: o.version });
+  if (!userId) return { status: 'pending', code: 'classification.no_account', reason: 'This rule requires a classification, which can only be checked for a participant with a linked athlete account' };
+  const o = await outcomeAt(c, userId, d.sport_id, at);
+  const day = at.toISOString().slice(0, 10);
+  const allowed = (d.para_snapshot.classes ?? []).map((k) => String(k.code).toUpperCase());
+  if (o) {
+    if (o.status === 'not_eligible') return { status: 'fail', code: 'classification.not_eligible', reason: 'Classification: not eligible for this sport', source: src(o) };
+    if (o.status === 'review_required' || (o.review_by && o.review_by < day)) return { status: 'pending', code: 'classification.review', reason: `Classification ${o.class_code ?? ''} needs review`.replace('  ', ' '), source: src(o) };
+    if (allowed.length && !allowed.includes(String(o.class_code).toUpperCase())) return { status: 'fail', code: 'classification.class_outside', reason: `Class ${o.class_code} is not a class of this rule version`, source: src(o) };
+    return { status: 'pass', code: 'classification.pass', reason: `Class ${o.class_code} confirmed by ${o.authority}`, source: src(o) };
+  }
+  const prov = (await c.query('SELECT id, valid_until::text AS valid_until FROM para_provisional WHERE event_id=$1 AND user_id=$2 AND revoked_at IS NULL AND valid_until >= $3::date ORDER BY created_at DESC LIMIT 1', [d.event_id, userId, day])).rows[0];
+  if (prov) return { status: 'waived', code: 'classification.waived', reason: `Provisional participation approved until ${prov.valid_until}`, source: { kind: 'para_provisional', id: prov.id, valid_until: prov.valid_until } };
+  return { status: 'pending', code: 'classification.none', reason: 'No authorised classification on record, and this rule requires one' };
 }
