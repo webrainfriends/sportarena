@@ -19,7 +19,7 @@ CREATE TABLE IF NOT EXISTS para_pathway_milestones (
   linked_goal_id               uuid REFERENCES player_goals(id),
   linked_plan_id               uuid REFERENCES player_plans(id),
   linked_academy_assessment_id uuid REFERENCES academy_assessments(id),
-  linked_learning_outcome_id   uuid REFERENCES learning_outcomes(id),
+  linked_learning_outcome_id   uuid, -- no learning_outcomes table exists yet: a plain id until one does (a foreign key to it made this migration fail)
   display_order    integer NOT NULL DEFAULT 0,
   created_at       timestamptz NOT NULL DEFAULT now(),
   updated_at       timestamptz NOT NULL DEFAULT now()
