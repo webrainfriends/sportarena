@@ -274,6 +274,7 @@ import './academy-wellbeing.js';
 import './academy-wellbeing-family.js';
 import './academy-wellbeing-overview.js';
 import './academy-inclusion.js';
+import './venue-accessibility.js';
 import './guardian-pickup.js';
 import './academy-kit.js';
 import './academy-payroll.js';
