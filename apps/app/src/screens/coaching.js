@@ -22,6 +22,7 @@ import { Counter, DateField, DayStrip, HScroll, TimeField } from '../pickers';
 import { NewCaseSheet } from './cases';
 import { SeriesBookingSheet, VenueLine } from './training-venue';
 import { SeriesSheet } from './coach-series';
+import { AdaptiveFilters, AdaptiveLine, AdaptiveProfileBlock, AdjustmentsSheet, CoachAdjustmentsSheet, adaptiveParams, emptyAdaptive } from './coach-adaptive';
 import { CoachClassList } from './coach-classes';
 import { BuyPackageSheet, SubscribeSheet, isRedeemablePack } from './coach-subscriptions';
 import { Grid, PaySheet, Pill, StatusPill, nice, useCols } from './marketplace';
@@ -126,7 +127,7 @@ export function IconGrid({ items, value, onChange, cols = 4, tint = c.pinkSoft }
 /** The coach's tools as one tidy grid (desk, board, athletes, profile, schedule, rates, commitments, reviews, analytics, courts…). */
 export function CoachToolGrid({ push, counts = {} }) {
   const tools = [
-    ['🗂️', 'Desk', 'CoachDesk'], ['📬', 'Request board', 'CoachBoard', counts.board], ['🏃', 'Athletes', 'CoachAthletes'], ['🤝', 'Shared wellness', 'SharedWellness'], ['📄', 'Shared reports', 'SharedSeasonReports'], ['🎬', 'Recruitment', 'PassportDesk'], ['🪪', 'Profile & hours', 'CoachSetup'],
+    ['🗂️', 'Desk', 'CoachDesk'], ['📬', 'Request board', 'CoachBoard', counts.board], ['🏃', 'Athletes', 'CoachAthletes'], ['🤝', 'Shared wellness', 'SharedWellness'], ['📄', 'Shared reports', 'SharedSeasonReports'], ['🎬', 'Recruitment', 'PassportDesk'], ['🪪', 'Profile & hours', 'CoachSetup'], ['🎖️', t('adp.title'), 'CoachAdaptive'],
     ['📅', 'Schedule', 'CoachCalendar'], ['🏫', 'Academy week', 'AcademyAgenda'], ['🏷️', 'Rate cards', 'CoachRates'], ['🎽', 'My classes', 'CoachClasses'], ['🏟️', t('vc.title'), 'CoachVenues'], ['📑', 'Commitments', 'CoachCommitments'], ['⭐', 'Reviews', 'CoachReviews', counts.reviews],
     ['🧠', 'Performance Studio', 'PerformanceStudio'], ['📊', t('nav.title.TeamPerformance'), 'TeamPerformance'], ['🧰', 'Drill library', 'CoachDrills'], ['👥', 'Saved groups', 'CoachGroups'], ['📋', t('nav.title.Evaluations'), 'Evaluations'], ['📏', t('es.sheets_title'), 'CoachRubrics'], ['📈', 'Analytics', 'CoachAnalytics'], ['📝', 'Training plans', 'MyPlans', null, { as: 'coach' }], ['📍', 'Courts', 'TrainingVenue', counts.courts], ['🔁', 'Recurring booking', 'RecurringVenue'],
   ];
@@ -308,14 +309,14 @@ function FindCoaches({ onPost, onBook }) {
   const { push } = useNav();
   const { w } = useCols();
   const [f, setF] = useState({ q: '', sport: null, delivery: null, verified: false, rated: false, hours: false, audience: null, intro: false, sort: 'rating', max: undefined, city: '' });
-  const [more, setMore] = useState(false), [showAll, setShowAll] = useState(false);
+  const [more, setMore] = useState(false), [showAll, setShowAll] = useState(false), [ad, setAd] = useState(emptyAdaptive);
   const everyone = useLoad(() => api.get('/coaches', { limit: 100 }), []);
   const types = [...(everyone.data ?? []).reduce((m, x) => m.set(x.sport_slug, { slug: x.sport_slug, name: x.sport, emoji: x.sport_emoji, n: (m.get(x.sport_slug)?.n ?? 0) + 1 }), new Map()).values()].sort((a, b) => b.n - a.n || a.name.localeCompare(b.name));
   const q = useDebounced(f.q);
   const list = useLoad(() => api.get('/coaches', {
-    limit: 50, sort: f.sort, ...(q.trim() ? { q: q.trim() } : {}), ...(f.sport ? { sport: f.sport } : {}), ...(f.delivery ? { delivery: f.delivery } : {}),
+    limit: 50, sort: f.sort, ...adaptiveParams(ad), ...(q.trim() ? { q: q.trim() } : {}), ...(f.sport ? { sport: f.sport } : {}), ...(f.delivery ? { delivery: f.delivery } : {}),
     ...(f.verified ? { verified: true } : {}), ...(f.rated ? { min_rating: 4 } : {}), ...(f.hours ? { has_hours: true } : {}), ...(f.audience ? { audience: f.audience } : {}), ...(f.intro ? { intro_offer: true } : {}), ...(f.max ? { max_rate_cents: f.max } : {}), ...(f.city.trim() ? { city: f.city.trim() } : {}),
-  }), [q, f.sport, f.delivery, f.verified, f.rated, f.hours, f.audience, f.intro, f.sort, f.max, f.city]);
+  }), [q, f.sport, f.delivery, f.verified, f.rated, f.hours, f.audience, f.intro, f.sort, f.max, f.city, JSON.stringify(ad)]);
   const set = (k, v) => setF((p) => ({ ...p, [k]: v }));
   const myCur = useMyCurrency();
   const cur = list.data?.[0]?.currency ?? myCur;
@@ -344,6 +345,7 @@ function FindCoaches({ onPost, onBook }) {
         <Chip label={active ? `More filters · ${active}` : 'More filters'} active={!!active} onPress={() => setMore(true)} />
       </HScroll>
       <HScroll>{[['rating', 'Top rated'], ['rate', 'Lowest rate'], ['sessions', 'Most sessions'], ['name', 'A–Z']].map(([v, l]) => <Chip key={v} label={`↕ ${l}`} active={f.sort === v} onPress={() => set('sort', v)} />)}</HScroll>
+      <AdaptiveFilters value={ad} onChange={setAd} />
       <AdSlot placement="featured_coach" sport={f.sport || undefined} />
       <AdSlot placement="search_sponsored" q={f.q} sport={f.sport || undefined} />
       {list.error ? <ErrorBox error={list.error} onRetry={list.reload} /> : list.loading && !list.data ? <Loading /> : !list.data?.length ? (
@@ -373,6 +375,7 @@ function FindCoaches({ onPost, onBook }) {
                     {(x.audiences ?? []).filter((a) => a !== 'individual').map((a) => <Pill key={a} label={`${a.toUpperCase()}S`} />)}
                     {x.accepting === false ? <Pill label="FULL" fg={c.red} bg={c.redSoft} /> : null}
                   </View>
+                  <AdaptiveLine a={x.adaptive} />
                   <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 12 }}>
                     <View><T weight="800" size={16}>{rateOf(x, x.currency)}</T><T size={12} color={c.mute}>{[nice(x.level), x.experience_years ? `${x.experience_years} yrs` : null, x.sessions_done ? `${x.sessions_done} sessions` : null].filter(Boolean).join(' · ')}</T></View>
                     <Btn small title="Book" disabled={x.accepting === false} onPress={() => onBook(x)} />
@@ -426,7 +429,7 @@ const paying = (hire, coachName) => ({ type: 'coach_hire', id: hire.id, amount: 
 function Session({ h, who, children }) {
   const { push } = useNav();
   const { user } = useSession();
-  const [hist, setHist] = useState(false), [shared, setShared] = useState(false);
+  const [hist, setHist] = useState(false), [shared, setShared] = useState(false), [adj, setAdj] = useState(false);
   const ran = ['confirmed', 'completed'].includes(h.status);
   return (
     <Card pad={14}>
@@ -447,9 +450,11 @@ function Session({ h, who, children }) {
         </View>
       </View>
       <View style={{ flexDirection: 'row', gap: 8, marginTop: 10, flexWrap: 'wrap' }}>{children}<Btn small title="History" color={c.paper} ink={c.mute} accessibilityLabel="Show the history of this session" onPress={() => setHist(true)} />
+        {['requested', 'confirmed'].includes(h.status) && new Date(h.starts_at) > new Date() ? <Btn small title={t('adp.adj_title')} color={c.paper} ink={c.ink} accessibilityLabel={t('adp.adj_title')} onPress={() => setAdj(true)} /> : null}
         {ran && who === 'athlete' ? <Btn small title={t('swk.open')} accessibilityLabel={t('swk.open')} onPress={() => push('SessionWorkspace', { source_type: 'coach_hire', source_id: h.id })} /> : null}
         {ran && who === 'coach' ? <Btn small title={t('swk.athlete.open')} color={c.paper} ink={c.ink} accessibilityLabel={t('swk.athlete.open')} onPress={() => setShared(true)} /> : null}
       </View>
+      {adj ? (who === 'coach' ? <AdjustmentsSheet hire={h} onClose={() => setAdj(false)} /> : <CoachAdjustmentsSheet hire={h} onClose={() => setAdj(false)} />) : null}   {/* `who` names the person shown on the card: 'coach' means the viewer is the athlete */}
       {shared ? <SharedSessionSheet hireId={h.id} onClose={() => setShared(false)} /> : null}
       {hist ? <TimelineSheet kind="hire" id={h.id} meId={user.id} title="Session history" onClose={() => setHist(false)} /> : null}
     </Card>
@@ -677,6 +682,7 @@ export function CoachProfile({ id }) {
         ))}
       </Section>
 
+      <View style={{ marginTop: 16 }}><AdaptiveProfileBlock coachId={p.id} /></View>
       <View style={{ marginTop: 16, gap: 8 }}>
         {mine ? <Btn title="Edit my profile & hours" onPress={() => push('CoachSetup')} /> : <Btn title={p.profile.accepting === false ? 'Not taking new athletes' : `Book a ${sp?.name ?? ''} session`} disabled={p.profile.accepting === false || !sp} onPress={() => setBook(true)} />}
       </View>

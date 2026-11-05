@@ -1,6 +1,7 @@
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 
+process.env.PLATFORM_APPROVALS = 'off';
 process.env.DATABASE_URL = process.env.TEST_DATABASE_URL ?? 'postgres://postgres@/sportarena_test?host=/tmp';
 const { pool } = await import('../src/db.js');
 const { migrate } = await import('../src/migrate.js');
@@ -141,4 +142,16 @@ test('regression: ordinary coach search and the hire flow are unchanged; MCP and
   const { capabilities } = await import('../src/registry.js');
   for (const name of ['get_adaptive_catalogue', 'set_my_adaptive_coaching', 'upsert_adaptive_expertise', 'get_coach_adaptive', 'share_hire_adjustments', 'revoke_hire_adjustments', 'get_hire_adjustments']) assert.ok(capabilities.find((c) => c.name === name), name);
   assert.equal(DISCIPLINE_KEYS.length, 9);
+});
+
+test('academy instructor validation: the staff list shows each opted-in coach\'s live credential state and nothing about athletes', async () => {
+  const owner = await signup(['organizer']), coach = await coachOf(), plain = await coachOf();
+  const org = ok(await api('POST', '/organisations', { token: owner.token, body: { name: 'Riverside Academy', kind: 'academy', city: 'Pune' } }), 201);
+  for (const u of [coach, plain]) { ok(await api('POST', `/organisations/${org.id}/members`, { token: owner.token, body: { person: u.handle, role: 'coach' } }), 201); ok(await api('POST', `/organisations/${org.id}/invite/respond`, { token: u.token, body: { accept: true } })); }
+  ok(await api('POST', '/me/coach-adaptive', { token: coach.token, body: { opt_in: true } }));
+  ok(await api('POST', '/me/coach-adaptive/expertise', { token: coach.token, body: { sport: 'tennis', discipline: 'wheelchair_tennis' } }), 201);
+  const staff = ok(await api('GET', `/organisations/${org.id}/academy/staff`, { token: owner.token })).staff;
+  assert.equal(staff.find((x) => x.user_id === coach.id).adaptive.state, 'self_declared');
+  assert.equal(staff.find((x) => x.user_id === plain.id).adaptive, null, 'coaches who did not opt in show nothing');
+  assert.ok(!JSON.stringify(staff).includes('training_enc'));
 });

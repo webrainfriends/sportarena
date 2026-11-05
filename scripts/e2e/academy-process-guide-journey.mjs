@@ -157,6 +157,7 @@ try {
     safety: (p) => inOrg(p, async () => { await click(p, 'Academy'); await click(p, 'Safety & pickup'); }),
     kit: (p) => inOrg(p, async () => { await click(p, 'Academy'); await click(p, 'Kit'); }),   // the Academy tab opens on its Home (executive view)
     wellbeing: (p) => inOrg(p, async () => { await click(p, 'Academy'); await click(p, 'Wellbeing'); }),
+    inclusion: (p) => inOrg(p, async () => { await click(p, 'Academy'); await click(p, 'Inclusion'); }),
     accreditation: (p) => inOrg(p, async () => { await click(p, 'Academy'); await click(p, 'Accreditation'); }),
     placement: (p) => inOrg(p, async () => { await click(p, 'Academy'); await click(p, 'Placement'); }),
   };
