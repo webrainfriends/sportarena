@@ -64,7 +64,7 @@ export async function enableTimetable(c, venueId) {
 }
 
 /** Open (or close) `scope` courts for [start,end) on `days`, carving whatever was there in the same date scope. Returns what changed. */
-export async function carve(c, venueId, resourceId, { days, start, end, categoryId, closed, valid_from, valid_to, replace, batch }) {
+export async function carve(c, venueId, resourceId, { days, start, end, categoryId, closed, valid_from, valid_to, replace, batch, ...bookingRules }) {
   const { rows } = await c.query('SELECT * FROM schedule_windows WHERE venue_id=$1 AND removed_at IS NULL AND resource_id=$2 FOR UPDATE', [venueId, resourceId]);
   let removed = 0;
   for (const w of rows) {
@@ -80,7 +80,7 @@ export async function carve(c, venueId, resourceId, { days, start, end, category
     if (w.start_min < start) await insertWindow(c, venueId, { ...keep, weekdays: both, start_min: w.start_min, end_min: start });
     if (w.end_min > end) await insertWindow(c, venueId, { ...keep, weekdays: both, start_min: end, end_min: w.end_min });
   }
-  if (!closed) await insertWindow(c, venueId, { resource_id: resourceId, category_id: categoryId, weekdays: days, start_min: start, end_min: end, valid_from, valid_to, batch_id: batch });
+  if (!closed) await insertWindow(c, venueId, { resource_id: resourceId, category_id: categoryId, weekdays: days, start_min: start, end_min: end, valid_from, valid_to, batch_id: batch, ...bookingRules });
   return removed;
 }
 
