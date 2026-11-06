@@ -163,7 +163,16 @@ export const ACADEMY_STEPS = [
   {
     id: 'campuses', title: 'Organise campuses and transfers',
     why: 'Run more than one location as one academy: regions, campuses and sport departments, directors with their own view, shared policies, and transfers that follow your own approval process.',
-    steps: ['Open the Campuses tab and tap Set up campuses to make your academy one campus without changing any record, or add a region and a campus yourself.', 'Place venues, teams, cohorts, programmes and coaches on a campus or sport department. Each keeps its identity and history; only a dated pointer is added.', 'Give each campus a director, finance, sports lead, operations or auditor role, and set policies that its sport departments inherit.', 'Under Transfers, configure your process (approvals, finance clearance, athlete or guardian acknowledgement, handover checklist), then move athletes, coaches or programmes between campuses with a request that follows it.'],
+    steps: [
+      'Open the Campuses tab and tap Set up campuses to start the 4-step setup wizard.',
+      'Step 1 — Mode: choose Quick start (all your existing objects land on one campus automatically) or Build full structure (define regions, campuses and sport departments yourself).',
+      'Step 2 — Campus profile: name the campus, add an optional short code (e.g. MAN, BCN), country, city, time zone and an effective-from date.',
+      'Step 3 — Sport departments: tap the sports your academy runs. Each selected sport creates a department nested under the campus. Skip this step and add departments later from the Structure tab.',
+      'Step 4 — Review & confirm: see exactly which venues, programmes, teams, cohorts, coaches, staff and suppliers will be pointed at the new campus, and how many enrolled athletes follow automatically. Confirm to apply — or go back to adjust.',
+      'After setup, place any remaining unassigned objects from the Structure tab (Place objects here button), and assign each campus a director, sports lead, finance, operations or auditor role so they see their own branch.',
+      'Set inherited policies per campus (minimum attendance, coach-to-athlete ratio, refund window, guardian consent renewal) that sport departments below inherit unless they override.',
+      'Under Transfers, configure the approval process (finance clearance, source and destination director sign-off, athlete or guardian acknowledgement, handover checklist) for each object type, then initiate transfers from the unit detail panel.',
+    ],
     target: { org: 'campuses' },
     modules: ['org-campuses.js', 'org-campus-transfers.js'], sources: ['apps/app/src/screens/campuses.js', 'apps/app/src/screens/campus-transfers.js'],
   },
