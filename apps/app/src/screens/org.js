@@ -1,7 +1,7 @@
 // Organisation workspaces: clubs, academies and schools. The server decides what each role may do; the screen
 // only hides what a role cannot use. Staff, cohorts, enrolment (with a preview), attendance and linked teams/events/venues.
 import React, { useState } from 'react';
-import { View } from 'react-native';
+import { Switch, View } from 'react-native';
 import { api } from '../api';
 import { useLoad } from '../hooks';
 import { useSession } from '../session';
@@ -10,6 +10,8 @@ import { Btn, Chip, Empty, ErrorBox, Field, GradCard, H1, Loading, Row, Screen, 
 import { FormSheet } from '../FormSheet';
 import { t } from '../i18n';
 import { c, day } from '../theme';
+import { Counter, DateRangeField } from '../pickers';
+import { SportsMulti } from '../sportpicker';
 import { moneyIn } from '../vtime';
 import { Admissions } from './admissions';
 import { AcademyDesk } from './academy';
@@ -336,6 +338,155 @@ function SponsorTab({ o, role, archived, toast, brands }) {
   );
 }
 
+// ------------------------------------------------------------------ season & cohort elite wizards
+const SEASON_TYPES = ['Academic Year', 'Term', 'Calendar Year', 'Pre-season Camp', 'Custom'];
+const SEASON_AGE_BANDS = ['U6', 'U8', 'U10', 'U12', 'U14', 'U16', 'U18', 'Senior', 'Masters'];
+const SEASON_OBJECTIVES = ['Performance', 'Development', 'Participation', 'Talent ID', 'Competition', 'Transition'];
+
+function NewSeasonWizard({ visible, onClose, o, onDone, toast }) {
+  const [step, setStep] = useState(0);
+  const [busy, setBusy] = useState(false);
+  const [f, setF] = useState({ name: '', type: 'Academic Year', starts_on: undefined, ends_on: undefined, reg_opens: undefined, reg_closes: undefined, sports: [], max_athletes: 0, max_coaches: 0, age_bands: [], gender: 'mixed', objective: '', targets: '', auto_roll: false, carry_forward: false, self_registration: false, notify_coaches: true, admin_notes: '' });
+  const set = (k, v) => setF((p) => ({ ...p, [k]: v }));
+  const STEPS = ['Identity & Dates', 'Sports & Capacity', 'Goals & Launch'];
+  const can = [() => f.name.trim().length >= 2 && !!f.starts_on && !!f.ends_on, () => true, () => true][step]();
+  const submit = async () => {
+    setBusy(true);
+    try {
+      await api.post(`/organisations/${o.id}/seasons`, { name: f.name.trim(), starts_on: f.starts_on, ends_on: f.ends_on, ...(f.reg_opens ? { reg_opens_on: f.reg_opens } : {}), ...(f.reg_closes ? { reg_closes_on: f.reg_closes } : {}), ...(f.sports.length ? { sports: f.sports } : {}), ...(f.max_athletes > 0 ? { max_athletes: f.max_athletes } : {}), ...(f.max_coaches > 0 ? { max_coaches: f.max_coaches } : {}), ...(f.age_bands.length ? { age_bands: f.age_bands } : {}), gender: f.gender, ...(f.objective.trim() ? { objective: f.objective.trim() } : {}), ...(f.targets.trim() ? { targets: f.targets.trim() } : {}), auto_roll_cohorts: f.auto_roll, carry_forward_curriculum: f.carry_forward, self_registration: f.self_registration, notify_coaches_on_launch: f.notify_coaches, ...(f.admin_notes.trim() ? { admin_notes: f.admin_notes.trim() } : {}) });
+      toast('Season created'); onDone(); onClose();
+    } catch (e) { toast('' + e.message); }
+    setBusy(false);
+  };
+  return (
+    <Sheet visible={visible} onClose={onClose} title="New Season">
+      <View style={{ flexDirection: 'row', gap: 6, marginBottom: 4 }}>
+        {STEPS.map((s, i) => (<View key={s} style={{ flex: 1, gap: 3 }}><View style={{ height: 4, borderRadius: 2, backgroundColor: i <= step ? c.pink : c.line }} /><T size={10} weight={i === step ? '800' : '500'} color={i === step ? c.ink : c.mute}>{s}</T></View>))}
+      </View>
+      {step === 0 ? (
+        <View style={{ gap: 14 }}>
+          <Field label="Season name" value={f.name} onChangeText={(x) => set('name', x)} placeholder="e.g. 2026/27 Full Year" />
+          <View style={{ gap: 6 }}><T size={12} weight="800" color={c.mute} style={{ letterSpacing: 0.5 }}>SEASON TYPE</T><View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>{SEASON_TYPES.map((k) => <Chip key={k} label={k} active={f.type === k} onPress={() => set('type', k)} />)}</View></View>
+          <DateRangeField label="Season dates" from={f.starts_on} to={f.ends_on} onChange={({ from, to }) => setF((p) => ({ ...p, starts_on: from, ends_on: to }))} hint="First day and last day of the season." />
+          <DateRangeField label="Registration window (optional)" from={f.reg_opens} to={f.reg_closes} onChange={({ from, to }) => setF((p) => ({ ...p, reg_opens: from, reg_closes: to }))} hint="When athletes may register for this season." optional />
+        </View>
+      ) : null}
+      {step === 1 ? (
+        <View style={{ gap: 14 }}>
+          <SportsMulti label="Sports in this season" value={f.sports} onChange={(x) => set('sports', x)} />
+          <View style={{ gap: 6 }}><T size={12} weight="800" color={c.mute} style={{ letterSpacing: 0.5 }}>AGE BANDS</T><View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>{SEASON_AGE_BANDS.map((b) => <Chip key={b} label={b} active={f.age_bands.includes(b)} onPress={() => set('age_bands', f.age_bands.includes(b) ? f.age_bands.filter((x) => x !== b) : [...f.age_bands, b])} />)}</View></View>
+          <View style={{ gap: 6 }}><T size={12} weight="800" color={c.mute} style={{ letterSpacing: 0.5 }}>GENDER</T><View style={{ flexDirection: 'row', gap: 6 }}>{['boys', 'girls', 'mixed'].map((g) => <Chip key={g} label={g.charAt(0).toUpperCase() + g.slice(1)} active={f.gender === g} onPress={() => set('gender', g)} />)}</View></View>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}><View style={{ flex: 1 }}><T weight="800" size={13}>Max athletes (0 = unlimited)</T></View><Counter value={f.max_athletes} onChange={(x) => set('max_athletes', x)} min={0} max={5000} step={5} /></View>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}><View style={{ flex: 1 }}><T weight="800" size={13}>Max coaching staff</T></View><Counter value={f.max_coaches} onChange={(x) => set('max_coaches', x)} min={0} max={500} step={1} /></View>
+        </View>
+      ) : null}
+      {step === 2 ? (
+        <View style={{ gap: 14 }}>
+          <View style={{ borderWidth: 1, borderColor: c.line, borderRadius: 14, padding: 14, backgroundColor: c.paper, gap: 4 }}>
+            <T weight="800">{f.name || '—'}</T>
+            <T size={12} color={c.mute}>{f.type} · {f.starts_on ?? 'start date'} → {f.ends_on ?? 'end date'}</T>
+            {f.sports.length ? <T size={12} color={c.mute}>{f.sports.length} sport{f.sports.length > 1 ? 's' : ''}</T> : null}
+            {f.age_bands.length ? <T size={12} color={c.mute}>{f.age_bands.join(', ')}</T> : null}
+          </View>
+          <View style={{ gap: 6 }}><T size={12} weight="800" color={c.mute} style={{ letterSpacing: 0.5 }}>SEASON OBJECTIVE</T><View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>{SEASON_OBJECTIVES.map((obj) => <Chip key={obj} label={obj} active={f.objective === obj} onPress={() => set('objective', f.objective === obj ? '' : obj)} />)}</View></View>
+          <Field label="Performance targets (optional)" value={f.targets} onChangeText={(x) => set('targets', x)} multiline placeholder="e.g. Top 3 league finish, 90% attendance rate" />
+          <View style={{ gap: 8 }}>
+            {[['auto_roll', 'Auto-roll cohorts', 'Carry existing cohort memberships into the new season'], ['carry_forward', 'Carry forward curriculum', 'Reuse programme and session plans from the previous season'], ['self_registration', 'Self-registration', 'Allow athletes to register directly without staff approval'], ['notify_coaches', 'Notify coaches on launch', 'Send a brief to all coaches when the season opens']].map(([key, title, sub]) => (
+              <View key={key} style={{ flexDirection: 'row', alignItems: 'center', gap: 12, padding: 12, borderWidth: 1, borderColor: c.line, borderRadius: 12 }}>
+                <View style={{ flex: 1 }}><T weight="800" size={13}>{title}</T><T size={11} color={c.mute}>{sub}</T></View>
+                <Switch value={f[key]} onValueChange={(v) => set(key, v)} trackColor={{ true: c.pink }} />
+              </View>
+            ))}
+          </View>
+          <Field label="Admin notes (optional)" value={f.admin_notes} onChangeText={(x) => set('admin_notes', x)} multiline placeholder="Internal notes — not visible to athletes or guardians" />
+        </View>
+      ) : null}
+      <View style={{ flexDirection: 'row', gap: 8, marginTop: 4 }}>
+        {step > 0 ? <Btn title="Back" color={c.paper} ink={c.ink} onPress={() => setStep(step - 1)} style={{ flex: 1 }} /> : null}
+        {step < 2 ? <Btn title="Next" disabled={!can} onPress={() => setStep(step + 1)} style={{ flex: 2 }} /> : <Btn title="Launch Season" loading={busy} onPress={submit} style={{ flex: 2 }} />}
+      </View>
+    </Sheet>
+  );
+}
+
+const PERF_LEVELS = ['Grassroots', 'Development', 'Advanced', 'Elite', 'Pro Pathway'];
+const COHORT_AGE_GROUPS = ['U6', 'U8', 'U10', 'U12', 'U14', 'U16', 'U18', 'Senior', 'Open'];
+const SESSION_TYPES = ['Training', 'Conditioning', 'Match prep', 'Theory', 'Assessment', 'Mixed'];
+const WEEKDAYS_SHORT = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+
+function NewCohortWizard({ visible, onClose, o, seasons, staff, onDone, toast }) {
+  const [step, setStep] = useState(0);
+  const [busy, setBusy] = useState(false);
+  const [f, setF] = useState({ name: '', season_id: undefined, level: 'Development', age_group: 'U16', gender: 'mixed', min_capacity: 8, max_capacity: 20, entry_requirements: '', coach_id: undefined, schedule_days: [], session_start_time: '', session_duration: 90, session_type: 'Training', waitlist: true, guardian_consent: true, attendance_tracking: true, notify_eligible: false, admin_notes: '' });
+  const set = (k, v) => setF((p) => ({ ...p, [k]: v }));
+  const STEPS = ['Identity & Athletes', 'Staff & Schedule', 'Settings & Launch'];
+  const coaches = (staff ?? []).filter((m) => m.org_role !== 'finance');
+  const can = [() => f.name.trim().length >= 2, () => true, () => true][step]();
+  const submit = async () => {
+    setBusy(true);
+    try {
+      await api.post(`/organisations/${o.id}/cohorts`, { name: f.name.trim(), ...(f.season_id ? { season_id: f.season_id } : {}), ...(f.coach_id ? { coach_id: f.coach_id } : {}), ...(f.max_capacity > 0 ? { capacity: f.max_capacity } : {}), level: f.level, age_group: f.age_group, gender: f.gender, min_capacity: f.min_capacity, ...(f.entry_requirements.trim() ? { entry_requirements: f.entry_requirements.trim() } : {}), schedule_days: f.schedule_days, ...(f.session_start_time ? { session_start_time: f.session_start_time } : {}), session_duration_minutes: f.session_duration, session_type: f.session_type, waitlist: f.waitlist, guardian_consent_required: f.guardian_consent, attendance_tracking: f.attendance_tracking, notify_eligible: f.notify_eligible, ...(f.admin_notes.trim() ? { admin_notes: f.admin_notes.trim() } : {}) });
+      toast('Cohort created'); onDone(); onClose();
+    } catch (e) { toast('' + e.message); }
+    setBusy(false);
+  };
+  return (
+    <Sheet visible={visible} onClose={onClose} title="New Cohort">
+      <View style={{ flexDirection: 'row', gap: 6, marginBottom: 4 }}>
+        {STEPS.map((s, i) => (<View key={s} style={{ flex: 1, gap: 3 }}><View style={{ height: 4, borderRadius: 2, backgroundColor: i <= step ? c.pink : c.line }} /><T size={10} weight={i === step ? '800' : '500'} color={i === step ? c.ink : c.mute}>{s}</T></View>))}
+      </View>
+      {step === 0 ? (
+        <View style={{ gap: 14 }}>
+          <Field label="Cohort name" value={f.name} onChangeText={(x) => set('name', x)} placeholder="e.g. Elite U16 Boys – Basketball" />
+          <View style={{ gap: 6 }}><T size={12} weight="800" color={c.mute} style={{ letterSpacing: 0.5 }}>SEASON</T><View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>{(seasons ?? []).map((s) => <Chip key={s.id} label={s.name} active={f.season_id === s.id} onPress={() => set('season_id', f.season_id === s.id ? undefined : s.id)} />)}{!(seasons ?? []).length ? <T size={12} color={c.mute}>No seasons yet — create one first.</T> : null}</View></View>
+          <View style={{ gap: 6 }}><T size={12} weight="800" color={c.mute} style={{ letterSpacing: 0.5 }}>PERFORMANCE LEVEL</T><View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>{PERF_LEVELS.map((l) => <Chip key={l} label={l} active={f.level === l} onPress={() => set('level', l)} />)}</View></View>
+          <View style={{ gap: 6 }}><T size={12} weight="800" color={c.mute} style={{ letterSpacing: 0.5 }}>AGE GROUP</T><View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 5 }}>{COHORT_AGE_GROUPS.map((g) => <Chip key={g} label={g} active={f.age_group === g} onPress={() => set('age_group', g)} />)}</View></View>
+          <View style={{ gap: 6 }}><T size={12} weight="800" color={c.mute} style={{ letterSpacing: 0.5 }}>GENDER</T><View style={{ flexDirection: 'row', gap: 6 }}>{['boys', 'girls', 'mixed'].map((g) => <Chip key={g} label={g.charAt(0).toUpperCase() + g.slice(1)} active={f.gender === g} onPress={() => set('gender', g)} />)}</View></View>
+          <View style={{ flexDirection: 'row', gap: 8, alignItems: 'center' }}>
+            <View style={{ flex: 1 }}><T weight="800" size={13}>Min athletes</T></View>
+            <Counter value={f.min_capacity} onChange={(x) => set('min_capacity', x)} min={1} max={f.max_capacity} step={1} />
+            <View style={{ flex: 1, alignItems: 'center' }}><T weight="800" size={13}>Max athletes</T></View>
+            <Counter value={f.max_capacity} onChange={(x) => set('max_capacity', Math.max(x, f.min_capacity))} min={1} max={500} step={1} />
+          </View>
+          <Field label="Entry requirements (optional)" value={f.entry_requirements} onChangeText={(x) => set('entry_requirements', x)} multiline placeholder="Trials, fitness test, minimum rating, guardian consent…" />
+        </View>
+      ) : null}
+      {step === 1 ? (
+        <View style={{ gap: 14 }}>
+          <View style={{ gap: 6 }}><T size={12} weight="800" color={c.mute} style={{ letterSpacing: 0.5 }}>HEAD COACH</T><View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>{coaches.map((m) => <Chip key={m.id} label={m.display_name} active={f.coach_id === m.id} onPress={() => set('coach_id', f.coach_id === m.id ? undefined : m.id)} />)}{!coaches.length ? <T size={12} color={c.mute}>No coaching staff on this organisation yet.</T> : null}</View></View>
+          <View style={{ gap: 6 }}><T size={12} weight="800" color={c.mute} style={{ letterSpacing: 0.5 }}>SESSION TYPE</T><View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>{SESSION_TYPES.map((s) => <Chip key={s} label={s} active={f.session_type === s} onPress={() => set('session_type', s)} />)}</View></View>
+          <View style={{ gap: 6 }}><T size={12} weight="800" color={c.mute} style={{ letterSpacing: 0.5 }}>TRAINING DAYS</T><View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 5 }}>{WEEKDAYS_SHORT.map((d) => <Chip key={d} label={d} active={f.schedule_days.includes(d)} onPress={() => set('schedule_days', f.schedule_days.includes(d) ? f.schedule_days.filter((x) => x !== d) : [...f.schedule_days, d])} />)}</View></View>
+          <Field label="Session start time (optional)" value={f.session_start_time} onChangeText={(x) => set('session_start_time', x)} placeholder="e.g. 07:00" keyboardType="numbers-and-punctuation" />
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}><View style={{ flex: 1 }}><T weight="800" size={13}>Session duration (min)</T></View><Counter value={f.session_duration} onChange={(x) => set('session_duration', x)} min={30} max={240} step={15} /></View>
+        </View>
+      ) : null}
+      {step === 2 ? (
+        <View style={{ gap: 14 }}>
+          <View style={{ borderWidth: 1, borderColor: c.line, borderRadius: 14, padding: 14, backgroundColor: c.paper, gap: 3 }}>
+            <T weight="800">{f.name || '—'}</T>
+            <T size={12} color={c.mute}>{f.level} · {f.age_group} · {f.gender}</T>
+            {f.schedule_days.length ? <T size={12} color={c.mute}>{f.schedule_days.join(', ')} · {f.session_duration} min</T> : null}
+            <T size={12} color={c.mute}>Capacity: {f.min_capacity}–{f.max_capacity} athletes</T>
+          </View>
+          <View style={{ gap: 8 }}>
+            {[['waitlist', 'Waitlist when full', 'Auto-queue applicants once max capacity is reached'], ['guardian_consent', 'Guardian consent required', 'Block enrolment until a guardian approves for U18 athletes'], ['attendance_tracking', 'Attendance tracking', 'Coaches mark attendance at every session'], ['notify_eligible', 'Notify eligible athletes', 'Alert athletes matching the age and level criteria']].map(([key, title, sub]) => (
+              <View key={key} style={{ flexDirection: 'row', alignItems: 'center', gap: 12, padding: 12, borderWidth: 1, borderColor: c.line, borderRadius: 12 }}>
+                <View style={{ flex: 1 }}><T weight="800" size={13}>{title}</T><T size={11} color={c.mute}>{sub}</T></View>
+                <Switch value={f[key]} onValueChange={(v) => set(key, v)} trackColor={{ true: c.pink }} />
+              </View>
+            ))}
+          </View>
+          <Field label="Admin notes (optional)" value={f.admin_notes} onChangeText={(x) => set('admin_notes', x)} multiline placeholder="Internal notes — not visible to athletes or guardians" />
+        </View>
+      ) : null}
+      <View style={{ flexDirection: 'row', gap: 8, marginTop: 4 }}>
+        {step > 0 ? <Btn title="Back" color={c.paper} ink={c.ink} onPress={() => setStep(step - 1)} style={{ flex: 1 }} /> : null}
+        {step < 2 ? <Btn title="Next" disabled={!can} onPress={() => setStep(step + 1)} style={{ flex: 2 }} /> : <Btn title="Create Cohort" loading={busy} onPress={submit} style={{ flex: 2 }} />}
+      </View>
+    </Sheet>
+  );
+}
+
 // ------------------------------------------------------------------ cohorts, enrolment, attendance
 function Cohorts({ o, role, archived, toast }) {
   const [make, setMake] = useState(false), [season, setSeason] = useState(false);
@@ -359,14 +510,8 @@ function Cohorts({ o, role, archived, toast }) {
             right={archived ? null : <View style={{ gap: 6 }}><Btn small title="Enrol" onPress={() => setEnrol(k)} /><Btn small title="Attendance" color={c.paper} ink={c.ink} onPress={() => setMark(k)} /></View>} onPress={() => setView(k)} />
         )) : <Empty emoji="🧑‍🤝‍🧑" title="No cohorts yet" sub={manage ? 'Create a cohort for a class, age group or squad, then enrol people.' : 'Cohorts assigned to you will appear here.'} />}
       </Section>
-      <FormSheet visible={make} onClose={() => setMake(false)} title="New cohort" submitLabel="Create"
-        fields={[{ key: 'name', label: 'Name' },
-          { key: 'season_id', label: 'Season', type: 'chips', optional: true, options: (seasons.data ?? []).map((s) => ({ value: s.id, label: s.name })) },
-          { key: 'coach_id', label: 'Coach', type: 'chips', optional: true, options: (staff.data ?? []).filter((m) => m.org_role !== 'finance').map((m) => ({ value: m.id, label: m.display_name })) }]}
-        onSubmit={async (v) => { await api.post(`/organisations/${o.id}/cohorts`, v); cohorts.reload(); return 'Cohort created'; }} />
-      <FormSheet visible={season} onClose={() => setSeason(false)} title="New season" submitLabel="Create"
-        fields={[{ key: 'name', label: 'Name', placeholder: 'e.g. Autumn term' }, { key: 'starts_on', label: 'Starts', type: 'date' }, { key: 'ends_on', label: 'Ends', type: 'date' }]}
-        onSubmit={async (v) => { await api.post(`/organisations/${o.id}/seasons`, v); seasons.reload(); return 'Season created'; }} />
+      <NewCohortWizard visible={make} onClose={() => setMake(false)} o={o} seasons={seasons.data} staff={staff.data} onDone={cohorts.reload} toast={toast} />
+      <NewSeasonWizard visible={season} onClose={() => setSeason(false)} o={o} onDone={seasons.reload} toast={toast} />
       {enrol ? <EnrolSheet cohort={enrol} onClose={() => setEnrol(null)} onDone={cohorts.reload} toast={toast} /> : null}
       {mark ? <AttendanceSheet cohort={mark} onClose={() => setMark(null)} toast={toast} /> : null}
       {view ? <CohortSheet cohort={view} canWithdraw={manage || role === 'coach'} onClose={() => setView(null)} onDone={cohorts.reload} toast={toast} /> : null}
