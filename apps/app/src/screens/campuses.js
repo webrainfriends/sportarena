@@ -6,7 +6,7 @@ import React, { useMemo, useState } from 'react';
 import { Pressable, View } from 'react-native';
 import { api } from '../api';
 import { useLoad } from '../hooks';
-import { Btn, Chip, Empty, ErrorBox, Loading, Seg, Sheet, T, Tag } from '../ui';
+import { Btn, Chip, Empty, ErrorBox, Field, Loading, Seg, Sheet, T, Tag } from '../ui';
 import { c } from '../theme';
 import { moneyIn } from '../vtime';
 import { useLayout } from '../layout';
@@ -17,12 +17,14 @@ import { CountryPicker } from '../country-picker';
 import { Bars, Block, Kpi, ModuleNav, Split, when } from './academy-ui';
 import { t } from '../i18n';
 import { TransfersHub, TransferDetail, TransferWizard, ProcessDesigner, PlaceSheet } from './campus-transfers';
+import { useSports } from '../sportpicker';
 
 const KIND_ICON = { region: '🌍', campus: '🏫', department: '🏅' };
 const TYPES = ['venue', 'team', 'cohort', 'programme', 'enrolment', 'staff', 'supplier', 'organisation'];
 const ROLES = ['director', 'sports_lead', 'coach', 'operations', 'finance', 'auditor'];
 const POLICY_KEYS = ['currency', 'timezone', 'attendance_min_pct', 'coach_athlete_ratio_max', 'refund_window_days', 'late_fee_grace_days', 'guardian_consent_renewal_months', 'youth_pickup_required', 'report_cadence'];
 const today = () => new Date().toISOString().slice(0, 10);
+const WIZARD_ZONES = ['Europe/Madrid', 'Europe/London', 'Europe/Paris', 'Europe/Berlin', 'Europe/Rome', 'Europe/Amsterdam', 'Europe/Istanbul', 'Africa/Cairo', 'Africa/Johannesburg', 'Asia/Dubai', 'Asia/Karachi', 'Asia/Kolkata', 'Asia/Colombo', 'Asia/Dhaka', 'Asia/Singapore', 'Asia/Bangkok', 'Asia/Tokyo', 'Asia/Shanghai', 'America/New_York', 'America/Chicago', 'America/Denver', 'America/Los_Angeles', 'America/Sao_Paulo', 'America/Mexico_City', 'Australia/Sydney', 'Pacific/Auckland', 'UTC'];
 const clean = (o) => Object.fromEntries(Object.entries(o).filter(([, v]) => v !== undefined && v !== '' && v !== null));
 const Panel = ({ children, style }) => <View style={[{ backgroundColor: c.paper, borderRadius: 20, padding: 16, gap: 10, borderWidth: 1, borderColor: c.line }, style]}>{children}</View>;
 const statusTag = (u) => (u.status === 'active' ? (u.is_default ? <Tag label={t('campus.status.default')} /> : null) : <Tag label={t(`campus.status.${u.status}`)} color={u.status === 'suspended' ? c.sunSoft : c.violetSoft} />);
@@ -60,7 +62,7 @@ export function Campuses({ o, role, archived, toast, go }) {
   const d = ov.data, units = d.units;
   const canAudit = staff || d.scope.roles.some((r) => ['director', 'auditor'].includes(r));
   const items = [{ key: 'overview', label: t('campus.sec.overview'), icon: '📊' }, { key: 'structure', label: t('campus.sec.structure'), icon: '🧭' }, ...(true ? [{ key: 'moves', label: t('campus.sec.moves'), icon: '🔁' }] : []), ...(canAudit ? [{ key: 'audit', label: t('campus.sec.audit'), icon: '🧾' }] : [])];
-  const P = { o, d, staff, archived, toast, f, setF, setSheet, openUnit: setOpenId, openTransfer: (idv) => setOpen({ kind: 'transfer', id: idv }), refresh, tablet };
+  const P = { o, d, staff, archived, toast, f, setF, setSheet, setSec, openUnit: setOpenId, openTransfer: (idv) => setOpen({ kind: 'transfer', id: idv }), refresh, tablet };
   const empty = !d.setup_done;
   const body = empty && sec !== 'structure' ? <SetupHero {...P} /> : sec === 'overview' ? <Overview {...P} /> : sec === 'structure' ? <Structure {...P} /> : sec === 'moves' ? <TransfersHub {...P} changes={changes} /> : <Audit {...P} audit={audit} />;
   return (
@@ -69,7 +71,7 @@ export function Campuses({ o, role, archived, toast, go }) {
       <View style={{ flex: tablet ? 1 : undefined, width: tablet ? undefined : '100%', minWidth: 0, marginTop: tablet ? 0 : 12, gap: 14 }}>
         <Split open={!!open} onClose={() => setOpen(null)} detailTitle={open?.kind === 'transfer' ? t('campus.tr.title') : units.find((u) => u.id === openId)?.name ?? ''} list={body} detail={open ? (open.kind === 'transfer' ? <TransferDetail key={open.id} o={o} id={open.id} toast={toast} onChanged={refresh} /> : <UnitPanel key={openId} {...P} unitId={openId} />) : null} />
       </View>
-      {sheet?.type === 'adopt' ? <AdoptSheet {...P} onClose={() => setSheet(null)} /> : null}
+      {sheet?.type === 'adopt' ? <CampusSetupWizard o={o} toast={toast} refresh={refresh} setSec={setSec} onClose={() => setSheet(null)} /> : null}
       {sheet?.type === 'unit' ? <UnitForm {...P} spec={sheet} onClose={() => setSheet(null)} /> : null}
       {sheet?.type === 'move' ? <PlaceSheet {...P} spec={sheet} onClose={() => setSheet(null)} /> : null}
       {sheet?.type === 'transfer' ? <TransferWizard {...P} spec={sheet} onClose={() => setSheet(null)} onDone={() => { setSheet(null); refresh(); setSec('moves'); }} /> : null}
@@ -79,19 +81,21 @@ export function Campuses({ o, role, archived, toast, go }) {
 }
 
 // ------------------------------------------------------------------------------------------------------------------------ first run
-function SetupHero({ staff, setSheet, d }) {
+function SetupHero({ staff, setSheet, setSec, d }) {
   return (
-    <Panel style={{ padding: 22, gap: 14 }}>
-      <T size={36}>🏛️</T>
-      <T size={22} weight="800">{t('campus.setup.title')}</T>
-      <T color={c.mute}>{t('campus.setup.body')}</T>
-      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10 }}>
+    <Panel style={{ padding: 22, gap: 16 }}>
+      <T size={40}>🏛️</T>
+      <View style={{ gap: 6 }}>
+        <T size={22} weight="900">{t('campus.setup.title')}</T>
+        <T color={c.mute}>{t('campus.setup.body')}</T>
+      </View>
+      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
         {(['region', 'campus', 'department']).map((k) => <Tag key={k} label={`${KIND_ICON[k]} ${t(`campus.kind.${k}`)}`} />)}
       </View>
       {staff ? (
-        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10 }}>
+        <View style={{ gap: 8 }}>
           <Btn title={t('campus.setup.cta')} onPress={() => setSheet({ type: 'adopt' })} />
-          <Btn title={t('campus.setup.scratch')} color={c.paper} ink={c.ink} onPress={() => setSheet({ type: 'unit', kind: 'campus' })} />
+          <Btn title={t('campus.setup.scratch')} color={c.paper} ink={c.ink} onPress={() => setSec('structure')} />
         </View>
       ) : <Empty emoji="🔒" title={d.organisation.name} />}
     </Panel>
@@ -348,30 +352,233 @@ function Audit({ audit }) {
   return <Panel><Block title={t('campus.audit.title')}><EventList rows={audit.data} /></Block></Panel>;
 }
 
-// ------------------------------------------------------------------------------------------------------------------------ sheets
-function AdoptSheet({ o, d, toast, refresh, onClose }) {
-  const [v, setV] = useState({ name: 'Main campus', country: undefined, city: o.city ?? '', effective_on: undefined });
+// ── Campus setup wizard (4 steps) ─────────────────────────────────────────────
+function CampusSetupWizard({ o, toast, refresh, setSec, onClose }) {
+  const [step, setStep] = useState(1);
+  const [mode, setMode] = useState('single');
+  const [v, setV] = useState({ name: '', code: '', country: undefined, city: o.city ?? '', timezone: undefined, effective_on: undefined });
+  const [depts, setDepts] = useState([]);
   const [pre, setPre] = useState(null);
   const [busy, setBusy] = useState(false);
-  const body = () => clean({ name: v.name, country: v.country, city: v.city, effective_on: v.effective_on });
-  const preview = async () => { setBusy(true); try { setPre(await api.post(`/organisations/${o.id}/campuses/adopt`, { ...body(), dry_run: true })); } catch (e) { toast?.(e.message); } finally { setBusy(false); } };
-  const confirm = async () => { setBusy(true); try { await api.post(`/organisations/${o.id}/campuses/adopt`, { ...body(), idempotency_key: `adopt-${o.id}-${Date.now()}` }); toast?.(t('campus.setup.done')); refresh(); onClose(); } catch (e) { toast?.(e.message); } finally { setBusy(false); } };
-  const set = (k, x) => { setV({ ...v, [k]: x }); setPre(null); };
-  return (
-    <Sheet visible onClose={onClose} title={t('campus.setup.cta')} footer={pre ? <Btn title={t('campus.setup.confirm')} onPress={confirm} loading={busy} /> : <Btn title={t('campus.setup.preview_btn')} onPress={preview} loading={busy} disabled={v.name.trim().length < 2} />}>
-      <T color={c.mute}>{t('campus.setup.body')}</T>
-      <MenuField label={t('campus.setup.name')} value={v.name} onChange={(x) => set('name', x)} options={[...new Set([v.name, 'Main campus', o.city ? `${o.city} campus` : null].filter(Boolean))].map((x) => ({ value: x, label: x }))} />
-      <CountryPicker label={t('campus.setup.country')} value={v.country} onChange={(x) => set('country', x)} optional />
-      <DateField label={t('campus.setup.date')} value={v.effective_on} onChange={(x) => set('effective_on', x)} optional />
-      {pre ? (
-        <View style={{ gap: 8, padding: 12, borderRadius: 14, backgroundColor: c.violetSoft }}>
-          <T weight="800">{t('campus.setup.point')}</T>
-          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>{Object.entries(pre.will_point).filter(([, n]) => n).map(([k, n]) => <Tag key={k} label={`${n} ${t(`campus.type.${k}`)}`} color={c.paper} />)}</View>
-          <T size={13}>{t('campus.setup.athletes_follow', { n: pre.athletes_following })}</T>
-          <T size={12} color={c.mute}>{t('campus.setup.unchanged')}</T>
-        </View>
-      ) : null}
+  const sportsList = useSports();
+
+  const set = (k, x) => setV((p) => ({ ...p, [k]: x }));
+  const cleanBody = () => {
+    const b = { name: v.name.trim() || 'Main campus' };
+    if (v.code?.trim()) b.code = v.code.trim().toUpperCase();
+    if (v.country) b.country = v.country;
+    if (v.city?.trim()) b.city = v.city.trim();
+    if (v.timezone) b.timezone = v.timezone;
+    if (v.effective_on) b.effective_on = v.effective_on;
+    return b;
+  };
+
+  const toReview = async () => {
+    setBusy(true);
+    try {
+      const p = await api.post(`/organisations/${o.id}/campuses/adopt`, { ...cleanBody(), dry_run: true });
+      setPre(p);
+      setStep(4);
+    } catch (e) { toast?.(e.message); }
+    finally { setBusy(false); }
+  };
+
+  const confirm = async () => {
+    setBusy(true);
+    try {
+      const r = await api.post(`/organisations/${o.id}/campuses/adopt`, { ...cleanBody(), idempotency_key: `adopt-${o.id}-${Date.now()}` });
+      for (const sport of depts) {
+        const sp = (sportsList.data ?? []).find((s) => s.slug === sport);
+        try {
+          await api.post(`/organisations/${o.id}/units`, {
+            kind: 'department', sport, parent_id: r.unit.id,
+            name: sp ? `${sp.name} department` : `${sport.charAt(0).toUpperCase() + sport.slice(1)} department`,
+            ...(r.effective_on ? { valid_from: r.effective_on } : {}),
+          });
+        } catch { /* don't block overall setup for a single dept failure */ }
+      }
+      toast?.(t('campus.sw.review.done'));
+      refresh();
+      onClose();
+    } catch (e) { toast?.(e.message); }
+    finally { setBusy(false); }
+  };
+
+  const dots = (
+    <View style={{ flexDirection: 'row', gap: 6, justifyContent: 'center', paddingBottom: 4 }}>
+      {Array.from({ length: 4 }, (_, i) => (
+        <View key={i} style={{ height: 7, width: i + 1 === step ? 20 : 7, borderRadius: 999, backgroundColor: i + 1 === step ? c.pink : c.line }} />
+      ))}
+    </View>
+  );
+  const stepTag = <Tag label={t('campus.sw.step', { n: step, total: 4 })} color={c.pinkSoft} />;
+  const suggestions = [...new Set([o.city ? `${o.city} campus` : null, o.name ? `${o.name} campus` : null, 'Main campus'].filter(Boolean))];
+
+  if (step === 1) return (
+    <Sheet visible onClose={onClose} title={t('campus.setup.cta')}
+      footer={<View style={{ flex: 1, gap: 8 }}>{dots}<Btn title={t('campus.sw.continue')} onPress={() => { if (mode === 'full') { onClose(); setSec('structure'); } else setStep(2); }} /></View>}>
+      {stepTag}
+      <View style={{ gap: 6 }}>
+        <T size={20} weight="900">{t('campus.sw.mode.title')}</T>
+        <T color={c.mute}>{t('campus.sw.mode.note')}</T>
+      </View>
+      <View style={{ gap: 8 }}>
+        <_OptionCard icon="🎯" title={t('campus.sw.mode.single')} desc={t('campus.sw.mode.single_desc')} badge={t('campus.sw.mode.single_rec')} selected={mode === 'single'} onPress={() => setMode('single')} />
+        <_OptionCard icon="🌐" title={t('campus.sw.mode.full')} desc={t('campus.sw.mode.full_desc')} selected={mode === 'full'} onPress={() => setMode('full')} />
+      </View>
     </Sheet>
+  );
+
+  if (step === 2) return (
+    <Sheet visible onClose={onClose} title={t('campus.setup.cta')}
+      footer={<View style={{ flex: 1, gap: 8 }}>{dots}<View style={{ flexDirection: 'row', gap: 8 }}><Btn title={t('campus.sw.back')} color={c.paper} ink={c.ink} onPress={() => setStep(1)} style={{ flex: 0.6 }} /><Btn title={t('campus.sw.continue')} onPress={() => setStep(3)} style={{ flex: 1 }} /></View></View>}>
+      {stepTag}
+      <View style={{ gap: 4 }}>
+        <T size={18} weight="800">{t('campus.sw.profile.title')}</T>
+        <T size={13} color={c.mute}>{t('campus.sw.profile.sub')}</T>
+      </View>
+      <View style={{ gap: 6 }}>
+        <Field label={t('campus.sw.profile.name')} value={v.name} onChangeText={(x) => set('name', x)} placeholder="e.g. Manacor campus" maxLength={80} />
+        {suggestions.length > 0 ? (
+          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
+            {suggestions.map((s) => <Chip key={s} label={s} active={v.name === s} onPress={() => set('name', v.name === s ? '' : s)} />)}
+          </View>
+        ) : null}
+      </View>
+      <Field label={`${t('campus.sw.profile.code')} (${t('form.optional')})`} value={v.code} onChangeText={(x) => set('code', x.toUpperCase().replace(/[^A-Z0-9_-]/g, '').slice(0, 16))} placeholder="e.g. MAN · BCN" hint={t('campus.sw.profile.code_hint')} maxLength={16} />
+      <CountryPicker label={t('campus.sw.profile.country')} value={v.country} onChange={(x) => set('country', x)} optional />
+      <Field label={`${t('campus.sw.profile.city')} (${t('form.optional')})`} value={v.city} onChangeText={(x) => set('city', x)} placeholder={t('campus.sw.profile.city')} maxLength={80} />
+      <MenuField label={`${t('campus.sw.profile.tz')} (${t('form.optional')})`} value={v.timezone ?? ''} onChange={(x) => set('timezone', x || undefined)} options={[{ value: '', label: t('campus.sw.profile.tz_none') }, ...WIZARD_ZONES.map((z) => ({ value: z, label: z.replace(/_/g, ' ') }))]} />
+      <DateField label={`${t('campus.sw.profile.from')} (${t('form.optional')})`} value={v.effective_on} onChange={(x) => set('effective_on', x)} optional hint={t('campus.sw.profile.from_hint')} />
+    </Sheet>
+  );
+
+  if (step === 3) return (
+    <Sheet visible onClose={onClose} title={t('campus.setup.cta')}
+      footer={<View style={{ flex: 1, gap: 8 }}>{dots}<View style={{ flexDirection: 'row', gap: 8 }}><Btn title={t('campus.sw.back')} color={c.paper} ink={c.ink} onPress={() => setStep(2)} style={{ flex: 0.6 }} /><Btn title={t('campus.sw.continue')} onPress={toReview} loading={busy} style={{ flex: 1 }} /></View></View>}>
+      {stepTag}
+      <View style={{ gap: 4 }}>
+        <T size={18} weight="800">{t('campus.sw.depts.title')}</T>
+        <T size={13} color={c.mute}>{t('campus.sw.depts.sub')}</T>
+      </View>
+      {sportsList.loading ? <Loading /> : (
+        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 7 }}>
+          {(sportsList.data ?? []).slice(0, 28).map((s) => (
+            <Chip key={s.slug} label={s.name} active={depts.includes(s.slug)} onPress={() => setDepts((p) => p.includes(s.slug) ? p.filter((x) => x !== s.slug) : [...p, s.slug])} />
+          ))}
+        </View>
+      )}
+      {depts.length > 0 ? (
+        <View style={{ backgroundColor: c.violetSoft, borderRadius: 14, padding: 14, gap: 8 }}>
+          <T size={12} weight="800" color={c.mute} style={{ letterSpacing: 1 }}>{t('campus.sw.depts.preview', { name: v.name.trim() || t('campus.kind.campus') }).toUpperCase()}</T>
+          {depts.map((slug) => {
+            const sp = (sportsList.data ?? []).find((s) => s.slug === slug);
+            return (
+              <View key={slug} style={{ flexDirection: 'row', alignItems: 'center', gap: 8, padding: 10, backgroundColor: c.paper, borderRadius: 10 }}>
+                <T size={16}>🏅</T>
+                <T weight="700" style={{ flex: 1 }}>{(sp?.name ?? slug)} {t('campus.sw.depts.dept_sfx')}</T>
+                <Tag label={t('campus.sw.depts.new')} color={c.pinkSoft} />
+              </View>
+            );
+          })}
+          <T size={12} color={c.mute}>{t('campus.sw.depts.note')}</T>
+        </View>
+      ) : (
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, padding: 12, backgroundColor: c.paper, borderRadius: 14, borderWidth: 1.5, borderColor: c.line }}>
+          <View style={{ width: 22, height: 22, borderRadius: 6, backgroundColor: c.pink, alignItems: 'center', justifyContent: 'center' }}>
+            <T weight="900" color={c.paper}>✓</T>
+          </View>
+          <View style={{ flex: 1 }}>
+            <T weight="700">{t('campus.sw.depts.skip')}</T>
+            <T size={12} color={c.mute}>{t('campus.sw.depts.skip_sub')}</T>
+          </View>
+        </View>
+      )}
+    </Sheet>
+  );
+
+  return (
+    <Sheet visible onClose={onClose} title={t('campus.setup.cta')}
+      footer={<View style={{ flex: 1, gap: 8 }}>{dots}<View style={{ flexDirection: 'row', gap: 8 }}><Btn title={t('campus.sw.back')} color={c.paper} ink={c.ink} onPress={() => setStep(3)} style={{ flex: 0.6 }} /><Btn title={t('campus.sw.review.confirm')} onPress={confirm} loading={busy} style={{ flex: 1 }} /></View></View>}>
+      {stepTag}
+      <View style={{ gap: 4 }}>
+        <T size={18} weight="800">{t('campus.sw.review.title')}</T>
+        <T size={13} color={c.mute}>{t('campus.sw.review.sub')}</T>
+      </View>
+      <Panel>
+        <T size={12} weight="800" color={c.mute} style={{ letterSpacing: 1 }}>{t('campus.sw.review.campus').toUpperCase()}</T>
+        <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 10 }}>
+          <T size={22}>🏫</T>
+          <View style={{ flex: 1, gap: 6 }}>
+            <T size={15} weight="900">{v.name.trim() || 'Main campus'}</T>
+            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 5 }}>
+              {v.code ? <Tag label={v.code.toUpperCase()} color={c.pinkSoft} /> : null}
+              {v.country ? <Tag label={v.country} /> : null}
+              {v.city ? <Tag label={v.city} /> : null}
+              {v.timezone ? <Tag label={v.timezone.replace(/_/g, ' ')} /> : null}
+            </View>
+          </View>
+        </View>
+      </Panel>
+      {pre ? (
+        <Panel>
+          <T size={12} weight="800" color={c.mute} style={{ letterSpacing: 1 }}>{t('campus.sw.review.objects').toUpperCase()}</T>
+          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+            {Object.entries(pre.will_point).filter(([, n]) => n > 0).map(([k, n]) => (
+              <View key={k} style={{ alignItems: 'center', backgroundColor: c.bg, borderRadius: 10, padding: 10, minWidth: 68 }}>
+                <T size={22} weight="900">{n}</T>
+                <T size={10} weight="800" color={c.mute} style={{ textAlign: 'center', letterSpacing: 0.3, textTransform: 'uppercase' }}>{t(`campus.type.${k}`)}</T>
+              </View>
+            ))}
+          </View>
+          {pre.athletes_following > 0 ? (
+            <View style={{ backgroundColor: c.limeSoft, borderRadius: 10, padding: 10 }}>
+              <T size={13} weight="700" color={c.lime}>{t('campus.sw.review.athletes', { n: pre.athletes_following })}</T>
+            </View>
+          ) : null}
+          <T size={12} color={c.mute}>{t('campus.setup.unchanged')}</T>
+        </Panel>
+      ) : null}
+      {depts.length > 0 ? (
+        <Panel>
+          <T size={12} weight="800" color={c.mute} style={{ letterSpacing: 1 }}>{t('campus.sw.review.depts').toUpperCase()}</T>
+          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
+            {depts.map((slug) => {
+              const sp = (sportsList.data ?? []).find((s) => s.slug === slug);
+              return <Tag key={slug} label={`🏅 ${sp?.name ?? slug}`} color={c.pinkSoft} />;
+            })}
+          </View>
+        </Panel>
+      ) : null}
+      <View style={{ backgroundColor: c.limeSoft, borderRadius: 14, padding: 14, flexDirection: 'row', gap: 10, alignItems: 'flex-start' }}>
+        <T size={18}>🛡️</T>
+        <View style={{ flex: 1, gap: 4 }}>
+          <T size={14} weight="800" color={c.lime}>{t('campus.sw.review.safe')}</T>
+          <T size={12} color={c.lime} style={{ lineHeight: 17 }}>{t('campus.sw.review.safe_body')}</T>
+        </View>
+      </View>
+    </Sheet>
+  );
+}
+
+function _OptionCard({ icon, title, desc, badge, selected, onPress }) {
+  return (
+    <Pressable onPress={onPress} accessibilityRole="radio" accessibilityState={{ selected }}
+      style={{ borderWidth: 2, borderColor: selected ? c.pink : c.line, borderRadius: 16, padding: 16, backgroundColor: selected ? '#F8F5FE' : c.paper }}>
+      <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 12 }}>
+        <View style={{ width: 20, height: 20, borderRadius: 999, borderWidth: 2, borderColor: selected ? c.pink : c.line, alignItems: 'center', justifyContent: 'center', marginTop: 2, flexShrink: 0 }}>
+          {selected ? <View style={{ width: 10, height: 10, borderRadius: 999, backgroundColor: c.pink }} /> : null}
+        </View>
+        <View style={{ flex: 1, gap: 4 }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+            <T size={18}>{icon}</T>
+            <T size={14} weight="800">{title}</T>
+          </View>
+          <T size={13} color={c.mute} style={{ lineHeight: 18 }}>{desc}</T>
+          {badge ? <View style={{ alignSelf: 'flex-start', backgroundColor: c.limeSoft, borderRadius: 999, paddingHorizontal: 10, paddingVertical: 3, marginTop: 2 }}><T size={11} weight="800" color={c.lime}>{badge}</T></View> : null}
+        </View>
+      </View>
+    </Pressable>
   );
 }
 
