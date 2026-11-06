@@ -5,6 +5,7 @@ import React, { useState, useEffect } from 'react';
 import { View, Switch, ScrollView } from 'react-native';
 import { t } from '../i18n';
 import { api } from '../api';
+import { useSession } from '../session';
 import { useLoad } from '../hooks';
 import { explain, LoadError } from '../access';
 import { Btn, Card, Loading, Row, T, Tag } from '../ui';
@@ -18,8 +19,8 @@ const CONTACT_MODES = [
   { value: 'bsl_interpreter', icon: '🤲', label: 'inc.cprefs_mode_bsl', sub: 'inc.cprefs_mode_bsl_sub' },
 ];
 
-export function AccessibleContactPreferences({ route, toast }) {
-  const athleteId = route?.params?.athleteId;
+export function AccessibleContactPreferences({ athleteId }) {
+  const { toast } = useSession();
   const d = useLoad(() => api.get('/me/contact-preferences', athleteId ? { athlete_id: athleteId } : {}), [athleteId]);
   const [mode, setMode] = useState('app');
   const [editing, setEditing] = useState(false);

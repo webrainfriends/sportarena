@@ -52,7 +52,7 @@ cap({
         [i.org_id, i.programme_id, i.athlete_id],
       )).rows[0] ?? null;
       const staffRows = await c.query(
-        "SELECT DISTINCT u.id AS user_id, u.display_name FROM academy_session_staff st JOIN academy_sessions s ON s.id=st.session_id JOIN org_cohorts k ON k.id=s.cohort_id JOIN org_enrolments e ON e.cohort_id=k.id JOIN users u ON u.id=st.user_id WHERE s.organisation_id=$1 AND e.athlete_id=$2 AND e.status='enrolled' AND st.status IN ('assigned','confirmed') AND s.starts_at > now() AND s.starts_at < now() + interval '30 days' ORDER BY u.display_name LIMIT 20",
+        "SELECT DISTINCT u.id AS user_id, u.display_name FROM academy_session_staff st JOIN academy_sessions s ON s.id=st.session_id JOIN org_cohorts k ON k.id=s.cohort_id JOIN org_enrolments e ON e.cohort_id=k.id JOIN users u ON u.id=st.user_id WHERE s.organisation_id=$1 AND e.user_id=$2 AND e.status='enrolled' AND st.status IN ('assigned','confirmed') AND s.starts_at > now() AND s.starts_at < now() + interval '30 days' ORDER BY u.display_name LIMIT 20",
         [i.org_id, i.athlete_id],
       );
       return {
@@ -81,8 +81,8 @@ cap({
         `INSERT INTO academy_enrolment_inclusion_prompts(org_id, enrolment_id, athlete_id, programme_id, dismissed_at)
          SELECT $1, e.id, $3, $4, now()
          FROM org_enrolments e JOIN org_cohorts k ON k.id=e.cohort_id AND k.programme_id=$4
-         WHERE e.athlete_id=$3 AND k.organisation_id=$1 AND e.status='enrolled'
-         ORDER BY e.created_at DESC LIMIT 1
+         WHERE e.user_id=$3 AND k.organisation_id=$1 AND e.status='enrolled'
+         ORDER BY e.enrolled_at DESC LIMIT 1
          ON CONFLICT (enrolment_id) DO UPDATE SET dismissed_at=now()`,
         [i.org_id, user.id, i.athlete_id, i.programme_id],
       );
@@ -167,7 +167,7 @@ cap({
       if (i.athlete_id !== user.id && !(await guardianLink(user.id, i.athlete_id))) throw forbidden('Guardian access required');
       const q = c.query.bind(c);
       const enrolRow = (await c.query(
-        "SELECT e.id AS enrolment_id, e.cohort_id, k.name AS cohort_name, k.programme_id, p.title AS programme_title, p.sport FROM org_enrolments e JOIN org_cohorts k ON k.id=e.cohort_id LEFT JOIN academy_programmes p ON p.id=k.programme_id WHERE k.organisation_id=$1 AND e.athlete_id=$2 AND e.status='enrolled' ORDER BY e.created_at DESC LIMIT 1",
+        "SELECT e.id AS enrolment_id, e.cohort_id, k.name AS cohort_name, k.programme_id, p.title AS programme_title, p.sport FROM org_enrolments e JOIN org_cohorts k ON k.id=e.cohort_id LEFT JOIN academy_programmes p ON p.id=k.programme_id WHERE k.organisation_id=$1 AND e.user_id=$2 AND e.status='enrolled' ORDER BY e.enrolled_at DESC LIMIT 1",
         [i.org_id, i.athlete_id],
       )).rows[0];
       if (!enrolRow) throw notFound('Enrolment');

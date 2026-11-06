@@ -46,7 +46,7 @@ async function setupSession(coach) {
   const a2 = await signup(['athlete']);
   // create session record
   const rec = (await pool.query(
-    "INSERT INTO coaching_session_records(coach_id, sport_id, source_type, source_id, title, status) VALUES($1,$2,'team_session','test-src','Para test session','active') RETURNING *",
+    "INSERT INTO coaching_session_records(coach_id, sport_id, source_type, source_id, title, status) VALUES($1,$2,'team_session','test-src','Para test session','planned') RETURNING *",
     [coach.id, sport.id],
   )).rows[0];
   // add athletes to session

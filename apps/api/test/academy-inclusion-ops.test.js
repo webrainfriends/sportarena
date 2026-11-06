@@ -53,14 +53,14 @@ async function setup() {
 
   // Insert inclusion config on progA
   await pool.query(
-    "INSERT INTO academy_programme_inclusion(programme_id, offered_needs, requirements) VALUES ($1,'{mobility}','{}') ON CONFLICT DO NOTHING",
-    [progA.id],
+    "INSERT INTO academy_programme_inclusion(programme_id, organisation_id, offered_needs, requirements, updated_by) VALUES ($1,$2,'{mobility}','{}',$3) ON CONFLICT DO NOTHING",
+    [progA.id, org.id, owner.id],
   );
 
   // Enrol athlete into progA
   const cohort = ok(await api('POST', `/organisations/${org.id}/cohorts`, { token: owner.token, body: { name: `Cohort ${n}`, coach_id: coach.id } }), 201);
   ok(await api('POST', `/cohorts/${cohort.id}/enrolments`, { token: owner.token, body: { csv: `handle,consent\n${athlete.handle},yes` } }), 201);
-  const enrolment = (await pool.query('SELECT id FROM org_enrolments WHERE organisation_id=$1 AND user_id=$2 LIMIT 1', [org.id, athlete.id])).rows[0];
+  const enrolment = (await pool.query('SELECT e.id FROM org_enrolments e JOIN org_cohorts k ON k.id=e.cohort_id WHERE k.organisation_id=$1 AND e.user_id=$2 LIMIT 1', [org.id, athlete.id])).rows[0];
   // Link enrolment to programme
   await pool.query('UPDATE org_enrolments SET programme_id=$1 WHERE id=$2', [progA.id, enrolment.id]);
 

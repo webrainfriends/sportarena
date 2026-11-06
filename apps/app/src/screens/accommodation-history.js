@@ -4,6 +4,7 @@ import React, { useState } from 'react';
 import { View } from 'react-native';
 import { t } from '../i18n';
 import { api } from '../api';
+import { useSession } from '../session';
 import { useLoad } from '../hooks';
 import { explain, LoadError } from '../access';
 import { Btn, Card, Empty, Loading, Row, T, Tag } from '../ui';
@@ -17,8 +18,8 @@ const LOG_ICON = {
   contact_preferences_viewed: '📞', checklist_item_arranged: '✅', dsar_export: '⬇️', correction_requested: '📝',
 };
 
-export function AccommodationHistory({ route, toast }) {
-  const athleteId = route?.params?.athleteId;
+export function AccommodationHistory({ athleteId }) {
+  const { toast } = useSession();
   const [page, setPage] = useState(1);
   const [correcting, setCorrecting] = useState(false);
   const [exporting, setExporting] = useState(false);
