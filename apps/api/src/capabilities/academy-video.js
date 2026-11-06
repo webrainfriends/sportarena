@@ -309,3 +309,150 @@ export function academyClipFilesRouter() {
   });
   return r;
 }
+
+// ---- Timestamped video annotations (#318) ----------------------------------------------------
+// Coach/staff annotate shared/public clips; athletes see + reply; everyone can resolve their own.
+// text_enc and drawing_data_enc are AES-256-GCM encrypted at rest via crypto.js.
+
+const COACH_ROLES = ['coach', 'staff', 'admin', 'platform_admin'];
+
+async function annotationVideo(videoId) {
+  const v = await one(
+    'SELECT id, user_id, visibility FROM passport_videos WHERE id=$1 AND removed_at IS NULL',
+    [videoId]);
+  if (!v) throw notFound('Video');
+  return v;
+}
+
+cap({
+  name: 'add_video_annotation',
+  method: 'POST', path: '/me/videos/:id/annotations', tag: 'Video', status: 201,
+  summary: 'Add a timestamped annotation (text, drawing or both) to a video. Coach/staff may annotate shared or public clips they can see; the owner may annotate any of their own clips.',
+  input: z.object({
+    id,
+    timestamp_ms: z.number().int().min(0),
+    text: z.string().max(2000).optional(),
+    drawing_data: z.string().max(50000).optional(),
+  }),
+  async handler({ user }, { id: vid, timestamp_ms, text, drawing_data }) {
+    const v = await annotationVideo(vid);
+    const isOwner = v.user_id === user.id;
+    const isStaff = COACH_ROLES.includes(user.role);
+    if (!isOwner && !isStaff) throw forbidden('coach or owner only');
+    if (!isOwner && v.visibility === 'private') throw forbidden('video not shared');
+    if (!text && !drawing_data) throw badRequest('provide text or drawing_data');
+    const text_enc = text ? encrypt(text, `annotation:text:${vid}`) : null;
+    const drawing_data_enc = drawing_data ? encrypt(drawing_data, `annotation:drawing:${vid}`) : null;
+    const ann = await one(
+      `INSERT INTO video_annotations (video_id, author_id, timestamp_ms, text_enc, drawing_data_enc)
+       VALUES ($1,$2,$3,$4,$5) RETURNING id, timestamp_ms, resolved_at, created_at`,
+      [vid, user.id, timestamp_ms, text_enc, drawing_data_enc]);
+    await audit(null, user.id, 'video_annotation_added', 'video_annotations', ann.id);
+    return { ...ann, text: text || null, has_drawing: !!drawing_data };
+  },
+});
+
+cap({
+  name: 'list_video_annotations',
+  method: 'GET', path: '/me/videos/:id/annotations', tag: 'Video',
+  summary: 'List timestamped annotations on a video. Owner sees all; coach/staff see annotations on shared/public clips. Every call is audit-logged.',
+  input: z.object({ id }),
+  async handler({ user }, { id: vid }) {
+    const v = await annotationVideo(vid);
+    const isOwner = v.user_id === user.id;
+    const isStaff = COACH_ROLES.includes(user.role);
+    if (!isOwner && !isStaff) throw forbidden('not authorised');
+    if (!isOwner && v.visibility === 'private') throw notFound('Video');
+    const rows = await many(
+      `SELECT a.id, a.timestamp_ms, a.text_enc, a.drawing_data_enc,
+              a.resolved_at, a.row_version, a.created_at,
+              u.id AS author_id, u.display_name AS author_name, u.role AS author_role,
+              (SELECT COUNT(*)::int FROM video_annotation_replies r WHERE r.annotation_id=a.id AND r.archived_at IS NULL) AS reply_count
+       FROM video_annotations a JOIN users u ON u.id=a.author_id
+       WHERE a.video_id=$1 AND a.archived_at IS NULL
+       ORDER BY a.timestamp_ms ASC, a.created_at ASC`,
+      [vid]);
+    await audit(null, user.id, 'video_annotations_listed', 'video_annotations', vid);
+    return rows.map(({ text_enc, drawing_data_enc, ...r }) => ({
+      ...r,
+      text: text_enc ? decrypt(text_enc, `annotation:text:${vid}`) : null,
+      has_drawing: !!drawing_data_enc,
+    }));
+  },
+});
+
+cap({
+  name: 'reply_to_annotation',
+  method: 'POST', path: '/me/videos/:vid/annotations/:id/reply', tag: 'Video', status: 201,
+  summary: 'Reply to a video annotation. Owner and coach/staff may reply.',
+  input: z.object({ vid: z.string().uuid(), id: z.string().uuid(), text: z.string().min(1).max(2000) }),
+  async handler({ user }, { vid, id: annId, text }) {
+    const ann = await one(
+      `SELECT a.id, pv.user_id AS video_owner
+       FROM video_annotations a JOIN passport_videos pv ON pv.id=a.video_id
+       WHERE a.id=$1 AND a.video_id=$2 AND a.archived_at IS NULL`,
+      [annId, vid]);
+    if (!ann) throw notFound('Annotation');
+    const isOwner = ann.video_owner === user.id;
+    const isStaff = COACH_ROLES.includes(user.role);
+    if (!isOwner && !isStaff) throw forbidden('not authorised');
+    const text_enc = encrypt(text, `annotation:reply:${annId}`);
+    const reply = await one(
+      'INSERT INTO video_annotation_replies (annotation_id, author_id, text_enc) VALUES ($1,$2,$3) RETURNING id, created_at',
+      [annId, user.id, text_enc]);
+    return { ...reply, text };
+  },
+});
+
+cap({
+  name: 'resolve_annotation',
+  method: 'POST', path: '/me/videos/:vid/annotations/:id/resolve', tag: 'Video',
+  summary: 'Mark a video annotation as resolved (or re-open it). Author or video owner may toggle.',
+  input: z.object({ vid: z.string().uuid(), id: z.string().uuid(), resolved: z.boolean().default(true) }),
+  async handler({ user }, { vid, id: annId, resolved }) {
+    const ann = await one(
+      `SELECT a.id, a.author_id, pv.user_id AS video_owner
+       FROM video_annotations a JOIN passport_videos pv ON pv.id=a.video_id
+       WHERE a.id=$1 AND a.video_id=$2 AND a.archived_at IS NULL`,
+      [annId, vid]);
+    if (!ann) throw notFound('Annotation');
+    if (ann.author_id !== user.id && ann.video_owner !== user.id) throw forbidden('not authorised');
+    await one(
+      'UPDATE video_annotations SET resolved_at=$1, row_version=row_version+1 WHERE id=$2 RETURNING id',
+      [resolved ? new Date() : null, annId]);
+    return { id: annId, resolved };
+  },
+});
+
+cap({
+  name: 'export_video_analysis',
+  method: 'GET', path: '/me/videos/:id/analysis/export', tag: 'Video',
+  summary: 'Export the annotation timeline for a video as a structured JSON manifest (suitable for PDF rendering). Audit-logged.',
+  input: z.object({ id }),
+  async handler({ user }, { id: vid }) {
+    const v = await annotationVideo(vid);
+    const isOwner = v.user_id === user.id;
+    const isStaff = COACH_ROLES.includes(user.role);
+    if (!isOwner && !isStaff) throw forbidden('not authorised');
+    const annotations = await many(
+      `SELECT a.timestamp_ms, a.text_enc, a.resolved_at, a.created_at, u.display_name AS author
+       FROM video_annotations a JOIN users u ON u.id=a.author_id
+       WHERE a.video_id=$1 AND a.archived_at IS NULL ORDER BY a.timestamp_ms ASC`,
+      [vid]);
+    const videoRow = await one('SELECT title FROM passport_videos WHERE id=$1', [vid]);
+    await audit(null, user.id, 'video_analysis_exported', 'video_annotations', vid);
+    return {
+      video_id: vid,
+      video_title: videoRow?.title ?? null,
+      exported_at: new Date().toISOString(),
+      annotation_count: annotations.length,
+      annotations: annotations.map((a) => ({
+        timestamp_ms: a.timestamp_ms,
+        author: a.author,
+        text: a.text_enc ? decrypt(a.text_enc, `annotation:text:${vid}`) : null,
+        resolved: !!a.resolved_at,
+        created_at: a.created_at,
+      })),
+    };
+  },
+});
