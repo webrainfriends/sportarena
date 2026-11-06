@@ -22,9 +22,9 @@ ALTER TABLE sport_profiles
 
 -- ── 2. Career history entries ────────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS coach_career_entries (
-  id               bigserial    PRIMARY KEY,
-  user_id          bigint       NOT NULL REFERENCES users(id),
-  sport_profile_id bigint       REFERENCES sport_profiles(id),
+  id               uuid    PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id          uuid         NOT NULL REFERENCES users(id),
+  sport_profile_id uuid         REFERENCES sport_profiles(id),
   org_name         varchar(200) NOT NULL,
   role             varchar(100),
   city             varchar(100),
@@ -41,15 +41,15 @@ CREATE INDEX IF NOT EXISTS coach_career_entries_sport_profile_id ON coach_career
 
 -- ── 3. Lightweight coaching licence declarations (not duplicate of verification_cases) ─
 CREATE TABLE IF NOT EXISTS coach_sport_licences (
-  id                   bigserial    PRIMARY KEY,
-  user_id              bigint       NOT NULL REFERENCES users(id),
-  sport_profile_id     bigint       REFERENCES sport_profiles(id),
+  id                   uuid    PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id              uuid         NOT NULL REFERENCES users(id),
+  sport_profile_id     uuid         REFERENCES sport_profiles(id),
   issuing_body         varchar(200) NOT NULL,
   licence_level        varchar(100),
   licence_no_enc       text,
   country              varchar(80),
   expires_on           date,
-  verification_case_id bigint       REFERENCES verification_cases(id),
+  verification_case_id uuid         REFERENCES verification_cases(id),
   created_at           timestamptz  DEFAULT now(),
   updated_at           timestamptz  DEFAULT now()
 );
