@@ -1,13 +1,14 @@
 // Supplier workspace (#458): one place for a freelancer or company to advertise services, answer RFQs, quote, confirm orders, schedule and deliver work,
 // invoice and see their numbers. Every action is an API capability (REST + OpenAPI + MCP); this screen only calls them.
 import React, { useState } from 'react';
-import { View } from 'react-native';
+import { Switch, View } from 'react-native';
+import { Counter } from '../pickers';
 import { api } from '../api';
 import { useLoad } from '../hooks';
 import { c } from '../theme';
 import { FormSheet } from '../FormSheet';
 import { useNav } from '../nav';
-import { Btn, Card, Chip, Empty, ErrorBox, H1, Loading, Row, Screen, Section, Sheet, T } from '../ui';
+import { Btn, Card, Chip, Empty, ErrorBox, Field, H1, Loading, Row, Screen, Section, Sheet, T } from '../ui';
 import { localToIso } from '../vtime';
 import { useDo } from './console-utils';
 import { ChainTrace, DocButton, ExportsPanel, Kpi, Kv, Note, PerformanceRecord, Status, Tabs, Wrap, catLabel, collectScope, day, label, money, scopeFields, useCatalogue, when } from './svc-common';
@@ -50,23 +51,190 @@ export function SupplierWorkspace() {
   );
 }
 
+const PROFILE_STEPS = ['Identity & Services', 'Capacity & Operations', 'Tax & Launch'];
+const SUPPLIER_TYPES = [
+  { value: 'individual', label: 'Individual / freelancer', sub: 'You personally deliver the service' },
+  { value: 'sole_trader', label: 'Sole trader', sub: 'Registered self-employed, trading under your own name' },
+  { value: 'company', label: 'Company / organisation', sub: 'Ltd, LLP, charity, school or club' },
+];
+
 function ProfileForm({ cat, visible, onClose, onDone, initial, id }) {
   const mine = useLoad(() => api.get('/organisations').catch(() => []), []);
-  const orgs = (mine.data ?? []).filter((o) => ['owner', 'admin'].includes(o.role)).map((o) => ({ id: o.id, label: o.name, sub: o.kind }));
-  const fields = [
-    { key: 'supplier_type', label: 'Who is supplying?', type: 'chips', options: [{ value: 'individual', label: 'Individual / freelancer' }, { value: 'sole_trader', label: 'Sole trader' }, { value: 'company', label: 'Company / organisation' }] },
-    { key: 'organisation_id', label: 'Organisation', type: 'entity', options: orgs, noun: 'organisation', show: (v) => v.supplier_type === 'company', optional: true },
-    { key: 'legal_name', label: 'Legal name' }, { key: 'trading_name', label: 'Trading name', optional: true },
-    { key: 'description', label: 'About your services', type: 'multiline', optional: true },
-    { key: 'categories', label: 'Service categories', type: 'multi', options: cat.categories.map((k) => ({ value: k.slug, label: k.label })), optional: true },
-    { key: 'currencies', label: 'Currencies you accept', type: 'multi', options: CURRENCIES, optional: true },
-    { key: 'daily_capacity', label: 'Daily capacity (units per day)', type: 'stepper', min: 0, max: 10000, default: 0, optional: true },
-    { key: 'lead_time_days', label: 'Lead time (days)', type: 'stepper', min: 0, max: 365, default: 0 },
-    { key: 'tax_registration', label: 'Tax registration number (GSTIN, VAT id…)', optional: true }, { key: 'billing_address', label: 'Billing address', type: 'multiline', optional: true },
-    { key: 'timezone', label: 'Time zone', type: 'timezone', optional: true },
-  ];
-  return <FormSheet visible={visible} onClose={onClose} title={id ? 'Edit supplier profile' : 'Supplier profile'} fields={fields} initial={initial}
-    onSubmit={async (v) => { const body = { ...v, daily_capacity: v.daily_capacity || undefined }; if (id) await api.patch(`/supplier-profiles/${id}`, { ...body, row_version: initial.row_version }); else await api.post('/supplier-profiles', body); onDone(); return 'Saved'; }} />;
+  const orgs = (mine.data ?? []).filter((o) => ['owner', 'admin'].includes(o.role));
+  const [step, setStep] = useState(0);
+  const [busy, setBusy] = useState(false);
+  const [f, setF] = useState({
+    supplier_type: initial?.supplier_type ?? 'individual',
+    organisation_id: initial?.organisation_id ?? undefined,
+    legal_name: initial?.legal_name ?? '',
+    trading_name: initial?.trading_name ?? '',
+    description: initial?.description ?? '',
+    categories: initial?.categories ?? [],
+    currencies: initial?.currencies ?? [],
+    daily_capacity: initial?.daily_capacity ?? 0,
+    lead_time_days: initial?.lead_time_days ?? 0,
+    min_booking_days: initial?.min_booking_days ?? 0,
+    accepts_rush: initial?.accepts_rush ?? false,
+    insured: initial?.insured ?? false,
+    tax_registration: initial?.tax_registration ?? '',
+    billing_address: initial?.billing_address ?? '',
+    timezone: initial?.timezone ?? '',
+    website: initial?.website ?? '',
+  });
+  const set = (k, v) => setF(p => ({ ...p, [k]: v }));
+  const can = [
+    () => f.supplier_type && f.legal_name.trim().length >= 2,
+    () => true,
+    () => true,
+  ][step]();
+
+  const submit = async () => {
+    setBusy(true);
+    try {
+      const body = {
+        supplier_type: f.supplier_type,
+        legal_name: f.legal_name.trim(),
+        ...(f.trading_name.trim() ? { trading_name: f.trading_name.trim() } : {}),
+        ...(f.description.trim() ? { description: f.description.trim() } : {}),
+        ...(f.categories.length ? { categories: f.categories } : {}),
+        ...(f.currencies.length ? { currencies: f.currencies } : {}),
+        ...(f.daily_capacity > 0 ? { daily_capacity: f.daily_capacity } : {}),
+        lead_time_days: f.lead_time_days,
+        ...(f.min_booking_days > 0 ? { min_booking_days: f.min_booking_days } : {}),
+        accepts_rush: f.accepts_rush,
+        insured: f.insured,
+        ...(f.tax_registration.trim() ? { tax_registration: f.tax_registration.trim() } : {}),
+        ...(f.billing_address.trim() ? { billing_address: f.billing_address.trim() } : {}),
+        ...(f.timezone ? { timezone: f.timezone } : {}),
+        ...(f.website.trim() ? { website: f.website.trim() } : {}),
+        ...(f.supplier_type === 'company' && f.organisation_id ? { organisation_id: f.organisation_id } : {}),
+      };
+      if (id) await api.patch(`/supplier-profiles/${id}`, { ...body, row_version: initial.row_version });
+      else await api.post('/supplier-profiles', body);
+      onDone();
+    } catch (e) { /* surface via toast in parent */ throw e; }
+    setBusy(false);
+  };
+
+  return (
+    <Sheet visible={visible} onClose={onClose} title={id ? 'Edit Supplier Profile' : 'Create Supplier Profile'}>
+      <View style={{ flexDirection: 'row', gap: 6, marginBottom: 4 }}>
+        {PROFILE_STEPS.map((s, i) => (
+          <View key={s} style={{ flex: 1, gap: 3 }}>
+            <View style={{ height: 4, borderRadius: 2, backgroundColor: i <= step ? c.pink : c.line }} />
+            <T size={10} weight={i === step ? '800' : '500'} color={i === step ? c.ink : c.mute}>{s}</T>
+          </View>
+        ))}
+      </View>
+
+      {step === 0 ? (
+        <View style={{ gap: 14 }}>
+          <View style={{ gap: 8 }}>
+            <T size={12} weight="800" color={c.mute} style={{ letterSpacing: 0.5 }}>WHO IS SUPPLYING?</T>
+            {SUPPLIER_TYPES.map(o => (
+              <View key={o.value} onTouchEnd={() => set('supplier_type', o.value)}
+                style={{ flexDirection: 'row', alignItems: 'center', gap: 12, padding: 14, borderWidth: 1.5, borderColor: f.supplier_type === o.value ? c.pink : c.line, borderRadius: 14, backgroundColor: c.paper }}>
+                <View style={{ flex: 1 }}>
+                  <T weight="800" size={14}>{o.label}</T>
+                  <T size={12} color={c.mute}>{o.sub}</T>
+                </View>
+                <View style={{ width: 20, height: 20, borderRadius: 10, borderWidth: 2, borderColor: f.supplier_type === o.value ? c.pink : c.line, backgroundColor: f.supplier_type === o.value ? c.pink : 'transparent' }} />
+              </View>
+            ))}
+          </View>
+          {f.supplier_type === 'company' && orgs.length ? (
+            <View style={{ gap: 6 }}>
+              <T size={12} weight="800" color={c.mute} style={{ letterSpacing: 0.5 }}>LINKED ORGANISATION</T>
+              <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
+                {orgs.map(o => <Chip key={o.id} label={o.name} active={f.organisation_id === o.id} onPress={() => set('organisation_id', f.organisation_id === o.id ? undefined : o.id)} />)}
+              </View>
+            </View>
+          ) : null}
+          <Field label="Legal name" value={f.legal_name} onChangeText={x => set('legal_name', x)} placeholder="As it appears on official documents" />
+          <Field label="Trading name (optional)" value={f.trading_name} onChangeText={x => set('trading_name', x)} placeholder="Brand or trading name if different" />
+          <Field label="About your services (optional)" value={f.description} onChangeText={x => set('description', x)} multiline placeholder="What you offer, your specialisms, years of experience, notable clients…" />
+          <Field label="Website (optional)" value={f.website} onChangeText={x => set('website', x)} placeholder="https://" keyboardType="url" autoCapitalize="none" />
+          <View style={{ gap: 6 }}>
+            <T size={12} weight="800" color={c.mute} style={{ letterSpacing: 0.5 }}>SERVICE CATEGORIES</T>
+            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
+              {cat.categories.map(k => <Chip key={k.slug} label={k.label} active={f.categories.includes(k.slug)} onPress={() => set('categories', f.categories.includes(k.slug) ? f.categories.filter(x => x !== k.slug) : [...f.categories, k.slug])} />)}
+            </View>
+          </View>
+        </View>
+      ) : null}
+
+      {step === 1 ? (
+        <View style={{ gap: 14 }}>
+          <View style={{ gap: 6 }}>
+            <T size={12} weight="800" color={c.mute} style={{ letterSpacing: 0.5 }}>CURRENCIES YOU ACCEPT</T>
+            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
+              {CURRENCIES.map(cur => <Chip key={cur} label={cur} active={f.currencies.includes(cur)} onPress={() => set('currencies', f.currencies.includes(cur) ? f.currencies.filter(x => x !== cur) : [...f.currencies, cur])} />)}
+            </View>
+          </View>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+            <View style={{ flex: 1 }}>
+              <T weight="800" size={13}>Daily capacity (jobs / units)</T>
+              <T size={11} color={c.mute}>Maximum bookings per day — 0 means unlimited</T>
+            </View>
+            <Counter value={f.daily_capacity} onChange={x => set('daily_capacity', x)} min={0} max={10000} step={1} />
+          </View>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+            <View style={{ flex: 1 }}>
+              <T weight="800" size={13}>Lead time (days)</T>
+              <T size={11} color={c.mute}>Minimum notice required before a booking</T>
+            </View>
+            <Counter value={f.lead_time_days} onChange={x => set('lead_time_days', x)} min={0} max={365} step={1} />
+          </View>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+            <View style={{ flex: 1 }}>
+              <T weight="800" size={13}>Minimum booking (days)</T>
+              <T size={11} color={c.mute}>Shortest engagement you will take — 0 means no minimum</T>
+            </View>
+            <Counter value={f.min_booking_days} onChange={x => set('min_booking_days', x)} min={0} max={365} step={1} />
+          </View>
+          <View style={{ gap: 8 }}>
+            {[
+              ['accepts_rush', 'Accepts rush bookings', 'Available at shorter notice for an uplift in rate'],
+              ['insured', 'Public liability insurance held', 'Clients may require proof before confirming an order'],
+            ].map(([key, title, sub]) => (
+              <View key={key} style={{ flexDirection: 'row', alignItems: 'center', gap: 12, padding: 12, borderWidth: 1, borderColor: c.line, borderRadius: 12 }}>
+                <View style={{ flex: 1 }}>
+                  <T weight="800" size={13}>{title}</T>
+                  <T size={11} color={c.mute}>{sub}</T>
+                </View>
+                <Switch value={f[key]} onValueChange={v => set(key, v)} trackColor={{ true: c.pink }} />
+              </View>
+            ))}
+          </View>
+        </View>
+      ) : null}
+
+      {step === 2 ? (
+        <View style={{ gap: 14 }}>
+          <View style={{ borderWidth: 1, borderColor: c.line, borderRadius: 14, padding: 14, backgroundColor: c.paper, gap: 3 }}>
+            <T weight="800">{f.trading_name || f.legal_name || '—'}</T>
+            <T size={12} color={c.mute}>{SUPPLIER_TYPES.find(x => x.value === f.supplier_type)?.label}</T>
+            {f.categories.length ? <T size={12} color={c.mute}>{f.categories.length} service categor{f.categories.length > 1 ? 'ies' : 'y'}</T> : null}
+            {f.currencies.length ? <T size={12} color={c.mute}>Accepts: {f.currencies.join(', ')}</T> : null}
+          </View>
+          <Field label="Tax registration number (optional)" value={f.tax_registration} onChangeText={x => set('tax_registration', x)} placeholder="GSTIN, VAT ID, ABN, EIN…" autoCapitalize="characters" />
+          <Field label="Billing address (optional)" value={f.billing_address} onChangeText={x => set('billing_address', x)} multiline placeholder="Address that appears on your invoices" />
+          <Field label="Time zone (optional)" value={f.timezone} onChangeText={x => set('timezone', x)} placeholder="e.g. Europe/London" autoCapitalize="none" />
+          <Card pad={12} color={c.sunSoft}>
+            <T size={12} weight="800">What happens next</T>
+            <T size={12} color={c.mute} style={{ marginTop: 4 }}>Your profile is active immediately. Add offerings from the Offerings tab so buyers can find and book you. All quotes and invoices carry your legal name and tax number.</T>
+          </Card>
+        </View>
+      ) : null}
+
+      <View style={{ flexDirection: 'row', gap: 8, marginTop: 4 }}>
+        {step > 0 ? <Btn title="Back" color={c.paper} ink={c.ink} onPress={() => setStep(step - 1)} style={{ flex: 1 }} /> : null}
+        {step < 2
+          ? <Btn title="Next" disabled={!can} onPress={() => setStep(step + 1)} style={{ flex: 2 }} />
+          : <Btn title={id ? 'Save profile' : 'Create profile'} loading={busy} onPress={submit} style={{ flex: 2 }} />}
+      </View>
+    </Sheet>
+  );
 }
 
 function Overview({ p, go }) {
