@@ -1,14 +1,14 @@
 // Agent home (#484): Clients · Mandates · Opportunities · Negotiations · Transfers · Sponsorships · Commissions · Conflicts · Documents · Reports.
 // Everything here is the agent's own business record or something an athlete shared under an agreed, live mandate; the server checks that on every call.
 import React, { useState } from 'react';
-import { View } from 'react-native';
+import { View, Switch, ScrollView } from 'react-native';
 import { api } from '../api';
 import { useLoad } from '../hooks';
 import { useSession } from '../session';
-import { Btn, Card, Chip, Empty, ErrorBox, Field, Loading, Row, Section, Sheet, T, Tag } from '../ui';
+import { Btn, Card, Chip, Empty, ErrorBox, Field, H2, Loading, Row, Section, Sheet, T, Tag } from '../ui';
 import { FormSheet } from '../FormSheet';
 import { HScroll } from '../pickers';
-import { SportPicker } from '../sportpicker';
+import { SportPicker, SportsMulti } from '../sportpicker';
 import { c } from '../theme';
 import { saveFile } from '../contracts-ui';
 import { useNav } from '../nav';
@@ -30,6 +30,116 @@ export function AgentHome({ profile, reloadProfile, tab: wantTab }) {
   return <Home agentId={agentId} own={own} tab={tab} setTab={setTab} sel={sel} setSel={setSel} reloadProfile={reloadProfile} />;
 }
 
+const AGENT_SPECS = ['Transfer & contracts', 'Endorsements & sponsorship', 'Image rights', 'Media & broadcasting', 'Youth development', 'Coaching appointments', 'Event appearances'];
+
+function AgentProfileWizard({ visible, onClose, orgs = [], ids = new Map(), title = 'Your agent profile', submitLabel = 'Create profile', onSubmit }) {
+  const STEPS = ['Identity & Type', 'Sports & Markets', 'Visibility & Launch'];
+  const [step, setStep] = useState(0);
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState(null);
+  const [v, setV] = useState({ kind: 'individual', worldwide: true, is_public: false, sports: [], specialisations: [] });
+  const set = (k, val) => setV((p) => ({ ...p, [k]: val }));
+  const toggleSpec = (s) => set('specialisations', v.specialisations.includes(s) ? v.specialisations.filter((x) => x !== s) : [...v.specialisations, s]);
+
+  const can = [
+    !!v.display_name?.trim(),
+    true,
+    true,
+  ][step];
+
+  const submit = async () => {
+    setBusy(true); setErr(null);
+    try {
+      await onSubmit(v);
+      setStep(0); setV({ kind: 'individual', worldwide: true, is_public: false, sports: [], specialisations: [] });
+    } catch (e) { setErr(e?.message ?? 'Error'); }
+    finally { setBusy(false); }
+  };
+
+  return (
+    <Sheet visible={visible} onClose={onClose} title={title}>
+      <View style={{ flexDirection: 'row', gap: 4, marginBottom: 18 }}>
+        {STEPS.map((_, i) => (
+          <View key={i} style={{ flex: 1, height: 4, borderRadius: 2, backgroundColor: i < step ? c.violet : i === step ? c.pink : c.p1 }} />
+        ))}
+      </View>
+      <H2 style={{ marginBottom: 4 }}>{STEPS[step]}</H2>
+      <ScrollView showsVerticalScrollIndicator={false} style={{ maxHeight: 460 }}>
+        {step === 0 && (
+          <View style={{ gap: 14 }}>
+            <T size={13} color={c.mute}>Your professional identity on GotMyGame. Athletes find you once verified — they always control what they share with you.</T>
+            <T size={12} weight="700" color={c.mute} style={{ marginTop: 4 }}>I am a</T>
+            {[{ value: 'individual', label: 'Individual agent', desc: 'A licensed agent operating independently.' }, { value: 'agency', label: 'Agency', desc: 'A registered sports agency or company.' }].map((opt) => (
+              <Chip key={opt.value} label={opt.label} sub={opt.desc} selected={v.kind === opt.value} onPress={() => set('kind', opt.value)} />
+            ))}
+            {v.kind === 'agency' && orgs.length > 0 && (
+              <View style={{ gap: 6 }}>
+                <T size={12} weight="700" color={c.mute}>Organisation</T>
+                <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
+                  {orgs.map((o) => <Chip key={o.id} label={o.name} selected={v.organisation_id === o.id} onPress={() => set('organisation_id', o.id)} />)}
+                </View>
+              </View>
+            )}
+            <Field label="Name athletes see *" value={v.display_name ?? ''} onChange={(val) => set('display_name', val)} placeholder="e.g. Juan Garcia Sports Management" />
+            <Field label="About you" value={v.bio ?? ''} onChange={(val) => set('bio', val)} multiline placeholder="Your background, experience, notable achievements…" />
+            <Field label="Accreditation body" value={v.accreditation ?? ''} onChange={(val) => set('accreditation', val)} placeholder="e.g. FIFA licensed intermediary, national association" hint="Leave blank if not yet accredited" />
+            <Field label="Licensed since (year)" value={v.licensed_since ?? ''} onChange={(val) => set('licensed_since', val)} placeholder="e.g. 2015" />
+          </View>
+        )}
+        {step === 1 && (
+          <View style={{ gap: 14 }}>
+            <T size={13} color={c.mute}>Sports you represent and where you operate. This shapes how athletes and clubs discover you.</T>
+            <T size={12} weight="700" color={c.mute}>Sports you represent</T>
+            <SportsMulti value={v.sports ?? []} onChange={(val) => set('sports', val)} />
+            <T size={12} weight="700" color={c.mute} style={{ marginTop: 8 }}>Specialisations</T>
+            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
+              {AGENT_SPECS.map((s) => <Chip key={s} label={s} selected={(v.specialisations ?? []).includes(s)} onPress={() => toggleSpec(s)} />)}
+            </View>
+            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 8 }}>
+              <View>
+                <T weight="700">Worldwide</T>
+                <T size={12} color={c.mute}>Operate in any market globally</T>
+              </View>
+              <Switch value={!!v.worldwide} onValueChange={(val) => set('worldwide', val)} trackColor={{ false: c.p1, true: c.violet }} thumbColor={c.p5} />
+            </View>
+            {!v.worldwide && (
+              <Field label="Markets / territories" value={v.markets ?? ''} onChange={(val) => set('markets', val)} placeholder="e.g. Spain, France, Brazil" hint="Comma-separated countries or regions" />
+            )}
+          </View>
+        )}
+        {step === 2 && (
+          <View style={{ gap: 14 }}>
+            <Card color={c.p1} pad={14}>
+              <T weight="800" size={15}>{v.display_name || '—'}</T>
+              <T size={13} color={c.mute}>{v.kind === 'agency' ? 'Agency' : 'Individual agent'}</T>
+              {(v.sports ?? []).length > 0 && <T size={12} color={c.mute} style={{ marginTop: 4 }}>{v.sports.length} sport{v.sports.length !== 1 ? 's' : ''} selected</T>}
+              <T size={12} color={c.mute}>{v.worldwide ? 'Worldwide' : (v.markets || 'No markets set')}</T>
+            </Card>
+            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+              <View style={{ flex: 1, marginRight: 12 }}>
+                <T weight="700">List me in directory once verified</T>
+                <T size={12} color={c.mute}>Listing is not an endorsement and gives no access to any athlete's data.</T>
+              </View>
+              <Switch value={!!v.is_public} onValueChange={(val) => set('is_public', val)} trackColor={{ false: c.p1, true: c.violet }} thumbColor={c.p5} />
+            </View>
+            <Card color={c.cyanSoft} pad={14}>
+              <T weight="700" size={13}>What happens next</T>
+              <T size={13} style={{ marginTop: 4 }}>Profile created immediately. SportArena verifies your licence details before listing you in search. Athletes must consent before you can see any of their information.</T>
+            </Card>
+            {err && <T color={c.red} size={13}>{err}</T>}
+          </View>
+        )}
+      </ScrollView>
+      <View style={{ flexDirection: 'row', gap: 10, marginTop: 18 }}>
+        {step > 0 && <Btn title="Back" color={c.p1} onPress={() => setStep((s) => s - 1)} style={{ flex: 1 }} />}
+        {step < STEPS.length - 1
+          ? <Btn title="Next" color={c.pink} disabled={!can} onPress={() => setStep((s) => s + 1)} style={{ flex: 1 }} />
+          : <Btn title={submitLabel} color={c.violet} disabled={!can || busy} loading={busy} onPress={submit} style={{ flex: 1 }} />}
+      </View>
+    </Sheet>
+  );
+}
+
 function Setup({ reload }) {
   const { toast } = useSession();
   const [open, setOpen] = useState(false);
@@ -41,16 +151,16 @@ function Setup({ reload }) {
     <View style={{ gap: 12 }}>
       <Empty emoji="🧑‍💼" title="Set up your agent profile" sub="A profile is a business identity, never access to anyone. Athletes find you once SportArena verifies you, and you only ever see what an athlete agrees to share." />
       <Btn title="Create my agent profile" onPress={() => setOpen(true)} />
-      <FormSheet visible={open} onClose={() => setOpen(false)} title="Your agent profile" submitLabel="Create profile"
-        fields={[
-          { key: 'kind', label: 'You are', type: 'choice', options: [{ value: 'individual', label: 'An individual agent' }, ...(mine.length ? [{ value: 'agency', label: 'An agency' }] : [])] },
-          { key: 'organisation_id', label: 'Agency organisation', type: 'chips', options: mine.map((o) => ({ value: o.id, label: o.name })), show: (f) => f.kind === 'agency' },
-          { key: 'display_name', label: 'Name athletes see', type: 'text' }, { key: 'bio', label: 'About you', type: 'multiline', optional: true },
-          { key: 'sports', label: 'Sports you represent', type: 'sports', optional: true }, { key: 'worldwide', label: 'Worldwide', type: 'switch' }, { key: 'markets', label: 'Markets', type: 'countries', show: (f) => !f.worldwide, optional: true },
-          { key: 'is_public', label: 'List me in the directory once verified', type: 'switch', hint: 'You can change this at any time. Listing is not an endorsement and gives no access.' },
-        ]}
-        initial={{ kind: 'individual', worldwide: true, is_public: false }}
-        onSubmit={async (v) => { await api.post('/agents/me', { kind: v.kind, organisation_id: v.kind === 'agency' ? v.organisation_id : undefined, display_name: v.display_name, bio: v.bio || undefined, sport_ids: (v.sports ?? []).map((s) => ids.get(s)).filter(Boolean), markets: v.worldwide ? ['WW'] : v.markets ?? [], is_public: v.is_public }); setOpen(false); toast('Profile created'); reload(); }} />
+      <AgentProfileWizard
+        visible={open}
+        onClose={() => setOpen(false)}
+        orgs={mine}
+        ids={ids}
+        onSubmit={async (v) => {
+          await api.post('/agents/me', { kind: v.kind, organisation_id: v.kind === 'agency' ? v.organisation_id : undefined, display_name: v.display_name, bio: v.bio || undefined, sport_ids: (v.sports ?? []).map((s) => ids.get(s)).filter(Boolean), markets: v.worldwide ? ['WW'] : (v.markets ?? '').split(',').map((x) => x.trim()).filter(Boolean), is_public: v.is_public, accreditation: v.accreditation || undefined });
+          setOpen(false); toast('Profile created'); reload();
+        }}
+      />
     </View>
   );
 }
