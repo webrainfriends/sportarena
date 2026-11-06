@@ -66,8 +66,24 @@ export const ACADEMY_STEPS = [
       'Guardians open the Guardian progress view under Inclusion to see attendance, adapted assessment milestones and upcoming sessions without seeing the coaching team\'s operational notes.',
     ],
     target: { academy: 'inclusion' },
-    modules: ['academy-inclusion.js', 'academy-sessions.js', 'coach-adaptive.js'],
-    sources: ['apps/app/src/screens/academy-inclusion.js', 'apps/app/src/screens/academy-session.js', 'apps/app/src/screens/academy-admissions.js'],
+    modules: ['academy-inclusion.js', 'academy-sessions.js', 'coach-adaptive.js', 'para-learn.js'],
+    sources: ['apps/app/src/screens/academy-inclusion.js', 'apps/app/src/screens/academy-session.js', 'apps/app/src/screens/academy-admissions.js', 'apps/app/src/screens/para-learn.js'],
+  },
+  {
+    id: 'para_learn',
+    title: 'Adaptive sport learning paths',
+    why: 'Give athletes structured, editorially reviewed content for every para sport — from first steps to competition-ready — with automatic badge issuance when a path is completed.',
+    steps: [
+      'Open More, then Learn & Study sport, then the Adaptive sport tab.',
+      'Select a sport and choose a level (Beginner, Intermediate or Advanced) to browse published paths. Each path shows its modules, estimated time and source attribution.',
+      'Open a module to read its content, follow accessible media links (captions, transcript, audio description) and answer the check question.',
+      'On completing all required modules in a path, a badge is issued automatically and appears in the Badges tab.',
+      'Platform team: open the Publishing panel (visible to admins in the Adaptive sport tab) to draft a new path, add modules with accessible media metadata, submit for review, approve and publish. Source and copyright attribution are required before submission.',
+      'Approved institutions: request publishing access from the platform admin. Submitted content is reviewed before it goes live. Institution access is managed in More → Learn & Study → Adaptive sport → Publishing.',
+    ],
+    target: { screen: 'Pathways' },
+    modules: ['para-learn.js'],
+    sources: ['apps/app/src/screens/para-learn.js', 'apps/app/src/screens/pathways.js'],
   },
   {
     id: 'consented_accommodations',
@@ -114,7 +130,7 @@ export const ACADEMY_STEPS = [
   {
     id: 'content', title: 'License your curriculum',
     why: 'Package your approved methodology, curricula, drills and micro-courses as a licensed pack, so affiliated and independent organisations can buy seats for their coaches while you keep the rights, the versions and the revenue record.',
-    steps: ['Open Academy, then Content, then Packs, and tap New pack. Choose the sport, level, ages and languages, credit the authors, and set who may license it (open, affiliated or by invitation), the territory, the seat limit and whether offline copies are allowed.', 'Add items: pick your published curriculum versions, methodology versions and approved drills (they are linked, never copied), then add micro-courses and video references. Mark footage that shows young people: it is stream-only, watermarked and never offline.', 'State the learning objectives, assessment and coach development hours, set the price per seat, the term, the grace period and the revenue split, then publish. A published version never changes.', 'When an organisation requests a pack, open Licences granted, set the terms (seats, dates, version, price) and send the offer. The buyer accepts and pays through the normal checkout, then assigns seats to its coaches. A coach then opens a session, goes to its Curriculum tab, links licensed items under Licensed content and adds them to their own coaching plan.', 'Watch Overview and a pack’s Usage and Money tabs for seats, completion, renewals due and the revenue statement. Suspend, revoke or renew a licence with a reason: access ends at once and the buyer’s own academy data is untouched. Handle support and takedown cases under Support & takedowns.'],
+    steps: ['Open Academy, then Content, then Packs, and tap New pack. Choose the sport, level, ages and languages, credit the authors, and set who may license it (open, affiliated or by invitation), the territory, the seat limit and whether offline copies are allowed.', 'Add items: pick your published curriculum versions, methodology versions and approved drills (they are linked, never copied), then add micro-courses and video references. Mark footage that shows young people: it is stream-only, watermarked and never offline.', 'State the learning objectives, assessment and coach development hours, set the price per seat, the term, the grace period and the revenue split, then publish. A published version never changes.', 'When an organisation requests a pack, open Licences granted, set the terms (seats, dates, version, price) and send the offer. The buyer accepts and pays through the normal checkout, then assigns seats to its coaches. A coach then opens a session, goes to its Curriculum tab, links licensed items under Licensed content and adds them to their own coaching plan.', 'Watch Overview and a pack’s Usage and Money tabs for seats, completion, renewals due and the revenue statement. Suspend, revoke or renew a licence with a reason: access ends at once and the buyer\'s own academy data is untouched. Handle support and takedown cases under Support & takedowns.'],
     target: { academy: 'content' },
     modules: ['academy-content.js'], sources: ['apps/app/src/screens/academy-content.js', 'apps/app/src/screens/academy-content-pack.js'],
   },
@@ -149,7 +165,7 @@ export const ACADEMY_STEPS = [
   {
     id: 'academics', title: 'Connect schools and studies',
     why: 'Sport-plus-study academies run on both calendars. Link each athlete to their school, let the athlete or guardian choose what to share, and clashes appear before a session is published.',
-    steps: ['Open Academy, then Academics, and tap Link an athlete to a school. Pick the athlete and the school already on the platform.', 'The athlete, or a minor’s guardian, is asked what to share (timetable, attendance, progress), with whom and for how long. Nothing is shared until they decide.', 'The school adds exams, lesson blocks and attendance summaries, or sends them by file or API. A school exam that clashes with a session is flagged and blocks publishing.', 'Open an athlete to see sport progress and academic progress side by side as separate blocks, each with its source. Grades are only read with the academics_detail permission and the athlete’s consent.'],
+    steps: ['Open Academy, then Academics, and tap Link an athlete to a school. Pick the athlete and the school already on the platform.', 'The athlete, or a minor’s guardian, is asked what to share (timetable, attendance, progress), with whom and for how long. Nothing is shared until they decide.', 'The school adds exams, lesson blocks and attendance summaries, or sends them by file or API. A school exam that clashes with a session is flagged and blocks publishing.', 'Open an athlete to see sport progress and academic progress side by side as separate blocks, each with its source. Grades are only read with the academics_detail permission and the athlete\'s consent.'],
     target: { academy: 'academics' },
     modules: ['academy-academics.js', 'academy-attainment.js'], sources: ['apps/app/src/screens/academics.js'],
   },
@@ -163,16 +179,7 @@ export const ACADEMY_STEPS = [
   {
     id: 'campuses', title: 'Organise campuses and transfers',
     why: 'Run more than one location as one academy: regions, campuses and sport departments, directors with their own view, shared policies, and transfers that follow your own approval process.',
-    steps: [
-      'Open the Campuses tab and tap Set up campuses to start the 4-step setup wizard.',
-      'Step 1 — Mode: choose Quick start (all your existing objects land on one campus automatically) or Build full structure (define regions, campuses and sport departments yourself).',
-      'Step 2 — Campus profile: name the campus, add an optional short code (e.g. MAN, BCN), country, city, time zone and an effective-from date.',
-      'Step 3 — Sport departments: tap the sports your academy runs. Each selected sport creates a department nested under the campus. Skip this step and add departments later from the Structure tab.',
-      'Step 4 — Review & confirm: see exactly which venues, programmes, teams, cohorts, coaches, staff and suppliers will be pointed at the new campus, and how many enrolled athletes follow automatically. Confirm to apply — or go back to adjust.',
-      'After setup, place any remaining unassigned objects from the Structure tab (Place objects here button), and assign each campus a director, sports lead, finance, operations or auditor role so they see their own branch.',
-      'Set inherited policies per campus (minimum attendance, coach-to-athlete ratio, refund window, guardian consent renewal) that sport departments below inherit unless they override.',
-      'Under Transfers, configure the approval process (finance clearance, source and destination director sign-off, athlete or guardian acknowledgement, handover checklist) for each object type, then initiate transfers from the unit detail panel.',
-    ],
+    steps: ['Open the Campuses tab and tap Set up campuses to make your academy one campus without changing any record, or add a region and a campus yourself.', 'Place venues, teams, cohorts, programmes and coaches on a campus or sport department. Each keeps its identity and history; only a dated pointer is added.', 'Give each campus a director, finance, sports lead, operations or auditor role, and set policies that its sport departments inherit.', 'Under Transfers, configure your process (approvals, finance clearance, athlete or guardian acknowledgement, handover checklist), then move athletes, coaches or programmes between campuses with a request that follows it.'],
     target: { org: 'campuses' },
     modules: ['org-campuses.js', 'org-campus-transfers.js'], sources: ['apps/app/src/screens/campuses.js', 'apps/app/src/screens/campus-transfers.js'],
   },
@@ -241,7 +248,7 @@ export const NOT_IN_GUIDE = {
 };
 
 /** The directories/files the guard test watches for org/academy/venue/coach/tax capability modules. */
-export const WATCHED_MODULES = /^(academy-.*|org-.*|organisations|venue-coaches|gst|provider-tax|coach-classes|para-sport-funding|para-pathway|para-readiness)\.js$/;
+export const WATCHED_MODULES = /^(academy-.*|org-.*|organisations|venue-coaches|gst|provider-tax|coach-classes|para-sport-funding|para-pathway|para-readiness|para-learn)\.js$/;
 
 export const SHOT_SIZES = { phone: { width: 390, height: 1100 }, desktop: { width: 1280, height: 900 } };
 export const shotFile = (stepId, size) => `${String(ACADEMY_STEPS.findIndex((s) => s.id === stepId) + 1).padStart(2, '0')}-${stepId}-${size}.png`;
