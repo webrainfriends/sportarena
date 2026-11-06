@@ -255,7 +255,7 @@ cap({
       if (i.second_officer_id && i.second_officer_id === user.id) throw badRequest('The second officer must be a different person');
       if (i.second_officer_id) {
         const officer = (await c.query('SELECT 1 FROM event_staff_assignments WHERE event_id=$1 AND user_id=$2 AND status=\'accepted\' LIMIT 1', [ev.id, i.second_officer_id])).rowCount;
-        const isOrg = (await c.query('SELECT 1 FROM events WHERE id=$1 AND (organizer_id=$2 OR organisation_id IN (SELECT organisation_id FROM org_members WHERE user_id=$2 AND role IN (\'owner\',\'admin\')))', [ev.id, i.second_officer_id])).rowCount;
+        const isOrg = (await c.query('SELECT 1 FROM events WHERE id=$1 AND (organizer_id=$2 OR organisation_id IN (SELECT organisation_id FROM organisation_members WHERE user_id=$2 AND status=\'active\' AND role IN (\'owner\',\'admin\')))', [ev.id, i.second_officer_id])).rowCount;
         if (!officer && !isOrg) throw badRequest('The second officer must be an accepted staff member or organiser of this event');
       }
       const exc = (await c.query(
@@ -378,7 +378,7 @@ cap({
     const ev = (await pool.query('SELECT id, name, starts_on, ends_on, venue_id, organizer_id, status FROM events WHERE id=$1', [i.id])).rows[0];
     if (!ev) throw notFound('Event');
     const isOrganiser = isAdmin(user) || ev.organizer_id === user.id ||
-      (await pool.query('SELECT 1 FROM org_members om JOIN events e ON e.organisation_id=om.organisation_id WHERE e.id=$1 AND om.user_id=$2 AND om.role IN (\'owner\',\'admin\')', [i.id, user.id])).rowCount > 0;
+      (await pool.query('SELECT 1 FROM organisation_members om JOIN events e ON e.organisation_id=om.organisation_id WHERE e.id=$1 AND om.user_id=$2 AND om.status=\'active\' AND om.role IN (\'owner\',\'admin\')', [i.id, user.id])).rowCount > 0;
     const isAthlete = (await pool.query(
       `SELECT 1 FROM event_entries e WHERE e.event_id=$1 AND e.status='accepted' AND (e.user_id=$2 OR EXISTS (SELECT 1 FROM team_members tm WHERE tm.team_id=e.team_id AND tm.user_id=$2 AND tm.status='active'))`, [i.id, user.id])).rowCount > 0;
     if (!isAthlete && !isOrganiser) throw notFound('Event access information');

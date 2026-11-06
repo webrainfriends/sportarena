@@ -4,7 +4,7 @@ import { one, many, tx } from '../db.js';
 import { badRequest, conflict, forbidden, notFound } from '../errors.js';
 import { audit } from '../helpers.js';
 import { encrypt, decrypt } from '../crypto.js';
-import { requireGuardian } from '../youth.js';
+import { requireGuardian, isYouth } from '../youth.js';
 import { relationships, requireCoachingConsent } from '../coaching.js';
 import { notify } from '../notify.js';
 
@@ -55,8 +55,8 @@ async function activeShareForCaller(callerId, athleteId) {
        AND (
          pps.shared_with_id = $1
          OR pps.shared_with_id IN (
-           SELECT organisation_id FROM organisation_staff
-           WHERE user_id = $1 AND left_at IS NULL
+           SELECT organisation_id FROM organisation_members
+           WHERE user_id = $1 AND status = 'active' AND left_at IS NULL
          )
        )
      LIMIT 1`,
@@ -123,19 +123,21 @@ cap({
 
     // Competition-facing classification status only — no case/panel/evidence
     const paraOutcomes = await many(
-      `SELECT sport_id, sport, class_code, status, effective_from, review_by, expires_on, authority
-       FROM para_outcomes
-       WHERE athlete_id = $1 AND status IN ('confirmed','provisional')
-       ORDER BY sport`,
+      `SELECT po.sport_id, s.slug AS sport, po.class_code, po.status, po.effective_from, po.review_by, po.expires_on, g.abbreviation AS authority
+       FROM para_outcomes po
+       JOIN sports s ON s.id = po.sport_id
+       LEFT JOIN governing_bodies g ON g.id = po.authority_id
+       WHERE po.athlete_id = $1 AND po.status IN ('confirmed','temporary') AND po.superseded_at IS NULL
+       ORDER BY s.slug`,
       [athleteId],
     );
 
     // Para sports from sport profiles
     const paraSports = await many(
-      `SELECT DISTINCT sp.sport_slug AS sport, s.name AS sport_name
+      `SELECT DISTINCT s.slug AS sport, s.name AS sport_name
        FROM sport_profiles sp
-       JOIN sports s ON s.slug = sp.sport_slug AND s.is_para = true
-       WHERE sp.athlete_id = $1`,
+       JOIN sports s ON s.id = sp.sport_id AND s.is_para = true
+       WHERE sp.user_id = $1 AND sp.archived_at IS NULL`,
       [athleteId],
     );
 
@@ -266,53 +268,56 @@ cap({
 
     // Athlete's confirmed/provisional para outcomes keyed by sport slug
     const outcomes = await many(
-      `SELECT sport, class_code, status FROM para_outcomes
-       WHERE athlete_id = $1 AND status IN ('confirmed','provisional')`,
+      `SELECT s.slug AS sport, po.id, po.class_code, po.status FROM para_outcomes po
+       JOIN sports s ON s.id = po.sport_id
+       WHERE po.athlete_id = $1 AND po.status IN ('confirmed','temporary') AND po.superseded_at IS NULL`,
       [athleteId],
     );
     const outcomeMap = Object.fromEntries(outcomes.map((o) => [o.sport, o]));
 
     // Open para-cases (pending eligibility)
     const openCases = await many(
-      `SELECT sport FROM para_cases
-       WHERE athlete_id = $1 AND status NOT IN ('closed','withdrawn','expired')`,
+      `SELECT s.slug AS sport FROM para_cases pc
+       JOIN sports s ON s.id = pc.sport_id
+       WHERE pc.athlete_id = $1 AND pc.status NOT IN ('decision_issued','incomplete','closed','withdrawn')`,
       [athleteId],
     );
     const pendingSet = new Set(openCases.map((c) => c.sport));
 
     // Events (trials and competitions) for para sports
-    const sportFilter = i.sport ? `AND s.slug = $3` : '';
-    const locationFilter = i.location ? `AND e.location ILIKE '%' || $${i.sport ? 4 : 3} || '%'` : '';
+    const sportFilter = i.sport ? `AND s.slug = $2` : '';
+    const locationFilter = i.location ? `AND e.city ILIKE '%' || $${i.sport ? 3 : 2} || '%'` : '';
     const params = [true];
     if (i.sport) params.push(i.sport);
     if (i.location) params.push(i.location);
 
     const events = await many(
       `SELECT e.id, 'event' AS kind, e.name, s.slug AS sport, s.name AS sport_name,
-              e.kind AS event_kind, e.start_date AS date, e.location,
-              e.stage_target AS stage
+              e.kind AS event_kind, e.starts_on AS date, e.city AS location,
+              NULL::text AS stage
        FROM events e
        JOIN sports s ON s.id = e.sport_id AND s.is_para = $1
-       WHERE e.kind IN ('trial','competition')
-         AND e.start_date >= now()
+       WHERE e.kind IN ('trial','tournament','league')
+         AND e.starts_on >= current_date
          AND e.archived_at IS NULL
          ${sportFilter}
          ${locationFilter}
-       ORDER BY e.start_date
+       ORDER BY e.starts_on
        LIMIT 50`,
       params,
     );
 
     // Academy programmes with 'adapted' pathway variant
     const programmes = await many(
-      `SELECT ap.id, 'programme' AS kind, ap.name, s.slug AS sport, s.name AS sport_name,
-              ap.start_date AS date, ap.location, ap.stage_target AS stage
+      `SELECT ap.id, 'programme' AS kind, ap.title AS name, s.slug AS sport, s.name AS sport_name,
+              ap.starts_on AS date, NULL::text AS location, NULL::text AS stage
        FROM academy_programmes ap
-       JOIN sports s ON s.id = ap.sport_id AND s.is_para = true
-       WHERE ap.archived_at IS NULL
-         AND 'adapted' = ANY(ap.pathway_variants)
-         AND (ap.start_date IS NULL OR ap.start_date >= now())
-       ORDER BY ap.start_date NULLS LAST
+       JOIN academy_programme_inclusion pi ON pi.programme_id = ap.id
+       JOIN sports s ON (s.slug = ap.sport OR lower(s.name) = lower(ap.sport)) AND s.is_para = true
+       WHERE ap.status = 'published'
+         AND 'adapted' = ANY(pi.pathway_variants)
+         AND (ap.starts_on IS NULL OR ap.starts_on >= current_date)
+       ORDER BY ap.starts_on NULLS LAST
        LIMIT 50`,
       [],
     );
@@ -525,9 +530,10 @@ cap({
     } else {
       // Organisation: athlete must be enrolled or in trial
       const enrolment = await one(
-        `SELECT id FROM organisation_enrolments
-         WHERE athlete_id = $1 AND organisation_id = $2
-           AND status IN ('enrolled','trial') AND left_at IS NULL`,
+        `SELECT en.id FROM org_enrolments en
+         JOIN org_cohorts k ON k.id = en.cohort_id
+         WHERE en.user_id = $1 AND k.organisation_id = $2
+           AND en.status = 'enrolled' AND en.withdrawn_at IS NULL`,
         [athleteId, i.shared_with_id],
       );
       if (!enrolment) throw forbidden('Athlete is not enrolled at this organisation.');
@@ -601,12 +607,7 @@ cap({
     if (!share) throw notFound('Para pathway');
 
     // Youth: check guardian consent is active for this coach
-    const athlete = await one(`SELECT date_of_birth FROM users WHERE id = $1`, [i.athlete_id]);
-    if (athlete) {
-      const age =
-        (Date.now() - new Date(athlete.date_of_birth).getTime()) / (1000 * 60 * 60 * 24 * 365.25);
-      if (age < 18) await requireCoachingConsent(i.athlete_id, user.id);
-    }
+    if (await isYouth(i.athlete_id)) await requireCoachingConsent(i.athlete_id, user.id);
 
     const stageFilter =
       share.scope && share.scope.length > 0
@@ -632,10 +633,12 @@ cap({
 
     // Competition-facing classification only — no diagnosis, no case details
     const classification = await many(
-      `SELECT sport, class_code, status, effective_from, review_by, expires_on, authority
-       FROM para_outcomes
-       WHERE athlete_id = $1 AND status IN ('confirmed','provisional')
-       ORDER BY sport`,
+      `SELECT s.slug AS sport, po.class_code, po.status, po.effective_from, po.review_by, po.expires_on, g.abbreviation AS authority
+       FROM para_outcomes po
+       JOIN sports s ON s.id = po.sport_id
+       LEFT JOIN governing_bodies g ON g.id = po.authority_id
+       WHERE po.athlete_id = $1 AND po.status IN ('confirmed','temporary') AND po.superseded_at IS NULL
+       ORDER BY s.slug`,
       [i.athlete_id],
     );
 

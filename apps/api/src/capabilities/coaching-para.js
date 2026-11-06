@@ -40,18 +40,18 @@ cap({
     // read consented operational flags shared with 'coach' audience that are still live
     const shares = await many(
       `SELECT s.athlete_id, s.need_keys
-         FROM inclusion_shares s
+         FROM academy_accommodation_shares s
         WHERE s.athlete_id = ANY($1)
-          AND s.audience_role = 'coach'
-          AND s.audience_user_id = $2
-          AND (s.expires_at IS NULL OR s.expires_at > now())
-          AND s.withdrawn_at IS NULL`,
+          AND 'coach' = ANY(s.audience_roles)
+          AND $2 = ANY(s.audience_users)
+          AND s.expires_at > now()
+          AND s.revoked_at IS NULL`,
       [athleteIds, user.id],
     );
 
     // audit every retrieval — the athlete's chosen sharing record is sensitive
     for (const a of shares) {
-      await audit(null, user.id, 'para.read_session_needs', 'inclusion_shares', a.athlete_id, { session_record_id: rec.id });
+      await audit(null, user.id, 'para.read_session_needs', 'academy_accommodation_shares', a.athlete_id, { session_record_id: rec.id });
     }
 
     const needsByAthlete = new Map(shares.map((s) => [s.athlete_id, s.need_keys ?? []]));
@@ -206,7 +206,7 @@ cap({
     const params = i.para_template ? [user.id, i.limit ?? 60, i.para_template] : [user.id, i.limit ?? 60];
     const rows = await many(
       `SELECT t.id, t.coach_id, t.title, t.scope, t.para_template, t.sport_id, s.name AS sport_name,
-              array_length(t.blocks, 1) AS block_count, t.version, t.created_at,
+              jsonb_array_length(t.blocks) AS block_count, t.version, t.created_at,
               (t.coach_id = $1) AS mine,
               u.display_name AS shared_by
          FROM coach_templates t
@@ -217,7 +217,7 @@ cap({
           AND (
             t.coach_id = $1
             OR (t.shared_team_id IS NOT NULL AND EXISTS (SELECT 1 FROM team_members tm WHERE tm.team_id=t.shared_team_id AND tm.user_id=$1 AND tm.status='active' AND tm.role='coach'))
-            OR (t.shared_organisation_id IS NOT NULL AND EXISTS (SELECT 1 FROM org_members om WHERE om.organisation_id=t.shared_organisation_id AND om.user_id=$1 AND om.role IN ('owner','admin','coach') AND om.status='active'))
+            OR (t.shared_organisation_id IS NOT NULL AND EXISTS (SELECT 1 FROM organisation_members om WHERE om.organisation_id=t.shared_organisation_id AND om.user_id=$1 AND om.role IN ('owner','admin','coach') AND om.status='active' AND om.left_at IS NULL))
           )
           ${ptFilter}
           ${i.scope !== 'any' ? `AND t.scope=$${params.length + 1}` : ''}

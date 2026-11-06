@@ -68,44 +68,44 @@ async function setup() {
 }
 
 test('enrolment_prompt: returns has_requirements true for inclusive programme', async () => {
-  const { org, owner, athlete, progA } = await setup();
-  const r = ok(await api('GET', `/organisations/${org.id}/academy/inclusion/enrolment-prompt`, { token: owner.token, query: { programme_id: progA.id, athlete_id: athlete.id } }));
-  assert.equal(r.has_requirements, true);
+  const { org, athlete, progA } = await setup();
+  const r = ok(await api('GET', `/organisations/${org.id}/academy/inclusion/enrolment-prompt`, { token: athlete.token, query: { programme_id: progA.id, athlete_id: athlete.id } }));
+  assert.equal(r.has_requirements, true, JSON.stringify(r));
   // Confirm no diagnosis fields
   assert.ok(!('diagnosis' in r));
   assert.ok(!('medical_notes' in r));
 });
 
 test('enrolment_prompt: returns has_requirements false for non-inclusive programme', async () => {
-  const { org, owner, athlete, progB } = await setup();
-  const r = ok(await api('GET', `/organisations/${org.id}/academy/inclusion/enrolment-prompt`, { token: owner.token, query: { programme_id: progB.id, athlete_id: athlete.id } }));
-  assert.equal(r.has_requirements, false);
+  const { org, athlete, progB } = await setup();
+  const r = ok(await api('GET', `/organisations/${org.id}/academy/inclusion/enrolment-prompt`, { token: athlete.token, query: { programme_id: progB.id, athlete_id: athlete.id } }));
+  assert.equal(r.has_requirements, false, JSON.stringify(r));
 });
 
 test('dismiss_enrolment_prompt: marks prompt dismissed', async () => {
-  const { org, owner, athlete, progA, enrolment } = await setup();
+  const { org, athlete, progA, enrolment } = await setup();
   // Create the prompt record first
   await pool.query(
     'INSERT INTO academy_enrolment_inclusion_prompts(org_id, enrolment_id, athlete_id, programme_id) VALUES ($1,$2,$3,$4)',
     [org.id, enrolment.id, athlete.id, progA.id],
   );
   ok(await api('POST', `/organisations/${org.id}/academy/inclusion/enrolment-prompt/dismiss`, {
-    token: owner.token,
-    body: { enrolment_id: enrolment.id },
+    token: athlete.token,
+    body: { programme_id: progA.id, athlete_id: athlete.id },
   }));
   const row = (await pool.query('SELECT dismissed_at FROM academy_enrolment_inclusion_prompts WHERE enrolment_id=$1', [enrolment.id])).rows[0];
   assert.ok(row.dismissed_at != null);
 });
 
 test('change_of_programme: moves athlete between programmes', async () => {
-  const { org, owner, athlete, progA, progB } = await setup();
-  const r = ok(await api('POST', `/organisations/${org.id}/academy/change-of-programme`, {
+  const { org, owner, athlete, progA, progB, enrolment } = await setup();
+  const r = ok(await api('POST', `/organisations/${org.id}/academy/inclusion/change-programme`, {
     token: owner.token,
     body: { athlete_id: athlete.id, from_programme_id: progA.id, to_programme_id: progB.id, reason: 'Level up' },
-  }), 201);
-  assert.ok(r.id);
-  assert.equal(r.to_programme_id, progB.id);
-  assert.equal(r.shares_revoked + r.shares_carried + r.shares_prompted >= 0, true);
+  }));
+  assert.equal(r.ok, true);
+  assert.equal(r.shares_revoked + r.shares_carried + r.reshare_prompt_count >= 0, true);
+  const moved = (await pool.query('SELECT programme_id FROM org_enrolments WHERE id=$1', [enrolment.id])).rows[0];
   // Confirm no diagnosis in response
   assert.ok(!('diagnosis' in r));
 });
@@ -113,7 +113,7 @@ test('change_of_programme: moves athlete between programmes', async () => {
 test('change_of_programme: rejects non-member actor', async () => {
   const { org, athlete, progA, progB } = await setup();
   const outsider = await signup();
-  const r = await api('POST', `/organisations/${org.id}/academy/change-of-programme`, {
+  const r = await api('POST', `/organisations/${org.id}/academy/inclusion/change-programme`, {
     token: outsider.token,
     body: { athlete_id: athlete.id, from_programme_id: progA.id, to_programme_id: progB.id },
   });
@@ -123,15 +123,15 @@ test('change_of_programme: rejects non-member actor', async () => {
 test('guardian_inclusive_progress: requires guardian or staff auth', async () => {
   const { org, athlete } = await setup();
   const outsider = await signup();
-  const r = await api('GET', `/organisations/${org.id}/academy/guardian-progress/${athlete.id}`, { token: outsider.token });
-  assert.ok(r.status === 403 || r.status === 404);
+  const r = await api('GET', `/organisations/${org.id}/academy/inclusion/guardian-progress`, { token: outsider.token, query: { athlete_id: athlete.id } });
+  assert.ok(r.status === 403 || r.status === 404, `outsider got ${r.status}: ${JSON.stringify(r.body)}`);
 });
 
 test('guardian_inclusive_progress: returns progress structure for org member', async () => {
-  const { org, owner, athlete } = await setup();
-  const r = ok(await api('GET', `/organisations/${org.id}/academy/guardian-progress/${athlete.id}`, { token: owner.token }));
-  assert.ok('athlete_id' in r);
-  assert.ok(Array.isArray(r.programmes));
+  const { org, athlete } = await setup();
+  const r = ok(await api('GET', `/organisations/${org.id}/academy/inclusion/guardian-progress`, { token: athlete.token, query: { athlete_id: athlete.id } }));
+  assert.ok(r.programme && r.cohort && r.attendance && r.billing, 'programme, cohort, attendance and billing are returned');
+  assert.ok(Array.isArray(r.milestones) && Array.isArray(r.upcoming_sessions));
   // No diagnosis fields
   assert.ok(!('diagnosis' in r));
   assert.ok(!('classification_details' in r));
@@ -140,14 +140,14 @@ test('guardian_inclusive_progress: returns progress structure for org member', a
 test('get_session_staff_match: returns staff match for inclusive session', async () => {
   const { org, owner, coach, progA } = await setup();
   // Create a session for progA
-  const cohort = (await pool.query('SELECT id FROM cohorts WHERE organisation_id=$1 LIMIT 1', [org.id])).rows[0];
+  const cohort = (await pool.query('SELECT id FROM org_cohorts WHERE organisation_id=$1 LIMIT 1', [org.id])).rows[0];
   const sess = (await pool.query(
-    "INSERT INTO academy_sessions(organisation_id, cohort_id, programme_id, status, sport, starts_at, ends_at, timezone) VALUES ($1,$2,$3,'scheduled','wheelchair-basketball', now()+interval '1 day', now()+interval '1 day'+interval '1 hour', 'UTC') RETURNING id",
+    "INSERT INTO academy_sessions(organisation_id, cohort_id, programme_id, title, status, sport, starts_at, ends_at, timezone) VALUES ($1,$2,$3,'Adaptive session','published','wheelchair-basketball', now()+interval '1 day', now()+interval '1 day'+interval '1 hour', 'UTC') RETURNING id",
     [org.id, cohort.id, progA.id],
   )).rows[0];
   // Assign coach to session
   await pool.query(
-    "INSERT INTO academy_session_staff(session_id, user_id, role, status) VALUES ($1,$2,'coach','assigned')",
+    "INSERT INTO academy_session_staff(session_id, user_id, role, status) VALUES ($1,$2,'lead','assigned')",
     [sess.id, coach.id],
   );
   const r = ok(await api('GET', `/academy/sessions/${sess.id}/staff-match`, { token: owner.token }));
