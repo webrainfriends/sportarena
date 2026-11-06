@@ -6,12 +6,14 @@ import { useSession } from '../session';
 import { useNav } from '../nav';
 import { Avatar, Btn, Card, Empty, ErrorBox, GradCard, H1, H2, Loading, Row, Screen, Section, StatPill, T, Tag } from '../ui';
 import { FormSheet } from '../FormSheet';
+import { PlanHubSheet } from './plan-hub';
 import { CoachToolGrid } from './coaching';
 import { useLayout } from '../layout';
 import { c, grad } from '../theme';
 import { saveDraft as queueDraft, saveMessage } from '../offline';
 import { localToIso, dateTimeIn } from '../vtime';
 import { locale } from '../locale';
+import { t } from '../i18n';
 import { WorkoutPlan, Compliance, Phases, WeeklyLoad, FOCUS, phaseFields, saveFile, blockFields, toBlock, resultFields, toActuals } from './workout';
 
 const tz = (() => { try { return Intl.DateTimeFormat().resolvedOptions().timeZone; } catch { return 'UTC'; } })();
@@ -117,9 +119,12 @@ export function CoachAthletes() {
             </View>
           </Card>
         ))}
-      <FormSheet visible={!!pick} onClose={() => setPick(null)} title={`New plan for ${pick?.display_name ?? ''}`} submitLabel="Create draft" initial={{}}
-        fields={[{ key: 'sport', label: 'Sport', type: 'sport' }, { key: 'title', label: 'Plan title' }, { key: 'goal', label: 'Goal', type: 'multiline', optional: true }]}
-        onSubmit={async (v) => { const p = await api.post('/training-plans', { athlete_id: pick.id, sport: v.sport, title: v.title, goal: v.goal || undefined }); setPick(null); toast('Draft created — add sessions, then propose it'); push('CoachPlan', { id: p.id }); }} />
+      <PlanHubSheet
+        visible={!!pick}
+        onClose={() => setPick(null)}
+        athlete={pick}
+        onCreated={(p) => { setPick(null); toast(t('ph.created')); push('CoachPlan', { id: p.id }); }}
+      />
     </Screen>
   );
 }
