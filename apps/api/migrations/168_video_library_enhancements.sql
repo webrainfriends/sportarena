@@ -2,7 +2,7 @@
 BEGIN;
 
 ALTER TABLE video_playlists
-  ADD COLUMN IF NOT EXISTS thumbnail_asset_id uuid REFERENCES media_assets(id);
+  ADD COLUMN IF NOT EXISTS thumbnail_asset_id uuid; -- no media_assets table exists to reference (the foreign key made this migration fail and the deploy stop)
 
 CREATE TABLE IF NOT EXISTS showcase_views (
   id                  uuid        PRIMARY KEY DEFAULT gen_random_uuid(),

@@ -51,7 +51,7 @@ async function checkPublisher(user, publisherOrgId) {
   if (!pub) throw forbidden('Organisation does not have publishing access for para-sport learning paths');
   // Must be an admin/owner of that org
   const member = await one(
-    "SELECT 1 FROM org_members WHERE organisation_id=$1 AND user_id=$2 AND role IN ('owner','admin') AND left_at IS NULL",
+    "SELECT 1 FROM organisation_members WHERE organisation_id=$1 AND user_id=$2 AND role IN ('owner','admin') AND status='active' AND left_at IS NULL",
     [publisherOrgId, user.id],
   );
   if (!member) throw forbidden('You must be an owner or admin of the publishing organisation');
@@ -304,7 +304,7 @@ cap({
   handler: ({ user }, i) => tx(async (c) => {
     const youth = await isYouth(user.id, c);
     if (youth) {
-      const consent = (await c.query("SELECT 1 FROM youth_consents WHERE young_person_id=$1 AND scope='learning' AND revoked_at IS NULL LIMIT 1", [user.id])).rowCount;
+      const consent = (await c.query("SELECT 1 FROM youth_consents WHERE child_id=$1 AND purpose='learning' AND revoked_at IS NULL AND (expires_at IS NULL OR expires_at > now()) LIMIT 1", [user.id])).rowCount;
       if (!consent) throw forbidden('Guardian consent is required for learning progress on a youth account');
     }
     const mod = await one('SELECT m.*, v.path_id, v.id AS v_id FROM para_learn_modules m JOIN para_learn_path_versions v ON v.id=m.version_id WHERE m.id=$1 AND v.id=$2 AND v.path_id=$3', [i.module_id, i.version_id, i.path_id]);
@@ -419,9 +419,9 @@ cap({
   async handler({ user }) {
     // Declared sports from para pathway milestones — no classification or diagnosis
     const sports = await many(
-      `SELECT DISTINCT p.sport_id FROM para_pathway_milestones p WHERE p.athlete_id=$1
+      `SELECT DISTINCT s.id AS sport_id FROM para_pathway_milestones p JOIN sports s ON s.slug = p.sport WHERE p.athlete_id=$1
        UNION
-       SELECT DISTINCT sp.sport_id FROM sport_profiles sp WHERE sp.user_id=$1 AND sp.kind='para'
+       SELECT DISTINCT sp.sport_id FROM sport_profiles sp JOIN sports ps ON ps.id = sp.sport_id AND ps.is_para = true WHERE sp.user_id=$1 AND sp.archived_at IS NULL
        LIMIT 10`,
       [user.id],
     );
