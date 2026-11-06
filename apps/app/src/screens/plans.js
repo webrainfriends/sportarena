@@ -141,6 +141,10 @@ function WizardHeader({ title, subtitle, step, total, onClose }) {
       <T size={11} weight="700" color={c.pink} style={{ paddingHorizontal: 16, paddingTop: 8, textTransform: 'uppercase', letterSpacing: 0.8 }}>
         {t('vp.step_of', { n: step + 1, total })}
       </T>
+    </View>
+  );
+}
+
 const CURRENCIES = ['GBP', 'EUR', 'USD', 'AUD', 'INR', 'SGD', 'AED', 'LKR', 'IDR'];
 const TRIAL_OPTS = [{ label: 'None', days: 0 }, { label: '7 days', days: 7 }, { label: '14 days', days: 14 }, { label: '30 days', days: 30 }];
 
@@ -168,9 +172,6 @@ function SwitchRow({ label, sub, value, onChange }) {
         {sub ? <T size={12} color={c.mute}>{sub}</T> : null}
       </View>
       <Switch value={value} onValueChange={onChange} thumbColor={c.p5} trackColor={{ false: c.p1, true: c.pink }} />
-    </View>
-  );
-}
     </View>
   );
 }
@@ -527,6 +528,10 @@ function PlanWizard({ v, kind, visible, onClose, onDone }) {
             : <Btn title={t('common.next')} onPress={() => setStep((s) => s + 1)} />}
         </View>
       </View>
+    </Sheet>
+  );
+}
+
 function MembershipWizard({ visible, onClose, v: venue, onDone }) {
   const steps = ['Plan Identity', 'Pricing & Entitlements', 'Rules & Launch'];
   const [step, setStep] = useState(0);
