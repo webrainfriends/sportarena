@@ -392,5 +392,6 @@ import './para-doctor-consult.js';
 import './para-mentoring.js';
 import './para-pathway.js';
 import './para-sport-funding.js';
+import './para-learn.js';
 import './event-control-tower.js';
 import './process-guides.js';
