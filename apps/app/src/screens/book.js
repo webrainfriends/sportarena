@@ -10,6 +10,7 @@ import { useBasket } from '../basket';
 import { useLayout } from '../layout';
 import { Bubble, Btn, Card, Empty, ErrorBox, Field, H1, ListScreen, Loading, Row, Screen, Seg, Section, Sheet, T, Tag } from '../ui';
 import { FormSheet } from '../FormSheet';
+import { t } from '../i18n';
 import { venueFormProps } from './venue-register';
 import { Gallery, VenueReviews } from './venue-media';
 import { VenuePlans } from './plans';
