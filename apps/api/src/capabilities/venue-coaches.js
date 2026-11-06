@@ -17,10 +17,41 @@ import { isYouth } from '../youth.js';
 
 const TAG = 'Venue coaches';
 const NOTE = 'venue_coach.note';
+const BONUS_NOTE = 'venue_coach.bonus_trigger';
+const INTERNAL_NOTE = 'venue_coach.internal_note';
 const terms = {
   kind: z.enum(['staff', 'independent']).optional(), pay_model: z.enum(['revenue_share', 'flat_fee', 'staff']).optional(),
   share_bp: z.number().int().min(0).max(10000).optional().describe("the coach's share of a coached session, in basis points"), flat_fee_cents: z.number().int().min(0).optional(),
   sports: z.array(z.string().min(1).max(60)).max(30).optional().describe('sport slugs the tie covers; empty = every sport the coach coaches'),
+};
+const wizardFields = {
+  contract_type: z.enum(['staff', 'independent', 'visiting_specialist', 'master_clinician']).optional(),
+  start_date: z.string().date().optional(),
+  end_date: z.string().date().optional(),
+  probation_months: z.union([z.literal(0), z.literal(1), z.literal(3), z.literal(6)]).optional(),
+  notice_period_days: z.number().int().min(1).optional(),
+  bonus_model: z.enum(['none', 'win_based', 'milestone', 'retention']).optional(),
+  bonus_trigger: z.string().max(300).optional().describe('plain-text operational description of the bonus trigger; encrypted at rest'),
+  bonus_per_trigger_cents: z.number().int().min(0).optional(),
+  max_sessions_per_day: z.number().int().min(1).max(24).optional(),
+  max_students_per_session: z.number().int().min(1).max(200).optional(),
+  session_format: z.enum(['1on1', 'small_group', 'group', 'squad']).optional(),
+  age_groups: z.array(z.string().max(20)).max(20).optional(),
+  performance_levels: z.array(z.string().max(40)).max(10).optional(),
+  kit_provided: z.boolean().optional(),
+  equipment_allocated: z.boolean().optional(),
+  non_compete: z.boolean().optional(),
+  media_consent: z.boolean().optional(),
+  review_period: z.enum(['monthly', 'quarterly', 'biannual']).optional(),
+  kpi_retention_pct: z.number().int().min(0).max(100).optional(),
+  kpi_feedback_min: z.number().min(0).max(5).optional(),
+  kpi_ranking_lift: z.number().int().optional(),
+  para_classification_awareness: z.array(z.string().max(60)).max(20).optional(),
+  para_adaptive_experience: z.array(z.string().max(60)).max(20).optional(),
+  para_comm_adaptations: z.array(z.string().max(60)).max(20).optional(),
+  para_guide_role: z.boolean().optional(),
+  para_equipment_trained: z.boolean().optional(),
+  internal_note: z.string().max(1000).optional().describe('venue-admin only; never sent to the coach'),
 };
 
 // ---------------------------------------------------------------- who is who
@@ -49,14 +80,19 @@ function checkTerms(t) {
   if (model === 'flat_fee' && t.flat_fee_cents == null) throw badRequest('Say the flat fee');
   return model;
 }
-const tieView = (r) => ({ ...r, note: decrypt(r.note_enc, NOTE), note_enc: undefined });
+const tieView = (r) => ({
+  ...r,
+  note: decrypt(r.note_enc, NOTE), note_enc: undefined,
+  bonus_trigger: r.bonus_trigger_enc ? decrypt(r.bonus_trigger_enc, BONUS_NOTE) : null, bonus_trigger_enc: undefined,
+  internal_note: undefined, internal_note_enc: undefined, // never returned; admin reads via audit endpoint
+});
 const slotView = (r) => ({ ...r, note: decrypt(r.note_enc, NOTE), note_enc: undefined });
 
 // ---------------------------------------------------------------- ties
 cap({
   name: 'propose_venue_coach_tie', method: 'POST', path: '/venue-coach-ties', tag: TAG, status: 201,
-  summary: 'Propose a tie-up between a venue and a coach. A venue manager proposes to a coach (`coach_id`); a coach proposes to a venue (their own id is used). The other side agrees, amends or rejects. `kind`: in-house `staff` or an `independent` coach; terms are a revenue share or a flat fee.',
-  input: z.object({ venue_id: id, coach_id: id.optional(), kind: z.enum(['staff', 'independent']), ...terms, note: z.string().max(500).optional() }),
+  summary: 'Propose a tie-up between a venue and a coach. A venue manager proposes to a coach (`coach_id`); a coach proposes to a venue. `kind`: in-house `staff` or an `independent` coach; terms are a revenue share or a flat fee. The optional wizard fields (contract, availability, para-sport, KPIs) enrich the tie-up for elite academies.',
+  input: z.object({ venue_id: id, coach_id: id.optional(), kind: z.enum(['staff', 'independent']), ...terms, ...wizardFields, note: z.string().max(500).optional() }),
   async handler({ user }, i) {
     return tx(async (c) => {
       const venueSide = await canManage(user, i.venue_id, c);
@@ -70,9 +106,26 @@ cap({
       let tie;
       try {
         tie = (await c.query(
-          `INSERT INTO venue_coach_ties(venue_id, coach_id, kind, proposed_by, pay_model, share_bp, flat_fee_cents, sport_ids, note_enc, created_by)
-           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING *`,
-          [i.venue_id, coachId, i.kind, side, model, i.share_bp ?? null, i.flat_fee_cents ?? null, sports, i.note ? encrypt(i.note, NOTE) : null, user.id])).rows[0];
+          `INSERT INTO venue_coach_ties(
+             venue_id, coach_id, kind, proposed_by, pay_model, share_bp, flat_fee_cents, sport_ids, note_enc, created_by,
+             contract_type, start_date, end_date, probation_months, notice_period_days,
+             bonus_model, bonus_trigger_enc, bonus_per_trigger_cents,
+             max_sessions_per_day, max_students_per_session, session_format, age_groups, performance_levels,
+             kit_provided, equipment_allocated, non_compete, media_consent,
+             review_period, kpi_retention_pct, kpi_feedback_min, kpi_ranking_lift,
+             para_classification_awareness, para_adaptive_experience, para_comm_adaptations,
+             para_guide_role, para_equipment_trained, internal_note_enc
+           ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31,$32,$33,$34,$35,$36,$37) RETURNING *`,
+          [i.venue_id, coachId, i.kind, side, model, i.share_bp ?? null, i.flat_fee_cents ?? null, sports, i.note ? encrypt(i.note, NOTE) : null, user.id,
+           i.contract_type ?? null, i.start_date ?? null, i.end_date ?? null, i.probation_months ?? null, i.notice_period_days ?? null,
+           i.bonus_model ?? null, i.bonus_trigger ? encrypt(i.bonus_trigger, BONUS_NOTE) : null, i.bonus_per_trigger_cents ?? null,
+           i.max_sessions_per_day ?? null, i.max_students_per_session ?? null, i.session_format ?? null,
+           i.age_groups ?? [], i.performance_levels ?? [],
+           i.kit_provided ?? false, i.equipment_allocated ?? false, i.non_compete ?? false, i.media_consent ?? false,
+           i.review_period ?? null, i.kpi_retention_pct ?? null, i.kpi_feedback_min ?? null, i.kpi_ranking_lift ?? null,
+           i.para_classification_awareness ?? [], i.para_adaptive_experience ?? [], i.para_comm_adaptations ?? [],
+           i.para_guide_role ?? false, i.para_equipment_trained ?? false,
+           i.internal_note ? encrypt(i.internal_note, INTERNAL_NOTE) : null])).rows[0];
       } catch (e) { if (e.code === '23505') throw conflict('There is already an open or agreed tie-up between this venue and coach'); throw e; }
       await log(c, 'tie', tie.id, 'propose', user, side, null, 'proposed', { kind: i.kind, pay_model: model, share_bp: i.share_bp, flat_fee_cents: i.flat_fee_cents, sports: i.sports });
       await tellOther(c, tie, side, { kind: 'venue_coach_tie', title: `${await venueName(c, tie.venue_id)}: tie-up proposed`, body: 'Open Coaches to agree, amend or reject.', data: { tie_id: tie.id, venue_id: tie.venue_id } });
@@ -315,5 +368,34 @@ cap({
     const rows = await many('SELECT e.*, u.display_name AS actor_name FROM venue_coach_events e LEFT JOIN users u ON u.id=e.actor_id WHERE e.subject_type=$1 AND e.subject_id=$2 ORDER BY e.at, e.id', [i.type, i.id]);
     if (rows.some((r) => r.reason_enc)) await audit(null, user.id, 'read_venue_coach_reason', i.type === 'tie' ? 'venue_coach_ties' : 'venue_coach_slots', i.id);
     return rows.map(({ reason_enc, ...r }) => ({ ...r, reason: decrypt(reason_enc, NOTE) }));
+  },
+});
+
+cap({
+  name: 'get_coach_market_rate_intel', method: 'GET', path: '/venues/:id/coach-market-rate', tag: TAG,
+  summary: 'Platform intelligence on coach compensation for a venue\'s region and sport: the p25/median/p75 of agreed ties\' share_bp and flat_fee_cents (last 12 months, same venue country, same sport if given), active coach count, and the venue\'s own past ties for comparison. Never returns names or personal data.',
+  input: z.object({ id, sport: z.string().max(60).optional(), pay_model: z.enum(['revenue_share', 'flat_fee']).optional() }),
+  async handler({ user }, i) {
+    await mustManage(user, i.id);
+    const sport = i.sport ? await sportBySlugOrId(i.sport) : null;
+    if (i.sport && !sport) throw badRequest('Unknown sport');
+    const country = (await one('SELECT country FROM venues WHERE id=$1', [i.id]))?.country ?? null;
+    const pm = i.pay_model ?? 'revenue_share';
+    const rows = await many(
+      `SELECT t.share_bp, t.flat_fee_cents
+         FROM venue_coach_ties t JOIN venues v ON v.id=t.venue_id
+        WHERE t.status IN ('proposed','agreed') AND t.decided_at > now() - interval '12 months'
+          AND ($1::text IS NULL OR v.country=$1)
+          AND ($2::uuid IS NULL OR $2 = ANY(t.sport_ids))
+          AND t.pay_model=$3
+        LIMIT 500`, [country, sport?.id ?? null, pm]);
+    if (!rows.length) return { count: 0, pay_model: pm, sport: sport?.slug ?? null, region: country };
+    const vals = rows.map((r) => pm === 'revenue_share' ? (r.share_bp ?? 0) : (Number(r.flat_fee_cents ?? 0)));
+    vals.sort((a, b) => a - b);
+    const q = (p) => vals[Math.floor((vals.length - 1) * p / 100)] ?? null;
+    const ownTies = await many(
+      `SELECT t.share_bp, t.flat_fee_cents, t.created_at FROM venue_coach_ties t WHERE t.venue_id=$1 AND t.status='agreed' AND t.pay_model=$2 ORDER BY t.created_at DESC LIMIT 5`,
+      [i.id, pm]);
+    return { count: vals.length, pay_model: pm, sport: sport?.slug ?? null, region: country, p25: q(25), median: q(50), p75: q(75), own_ties: ownTies.map((r) => ({ share_bp: r.share_bp, flat_fee_cents: r.flat_fee_cents ? Number(r.flat_fee_cents) : null, agreed_at: r.created_at })) };
   },
 });

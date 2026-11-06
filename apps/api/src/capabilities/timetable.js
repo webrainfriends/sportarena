@@ -90,6 +90,23 @@ cap({
   input: z.object({
     id, resource_ids: z.array(id).min(1).max(100).optional(), all_courts: z.boolean().optional(), weekdays, start: clock, end: clock,
     category_id: id.optional(), closed: z.boolean().default(false), replace: z.boolean().default(true), valid_from: day.optional(), valid_to: day.optional(),
+    // Elite booking rule fields
+    booking_type: z.enum(['public', 'members', 'academy_class', 'private_coaching', 'group', 'event_reserved']).optional(),
+    min_advance_booking_hours: z.number().int().min(0).optional(),
+    max_advance_booking_days: z.number().int().positive().optional(),
+    max_bookings_per_member: z.number().int().positive().optional(),
+    buffer_min: z.number().int().min(0).optional(),
+    eligibility_who: z.enum(['everyone', 'members', 'students', 'staff']).optional(),
+    membership_tiers: z.array(z.string().max(60)).max(20).default([]),
+    age_min: z.number().int().min(0).optional(),
+    age_max: z.number().int().optional(),
+    cancellation_policy: z.enum(['flexible', 'standard', 'strict', 'non_refundable']).optional(),
+    late_cancel_pct: z.number().int().min(0).max(100).optional(),
+    para_accessible_surface: z.boolean().default(false),
+    para_equipment_on_court: z.boolean().default(false),
+    para_lowered_net: z.boolean().default(false),
+    para_guide_slot: z.boolean().default(false),
+    para_priority: z.enum(['open', 'para_only', 'para_priority']).optional(),
   }).refine((i) => i.resource_ids?.length || i.all_courts, 'choose courts (resource_ids) or all_courts')
     .refine((i) => hhmm(i.end) > hhmm(i.start), 'end must be after start')
     .refine((i) => !i.valid_from || !i.valid_to || i.valid_to >= i.valid_from, 'valid_to is before valid_from')
@@ -104,11 +121,68 @@ cap({
       for (const t of targets) if (!courts.includes(t)) throw badRequest('One of those courts is not part of this venue');
       await enableTimetable(c, i.id);
       const batch = randomUUID();
+      const bookingRuleFields = {
+        booking_type: i.booking_type, min_advance_booking_hours: i.min_advance_booking_hours, max_advance_booking_days: i.max_advance_booking_days,
+        max_bookings_per_member: i.max_bookings_per_member, buffer_min: i.buffer_min, eligibility_who: i.eligibility_who,
+        membership_tiers: i.membership_tiers, age_min: i.age_min, age_max: i.age_max, cancellation_policy: i.cancellation_policy, late_cancel_pct: i.late_cancel_pct,
+        para_accessible_surface: i.para_accessible_surface, para_equipment_on_court: i.para_equipment_on_court, para_lowered_net: i.para_lowered_net,
+        para_guide_slot: i.para_guide_slot, para_priority: i.para_priority,
+      };
       let replaced = 0;
-      for (const t of targets) replaced += await carve(c, i.id, t, { days: i.weekdays, start: hhmm(i.start), end: hhmm(i.end), categoryId: i.category_id ?? null, closed: i.closed, valid_from: i.valid_from ?? null, valid_to: i.valid_to ?? null, replace: i.replace, batch });
+      for (const t of targets) replaced += await carve(c, i.id, t, { days: i.weekdays, start: hhmm(i.start), end: hhmm(i.end), categoryId: i.category_id ?? null, closed: i.closed, valid_from: i.valid_from ?? null, valid_to: i.valid_to ?? null, replace: i.replace, batch, ...bookingRuleFields });
       await syncHours(c, i.id);
       return { courts: targets.length, windows_replaced: replaced, closed: i.closed };
     });
+  },
+});
+
+cap({
+  name: 'get_demand_heatmap', method: 'GET', path: '/venues/:id/demand-heatmap', tag: TAG, auth: 'manage',
+  summary: 'Returns a 7×24 demand heatmap (booking counts per weekday × hour) for the venue across the last 90 days, plus the busiest and quietest cells. Use to identify peak demand and decide where to add or close slots.',
+  input: z.object({ id, resource_id: id.optional(), days: z.number().int().min(7).max(365).default(90) }),
+  async handler({ user }, i) {
+    await mustManage(user, i.id);
+    const rows = await many(
+      `SELECT extract(dow FROM b.starts_at AT TIME ZONE v.timezone)::int AS weekday, extract(hour FROM b.starts_at AT TIME ZONE v.timezone)::int AS hour, count(*)::int AS bookings
+         FROM bookings b JOIN venues v ON v.id=b.venue_id
+        WHERE b.venue_id=$1 AND b.status NOT IN ('cancelled','failed') AND b.starts_at >= now() - ($3 || ' days')::interval
+          AND ($2::uuid IS NULL OR b.resource_id=$2)
+        GROUP BY 1,2 ORDER BY 1,2`,
+      [i.id, i.resource_id ?? null, String(i.days)]);
+    const grid = Array.from({ length: 7 }, () => Array(24).fill(0));
+    for (const r of rows) grid[r.weekday][r.hour] = r.bookings;
+    const cells = rows.map((r) => ({ weekday: r.weekday, hour: r.hour, bookings: r.bookings }));
+    const sorted = [...cells].sort((a, b) => b.bookings - a.bookings);
+    return { grid, busiest: sorted.slice(0, 5), quietest: sorted.slice(-5).reverse(), total_bookings: rows.reduce((s, r) => s + r.bookings, 0) };
+  },
+});
+
+cap({
+  name: 'get_timetable_revenue_preview', method: 'GET', path: '/venues/:id/timetable-revenue-preview', tag: TAG, auth: 'manage',
+  summary: 'Projects weekly and annual revenue from the current timetable: for each category and the base rate, multiplies bookable slot-hours by the hourly rate and applies a configurable occupancy assumption (default 60%). Returns per-category breakdown, total projected weekly revenue and annualised figure.',
+  input: z.object({ id, occupancy_pct: z.number().int().min(1).max(100).default(60) }),
+  async handler({ user }, i) {
+    await mustManage(user, i.id);
+    const v = await mustFind('venues', i.id, 'id, currency, timezone');
+    const [windows, categories, courts] = await Promise.all([
+      many('SELECT w.resource_id, w.category_id, w.weekdays, w.start_min, w.end_min FROM schedule_windows w WHERE w.venue_id=$1 AND w.removed_at IS NULL AND w.valid_from IS NULL AND w.valid_to IS NULL', [i.id]),
+      many('SELECT pc.id, pc.name, pc.hourly_rate_cents FROM price_categories WHERE venue_id=$1 AND active', [i.id]),
+      many('SELECT r.id, r.hourly_rate_cents FROM resources WHERE venue_id=$1 AND active', [i.id]),
+    ]);
+    const catMap = Object.fromEntries(categories.map((c) => [c.id, c]));
+    const courtMap = Object.fromEntries(courts.map((r) => [r.id, r]));
+    const byCategory = {};
+    for (const w of windows) {
+      const slotHours = (w.end_min - w.start_min) / 60 * w.weekdays.length;
+      const rate = w.category_id ? (catMap[w.category_id]?.hourly_rate_cents ?? 0) : (courtMap[w.resource_id]?.hourly_rate_cents ?? 0);
+      const key = w.category_id ?? 'base';
+      byCategory[key] = (byCategory[key] ?? { name: w.category_id ? (catMap[w.category_id]?.name ?? 'Unknown') : 'Base rate', slot_hours_weekly: 0, rate_cents: rate, revenue_cents_weekly: 0 });
+      byCategory[key].slot_hours_weekly += slotHours;
+      byCategory[key].revenue_cents_weekly += slotHours * rate * (i.occupancy_pct / 100);
+    }
+    const breakdown = Object.values(byCategory);
+    const totalWeekly = breakdown.reduce((s, b) => s + b.revenue_cents_weekly, 0);
+    return { currency: v.currency, occupancy_pct: i.occupancy_pct, breakdown: breakdown.map((b) => ({ ...b, revenue_cents_weekly: Math.round(b.revenue_cents_weekly) })), total_weekly_cents: Math.round(totalWeekly), total_annual_cents: Math.round(totalWeekly * 52) };
   },
 });
 
