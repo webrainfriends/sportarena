@@ -7,8 +7,13 @@ import { A, ACard, AEmpty, ASection, AT, LiveBadge, PodiumCard } from '../arena'
 import { ErrorBox, Loading, Sheet, T } from '../ui';
 import { ClassResultsTab } from './para-results';
 
+// A para-sport event shows the class-based results. The choice is made here, above the hooks: `e` loads after the first render, and
+// returning early from inside one component would change its hook count between renders and crash it.
 export function ResultsTab({ id, e }) {
-  if (e?.sport?.is_para) return <ClassResultsTab eventId={id} />;
+  return e?.sport?.is_para ? <ClassResultsTab eventId={id} /> : <StandardResults id={id} e={e} />;
+}
+
+function StandardResults({ id, e }) {
   const table = useLoad(() => api.get(`/events/${id}/standings`), [id]);
   const res = useLoad(() => api.get(`/events/${id}/results`), [id]);
   const [open, setOpen] = useState(null);

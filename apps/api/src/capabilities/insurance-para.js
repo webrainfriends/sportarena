@@ -23,7 +23,9 @@ function neverInventCoverage(plan) {
 }
 
 /** Extend a plan row with para-sport columns from insurance_plans. */
-const PARA_PLAN_SQL = `${PLAN_SQL}, pl.para_disciplines, pl.para_event_types, pl.para_equipment_cover, pl.para_travel_cover, pl.para_exclusions, pl.para_coverage_unknowns`;
+const PARA_PLAN_COLS = 'pl.para_disciplines, pl.para_event_types, pl.para_equipment_cover, pl.para_travel_cover, pl.para_exclusions, pl.para_coverage_unknowns';
+// the extra columns go into the SELECT list, before the FROM clause that PLAN_SQL ends with (appended after it they read as another table)
+const PARA_PLAN_SQL = PLAN_SQL.replace(/\s+FROM insurance_plans pl/, `,\n    ${PARA_PLAN_COLS}\n  FROM insurance_plans pl`);
 
 /** Validate that every slug in an array exists as a para sport in the catalogue. Throws badRequest if any are unknown. */
 async function validateParaDisciplines(slugs) {

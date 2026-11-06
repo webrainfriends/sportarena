@@ -46,7 +46,7 @@ async function setupSession(coach) {
   const a2 = await signup(['athlete']);
   // create session record
   const rec = (await pool.query(
-    "INSERT INTO coaching_session_records(coach_id, sport_id, source_type, source_id, title, status) VALUES($1,$2,'team_session','test-src','Para test session','active') RETURNING *",
+    "INSERT INTO coaching_session_records(coach_id, sport_id, source_type, source_id, title, status) VALUES($1,$2,'team_session','test-src','Para test session','planned') RETURNING *",
     [coach.id, sport.id],
   )).rows[0];
   // add athletes to session
@@ -56,9 +56,12 @@ async function setupSession(coach) {
 
 // Share support needs with coach (simulates athlete's consent in inclusion module)
 async function shareNeeds(athleteId, coachId, needKeys) {
+  // the real share record (PS-03): it belongs to an organisation, names the coach by role and by person, and expires
+  const org = (await pool.query("INSERT INTO organisations(name, created_by) VALUES ('CP org',$1) RETURNING id", [coachId])).rows[0];
   await pool.query(
-    "INSERT INTO inclusion_shares(athlete_id, audience_role, audience_user_id, need_keys, shared_by) VALUES($1,'coach',$2,$3,$1)",
-    [athleteId, coachId, needKeys],
+    `INSERT INTO academy_accommodation_shares(organisation_id, athlete_id, need_keys, audience_users, audience_roles, granted_by, granted_as, expires_at)
+     VALUES($1,$2,$3,$4,'{coach}',$2,'self', now() + interval '30 days')`,
+    [org.id, athleteId, needKeys, [coachId]],
   );
 }
 

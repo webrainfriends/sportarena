@@ -3,6 +3,7 @@
 // and the neverInventCoverage disclosure-gap logic (tested inline since it is
 // an internal module function, not a public export).
 
+import { describe, it, expect } from './helpers/vitest-compat.js';
 import { PARA_EVENT_TYPES } from '../src/capabilities/insurance-para.js';
 
 describe('insurance-para constants', () => {

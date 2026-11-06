@@ -48,8 +48,7 @@ async function detectRecords(c, perf) {
       [sport_id, sport_class, metric, record_type, ...params])).rows[0];
     if (!existing || better(value, existing.value)) {
       if (existing) {
-        await c.query("UPDATE para_records SET status='historic', superseded_by_id=CURRVAL('para_records_id_seq') WHERE id=$1", []);
-        // insert new, then update old to point to it
+        // insert new, then update old to point to it (below)
       }
       const rec = (await c.query(
         `INSERT INTO para_records(sport_id, sport_class, metric, unit, direction, record_type, value, holder_user_id, achieved_at, event_id, performance_id, provenance, status)
@@ -68,9 +67,10 @@ async function detectRecords(c, perf) {
   // world record (no country restriction)
   const wr = await checkType('world', '', []);
 
-  // national record — look up athlete's nationality
-  const nat = (await c.query('SELECT nationality FROM users WHERE id=$1', [user_id])).rows[0]?.nationality;
-  const nr = nat ? await checkType('national', 'AND governing_body=$5', [nat]) : false;
+  // national record: needs the athlete's nationality, which the platform does not store (users has no such column), so it is not
+  // detected yet rather than failing every result. World and personal-best records above are unaffected. Once a nationality field
+  // exists, look it up here and run: checkType('national', 'AND governing_body=$5', [nationality]).
+  const nr = false;
 
   if (wr || nr || pb) onResultsChanged(sport_id);
   return { world_record: wr, national_record: nr, personal_best: pb, records: detected };
@@ -170,7 +170,7 @@ cap({
     const dir = rule?.direction ?? 'lower';
     const agg = dir === 'lower' ? 'MIN' : 'MAX';
     const rows = await many(
-      `SELECT u.id AS user_id, u.name, u.emoji, p.sport_class,
+      `SELECT u.id AS user_id, u.display_name AS name, u.avatar_emoji AS emoji, p.sport_class,
               ${agg}(p.value)::float8 AS best_value, p.unit, p.direction,
               count(*)::int AS result_count,
               bool_or(p.provenance='approved_competition') AS has_official
@@ -180,7 +180,7 @@ cap({
           AND p.provenance='approved_competition' AND p.status='approved'
           AND ($4::uuid IS NULL OR p.event_id=$4)
           AND ($5::int IS NULL OR extract(year FROM p.achieved_on)=$5)
-        GROUP BY u.id, u.name, u.emoji, p.sport_class, p.unit, p.direction
+        GROUP BY u.id, u.display_name, u.avatar_emoji, p.sport_class, p.unit, p.direction
         ORDER BY ${agg}(p.value) ${dir === 'lower' ? 'ASC' : 'DESC'}
         LIMIT $6 OFFSET $7`,
       [sport.id, i.metric, i.sport_class ?? null, i.event_id ?? null, i.season ?? null, i.limit, i.offset]);
@@ -201,7 +201,7 @@ cap({
         const ev = perf.event_id ? (await c.query('SELECT organizer_id FROM events WHERE id=$1', [perf.event_id])).rows[0] : null;
         if (!ev || ev.organizer_id !== user.id) throw forbidden('Only the original recorder, the event organiser or an admin may set the guide');
       }
-      const guide = (await c.query('SELECT id, name FROM users WHERE id=$1', [i.guide_athlete_id])).rows[0];
+      const guide = (await c.query('SELECT id, display_name AS name FROM users WHERE id=$1', [i.guide_athlete_id])).rows[0];
       if (!guide) throw notFound('Guide athlete');
       if (perf.event_id) {
         const inEvent = (await c.query(
@@ -273,10 +273,10 @@ cap({
     if (!filter.length) return { event_id: i.id, classes: [] };
     const result = await Promise.all(filter.map(async (cls) => {
       const rows = await many(
-        `SELECT u.id AS user_id, u.name, u.emoji, p.sport_class,
+        `SELECT u.id AS user_id, u.display_name AS name, u.avatar_emoji AS emoji, p.sport_class,
                 p.classification_snapshot,
                 p.guide_athlete_id,
-                g.name AS guide_name,
+                g.display_name AS guide_name,
                 p.provenance,
                 p.value::float8 AS best_value, p.unit, p.direction,
                 count(*)::int AS result_count
@@ -284,8 +284,8 @@ cap({
            JOIN users u ON u.id=p.user_id
            LEFT JOIN users g ON g.id=p.guide_athlete_id
           WHERE p.event_id=$1 AND p.sport_class=$2 AND p.provenance='approved_competition' AND p.status='approved'
-          GROUP BY u.id, u.name, u.emoji, p.sport_class, p.classification_snapshot,
-                   p.guide_athlete_id, g.name, p.provenance, p.value, p.unit, p.direction
+          GROUP BY u.id, u.display_name, u.avatar_emoji, p.sport_class, p.classification_snapshot,
+                   p.guide_athlete_id, g.display_name, p.provenance, p.value, p.unit, p.direction
           ORDER BY p.value ASC`,
         [ev.id, cls]);
       return { sport_class: cls, not_comparable: !i.sport_class, entries: rows.map((r, idx) => ({ rank: idx + 1, ...r })) };
@@ -308,7 +308,7 @@ cap({
     const sport = await sportBySlugOrId(i.sport);
     if (!sport) throw notFound('Sport');
     const rows = await many(
-      `SELECT r.*, u.name AS holder_name, u.emoji AS holder_emoji, u.nationality AS holder_nationality
+      `SELECT r.*, u.display_name AS holder_name, u.avatar_emoji AS holder_emoji, NULL::text AS holder_nationality
          FROM para_records r LEFT JOIN users u ON u.id=r.holder_user_id
         WHERE r.sport_id=$1 AND r.sport_class=$2 AND r.status IN ('current','pending_ratification')
           AND ($3::text IS NULL OR r.metric=$3)
@@ -342,7 +342,7 @@ cap({
     const sport = await sportBySlugOrId(i.sport);
     if (!sport) throw notFound('Sport');
     const rows = await many(
-      `SELECT r.*, u.name AS holder_name, u.emoji AS holder_emoji
+      `SELECT r.*, u.display_name AS holder_name, u.avatar_emoji AS holder_emoji
          FROM para_records r LEFT JOIN users u ON u.id=r.holder_user_id
         WHERE r.sport_id=$1
           AND ($2::text IS NULL OR r.sport_class=$2)

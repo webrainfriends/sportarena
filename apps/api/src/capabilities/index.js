@@ -384,5 +384,13 @@ import './para-competition.js';
 import './para-catalogue.js';
 import './para-results.js';
 import './para-readiness.js';
+// Para-sport modules that were merged and have screens in the app but were never loaded, so every one of their endpoints answered "Route not found".
+import './accommodations-ps03.js';
+import './coaching-para.js';
+import './insurance-para.js';
+import './para-doctor-consult.js';
+import './para-mentoring.js';
+import './para-pathway.js';
+import './para-sport-funding.js';
 import './event-control-tower.js';
 import './process-guides.js';
