@@ -1,7 +1,7 @@
 // The insurer's desk: set up the profile, publish and advertise plans, answer quote requests, send quotes, see the book of
 // business and renewals, and handle claims on the policies this insurer wrote. Everything here is the same API agents use.
 import React, { useState } from 'react';
-import { View } from 'react-native';
+import { View, Switch } from 'react-native';
 import { api } from '../api';
 import { useLoad } from '../hooks';
 import { useSession } from '../session';
@@ -9,6 +9,7 @@ import { useNav } from '../nav';
 import { Btn, Card, Chip, Empty, ErrorBox, Field, H1, Loading, Screen, Section, Sheet, StatPill, T, Tag } from '../ui';
 import { FormSheet } from '../FormSheet';
 import { c, day, money } from '../theme';
+import { SportsMulti } from '../sportpicker';
 import { moneyIn } from '../vtime';
 import { InsurerPanel } from './insurance-panel';
 import { DocumentsSheet, QuoteRequestSheet, RequestSheet, StatusTag, dayY, nice } from './insurance';
@@ -31,6 +32,80 @@ const profileFields = (cur_) => [
 ];
 const profileBody = (v) => ({ ...v, regions: list(v.regions), sports: list(v.sports).map((x) => x.toLowerCase().replace(/\s+/g, '-')), headline: v.headline || null, description: v.description || null, website: v.website || null });
 
+const INSURER_REGIONS = ['Global', 'Europe', 'Asia Pacific', 'North America', 'South Asia', 'Middle East', 'Africa', 'Latin America'];
+const INSURER_COVER_TYPES = ['Individual athlete', 'Team', 'Event', 'Venue', 'Medical malpractice', 'Equipment', 'Travel'];
+const WIZARD_STEPS = ['Identity & Credentials', 'Coverage & Specialisms', 'Verification & Launch'];
+
+function InsurerProfileWizard({ visible, onClose, initial, onSubmit, title = 'Your insurer profile', submitLabel = 'Create profile' }) {
+  const [step, setStep] = useState(1);
+  const [busy, setBusy] = useState(false);
+  const mk = () => ({ name: initial?.name ?? '', headline: initial?.headline ?? '', description: initial?.description ?? '', website: initial?.website ?? '', licence_no: '', regions: initial?.regions ?? [], sports: initial?.sports ?? [], cover_types: initial?.cover_types ?? [], accepting_requests: initial?.accepting_requests ?? true });
+  const [f, setF] = useState(mk);
+  const set = (k, v) => setF((x) => ({ ...x, [k]: v }));
+  const tog = (k, v) => setF((x) => ({ ...x, [k]: x[k].includes(v) ? x[k].filter((i) => i !== v) : [...x[k], v] }));
+  const close = () => { setStep(1); setF(mk()); onClose(); };
+  React.useEffect(() => { if (visible) { setStep(1); setF(mk()); } }, [visible]);
+  const can1 = f.name.trim().length > 1;
+  const submit = async () => { setBusy(true); try { await onSubmit(f); close(); } finally { setBusy(false); } };
+  return (
+    <Sheet visible={visible} onClose={close} title={title}>
+      <View style={{ flexDirection: 'row', gap: 4, marginBottom: 16 }}>
+        {WIZARD_STEPS.map((s, i) => <View key={s} style={{ flex: 1, height: 4, borderRadius: 2, backgroundColor: i + 1 < step ? c.violet : i + 1 === step ? c.pink : c.p1 }} />)}
+      </View>
+      <T size={12} color={c.mute} weight="700" style={{ marginBottom: 12 }}>Step {step} of {WIZARD_STEPS.length}: {WIZARD_STEPS[step - 1]}</T>
+      {step === 1 && (
+        <View style={{ gap: 12 }}>
+          <Field label="Insurer name *" value={f.name} onChangeText={(v) => set('name', v)} placeholder="Your trading name" />
+          <Field label="One-line pitch" value={f.headline} onChangeText={(v) => set('headline', v)} placeholder="e.g. Specialist sports cover for clubs and athletes" />
+          <Field label="About you" value={f.description} onChangeText={(v) => set('description', v)} multiline placeholder="Your background, areas of expertise, and what makes your cover stand out" />
+          <Field label="Website" value={f.website} onChangeText={(v) => set('website', v)} placeholder="https://" />
+          <Field label="Regulator licence number" value={f.licence_no} onChangeText={(v) => set('licence_no', v)} hint="Stored securely — used for verification" placeholder="Optional" />
+        </View>
+      )}
+      {step === 2 && (
+        <View style={{ gap: 12 }}>
+          <T size={13} weight="700">Regions where you sell</T>
+          <View style={{ flexDirection: 'row', gap: 6, flexWrap: 'wrap' }}>
+            {INSURER_REGIONS.map((r) => <Chip key={r} label={r} active={f.regions.includes(r)} onPress={() => tog('regions', r)} />)}
+          </View>
+          <T size={13} weight="700" style={{ marginTop: 4 }}>Sports you specialise in</T>
+          <SportsMulti value={f.sports} onChange={(v) => set('sports', v)} />
+          <T size={13} weight="700" style={{ marginTop: 4 }}>Cover types offered</T>
+          <View style={{ flexDirection: 'row', gap: 6, flexWrap: 'wrap' }}>
+            {INSURER_COVER_TYPES.map((ct) => <Chip key={ct} label={ct} active={f.cover_types.includes(ct)} onPress={() => tog('cover_types', ct)} />)}
+          </View>
+          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 8 }}>
+            <T weight="700">Accept new quote requests</T>
+            <Switch value={f.accepting_requests} onValueChange={(v) => set('accepting_requests', v)} trackColor={{ false: c.p1, true: c.pink }} />
+          </View>
+        </View>
+      )}
+      {step === 3 && (
+        <View style={{ gap: 12 }}>
+          <Card color={c.violetSoft} pad={12}>
+            <T weight="900" size={16}>{f.name}</T>
+            {f.headline ? <T size={13} color={c.mute} style={{ marginTop: 4 }}>{f.headline}</T> : null}
+            <View style={{ flexDirection: 'row', gap: 6, flexWrap: 'wrap', marginTop: 8 }}>
+              <Tag label={f.regions.length ? `${f.regions.length} region${f.regions.length !== 1 ? 's' : ''}` : 'Sells globally'} color={c.cyan} />
+              <Tag label={f.sports.length ? `${f.sports.length} sport${f.sports.length !== 1 ? 's' : ''}` : 'All sports'} color={c.mint} />
+              <Tag label={f.accepting_requests ? 'Taking requests' : 'Requests paused'} color={f.accepting_requests ? c.lime : c.violetSoft} />
+            </View>
+          </Card>
+          <Card color={c.cyanSoft} pad={12}>
+            <T weight="800" size={14}>What happens next</T>
+            <T size={13} style={{ marginTop: 6 }}>Profile created immediately. Licence verification follows within 48 hrs. Athletes and clubs can find you once verified. Publish your first plan from the Plans tab.</T>
+          </Card>
+        </View>
+      )}
+      <View style={{ flexDirection: 'row', gap: 8, marginTop: 20 }}>
+        {step > 1 ? <Btn title="Back" color={c.paper} ink={c.ink} onPress={() => setStep((s) => s - 1)} style={{ flex: 1 }} /> : null}
+        {step < 3 ? <Btn title="Next" disabled={step === 1 ? !can1 : false} onPress={() => setStep((s) => s + 1)} style={{ flex: 1 }} /> : null}
+        {step === 3 ? <Btn title={submitLabel} disabled={busy} onPress={submit} style={{ flex: 1 }} /> : null}
+      </View>
+    </Sheet>
+  );
+}
+
 /** First visit: tell people who you are. You can publish plans and answer requests straight away; verification follows. */
 function Onboarding({ onDone }) {
   const [open, setOpen] = useState(false);
@@ -43,8 +118,8 @@ function Onboarding({ onDone }) {
         {['Create your insurer profile', 'Add your licence number so we can verify you', 'Publish your first plan (and advertise it with an offer)', 'Answer quote requests and track your policies'].map((t, i) => <T key={t} size={14} style={{ marginTop: 6 }}>{i + 1}. {t}</T>)}
         <Btn title="Set up my profile" onPress={() => setOpen(true)} style={{ marginTop: 14 }} />
       </Card>
-      <FormSheet visible={open} onClose={() => setOpen(false)} title="Your insurer profile" submitLabel="Create profile" initial={{ accepting_requests: true }} fields={profileFields(null)}
-        onSubmit={async (v) => { await api.post('/insurance/my-insurer', profileBody(v)); onDone(); return 'Profile created: now publish your first plan'; }} />
+      <InsurerProfileWizard visible={open} onClose={() => setOpen(false)}
+        onSubmit={async (v) => { await api.post('/insurance/my-insurer', { name: v.name, headline: v.headline || null, description: v.description || null, website: v.website || null, licence_no: v.licence_no || null, regions: v.regions, sports: v.sports, accepting_requests: v.accepting_requests }); onDone(); }} />
     </Screen>
   );
 }
@@ -428,8 +503,9 @@ function Profile({ me, onChanged }) {
         <T size={13} style={{ marginTop: 8 }}>{me.description || 'No description yet.'}</T>
         <T size={12} color={c.mute} style={{ marginTop: 6 }}>{me.regions.length ? `Sells in ${me.regions.join(', ')}` : 'Sells everywhere'} · {me.sports.length ? me.sports.join(', ') : 'all sports'}</T>
       </Card>
-      <FormSheet visible={edit} onClose={() => setEdit(false)} title="Edit profile" initial={{ name: me.name, headline: me.headline, description: me.description, website: me.website, regions: me.regions.join(', '), sports: me.sports.join(', '), accepting_requests: me.accepting_requests }} fields={profileFields(me)}
-        onSubmit={async (v) => { await api.patch('/insurance/my-insurer', profileBody(v)); onChanged(); return 'Profile saved'; }} />
+      <InsurerProfileWizard visible={edit} onClose={() => setEdit(false)} title="Edit profile" submitLabel="Save changes"
+        initial={{ name: me.name, headline: me.headline ?? '', description: me.description ?? '', website: me.website ?? '', regions: me.regions ?? [], sports: me.sports ?? [], accepting_requests: me.accepting_requests }}
+        onSubmit={async (v) => { await api.patch('/insurance/my-insurer', { name: v.name, headline: v.headline || null, description: v.description || null, website: v.website || null, licence_no: v.licence_no || null, regions: v.regions, sports: v.sports, accepting_requests: v.accepting_requests }); onChanged(); }} />
     </Section>
   );
 }
