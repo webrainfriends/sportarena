@@ -248,7 +248,7 @@ export const NOT_IN_GUIDE = {
 };
 
 /** The directories/files the guard test watches for org/academy/venue/coach/tax capability modules. */
-export const WATCHED_MODULES = /^(academy-.*|org-.*|organisations|venue-coaches|gst|provider-tax|coach-classes|para-sport-funding|para-pathway|para-readiness)\.js$/;
+export const WATCHED_MODULES = /^(academy-.*|org-.*|organisations|venue-coaches|gst|provider-tax|coach-classes|para-sport-funding|para-pathway|para-readiness|para-learn)\.js$/;
 
 export const SHOT_SIZES = { phone: { width: 390, height: 1100 }, desktop: { width: 1280, height: 900 } };
 export const shotFile = (stepId, size) => `${String(ACADEMY_STEPS.findIndex((s) => s.id === stepId) + 1).padStart(2, '0')}-${stepId}-${size}.png`;
