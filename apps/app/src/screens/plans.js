@@ -1,12 +1,13 @@
 // Memberships and multi-session passes: what a venue sells, what you hold, using a pass on an invoice, and the venue team's plan manager.
 import { t } from '../i18n';
 import React, { useState } from 'react';
-import { View } from 'react-native';
+import { View, Switch } from 'react-native';
 import { api } from '../api';
 import { useLoad } from '../hooks';
 import { useSession } from '../session';
-import { Btn, Card, Empty, Loading, Row, Section, Sheet, StatPill, T, Tag } from '../ui';
+import { Btn, Card, Chip, Empty, Field, Loading, Row, Section, Sheet, StatPill, T, Tag } from '../ui';
 import { FormSheet } from '../FormSheet';
+import { Counter } from '../pickers';
 import { PaySheet } from '../PaySheet';
 import { c } from '../theme';
 import { moneyIn } from '../vtime';
@@ -15,6 +16,172 @@ import { Collections } from './collections';
 
 const until = (d) => new Date(d).toLocaleDateString(locale);
 const PERKS = ['Locker', 'Towel', 'Coaching clinic', 'Equipment hire', 'Free guest pass', 'Priority booking', 'Shower & changing room', 'Café discount'];
+const CURRENCIES = ['GBP', 'EUR', 'USD', 'AUD', 'INR', 'SGD', 'AED', 'LKR', 'IDR'];
+const DURATION_OPTS = [{ label: '1 month', days: 30 }, { label: '3 months', days: 90 }, { label: '6 months', days: 180 }, { label: '1 year', days: 365 }];
+const TRIAL_OPTS = [{ label: 'None', days: 0 }, { label: '7 days', days: 7 }, { label: '14 days', days: 14 }, { label: '30 days', days: 30 }];
+
+function WizardBar({ step, steps }) {
+  return (
+    <View style={{ flexDirection: 'row', gap: 4, marginBottom: 16 }}>
+      {steps.map((s, i) => <View key={s} style={{ flex: 1, height: 4, borderRadius: 2, backgroundColor: i < step ? c.violet : i === step ? c.pink : c.p1 }} />)}
+    </View>
+  );
+}
+function WizardFooter({ step, steps, canNext, onBack, onNext, onSubmit, submitLabel }) {
+  return (
+    <View style={{ flexDirection: 'row', gap: 10, marginTop: 20 }}>
+      {step > 0 && <Btn title="Back" color={c.paper} ink={c.ink} onPress={onBack} style={{ flex: 1 }} />}
+      {step < steps.length - 1 && <Btn title="Next" color={c.pink} disabled={!canNext} onPress={onNext} style={{ flex: 1 }} />}
+      {step === steps.length - 1 && <Btn title={submitLabel ?? 'Create'} color={c.pink} onPress={onSubmit} style={{ flex: 1 }} />}
+    </View>
+  );
+}
+function SwitchRow({ label, sub, value, onChange }) {
+  return (
+    <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+      <View style={{ flex: 1 }}>
+        <T weight="800" size={14}>{label}</T>
+        {sub ? <T size={12} color={c.mute}>{sub}</T> : null}
+      </View>
+      <Switch value={value} onValueChange={onChange} thumbColor={c.p5} trackColor={{ false: c.p1, true: c.pink }} />
+    </View>
+  );
+}
+
+function MembershipWizard({ visible, onClose, v: venue, onDone }) {
+  const steps = ['Plan Identity', 'Pricing & Entitlements', 'Rules & Launch'];
+  const [step, setStep] = useState(0);
+  const [v, setV] = useState({ name: '', duration_days: 30, discount_pct: 10, auto_renew: false, ent_days: [], ent_guests: 0 });
+  const set = (k, val) => setV((p) => ({ ...p, [k]: val }));
+  const { toast } = useSession();
+  const can = [v.name.length > 0, v.price_cents > 0, true];
+  return (
+    <Sheet visible={visible} onClose={onClose} title="New membership">
+      <WizardBar step={step} steps={steps} />
+      <T weight="900" size={16} style={{ marginBottom: 12 }}>{steps[step]}</T>
+      {step === 0 && (
+        <View style={{ gap: 14 }}>
+          <Field label="Membership name" value={v.name} onChangeText={(t) => set('name', t)} placeholder="e.g. Gold member, Annual member" />
+          <T weight="800" size={13} color={c.mute}>Duration</T>
+          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+            {DURATION_OPTS.map((o) => <Chip key={o.days} label={o.label} active={v.duration_days === o.days} onPress={() => set('duration_days', o.days)} />)}
+          </View>
+          <Field label="Description" value={v.description ?? ''} onChangeText={(t) => set('description', t)} multiline optional />
+        </View>
+      )}
+      {step === 1 && (
+        <View style={{ gap: 14 }}>
+          <T weight="800" size={13} color={c.mute}>Discount on every booking</T>
+          <Counter value={v.discount_pct} onChange={(n) => set('discount_pct', n)} min={5} max={90} step={5} label="%" />
+          <Field label={`Price (${venue.currency})`} value={v.price_cents != null ? String(v.price_cents / 100) : ''} onChangeText={(t) => set('price_cents', Math.round(parseFloat(t || '0') * 100))} placeholder="0.00" />
+          <T weight="800" size={13} color={c.mute}>Included perks</T>
+          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+            {PERKS.map((p) => <Chip key={p} label={p} active={(v.includes ?? []).includes(p)} onPress={() => set('includes', (v.includes ?? []).includes(p) ? (v.includes ?? []).filter((x) => x !== p) : [...(v.includes ?? []), p])} />)}
+          </View>
+        </View>
+      )}
+      {step === 2 && (
+        <View style={{ gap: 14 }}>
+          <SwitchRow label="Subscription (auto-renew)" sub="Members are reminded to renew a week before it ends." value={v.auto_renew} onChange={(val) => set('auto_renew', val)} />
+          <Card pad={12}><T weight="800">{v.name}</T><T size={12} color={c.mute}>{DURATION_OPTS.find((o) => o.days === v.duration_days)?.label} · {v.discount_pct}% off every booking{v.auto_renew ? ' · subscription' : ''}</T></Card>
+        </View>
+      )}
+      <WizardFooter step={step} steps={steps} canNext={can[step]} onBack={() => setStep(step - 1)} onNext={() => setStep(step + 1)} submitLabel="Create membership" onSubmit={async () => { try { await api.post(`/venues/${venue.id}/plans`, { name: v.name, description: v.description, kind: 'membership', price_cents: v.price_cents, duration_days: v.duration_days, discount_bp: Math.round(v.discount_pct * 100), auto_renew: v.auto_renew, includes: v.includes ?? [], entitlements: { days: v.ent_days, guest_quota: v.ent_guests ?? 0 } }); onDone(); onClose(); } catch (e) { toast(e.message); } }} />
+    </Sheet>
+  );
+}
+
+function PassWizard({ visible, onClose, v: venue, onDone, isPackage }) {
+  const steps = ['Pass Identity', 'Value & Validity', 'Rules & Launch'];
+  const [step, setStep] = useState(0);
+  const [v, setV] = useState({ name: '', sessions: 10, valid_days: 90, includes: [] });
+  const set = (k, val) => setV((p) => ({ ...p, [k]: val }));
+  const { toast } = useSession();
+  const can = [v.name.length > 0, v.price_cents > 0, true];
+  return (
+    <Sheet visible={visible} onClose={onClose} title={isPackage ? 'New package' : 'New pass'}>
+      <WizardBar step={step} steps={steps} />
+      <T weight="900" size={16} style={{ marginBottom: 12 }}>{steps[step]}</T>
+      {step === 0 && (
+        <View style={{ gap: 14 }}>
+          <Field label={isPackage ? 'Package name' : 'Pass name'} value={v.name} onChangeText={(t) => set('name', t)} placeholder={isPackage ? 'e.g. Badminton 10-hour pack' : 'e.g. 10-session pass'} />
+          {isPackage && (
+            <>
+              <T weight="800" size={13} color={c.mute}>Valid on courts (leave empty for any)</T>
+              <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+                {venue.resources.map((r) => <Chip key={r.id} label={`${r.sport_emoji ?? ''} ${r.name}`.trim()} active={(v.resource_ids ?? []).includes(r.id)} onPress={() => set('resource_ids', (v.resource_ids ?? []).includes(r.id) ? (v.resource_ids ?? []).filter((x) => x !== r.id) : [...(v.resource_ids ?? []), r.id])} />)}
+              </View>
+            </>
+          )}
+          <Field label="Description" value={v.description ?? ''} onChangeText={(t) => set('description', t)} multiline optional />
+        </View>
+      )}
+      {step === 1 && (
+        <View style={{ gap: 14 }}>
+          <Field label={`Price for whole ${isPackage ? 'package' : 'pass'} (${venue.currency})`} value={v.price_cents != null ? String(v.price_cents / 100) : ''} onChangeText={(t) => set('price_cents', Math.round(parseFloat(t || '0') * 100))} placeholder="0.00" />
+          <T weight="800" size={13} color={c.mute}>Sessions included</T>
+          <Counter value={v.sessions} onChange={(n) => set('sessions', n)} min={1} max={200} step={1} label="sessions" />
+          <T weight="800" size={13} color={c.mute}>Use within</T>
+          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+            {DURATION_OPTS.map((o) => <Chip key={o.days} label={o.label} active={v.valid_days === o.days} onPress={() => set('valid_days', o.days)} />)}
+          </View>
+        </View>
+      )}
+      {step === 2 && (
+        <View style={{ gap: 14 }}>
+          <T weight="800" size={13} color={c.mute}>Included perks</T>
+          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+            {PERKS.map((p) => <Chip key={p} label={p} active={v.includes.includes(p)} onPress={() => set('includes', v.includes.includes(p) ? v.includes.filter((x) => x !== p) : [...v.includes, p])} />)}
+          </View>
+          <Card pad={12}><T weight="800">{v.name}</T><T size={12} color={c.mute}>{v.sessions} sessions · {DURATION_OPTS.find((o) => o.days === v.valid_days)?.label}</T></Card>
+        </View>
+      )}
+      <WizardFooter step={step} steps={steps} canNext={can[step]} onBack={() => setStep(step - 1)} onNext={() => setStep(step + 1)} submitLabel={isPackage ? 'Create package' : 'Create pass'} onSubmit={async () => { try { await api.post(`/venues/${venue.id}/plans`, { name: v.name, description: v.description, kind: 'pass', price_cents: v.price_cents, sessions: v.sessions, valid_days: v.valid_days, includes: v.includes, ...(isPackage && v.resource_ids?.length ? { resource_ids: v.resource_ids } : {}) }); onDone(); onClose(); } catch (e) { toast(e.message); } }} />
+    </Sheet>
+  );
+}
+
+function SubscriptionWizard({ visible, onClose, v: venue, onDone }) {
+  const steps = ['Plan Identity', 'Pricing & Perks', 'Rules & Launch'];
+  const [step, setStep] = useState(0);
+  const [v, setV] = useState({ name: '', duration_days: 30, discount_pct: 15, includes: [] });
+  const set = (k, val) => setV((p) => ({ ...p, [k]: val }));
+  const { toast } = useSession();
+  const can = [v.name.length > 0, v.price_cents > 0, true];
+  return (
+    <Sheet visible={visible} onClose={onClose} title="New subscription">
+      <WizardBar step={step} steps={steps} />
+      <T weight="900" size={16} style={{ marginBottom: 12 }}>{steps[step]}</T>
+      {step === 0 && (
+        <View style={{ gap: 14 }}>
+          <Field label="Subscription name" value={v.name} onChangeText={(t) => set('name', t)} placeholder="e.g. Monthly subscription, Quarterly subscription" />
+          <T weight="800" size={13} color={c.mute}>Billing period</T>
+          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+            {[{ label: 'Monthly', days: 30 }, { label: 'Quarterly', days: 90 }, { label: 'Yearly', days: 365 }].map((o) => <Chip key={o.days} label={o.label} active={v.duration_days === o.days} onPress={() => set('duration_days', o.days)} />)}
+          </View>
+          <Field label="Description" value={v.description ?? ''} onChangeText={(t) => set('description', t)} multiline optional />
+        </View>
+      )}
+      {step === 1 && (
+        <View style={{ gap: 14 }}>
+          <Field label={`Price per period (${venue.currency})`} value={v.price_cents != null ? String(v.price_cents / 100) : ''} onChangeText={(t) => set('price_cents', Math.round(parseFloat(t || '0') * 100))} placeholder="0.00" />
+          <T weight="800" size={13} color={c.mute}>Discount on every booking</T>
+          <Counter value={v.discount_pct} onChange={(n) => set('discount_pct', n)} min={5} max={90} step={5} label="%" />
+          <T weight="800" size={13} color={c.mute}>Included perks</T>
+          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+            {PERKS.map((p) => <Chip key={p} label={p} active={v.includes.includes(p)} onPress={() => set('includes', v.includes.includes(p) ? v.includes.filter((x) => x !== p) : [...v.includes, p])} />)}
+          </View>
+        </View>
+      )}
+      {step === 2 && (
+        <View style={{ gap: 14 }}>
+          <Card pad={12}><T weight="800">{v.name}</T><T size={12} color={c.mute}>{v.discount_pct}% off every booking · subscription (auto-renew){v.includes.length ? ` · includes ${v.includes.join(', ')}` : ''}</T></Card>
+        </View>
+      )}
+      <WizardFooter step={step} steps={steps} canNext={can[step]} onBack={() => setStep(step - 1)} onNext={() => setStep(step + 1)} submitLabel="Create subscription" onSubmit={async () => { try { await api.post(`/venues/${venue.id}/plans`, { name: v.name, description: v.description, kind: 'membership', auto_renew: true, price_cents: v.price_cents, duration_days: v.duration_days, discount_bp: Math.round(v.discount_pct * 100), includes: v.includes, entitlements: { days: [], guest_quota: 0 } }); onDone(); onClose(); } catch (e) { toast(e.message); } }} />
+    </Sheet>
+  );
+}
 
 /** On the venue page: what's for sale and what you already hold here. */
 export function VenuePlans({ venue, onChanged }) {
@@ -127,43 +294,10 @@ export function PlansManager({ v }) {
           </View>
         </Card>
       )) : <Empty emoji="🎟️" title="No plans yet" sub="Add a membership or a pass above." />}
-      <FormSheet visible={form === 'membership'} onClose={() => setForm(null)} title="New membership" submitLabel="Create"
-        fields={[{ key: 'name', label: 'Name', type: 'chips', options: ['Silver member', 'Gold member', 'Platinum member', 'Monthly member', 'Annual member'] },
-          { key: 'description', label: 'Description', optional: true },
-          { key: 'price_cents', label: 'Price', type: 'money', currency: v.currency },
-          { key: 'duration_days', label: 'Lasts', type: 'chips', default: 30, options: [{ value: 30, label: '1 month' }, { value: 90, label: '3 months' }, { value: 180, label: '6 months' }, { value: 365, label: '1 year' }] },
-          { key: 'discount_pct', label: 'Discount on every booking', type: 'stepper', min: 5, max: 90, step: 5, default: 10, suffix: '%' },
-          { key: 's_ent', type: 'section', label: t('vf.ent.title') },
-          { key: 'ent_days', label: t('vf.ent.days'), type: 'weekdays', hint: t('vf.ent.days_hint') },
-          { key: 'ent_from', label: t('vf.ent.from'), type: 'time', optional: true }, { key: 'ent_to', label: t('vf.ent.to'), type: 'time', optional: true },
-          { key: 'ent_guests', label: t('vf.ent.guests'), type: 'stepper', min: 0, max: 20, default: 0 }]}
-        onSubmit={async ({ discount_pct, s_ent, ent_days, ent_from, ent_to, ent_guests, ...f }) => { await api.post(`/venues/${v.id}/plans`, { ...f, kind: 'membership', discount_bp: Math.round(discount_pct * 100), entitlements: { days: ent_days ?? [], from: ent_from || undefined, to: ent_to || undefined, guest_quota: ent_guests ?? 0 } }); reload(); return 'Membership created'; }} />
-      <FormSheet visible={form === 'pass'} onClose={() => setForm(null)} title="New pass" submitLabel="Create"
-        fields={[{ key: 'name', label: 'Name', type: 'chips', options: ['5-session pass', '10-session pass', '20-session pass', 'Coaching pack'] },
-          { key: 'description', label: 'Description', optional: true },
-          { key: 'price_cents', label: 'Price for the whole pass', type: 'money', currency: v.currency },
-          { key: 'sessions', label: 'Sessions', type: 'chips', default: 10, options: [5, 10, 20, 30, 50].map((n) => ({ value: n, label: String(n) })) },
-          { key: 'valid_days', label: 'Use within', type: 'chips', default: 90, options: [{ value: 30, label: '1 month' }, { value: 90, label: '3 months' }, { value: 180, label: '6 months' }, { value: 365, label: '1 year' }] },
-          { key: 'session_value_cents', label: 'Most one session pays toward a booking', type: 'money', currency: v.currency, optional: true, hint: 'Leave empty to use price ÷ sessions' }]}
-        onSubmit={async (f) => { await api.post(`/venues/${v.id}/plans`, { ...f, kind: 'pass' }); reload(); return 'Pass created'; }} />
-      <FormSheet visible={form === 'subscription'} onClose={() => setForm(null)} title="New subscription" submitLabel="Create"
-        fields={[{ key: 'name', label: 'Name', type: 'chips', options: ['Monthly subscription', 'Quarterly subscription', 'Annual subscription'] },
-          { key: 'description', label: 'Description', optional: true },
-          { key: 'price_cents', label: 'Price per period', type: 'money', currency: v.currency },
-          { key: 'duration_days', label: 'Billing period', type: 'chips', default: 30, options: [{ value: 30, label: 'Monthly' }, { value: 90, label: 'Quarterly' }, { value: 365, label: 'Yearly' }] },
-          { key: 'discount_pct', label: 'Discount on every booking', type: 'stepper', min: 5, max: 90, step: 5, default: 15, suffix: '%' },
-          { key: 'includes', label: 'Perks included', type: 'multi', optional: true, options: PERKS }]}
-        onSubmit={async ({ discount_pct, ...f }) => { await api.post(`/venues/${v.id}/plans`, { ...f, kind: 'membership', auto_renew: true, discount_bp: Math.round(discount_pct * 100) }); reload(); return 'Subscription created'; }} />
-      <FormSheet visible={form === 'package'} onClose={() => setForm(null)} title="New package" submitLabel="Create"
-        fields={[{ key: 'name', label: 'Name', placeholder: 'e.g. Badminton 10-hour pack' },
-          { key: 'description', label: 'Description', optional: true },
-          { key: 'resource_ids', label: 'Valid on', type: 'multi', optional: true, options: v.resources.map((r) => ({ value: r.id, label: `${r.sport_emoji ?? ''} ${r.name}`.trim() })), hint: 'Leave empty for any court' },
-          { key: 'price_cents', label: 'Price for the whole package', type: 'money', currency: v.currency },
-          { key: 'sessions', label: 'Sessions', type: 'chips', default: 10, options: [5, 10, 20, 30, 50].map((n) => ({ value: n, label: String(n) })) },
-          { key: 'valid_days', label: 'Use within', type: 'chips', default: 90, options: [{ value: 30, label: '1 month' }, { value: 90, label: '3 months' }, { value: 180, label: '6 months' }, { value: 365, label: '1 year' }] },
-          { key: 'includes', label: 'Perks included', type: 'multi', optional: true, options: PERKS },
-          { key: 'session_value_cents', label: 'Most one session pays toward a booking', type: 'money', currency: v.currency, optional: true, hint: 'Leave empty to use price ÷ sessions' }]}
-        onSubmit={async (f) => { await api.post(`/venues/${v.id}/plans`, { ...f, kind: 'pass' }); reload(); return 'Package created'; }} />
+      <MembershipWizard visible={form === 'membership'} onClose={() => setForm(null)} v={v} onDone={reload} />
+      <PassWizard visible={form === 'pass'} onClose={() => setForm(null)} v={v} onDone={reload} isPackage={false} />
+      <SubscriptionWizard visible={form === 'subscription'} onClose={() => setForm(null)} v={v} onDone={reload} />
+      <PassWizard visible={form === 'package'} onClose={() => setForm(null)} v={v} onDone={reload} isPackage={true} />
     </Section>
       <Section title="Renewals waiting for payment" color={c.violet}>
         <T color={c.mute} size={13}>Subscriptions that have renewed and are waiting for the member to pay: who was reminded, who promised to pay, and what is overdue. The same desk academies and clubs use.</T>
