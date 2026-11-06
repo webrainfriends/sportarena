@@ -50,12 +50,21 @@ export async function confirmVendor(c, ev, role, userId, organiserId, feeCents) 
 
 cap({
   name: 'define_staff_role', method: 'POST', path: '/events/:id/staff-roles', tag: 'Event staff', status: 201,
-  summary: 'Open a position for the event (referee, umpire, linesman, scorer, doctor, physio, medic, volunteer, security, other — or a vendor place: retail stall, catering, vendor) with a headcount and fee. Positions are public: any signed-in user can apply (see list_open_positions). For vendor places the fee is what the vendor pays the organiser.',
-  input: z.object({ id, role: z.enum(ROLES), title: z.string().max(100).optional(), needed: z.number().int().min(1).max(500).default(1), fee_cents: money.default(0), currency: z.string().length(3).optional(), notes: z.string().max(1000).optional(), is_public: z.boolean().default(true) }),
+  summary: 'Open a position for the event (referee, umpire, linesman, scorer, doctor, physio, medic, volunteer, security, other — or a vendor place: retail stall, catering, vendor) with a headcount, fee, requirements and optional experience / qualification criteria. Positions are public: any signed-in user can apply (see list_open_positions). For vendor places the fee is what the vendor pays the organiser.',
+  input: z.object({
+    id, role: z.enum(ROLES), title: z.string().max(120).optional(), needed: z.number().int().min(1).max(500).default(1),
+    fee_cents: money.default(0), currency: z.string().length(3).optional(), notes: z.string().max(1000).optional(), is_public: z.boolean().default(true),
+    requirements: z.string().max(2000).optional(),
+    min_experience: z.enum(['any','some','experienced','expert']).optional(),
+    qualifications_required: z.boolean().optional(),
+    application_deadline: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+  }),
   async handler({ user }, i) {
     const ev = await eventForOrganizer(user, i.id);
-    return (await pool.query('INSERT INTO event_staff_roles(event_id, role, title, needed, fee_cents, currency, notes, created_by, pay_direction, is_public) VALUES ($1,$2,$3,$4,$5,upper($6),$7,$8,$9,$10) RETURNING *',
-      [i.id, i.role, i.title ?? null, i.needed, i.fee_cents, i.currency ?? ev.currency, i.notes ?? null, user.id, VENDOR_ROLES[i.role] ? 'applicant_pays' : 'event_pays', i.is_public])).rows[0];
+    return (await pool.query(
+      'INSERT INTO event_staff_roles(event_id, role, title, needed, fee_cents, currency, notes, created_by, pay_direction, is_public, requirements, min_experience, qualifications_required, application_deadline) VALUES ($1,$2,$3,$4,$5,upper($6),$7,$8,$9,$10,$11,$12,$13,$14) RETURNING *',
+      [i.id, i.role, i.title ?? null, i.needed, i.fee_cents, i.currency ?? ev.currency, i.notes ?? null, user.id, VENDOR_ROLES[i.role] ? 'applicant_pays' : 'event_pays', i.is_public,
+       i.requirements ?? null, i.min_experience ?? null, i.qualifications_required ?? false, i.application_deadline ?? null])).rows[0];
   },
 });
 
@@ -195,7 +204,7 @@ cap({
   async handler({ user }, i) {
     await eventForOrganizer(user, i.id);
     return many(
-      `SELECT a.*, r.role, r.title, r.pay_direction, u.handle, u.display_name,
+      `SELECT a.*, a.application_data, r.role, r.title, r.pay_direction, u.handle, u.display_name,
               (SELECT k.id FROM event_contracts k WHERE k.assignment_id=a.id AND k.status <> 'void' ORDER BY k.created_at DESC LIMIT 1) AS contract_id,
               (SELECT k.status FROM event_contracts k WHERE k.assignment_id=a.id AND k.status <> 'void' ORDER BY k.created_at DESC LIMIT 1) AS contract_status,
               (SELECT count(*)::int FROM event_staff_documents d WHERE d.assignment_id=a.id AND d.removed_at IS NULL) AS documents

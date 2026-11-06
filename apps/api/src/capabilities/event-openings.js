@@ -25,6 +25,7 @@ const MAX_DOCS = 30;
 const ended = (ev) => ['completed', 'cancelled'].includes(ev.status);
 
 const POSITION_COLS = `r.id, r.event_id, r.role, r.title, r.notes, r.needed, r.fee_cents, r.currency, r.pay_direction, r.is_public, r.closed_at, r.created_at,
+  r.requirements, r.min_experience, r.qualifications_required, r.application_deadline,
   (SELECT count(*)::int FROM event_staff_assignments a WHERE a.role_id=r.id AND a.status='accepted') AS filled,
   e.name AS event_name, e.kind AS event_kind, e.city, e.starts_on, e.ends_on, e.banner_emoji, e.organizer_id,
   s.slug AS sport_slug, s.name AS sport, s.emoji AS sport_emoji, u.display_name AS organiser_name,
@@ -68,8 +69,33 @@ cap({
 
 cap({
   name: 'apply_to_position', method: 'POST', path: '/staff-roles/:id/apply', tag: 'Open positions', status: 201,
-  summary: 'Apply for an open position (any signed-in user). The organiser reviews it, can exchange documents with you, and accepts by issuing a contract that you then accept. For vendor places the fee is what you pay the organiser; fee_cents is an optional counter-proposal.',
-  input: z.object({ id, message: z.string().max(1000).optional(), fee_cents: money.optional() }),
+  summary: 'Apply for an open position (any signed-in user). The organiser reviews it, can exchange documents with you, and accepts by issuing a contract that you then accept. For vendor places the fee is what you pay the organiser; fee_cents is an optional counter-proposal. application_data carries structured profile details: strengths, experience level, credentials, logistics, vendor stall info.',
+  input: z.object({
+    id,
+    message: z.string().max(2000).optional(),
+    fee_cents: money.optional(),
+    application_data: z.object({
+      strengths:             z.array(z.string().max(60)).max(8).optional(),
+      experience_level:      z.enum(['first_time','some','experienced','expert']).optional(),
+      years_active:          z.number().int().min(0).max(60).optional(),
+      has_qualification:     z.boolean().optional(),
+      qualification_body:    z.string().max(120).optional(),
+      qualification_level:   z.string().max(120).optional(),
+      qualification_ref:     z.string().max(120).optional(),
+      qualification_expires: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+      confirms_dates:        z.boolean().optional(),
+      transport:             z.enum(['own_vehicle','public_transport','any']).optional(),
+      accommodation_needed:  z.boolean().optional(),
+      stall_name:            z.string().max(120).optional(),
+      product_category:      z.enum(['retail','food','beverage','services']).optional(),
+      products_desc:         z.string().max(1000).optional(),
+      stall_width_m:         z.number().min(1).max(20).optional(),
+      power_needed:          z.boolean().optional(),
+      power_amps:            z.number().int().min(5).max(200).optional(),
+      food_cert:             z.string().max(120).optional(),
+      additional:            z.string().max(1000).optional(),
+    }).optional(),
+  }),
   async handler({ user }, i) {
     return tx(async (c) => {
       const role = (await c.query('SELECT * FROM event_staff_roles WHERE id=$1', [i.id])).rows[0];
@@ -83,8 +109,8 @@ cap({
       const dup = await c.query("SELECT status FROM event_staff_assignments WHERE role_id=$1 AND user_id=$2 AND status IN ('invited','accepted','applied','contract_sent')", [role.id, user.id]);
       if (dup.rowCount) throw conflict(dup.rows[0].status === 'accepted' ? 'You already have this position' : 'You already have an open application or offer for this position');
       const a = (await c.query(
-        "INSERT INTO event_staff_assignments(role_id, event_id, user_id, status, source, fee_cents, proposed_fee_cents, message) VALUES ($1,$2,$3,'applied','application',$4,$5,$6) RETURNING *",
-        [role.id, ev.id, user.id, role.fee_cents, i.fee_cents ?? null, i.message ?? null])).rows[0];
+        "INSERT INTO event_staff_assignments(role_id, event_id, user_id, status, source, fee_cents, proposed_fee_cents, message, application_data) VALUES ($1,$2,$3,'applied','application',$4,$5,$6,$7) RETURNING *",
+        [role.id, ev.id, user.id, role.fee_cents, i.fee_cents ?? null, i.message ?? null, i.application_data ? JSON.stringify(i.application_data) : null])).rows[0];
       await history(c, a.id, user.id, null, 'applied', null);
       await notify(c, ev.organizer_id, { kind: 'event_staff', title: `New applicant: ${ev.name}`, body: `${user.display_name} applied for ${role.title || role.role}.`, data: { event_id: ev.id, assignment_id: a.id } });
       return a;
