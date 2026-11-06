@@ -1,11 +1,12 @@
 import React, { useState } from 'react';
-import { Linking, Platform, View } from 'react-native';
+import { Linking, Platform, Switch, View } from 'react-native';
 import { api } from '../api';
 import { useLoad } from '../hooks';
 import { useSession } from '../session';
 import { useNav } from '../nav';
 import { FormSheet } from '../FormSheet';
 import { Avatar, Btn, Card, Chip, Empty, ErrorBox, Field, Loading, Section, Sheet, T, Tag } from '../ui';
+import { Counter } from '../pickers';
 import { c, money, when } from '../theme';
 import { locale } from '../locale';
 import { moneyIn } from '../vtime';
@@ -129,6 +130,143 @@ export function BookProviderSheet({ provider, followupId, onClose, onDone }) {
   );
 }
 
+const CURRENCIES = ['GBP', 'EUR', 'USD', 'AUD', 'INR', 'SGD', 'AED'];
+
+function ProviderProfileWizard({ visible, onClose, initial, onSubmit, title = 'Provider profile', submitLabel = 'Save profile' }) {
+  const { user } = useSession();
+  const [step, setStep] = useState(0);
+  const [busy, setBusy] = useState(false);
+  const [f, setF] = useState(initial ?? {});
+  const set = (k, v) => setF((p) => ({ ...p, [k]: v }));
+  const toggleSpec = (s) => set('specialties', (f.specialties ?? []).includes(s) ? (f.specialties ?? []).filter((x) => x !== s) : [...(f.specialties ?? []), s]);
+
+  const steps = ['Identity & Practice', 'Specialties & Availability', 'Bookings & Launch'];
+  const can = [
+    !!(f.provider_type),
+    true,
+    true,
+  ];
+
+  const handleSubmit = async () => {
+    setBusy(true);
+    try { await onSubmit(f); onClose(); } catch (e) { } finally { setBusy(false); }
+  };
+
+  const providerTypes = ['physio', 'doctor'].filter((r) => user.roles.includes(r));
+  const typeLabels = { physio: 'Physiotherapist', doctor: 'Sports Doctor' };
+
+  return (
+    <Sheet visible={visible} onClose={onClose} title={title}>
+      {/* Progress bar */}
+      <View style={{ flexDirection: 'row', gap: 4, marginBottom: 4 }}>
+        {steps.map((s, i) => (
+          <View key={s} style={{ flex: 1, height: 4, borderRadius: 2, backgroundColor: i < step ? c.violet : i === step ? c.pink : c.p1 }} />
+        ))}
+      </View>
+      <T size={12} color={c.mute} style={{ marginBottom: 8 }}>Step {step + 1} of {steps.length} — {steps[step]}</T>
+
+      {step === 0 && (
+        <View style={{ gap: 12 }}>
+          <T weight="900" size={16}>Identity & Practice</T>
+          <T size={13} color={c.mute}>This is what patients see when they search. Never put patient or clinical information here.</T>
+          <View style={{ gap: 6 }}>
+            <T weight="700" size={13}>I am a</T>
+            {providerTypes.map((r) => (
+              <Card key={r} color={f.provider_type === r ? c.violetSoft : c.paper} pad={12} onPress={() => set('provider_type', r)}
+                style={{ borderWidth: 2, borderColor: f.provider_type === r ? c.violet : 'transparent' }}>
+                <T weight="800" size={14}>{typeLabels[r] ?? r}</T>
+                <T size={12} color={c.mute}>{r === 'physio' ? 'Injury rehab, sports performance, movement screening' : 'Clinical diagnosis, clearance certificates, return-to-play'}</T>
+              </Card>
+            ))}
+          </View>
+          <Field label="Headline (optional)" value={f.headline ?? ''} onChangeText={(v) => set('headline', v)} placeholder="e.g. ACL rehab specialist · 10 years experience" />
+          <Field label="About you (optional)" value={f.bio ?? ''} onChangeText={(v) => set('bio', v)} multiline placeholder="Background, approach, notable athletes worked with…" />
+          <Field label="Clinic name (optional)" value={f.clinic ?? ''} onChangeText={(v) => set('clinic', v)} />
+          <Field label="City or area (optional)" value={f.city ?? ''} onChangeText={(v) => set('city', v)} placeholder="Borough, city, or region" />
+        </View>
+      )}
+
+      {step === 1 && (
+        <View style={{ gap: 12 }}>
+          <T weight="900" size={16}>Specialties & Availability</T>
+          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+            <T size={14}>See patients in person</T>
+            <Switch value={f.in_person ?? true} onValueChange={(v) => set('in_person', v)} trackColor={{ false: c.p1, true: c.violet }} thumbColor={c.p5} />
+          </View>
+          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+            <T size={14}>Offer remote consultations</T>
+            <Switch value={f.remote_ok ?? false} onValueChange={(v) => set('remote_ok', v)} trackColor={{ false: c.p1, true: c.violet }} thumbColor={c.p5} />
+          </View>
+          <View style={{ gap: 6 }}>
+            <T weight="700" size={13}>Specialties</T>
+            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
+              {SPECIALTIES.map((s) => (
+                <Chip key={s} label={s} active={(f.specialties ?? []).includes(s)} onPress={() => toggleSpec(s)} />
+              ))}
+            </View>
+          </View>
+          <Field label="Languages (optional)" value={f.languages ?? ''} onChangeText={(v) => set('languages', v)} placeholder="Comma-separated, e.g. English, Tamil, Spanish" />
+          <Field label="Time zone" value={f.timezone ?? 'UTC'} onChangeText={(v) => set('timezone', v)} placeholder="e.g. Europe/London" />
+          <Counter label="Appointment length (min)" value={f.slot_min ?? 30} min={10} max={240} step={5} onChange={(v) => set('slot_min', v)} />
+          <View style={{ gap: 6 }}>
+            <T weight="700" size={13}>Fee currency (optional)</T>
+            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
+              {CURRENCIES.map((cur) => (
+                <Chip key={cur} label={cur} active={f.currency === cur} onPress={() => set('currency', f.currency === cur ? undefined : cur)} />
+              ))}
+            </View>
+          </View>
+          <Field label="Consultation fee (optional)" value={f.fee_cents !== undefined && f.fee_cents !== '' ? String(f.fee_cents) : ''} onChangeText={(v) => set('fee_cents', v === '' ? undefined : v)} placeholder="In the currency above. Leave blank if free." keyboardType="numeric" />
+        </View>
+      )}
+
+      {step === 2 && (
+        <View style={{ gap: 12 }}>
+          <T weight="900" size={16}>Bookings & Launch</T>
+          <View style={{ gap: 6 }}>
+            <T weight="700" size={13}>External booking site</T>
+            {[{ value: 'none', label: 'No external booking', sub: 'Patients book directly on GotMyGame' }, { value: 'calendly', label: 'Calendly', sub: 'Patients are redirected to your Calendly page' }, { value: 'cal_com', label: 'Cal.com', sub: 'Patients are redirected to your Cal.com page' }, { value: 'generic', label: 'My own site', sub: 'Patients are redirected to your booking URL' }].map((opt) => (
+              <Card key={opt.value} color={f.ext_provider === opt.value ? c.violetSoft : c.paper} pad={12} onPress={() => set('ext_provider', opt.value)}
+                style={{ borderWidth: 2, borderColor: f.ext_provider === opt.value ? c.violet : 'transparent' }}>
+                <T weight="800" size={13}>{opt.label}</T>
+                <T size={12} color={c.mute}>{opt.sub}</T>
+              </Card>
+            ))}
+          </View>
+          {f.ext_provider && f.ext_provider !== 'none' ? (
+            <Field label="Booking page address" value={f.ext_url ?? ''} onChangeText={(v) => set('ext_url', v)} placeholder="https://…" />
+          ) : null}
+          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+            <T size={14}>Accepting new appointments</T>
+            <Switch value={f.accepting_patients ?? true} onValueChange={(v) => set('accepting_patients', v)} trackColor={{ false: c.p1, true: c.violet }} thumbColor={c.p5} />
+          </View>
+          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+            <T size={14}>Show me in search</T>
+            <Switch value={f.listed ?? true} onValueChange={(v) => set('listed', v)} trackColor={{ false: c.p1, true: c.violet }} thumbColor={c.p5} />
+          </View>
+          <Card color={c.mintSoft} pad={12}>
+            <T weight="800" size={13}>Profile summary</T>
+            <T size={13}>{f.headline || typeLabels[f.provider_type] || 'Provider'}</T>
+            {(f.clinic || f.city) ? <T size={12} color={c.mute}>{[f.clinic, f.city].filter(Boolean).join(' · ')}</T> : null}
+            <T size={12} color={c.mute}>{[f.in_person ? 'In person' : null, f.remote_ok ? 'Remote' : null].filter(Boolean).join(' & ') || 'No availability set'}</T>
+          </Card>
+          <Card color={c.cyanSoft} pad={10}>
+            <T size={12} weight="700">Opening hours can be set separately after creating your profile.</T>
+          </Card>
+        </View>
+      )}
+
+      {/* Footer */}
+      <View style={{ flexDirection: 'row', gap: 8, marginTop: 8 }}>
+        {step > 0 ? <Btn title="Back" color={c.p1} ink={c.ink} onPress={() => setStep(step - 1)} style={{ flex: 1 }} /> : null}
+        {step < steps.length - 1
+          ? <Btn title="Next" color={c.violet} disabled={!can[step]} onPress={() => setStep(step + 1)} style={{ flex: 1 }} />
+          : <Btn title={submitLabel} color={c.pink} loading={busy} onPress={handleSubmit} style={{ flex: 1 }} />}
+      </View>
+    </Sheet>
+  );
+}
+
 /** Provider's own public profile + weekly hours (Me screen, physio/doctor roles). */
 export function ProviderProfileSection() {
   const { user, toast } = useSession();
@@ -157,15 +295,8 @@ export function ProviderProfileSection() {
           </View>
         </Card>
       )}
-      <FormSheet visible={form === 'profile'} onClose={() => setForm(null)} title="Provider profile" onSubmit={save}
-        initial={{ provider_type: p?.provider_type ?? type, headline: p?.headline ?? '', bio: p?.bio ?? '', clinic: p?.clinic ?? '', city: p?.city ?? '', in_person: p?.in_person ?? true, remote_ok: p?.remote_ok ?? false, specialties: p?.specialties ?? [], languages: (p?.languages ?? []).join(', '), accepting_patients: p?.accepting_patients ?? true, ext_provider: p?.external_booking?.provider ?? 'none', ext_url: p?.external_booking?.url ?? '', fee_cents: p?.consult_fee_cents ?? undefined, currency: p?.currency ?? undefined, timezone: p?.hours.timezone ?? 'UTC', slot_min: p?.hours.slot_min ?? 30, listed: true }}
-        fields={[{ key: 'provider_type', label: 'I am a', type: 'choice', options: ['physio', 'doctor'].filter((r) => user.roles.includes(r)).map((r) => ({ value: r, label: r })) },
-          { key: 'headline', label: 'Headline', optional: true }, { key: 'bio', label: 'About you', type: 'multiline', optional: true }, { key: 'clinic', label: 'Clinic', optional: true }, { key: 'city', label: 'City or area', type: 'region', optional: true },
-          { key: 'in_person', label: 'See patients in person', type: 'switch' }, { key: 'remote_ok', label: 'Offer remote consultations', type: 'switch' },
-          { key: 'specialties', label: 'Specialties', type: 'multi', optional: true, options: SPECIALTIES }, { key: 'languages', label: 'Languages (comma separated)', optional: true },
-          { key: 'currency', label: 'Fee currency', type: 'currency', optional: true }, { key: 'fee_cents', label: 'Consultation fee', type: 'money', currency: (v) => v.currency, optional: true }, { key: 'timezone', label: 'Time zone', type: 'timezone' }, { key: 'slot_min', label: 'Appointment length (minutes)', type: 'stepper', min: 10, max: 240, step: 5 },
-          { key: 'ext_provider', label: 'Take bookings on another site?', type: 'choice', options: [{ value: 'none', label: 'No' }, { value: 'calendly', label: 'Calendly' }, { value: 'cal_com', label: 'Cal.com' }, { value: 'generic', label: 'My own site' }], hint: 'Patients are sent there with a notice that they are leaving GotMyGame.' }, { key: 'ext_url', label: 'Booking page address (https://…)', optional: true, show: (v) => v.ext_provider !== 'none' },
-          { key: 'accepting_patients', label: 'Accepting new appointments', type: 'switch' }, { key: 'listed', label: 'Show me in search', type: 'switch' }]} />
+      <ProviderProfileWizard visible={form === 'profile'} onClose={() => setForm(null)} title={p ? 'Edit provider profile' : 'Create provider profile'} submitLabel={p ? 'Save profile' : 'Create profile'} onSubmit={save}
+        initial={{ provider_type: p?.provider_type ?? type, headline: p?.headline ?? '', bio: p?.bio ?? '', clinic: p?.clinic ?? '', city: p?.city ?? '', in_person: p?.in_person ?? true, remote_ok: p?.remote_ok ?? false, specialties: p?.specialties ?? [], languages: (p?.languages ?? []).join(', '), accepting_patients: p?.accepting_patients ?? true, ext_provider: p?.external_booking?.provider ?? 'none', ext_url: p?.external_booking?.url ?? '', fee_cents: p?.consult_fee_cents ?? undefined, currency: p?.currency ?? undefined, timezone: p?.hours?.timezone ?? 'UTC', slot_min: p?.hours?.slot_min ?? 30, listed: true }} />
       <FormSheet visible={form === 'hours'} onClose={() => setForm(null)} title="Opening hours" submitLabel="Save hours"
         initial={{ days, start: p?.hours.windows[0]?.start ?? '09:00', end: p?.hours.windows[0]?.end ?? '17:00' }}
         fields={[{ key: 'days', label: 'Days', type: 'weekdays' }, { key: 'start', label: 'From', type: 'time' }, { key: 'end', label: 'Until', type: 'time', endOfDay: true }]}

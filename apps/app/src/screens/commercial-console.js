@@ -2,7 +2,7 @@
 // per-account plans / overrides / usage, pricing simulation and the audit trail. Everything here is the same REST API agents use over MCP;
 // the server refuses anyone who is not the platform admin, and the entry point is hidden for every other role.
 import React, { useState } from 'react';
-import { View } from 'react-native';
+import { Switch, View } from 'react-native';
 import { api } from '../api';
 import { useLoad } from '../hooks';
 import { useSession } from '../session';
@@ -28,6 +28,396 @@ function useAct(reload) {
   return async (fn, ok) => { try { const r = await fn(); toast(ok ?? 'Done'); reload?.(); return r; } catch (e) { toast(e.message); return null; } };
 }
 const Block = ({ state, children }) => (state.loading && !state.data ? <Loading /> : state.error ? <ErrorBox error={state.error} onRetry={state.reload} /> : children);
+
+const PROD_STEPS = ['Product Identity', 'Classification', 'Review & Create'];
+const PROD_FAMILIES = ['athlete', 'professional', 'team', 'club', 'academy', 'venue', 'event', 'supplier', 'sponsor', 'education', 'enterprise', 'usage', 'other'];
+
+function NewProductWizard({ visible, onClose, onDone }) {
+  const [step, setStep] = useState(0);
+  const [busy, setBusy] = useState(false);
+  const [f, setF] = useState({ name: '', key: '', family: 'other', description: '' });
+  const set = (k, v) => setF((p) => ({ ...p, [k]: v }));
+  const can = [
+    () => f.name.trim().length >= 2 && /^[a-z0-9_]+$/.test(f.key.trim()),
+    () => !!f.family,
+    () => true,
+  ][step]();
+  const submit = async () => {
+    setBusy(true);
+    try { await api.post('/admin/commercial/products', { name: f.name.trim(), key: f.key.trim(), family: f.family, description: f.description.trim() || undefined }); onDone(); }
+    catch (e) { setBusy(false); throw e; }
+    setBusy(false);
+  };
+  return (
+    <Sheet visible={visible} onClose={onClose} title="New product">
+      <View style={{ flexDirection: 'row', gap: 6, marginBottom: 4 }}>
+        {PROD_STEPS.map((s, i) => (
+          <View key={s} style={{ flex: 1, gap: 3 }}>
+            <View style={{ height: 4, borderRadius: 2, backgroundColor: i < step ? c.violet : i === step ? c.pink : c.line }} />
+            <T size={10} weight={i === step ? '800' : '500'} color={i === step ? c.ink : c.mute}>{s}</T>
+          </View>
+        ))}
+      </View>
+      {step === 0 ? (
+        <View style={{ gap: 14 }}>
+          <Field label="Product name" value={f.name} onChangeText={(x) => set('name', x)} placeholder="e.g. Athlete Pro, Club Essential, Academy Plus" />
+          <Field label="Short code (a–z, 0–9, _)" value={f.key} onChangeText={(x) => set('key', x.toLowerCase().replace(/[^a-z0-9_]/g, ''))} placeholder="e.g. athlete_pro" autoCapitalize="none" hint="Used in the API and price point codes — never shown to customers" />
+          <Field label="Description (optional)" value={f.description} onChangeText={(x) => set('description', x)} multiline placeholder="Who this product is for and what it unlocks…" />
+        </View>
+      ) : null}
+      {step === 1 ? (
+        <View style={{ gap: 14 }}>
+          <T size={12} weight="800" color={c.mute} style={{ letterSpacing: 0.5 }}>PRODUCT FAMILY</T>
+          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
+            {PROD_FAMILIES.map((fam) => <Chip key={fam} label={label(fam)} active={f.family === fam} onPress={() => set('family', fam)} />)}
+          </View>
+          <Card pad={12} color={c.cyanSoft}>
+            <T size={12} weight="800">What is a family?</T>
+            <T size={12} color={c.mute} style={{ marginTop: 4 }}>Families group products by their audience — athlete, team, academy, etc. Plans within a product inherit the family and restrict who can hold them.</T>
+          </Card>
+        </View>
+      ) : null}
+      {step === 2 ? (
+        <View style={{ gap: 14 }}>
+          <View style={{ borderWidth: 1, borderColor: c.line, borderRadius: 14, padding: 14, backgroundColor: c.paper, gap: 4 }}>
+            <T weight="800" size={15}>{f.name || '—'}</T>
+            <T size={12} color={c.mute}>code: {f.key || '—'} · family: {label(f.family)}</T>
+            {f.description ? <T size={12} color={c.mute}>{f.description}</T> : null}
+          </View>
+          <Card pad={12} color={c.sunSoft}>
+            <T size={12} weight="800">What happens next</T>
+            <T size={12} color={c.mute} style={{ marginTop: 4 }}>Product created immediately. Add plans to it, then add price versions to each plan. A plan without a published price version cannot be sold.</T>
+          </Card>
+        </View>
+      ) : null}
+      <View style={{ flexDirection: 'row', gap: 8, marginTop: 4 }}>
+        {step > 0 ? <Btn title="Back" color={c.paper} ink={c.ink} onPress={() => setStep(step - 1)} style={{ flex: 1 }} /> : null}
+        {step < 2 ? <Btn title="Next" disabled={!can} onPress={() => setStep(step + 1)} style={{ flex: 2 }} /> : <Btn title="Create product" loading={busy} onPress={submit} style={{ flex: 2 }} />}
+      </View>
+    </Sheet>
+  );
+}
+
+const PLAN_STEPS = ['Plan Identity', 'Type & Eligibility', 'Review & Create'];
+
+function NewPlanWizard({ visible, onClose, onDone, products, plans }) {
+  const [step, setStep] = useState(0);
+  const [busy, setBusy] = useState(false);
+  const [f, setF] = useState({ product_key: '', name: '', key: '', kind: 'base', eligible_actors: ['user'], requires: [], is_default: false });
+  const set = (k, v) => setF((p) => ({ ...p, [k]: v }));
+  const toggleActor = (a) => setF((p) => ({ ...p, eligible_actors: p.eligible_actors.includes(a) ? p.eligible_actors.filter((x) => x !== a) : [...p.eligible_actors, a] }));
+  const toggleReq = (r) => setF((p) => ({ ...p, requires: p.requires.includes(r) ? p.requires.filter((x) => x !== r) : [...p.requires, r] }));
+  const can = [
+    () => !!f.product_key && f.name.trim().length >= 2 && /^[a-z0-9_]+$/.test(f.key.trim()),
+    () => f.eligible_actors.length > 0,
+    () => true,
+  ][step]();
+  const submit = async () => {
+    setBusy(true);
+    try { await api.post('/admin/commercial/plans', { product_key: f.product_key, name: f.name.trim(), key: f.key.trim(), kind: f.kind, eligible_actors: f.eligible_actors, requires: f.kind === 'addon' ? f.requires : [], is_default: f.kind === 'base' ? !!f.is_default : false }); onDone(); }
+    catch (e) { setBusy(false); throw e; }
+    setBusy(false);
+  };
+  return (
+    <Sheet visible={visible} onClose={onClose} title="New plan or add-on">
+      <View style={{ flexDirection: 'row', gap: 6, marginBottom: 4 }}>
+        {PLAN_STEPS.map((s, i) => (
+          <View key={s} style={{ flex: 1, gap: 3 }}>
+            <View style={{ height: 4, borderRadius: 2, backgroundColor: i < step ? c.violet : i === step ? c.pink : c.line }} />
+            <T size={10} weight={i === step ? '800' : '500'} color={i === step ? c.ink : c.mute}>{s}</T>
+          </View>
+        ))}
+      </View>
+      {step === 0 ? (
+        <View style={{ gap: 14 }}>
+          <View style={{ gap: 6 }}>
+            <T size={12} weight="800" color={c.mute} style={{ letterSpacing: 0.5 }}>PRODUCT</T>
+            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
+              {(products ?? []).map((p) => <Chip key={p.key} label={p.name} active={f.product_key === p.key} onPress={() => set('product_key', p.key)} />)}
+            </View>
+          </View>
+          <Field label="Plan name" value={f.name} onChangeText={(x) => set('name', x)} placeholder="e.g. Club Essential Monthly" />
+          <Field label="Short code (a–z, 0–9, _)" value={f.key} onChangeText={(x) => set('key', x.toLowerCase().replace(/[^a-z0-9_]/g, ''))} placeholder="e.g. club_essential" autoCapitalize="none" hint="Used in price point codes — cannot be changed after creation" />
+        </View>
+      ) : null}
+      {step === 1 ? (
+        <View style={{ gap: 14 }}>
+          <View style={{ gap: 6 }}>
+            <T size={12} weight="800" color={c.mute} style={{ letterSpacing: 0.5 }}>PLAN KIND</T>
+            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
+              {[{ value: 'base', label: 'Base plan' }, { value: 'addon', label: 'Add-on' }].map((o) => <Chip key={o.value} label={o.label} active={f.kind === o.value} onPress={() => set('kind', o.value)} />)}
+            </View>
+          </View>
+          <View style={{ gap: 6 }}>
+            <T size={12} weight="800" color={c.mute} style={{ letterSpacing: 0.5 }}>WHO CAN HOLD IT</T>
+            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
+              {SUBJECTS.map(([value, lbl]) => <Chip key={value} label={lbl} active={f.eligible_actors.includes(value)} onPress={() => toggleActor(value)} />)}
+            </View>
+          </View>
+          {f.kind === 'addon' ? (
+            <View style={{ gap: 6 }}>
+              <T size={12} weight="800" color={c.mute} style={{ letterSpacing: 0.5 }}>REQUIRES ONE OF THESE BASE PLANS</T>
+              <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
+                {(plans ?? []).filter((p) => p.kind === 'base').map((p) => <Chip key={p.key} label={p.name} active={f.requires.includes(p.key)} onPress={() => toggleReq(p.key)} />)}
+              </View>
+            </View>
+          ) : null}
+          {f.kind === 'base' ? (
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, padding: 12, borderWidth: 1, borderColor: c.line, borderRadius: 12 }}>
+              <View style={{ flex: 1 }}><T weight="800" size={13}>Free plan everyone of this type starts on</T><T size={11} color={c.mute}>This plan is assigned automatically to new accounts of the eligible actor types</T></View>
+              <Switch value={f.is_default} onValueChange={(v) => set('is_default', v)} trackColor={{ true: c.pink }} />
+            </View>
+          ) : null}
+        </View>
+      ) : null}
+      {step === 2 ? (
+        <View style={{ gap: 14 }}>
+          <View style={{ borderWidth: 1, borderColor: c.line, borderRadius: 14, padding: 14, backgroundColor: c.paper, gap: 4 }}>
+            <T weight="800" size={15}>{f.name || '—'}</T>
+            <T size={12} color={c.mute}>code: {f.key || '—'} · {label(f.kind)} · for {f.eligible_actors.join(', ')}</T>
+            {f.is_default ? <Tag label="default plan" color={c.lime} /> : null}
+          </View>
+          <Card pad={12} color={c.sunSoft}>
+            <T size={12} weight="800">What happens next</T>
+            <T size={12} color={c.mute} style={{ marginTop: 4 }}>Plan created immediately. Add a price version to make it sellable. Without a published price version, the plan cannot be assigned to any account.</T>
+          </Card>
+        </View>
+      ) : null}
+      <View style={{ flexDirection: 'row', gap: 8, marginTop: 4 }}>
+        {step > 0 ? <Btn title="Back" color={c.paper} ink={c.ink} onPress={() => setStep(step - 1)} style={{ flex: 1 }} /> : null}
+        {step < 2 ? <Btn title="Next" disabled={!can} onPress={() => setStep(step + 1)} style={{ flex: 2 }} /> : <Btn title="Create plan" loading={busy} onPress={submit} style={{ flex: 2 }} />}
+      </View>
+    </Sheet>
+  );
+}
+
+const OFFER_STEPS = ['Offer Identity', 'Benefit & Value', 'Timing & Scope'];
+const OFFER_KINDS = [{ value: 'launch_offer', label: 'Launch offer' }, { value: 'first_term_discount', label: 'First-term discount' }, { value: 'coupon', label: 'Coupon' }, { value: 'trial', label: 'Trial' }];
+const BENEFIT_TYPES = [{ value: 'free_months', label: 'Free months' }, { value: 'percent_off', label: '% off' }, { value: 'flat_off', label: 'Flat amount off' }, { value: 'none', label: 'Trial / extras only' }];
+
+function NewOfferWizard({ visible, onClose, onDone, points }) {
+  const [step, setStep] = useState(0);
+  const [busy, setBusy] = useState(false);
+  const [f, setF] = useState({ name: '', key: '', auto_apply: false, kind: 'launch_offer', benefit: 'free_months', free_months: 1, discount: 10, duration_months: 3, flat: 0, flat_currency: 'INR', trial_days: 0, coupon_ref: '', starts_on: new Date().toISOString().slice(0, 10), ends_on: '', max_redemptions: '', all_price_points: true, price_points: [] });
+  const set = (k, v) => setF((p) => ({ ...p, [k]: v }));
+  const togglePP = (code) => setF((p) => ({ ...p, price_points: p.price_points.includes(code) ? p.price_points.filter((x) => x !== code) : [...p.price_points, code] }));
+  const can = [
+    () => f.name.trim().length >= 2 && /^[a-z0-9_]+$/.test(f.key.trim()),
+    () => !!f.benefit,
+    () => !!f.starts_on,
+  ][step]();
+  const submit = async () => {
+    setBusy(true);
+    try {
+      const body = { name: f.name.trim(), key: f.key.trim(), auto_apply: f.auto_apply, kind: f.kind, benefit: f.benefit, all_price_points: !!f.all_price_points, price_points: f.all_price_points ? [] : f.price_points, trial_days: f.trial_days || 0, starts_on: f.starts_on, ...(f.ends_on ? { ends_on: f.ends_on } : {}), ...(f.max_redemptions ? { max_redemptions: Number(f.max_redemptions) } : {}), ...(f.benefit === 'free_months' ? { free_months: f.free_months } : {}), ...(f.benefit === 'percent_off' ? { discount_bp: Math.round(f.discount * 100), duration_months: f.duration_months } : {}), ...(f.benefit === 'flat_off' ? { flat_off_minor: f.flat, flat_currency: f.flat_currency, duration_months: f.duration_months } : {}), ...(f.kind === 'coupon' && f.coupon_ref ? { coupon_ref: f.coupon_ref } : {}) };
+      await api.post('/admin/commercial/promotions', body); onDone();
+    } catch (e) { setBusy(false); throw e; }
+    setBusy(false);
+  };
+  return (
+    <Sheet visible={visible} onClose={onClose} title="New offer">
+      <View style={{ flexDirection: 'row', gap: 6, marginBottom: 4 }}>
+        {OFFER_STEPS.map((s, i) => (
+          <View key={s} style={{ flex: 1, gap: 3 }}>
+            <View style={{ height: 4, borderRadius: 2, backgroundColor: i < step ? c.violet : i === step ? c.pink : c.line }} />
+            <T size={10} weight={i === step ? '800' : '500'} color={i === step ? c.ink : c.mute}>{s}</T>
+          </View>
+        ))}
+      </View>
+      {step === 0 ? (
+        <View style={{ gap: 14 }}>
+          <Field label="Offer name" value={f.name} onChangeText={(x) => set('name', x)} placeholder="e.g. India Launch — 3 months free" />
+          <Field label="Redemption code (a–z, 0–9, _)" value={f.key} onChangeText={(x) => set('key', x.toLowerCase().replace(/[^a-z0-9_]/g, ''))} placeholder="e.g. india_launch_3m" autoCapitalize="none" hint="Customers type this to redeem when auto_apply is off" />
+          <View style={{ gap: 6 }}>
+            <T size={12} weight="800" color={c.mute} style={{ letterSpacing: 0.5 }}>SHOWN AS</T>
+            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
+              {OFFER_KINDS.map((o) => <Chip key={o.value} label={o.label} active={f.kind === o.value} onPress={() => set('kind', o.value)} />)}
+            </View>
+          </View>
+          {f.kind === 'coupon' ? <Field label="Coupon reference (optional)" value={f.coupon_ref} onChangeText={(x) => set('coupon_ref', x)} /> : null}
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, padding: 12, borderWidth: 1, borderColor: c.line, borderRadius: 12 }}>
+            <View style={{ flex: 1 }}><T weight="800" size={13}>Apply automatically</T><T size={11} color={c.mute}>On = added to every qualifying purchase, no code needed. Offers stack.</T></View>
+            <Switch value={f.auto_apply} onValueChange={(v) => set('auto_apply', v)} trackColor={{ true: c.pink }} />
+          </View>
+        </View>
+      ) : null}
+      {step === 1 ? (
+        <View style={{ gap: 14 }}>
+          <View style={{ gap: 6 }}>
+            <T size={12} weight="800" color={c.mute} style={{ letterSpacing: 0.5 }}>WHAT THE CUSTOMER GETS</T>
+            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
+              {BENEFIT_TYPES.map((o) => <Chip key={o.value} label={o.label} active={f.benefit === o.value} onPress={() => set('benefit', o.value)} />)}
+            </View>
+          </View>
+          {f.benefit === 'free_months' ? (
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+              <View style={{ flex: 1 }}><T weight="800" size={13}>Free months</T><T size={11} color={c.mute}>1 = first month free</T></View>
+              <Chip label="1" active={f.free_months === 1} onPress={() => set('free_months', 1)} /><Chip label="2" active={f.free_months === 2} onPress={() => set('free_months', 2)} /><Chip label="3" active={f.free_months === 3} onPress={() => set('free_months', 3)} /><Chip label="6" active={f.free_months === 6} onPress={() => set('free_months', 6)} /><Chip label="12" active={f.free_months === 12} onPress={() => set('free_months', 12)} />
+            </View>
+          ) : null}
+          {f.benefit === 'percent_off' ? (
+            <View style={{ gap: 8 }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                <View style={{ flex: 1 }}><T weight="800" size={13}>Discount %</T></View>
+                <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 4 }}>
+                  {[10, 20, 25, 30, 50].map((p) => <Chip key={p} label={`${p}%`} active={f.discount === p} onPress={() => set('discount', p)} />)}
+                </View>
+              </View>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                <View style={{ flex: 1 }}><T weight="800" size={13}>For how long (months)</T></View>
+                <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 4 }}>
+                  {[1, 3, 6, 12, 24].map((m) => <Chip key={m} label={`${m}m`} active={f.duration_months === m} onPress={() => set('duration_months', m)} />)}
+                </View>
+              </View>
+            </View>
+          ) : null}
+          {f.benefit === 'flat_off' ? (
+            <View style={{ gap: 8 }}>
+              <View style={{ gap: 6 }}>
+                <T size={12} weight="800" color={c.mute} style={{ letterSpacing: 0.5 }}>CURRENCY</T>
+                <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
+                  {['INR', 'USD', 'EUR', 'GBP', 'AUD', 'SGD', 'AED'].map((cur) => <Chip key={cur} label={cur} active={f.flat_currency === cur} onPress={() => set('flat_currency', cur)} />)}
+                </View>
+              </View>
+              <Field label={`Amount off (${f.flat_currency})`} value={String(f.flat || '')} onChangeText={(x) => set('flat', Number(x) || 0)} keyboardType="numeric" />
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                <View style={{ flex: 1 }}><T weight="800" size={13}>For how long (months)</T></View>
+                <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 4 }}>
+                  {[1, 3, 6, 12, 24].map((m) => <Chip key={m} label={`${m}m`} active={f.duration_months === m} onPress={() => set('duration_months', m)} />)}
+                </View>
+              </View>
+            </View>
+          ) : null}
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+            <View style={{ flex: 1 }}><T weight="800" size={13}>Free trial days before billing</T></View>
+            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 4 }}>
+              {[0, 7, 14, 30].map((d) => <Chip key={d} label={d === 0 ? 'None' : `${d}d`} active={f.trial_days === d} onPress={() => set('trial_days', d)} />)}
+            </View>
+          </View>
+        </View>
+      ) : null}
+      {step === 2 ? (
+        <View style={{ gap: 14 }}>
+          <Field label="Starts on" value={f.starts_on} onChangeText={(x) => set('starts_on', x)} placeholder="YYYY-MM-DD" />
+          <Field label="Ends on (optional — leave blank for open-ended)" value={f.ends_on} onChangeText={(x) => set('ends_on', x)} placeholder="YYYY-MM-DD" />
+          <Field label="Max redemptions (optional — leave blank for unlimited)" value={f.max_redemptions} onChangeText={(x) => set('max_redemptions', x)} keyboardType="numeric" />
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, padding: 12, borderWidth: 1, borderColor: c.line, borderRadius: 12 }}>
+            <View style={{ flex: 1 }}><T weight="800" size={13}>Applies to all price points</T><T size={11} color={c.mute}>Off = choose specific price point codes below</T></View>
+            <Switch value={f.all_price_points} onValueChange={(v) => set('all_price_points', v)} trackColor={{ true: c.pink }} />
+          </View>
+          {!f.all_price_points && points?.length ? (
+            <View style={{ gap: 6 }}>
+              <T size={12} weight="800" color={c.mute} style={{ letterSpacing: 0.5 }}>PRICE POINTS</T>
+              <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
+                {points.map((pp) => <Chip key={pp.code} label={pp.code} active={f.price_points.includes(pp.code)} onPress={() => togglePP(pp.code)} />)}
+              </View>
+            </View>
+          ) : null}
+          <View style={{ borderWidth: 1, borderColor: c.line, borderRadius: 14, padding: 14, backgroundColor: c.paper, gap: 4 }}>
+            <T weight="800" size={14}>{f.name || '—'}</T>
+            <T size={12} color={c.mute}>code: {f.key || '—'} · {label(f.kind)} · {label(f.benefit)}</T>
+            <T size={12} color={c.mute}>{f.auto_apply ? 'Auto-applied' : 'Requires code'} · from {f.starts_on}{f.ends_on ? ` → ${f.ends_on}` : ''}</T>
+          </View>
+        </View>
+      ) : null}
+      <View style={{ flexDirection: 'row', gap: 8, marginTop: 4 }}>
+        {step > 0 ? <Btn title="Back" color={c.paper} ink={c.ink} onPress={() => setStep(step - 1)} style={{ flex: 1 }} /> : null}
+        {step < 2 ? <Btn title="Next" disabled={!can} onPress={() => setStep(step + 1)} style={{ flex: 2 }} /> : <Btn title="Create offer" loading={busy} onPress={submit} style={{ flex: 2 }} />}
+      </View>
+    </Sheet>
+  );
+}
+
+const BUNDLE_STEPS = ['Bundle Identity', 'Structure & Eligibility', 'Price Points & Launch'];
+
+function NewBundleWizard({ visible, onClose, onDone, all }) {
+  const [step, setStep] = useState(0);
+  const [busy, setBusy] = useState(false);
+  const [f, setF] = useState({ name: '', key: '', description: '', billing_interval: 'monthly', currency: 'INR', region: 'IN', eligible_actors: ['user'], price_points: [] });
+  const set = (k, v) => setF((p) => ({ ...p, [k]: v }));
+  const toggleActor = (a) => setF((p) => ({ ...p, eligible_actors: p.eligible_actors.includes(a) ? p.eligible_actors.filter((x) => x !== a) : [...p.eligible_actors, a] }));
+  const togglePP = (code) => setF((p) => ({ ...p, price_points: p.price_points.includes(code) ? p.price_points.filter((x) => x !== code) : [...p.price_points, code] }));
+  const availPPs = (all ?? []).filter((x) => x.interval === f.billing_interval && x.currency === f.currency);
+  const can = [
+    () => f.name.trim().length >= 2 && /^[a-z0-9_]+$/.test(f.key.trim()),
+    () => f.eligible_actors.length > 0,
+    () => f.price_points.length >= 2,
+  ][step]();
+  const submit = async () => {
+    setBusy(true);
+    try { await api.post('/admin/commercial/bundles', { name: f.name.trim(), key: f.key.trim(), description: f.description.trim() || undefined, billing_interval: f.billing_interval, currency: f.currency, region: f.region, eligible_actors: f.eligible_actors, price_points: f.price_points }); onDone(); }
+    catch (e) { setBusy(false); throw e; }
+    setBusy(false);
+  };
+  return (
+    <Sheet visible={visible} onClose={onClose} title="New bundle">
+      <View style={{ flexDirection: 'row', gap: 6, marginBottom: 4 }}>
+        {BUNDLE_STEPS.map((s, i) => (
+          <View key={s} style={{ flex: 1, gap: 3 }}>
+            <View style={{ height: 4, borderRadius: 2, backgroundColor: i < step ? c.violet : i === step ? c.pink : c.line }} />
+            <T size={10} weight={i === step ? '800' : '500'} color={i === step ? c.ink : c.mute}>{s}</T>
+          </View>
+        ))}
+      </View>
+      {step === 0 ? (
+        <View style={{ gap: 14 }}>
+          <Field label="Bundle name" value={f.name} onChangeText={(x) => set('name', x)} placeholder="e.g. Athlete + Club Bundle" />
+          <Field label="Short code (a–z, 0–9, _)" value={f.key} onChangeText={(x) => set('key', x.toLowerCase().replace(/[^a-z0-9_]/g, ''))} placeholder="e.g. athlete_club_bundle" autoCapitalize="none" />
+          <Field label="Description (optional)" value={f.description} onChangeText={(x) => set('description', x)} multiline placeholder="Who benefits and what they save…" />
+          <Card pad={12} color={c.cyanSoft}>
+            <T size={12} weight="800">What is a bundle?</T>
+            <T size={12} color={c.mute} style={{ marginTop: 4 }}>A person with two or more profiles (athlete + coach, or athlete + club member) can take both plans together at one bundle price — cheaper than buying each separately.</T>
+          </Card>
+        </View>
+      ) : null}
+      {step === 1 ? (
+        <View style={{ gap: 14 }}>
+          <View style={{ gap: 6 }}>
+            <T size={12} weight="800" color={c.mute} style={{ letterSpacing: 0.5 }}>BILLING INTERVAL</T>
+            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
+              {[{ value: 'monthly', label: 'Monthly' }, { value: 'annual', label: 'Annual' }].map((o) => <Chip key={o.value} label={o.label} active={f.billing_interval === o.value} onPress={() => set('billing_interval', o.value)} />)}
+            </View>
+          </View>
+          <View style={{ gap: 6 }}>
+            <T size={12} weight="800" color={c.mute} style={{ letterSpacing: 0.5 }}>CURRENCY</T>
+            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
+              {['INR', 'USD', 'EUR', 'GBP', 'AUD', 'SGD', 'AED'].map((cur) => <Chip key={cur} label={cur} active={f.currency === cur} onPress={() => set('currency', cur)} />)}
+            </View>
+          </View>
+          <Field label="Region" value={f.region} onChangeText={(x) => set('region', x.toUpperCase())} placeholder="e.g. IN, GB, US" autoCapitalize="characters" hint="ISO country code — the region the bundle price applies in" />
+          <View style={{ gap: 6 }}>
+            <T size={12} weight="800" color={c.mute} style={{ letterSpacing: 0.5 }}>WHO CAN TAKE IT</T>
+            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
+              {SUBJECTS.map(([value, lbl]) => <Chip key={value} label={lbl} active={f.eligible_actors.includes(value)} onPress={() => toggleActor(value)} />)}
+            </View>
+          </View>
+        </View>
+      ) : null}
+      {step === 2 ? (
+        <View style={{ gap: 14 }}>
+          <T size={12} color={c.mute}>Pick two or more price points of different profile families that share {label(f.billing_interval)} billing, {f.currency} and region {f.region}.</T>
+          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
+            {availPPs.length ? availPPs.map((pp) => <Chip key={pp.code} label={pp.code} active={f.price_points.includes(pp.code)} onPress={() => togglePP(pp.code)} />) : <T size={12} color={c.mute}>No price points match this interval / currency. Add published price versions first.</T>}
+          </View>
+          {f.price_points.length < 2 ? <T size={12} color={c.orange}>Select at least two price points to create a bundle.</T> : null}
+          <View style={{ borderWidth: 1, borderColor: c.line, borderRadius: 14, padding: 14, backgroundColor: c.paper, gap: 4 }}>
+            <T weight="800" size={14}>{f.name || '—'}</T>
+            <T size={12} color={c.mute}>{label(f.billing_interval)} · {f.currency} · {f.region} · {f.eligible_actors.join(', ')}</T>
+            {f.price_points.length ? <T size={12} color={c.mute}>Points: {f.price_points.join(', ')}</T> : null}
+          </View>
+          <Card pad={12} color={c.sunSoft}>
+            <T size={12} weight="800">What happens next</T>
+            <T size={12} color={c.mute} style={{ marginTop: 4 }}>Bundle created immediately. Add a bundle price version to set the discount. Without a published price version the bundle cannot be sold.</T>
+          </Card>
+        </View>
+      ) : null}
+      <View style={{ flexDirection: 'row', gap: 8, marginTop: 4 }}>
+        {step > 0 ? <Btn title="Back" color={c.paper} ink={c.ink} onPress={() => setStep(step - 1)} style={{ flex: 1 }} /> : null}
+        {step < 2 ? <Btn title="Next" disabled={!can} onPress={() => setStep(step + 1)} style={{ flex: 2 }} /> : <Btn title="Create bundle" disabled={f.price_points.length < 2} loading={busy} onPress={submit} style={{ flex: 2 }} />}
+      </View>
+    </Sheet>
+  );
+}
 
 /** Every price point (a sellable slot, identified by its code) with its current published price, from the catalogue. */
 const pricePointsOf = (cat) => {
@@ -185,21 +575,8 @@ function Catalogue({ cat, keys }) {
 
       {open ? <VersionSheet version={open.version} plan={open.plan} keys={keys} onClose={() => setOpen(null)} reload={cat.reload} /> : null}
 
-      <FormSheet visible={newProduct} onClose={() => setNewProduct(false)} title="New product" submitLabel="Create"
-        initial={{ family: 'other' }}
-        fields={[{ key: 'name', label: 'Name' }, { key: 'key', label: 'Short code (a–z, 0–9, _)', hint: 'Used in the API, never shown to customers' },
-          { key: 'family', label: 'Family', type: 'chips', options: ['athlete', 'professional', 'team', 'club', 'academy', 'venue', 'event', 'supplier', 'sponsor', 'education', 'enterprise', 'usage', 'other'].map((v) => ({ value: v, label: label(v) })) },
-          { key: 'description', label: 'Description', type: 'multiline', optional: true }]}
-        onSubmit={async (v) => { await api.post('/admin/commercial/products', v); cat.reload(); return 'Product created'; }} />
-      <FormSheet visible={newPlan} onClose={() => setNewPlan(false)} title="New plan or add-on" submitLabel="Create"
-        initial={{ kind: 'base', eligible_actors: ['user'] }}
-        fields={[{ key: 'product_key', label: 'Product', type: 'chips', options: (data?.products ?? []).map((p) => ({ value: p.key, label: p.name })) },
-          { key: 'name', label: 'Name' }, { key: 'key', label: 'Short code (a–z, 0–9, _)' },
-          { key: 'kind', label: 'Kind', type: 'choice', options: [{ value: 'base', label: 'Plan' }, { value: 'addon', label: 'Add-on' }] },
-          { key: 'eligible_actors', label: 'Who can hold it', type: 'multi', options: SUBJECTS.map(([value, l]) => ({ value, label: l })) },
-          { key: 'requires', label: 'Add-on needs one of these plans', type: 'multi', optional: true, options: plans.filter((p) => p.kind === 'base').map((p) => ({ value: p.key, label: p.name })), show: (v) => v.kind === 'addon' },
-          { key: 'is_default', label: 'The free plan everyone of this kind starts on', type: 'switch', show: (v) => v.kind === 'base' }]}
-        onSubmit={async (v) => { await api.post('/admin/commercial/plans', { ...v, is_default: !!v.is_default, requires: v.requires ?? [] }); cat.reload(); return 'Plan created'; }} />
+      <NewProductWizard visible={newProduct} onClose={() => setNewProduct(false)} onDone={() => { cat.reload(); setNewProduct(false); }} />
+      <NewPlanWizard visible={newPlan} onClose={() => setNewPlan(false)} onDone={() => { cat.reload(); setNewPlan(false); }} products={data?.products ?? []} plans={plans} />
       <FormSheet visible={!!newVersion} onClose={() => setNewVersion(null)} title={`New price version · ${newVersion?.name ?? ''}`} submitLabel="Save as draft" notice="A draft is not live. Add components and entitlements, then publish — after that it is frozen."
         initial={{ region: 'IN', currency: 'INR', billing_interval: 'monthly', proration_policy: 'none', trial_days: 0, tax: 0, amount: 0, effective_from: new Date().toISOString().slice(0, 10) }}
         fields={[
@@ -383,27 +760,7 @@ function Offers({ cat }) {
       <FormSheet visible={!!edit} onClose={() => setEdit(null)} title={`Price points · ${edit?.name ?? ''}`} submitLabel="Save"
         initial={{ all_price_points: !edit?.price_points?.length, price_points: edit?.price_points ?? [] }} fields={appliesFields}
         onSubmit={async (v) => { await api.patch(`/admin/commercial/promotions/${edit.id}/price-points`, { all_price_points: !!v.all_price_points, price_points: v.all_price_points ? [] : v.price_points }); cat.reload(); return 'Price points updated'; }} />
-      <FormSheet visible={form} onClose={() => setForm(false)} title="New offer" submitLabel="Create"
-        initial={{ kind: 'launch_offer', benefit: 'free_months', free_months: 1, discount: 10, duration_months: 3, flat: 0, flat_currency: 'INR', trial_days: 0, auto_apply: false, all_price_points: true, price_points: [], starts_on: new Date().toISOString().slice(0, 10) }}
-        fields={[{ key: 'name', label: 'Name' }, { key: 'key', label: 'Short code (a–z, 0–9, _)', hint: 'Lower-case. This is what a customer types to redeem the offer.' },
-          { key: 'auto_apply', label: 'Apply automatically', type: 'switch', hint: 'On = added to every purchase it fits, no code needed. Off = the customer keys in the code. Offers stack.' },
-          { key: 'kind', label: 'Shown as', type: 'chips', options: [{ value: 'launch_offer', label: 'Launch offer' }, { value: 'first_term_discount', label: 'First-term discount' }, { value: 'coupon', label: 'Coupon' }, { value: 'trial', label: 'Trial' }] },
-          ...appliesFields,
-          { key: 'benefit', label: 'What the customer gets', type: 'chips', options: [{ value: 'free_months', label: 'Free months' }, { value: 'percent_off', label: '% off' }, { value: 'flat_off', label: 'Flat amount off' }, { value: 'none', label: 'Trial / extras only' }] },
-          { key: 'free_months', label: 'Free months (1 = first month free)', type: 'stepper', min: 1, max: 24, step: 1, suffix: ' mo', show: (v) => v.benefit === 'free_months' },
-          { key: 'discount', label: 'Discount', type: 'stepper', min: 1, max: 100, step: 5, suffix: '%', show: (v) => v.benefit === 'percent_off' },
-          { key: 'flat_currency', label: 'Currency', type: 'currency', show: (v) => v.benefit === 'flat_off' },
-          { key: 'flat', label: 'Amount off each billing term', type: 'money', currency: (v) => v.flat_currency ?? 'INR', show: (v) => v.benefit === 'flat_off' },
-          { key: 'duration_months', label: 'For how long', type: 'stepper', min: 1, max: 60, step: 1, suffix: ' mo', show: (v) => v.benefit === 'percent_off' || v.benefit === 'flat_off' },
-          { key: 'trial_days', label: 'Free trial before billing', type: 'stepper', min: 0, max: 365, step: 7, suffix: ' days' },
-          { key: 'coupon_ref', label: 'Coupon reference', optional: true, show: (v) => v.kind === 'coupon' },
-          { key: 'starts_on', label: 'Starts', type: 'date' }, { key: 'ends_on', label: 'Ends (optional)', type: 'date', optional: true },
-          { key: 'max_redemptions', label: 'Maximum uses', type: 'stepper', min: 1, max: 1000000, step: 10, optional: true, blank: true }]}
-        onSubmit={async (v) => {
-          const { discount, flat, flat_currency, free_months, duration_months, price_points, all_price_points, ...rest } = v;
-          const body = { ...rest, all_price_points: !!all_price_points, price_points: all_price_points ? [] : price_points, benefit: v.benefit, ...(v.benefit === 'free_months' ? { free_months } : {}), ...(v.benefit === 'percent_off' ? { discount_bp: Math.round(discount * 100), duration_months } : {}), ...(v.benefit === 'flat_off' ? { flat_off_minor: flat, flat_currency, duration_months } : {}) };
-          await api.post('/admin/commercial/promotions', body); cat.reload(); return 'Offer created';
-        }} />
+      <NewOfferWizard visible={form} onClose={() => setForm(false)} onDone={() => { cat.reload(); setForm(false); }} points={points} />
     </Block>
   );
 }
@@ -442,15 +799,7 @@ function Bundles({ cat }) {
         })}
       </View>
 
-      <FormSheet visible={form} onClose={() => setForm(false)} title="New bundle" submitLabel="Create" notice="Pick two or more price points of different profile families. They must share the bundle's interval, currency and region."
-        initial={{ billing_interval: 'monthly', currency: 'INR', region: 'IN', eligible_actors: ['user'], price_points: [] }}
-        fields={[{ key: 'name', label: 'Name' }, { key: 'key', label: 'Short code (a–z, 0–9, _)' },
-          { key: 'description', label: 'Description', type: 'multiline', optional: true },
-          { key: 'billing_interval', label: 'Billed', type: 'choice', options: [{ value: 'monthly', label: 'Monthly' }, { value: 'annual', label: 'Annual' }] },
-          { key: 'currency', label: 'Currency', type: 'currency' }, { key: 'region', label: 'Region', type: 'country' },
-          { key: 'eligible_actors', label: 'Who can take it', type: 'multi', options: SUBJECTS.map(([value, l]) => ({ value, label: l })) },
-          { key: 'price_points', label: 'Price points in the bundle (pick two or more)', type: 'multi', options: (v) => all.filter((x) => x.interval === v.billing_interval && x.currency === (v.currency ?? 'INR')).map(ppOption) }]}
-        onSubmit={async (v) => { await api.post('/admin/commercial/bundles', v); cat.reload(); return 'Bundle created — now give it a price'; }} />
+      <NewBundleWizard visible={form} onClose={() => setForm(false)} onDone={() => { cat.reload(); setForm(false); }} all={all} />
       <FormSheet visible={!!priceFor} onClose={() => setPriceFor(null)} title={`Bundle price · ${priceFor?.name ?? ''}`} submitLabel="Save as draft" notice="A draft is not live. Publish it to freeze it; customers keep the price they bought."
         initial={{ price_mode: 'fixed', amount: 0, discount: 10, tax: 0, effective_from: new Date().toISOString().slice(0, 10) }}
         fields={[{ key: 'price_mode', label: 'Price', type: 'chips', options: [{ value: 'fixed', label: 'Fixed bundle price' }, { value: 'percent_off', label: '% off the list prices' }, { value: 'flat_off', label: 'Amount off the list prices' }] },

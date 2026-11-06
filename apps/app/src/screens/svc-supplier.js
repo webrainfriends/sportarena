@@ -2,7 +2,7 @@
 // invoice and see their numbers. Every action is an API capability (REST + OpenAPI + MCP); this screen only calls them.
 import React, { useState } from 'react';
 import { Switch, View } from 'react-native';
-import { Counter } from '../pickers';
+import { Counter, DateRangeField } from '../pickers';
 import { api } from '../api';
 import { useLoad } from '../hooks';
 import { c } from '../theme';
@@ -12,6 +12,7 @@ import { Btn, Card, Chip, Empty, ErrorBox, Field, H1, Loading, Row, Screen, Sect
 import { localToIso } from '../vtime';
 import { useDo } from './console-utils';
 import { ChainTrace, DocButton, ExportsPanel, Kpi, Kv, Note, PerformanceRecord, Status, Tabs, Wrap, catLabel, collectScope, day, label, money, scopeFields, useCatalogue, when } from './svc-common';
+import { SportsMulti } from '../sportpicker';
 
 const TABS = [['overview', 'Overview'], ['offerings', 'Offerings'], ['quotes', 'Opportunities & quotes'], ['orders', 'Orders & jobs'], ['calendar', 'Calendar'], ['customers', 'Customers'], ['finance', 'Finance'], ['reports', 'Reports & documents'], ['team', 'Team & credentials']];
 const CURRENCIES = ['INR', 'USD', 'EUR', 'GBP', 'AED', 'SGD', 'AUD', 'KWD', 'BHD', 'OMR'];
@@ -262,23 +263,176 @@ function Overview({ p, go }) {
   );
 }
 
+const OFFERING_STEPS = ['Offering Identity', 'Pricing & Delivery', 'Availability & Launch'];
+const OFFERING_TYPES = ['Coaching session', 'Training camp', 'Kit & equipment supply', 'Nutrition consultation', 'Sports psychology', 'Video analysis', 'Fitness assessment', 'Group workshop', 'Online course', 'Venue hire', 'Medical consultation', 'Other'];
+const DELIVERY_MODES = ['In-person', 'Remote / online', 'Hybrid', "At buyer's venue", 'At our facility'];
+const LEAD_TIMES = ['Book same day', '24 hours', '48 hours', '1 week', '2 weeks', '1 month'];
+const DURATIONS = ['Under 1 hour', '1–2 hours', 'Half day', 'Full day', 'Multi-day', 'Ongoing'];
+const toLines = (s) => (s ? String(s).split('\n').map((x) => x.trim()).filter(Boolean) : []);
+
+function NewOfferingWizard({ visible, onClose, profileId, p, cat, onDone }) {
+  const [step, setStep] = useState(0);
+  const [busy, setBusy] = useState(false);
+  const [f, setF] = useState({ title: '', offering_type: '', category: '', mode: 'service', description: '', pricing_model: 'Fixed price', currency: p.currencies?.[0] ?? 'INR', rate: 0, unit: '', min_quantity: 1, delivery_modes: [], duration: '', min_attendees: 1, max_attendees: 20, avail_from: null, avail_until: null, lead_time: '48 hours', sports: [], inclusions: '', exclusions: '', available: true, featured: false });
+  const set = (k, v) => setF((prev) => ({ ...prev, [k]: v }));
+  const toggle = (k, val) => setF((prev) => ({ ...prev, [k]: prev[k].includes(val) ? prev[k].filter((x) => x !== val) : [...prev[k], val] }));
+  const can = [
+    () => f.title.trim().length >= 2 && !!f.category,
+    () => !!f.pricing_model && !!f.currency,
+    () => true,
+  ][step]();
+  const unitsForCat = cat.categories.find((k) => k.slug === f.category)?.units ?? [];
+
+  const submit = async () => {
+    setBusy(true);
+    try {
+      const pmMap = { 'Fixed price': 'fixed', 'Custom quote': 'quote_only', 'Per person': 'fixed', 'Per session': 'fixed', 'Per hour': 'fixed', 'Free / included': 'fixed' };
+      await api.post(`/supplier-profiles/${profileId}/offerings`, {
+        category: f.category, title: f.title.trim(), description: f.description.trim() || undefined, mode: f.mode,
+        pricing_model: pmMap[f.pricing_model] ?? 'quote_only', unit: f.unit || undefined, currency: f.currency,
+        ...(f.pricing_model !== 'Custom quote' && f.rate > 0 ? { rate_minor: f.rate } : {}),
+        min_quantity: f.min_quantity,
+        inclusions: toLines(f.inclusions), exclusions: toLines(f.exclusions),
+        specs: collectScope(cat, f.category, f, p.timezone),
+        delivery_modes: f.delivery_modes.length ? f.delivery_modes : undefined,
+        duration_label: f.duration || undefined,
+        min_attendees: f.min_attendees > 1 ? f.min_attendees : undefined,
+        max_attendees: f.max_attendees < 500 ? f.max_attendees : undefined,
+        lead_time_label: f.lead_time || undefined,
+        available_from: f.avail_from || undefined, available_until: f.avail_until || undefined, featured: f.featured,
+      });
+      onDone();
+    } catch (e) { setBusy(false); throw e; }
+    setBusy(false);
+  };
+
+  return (
+    <Sheet visible={visible} onClose={onClose} title="New offering">
+      <View style={{ flexDirection: 'row', gap: 6, marginBottom: 4 }}>
+        {OFFERING_STEPS.map((s, i) => (
+          <View key={s} style={{ flex: 1, gap: 3 }}>
+            <View style={{ height: 4, borderRadius: 2, backgroundColor: i < step ? c.violet : i === step ? c.pink : c.line }} />
+            <T size={10} weight={i === step ? '800' : '500'} color={i === step ? c.ink : c.mute}>{s}</T>
+          </View>
+        ))}
+      </View>
+
+      {step === 0 ? (
+        <View style={{ gap: 14 }}>
+          <Field label="Offering title" value={f.title} onChangeText={(x) => set('title', x)} placeholder="e.g. Elite speed & agility camp, Custom kit supply" />
+          <View style={{ gap: 6 }}>
+            <T size={12} weight="800" color={c.mute} style={{ letterSpacing: 0.5 }}>OFFERING TYPE</T>
+            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
+              {OFFERING_TYPES.map((t) => <Chip key={t} label={t} active={f.offering_type === t} onPress={() => set('offering_type', t)} />)}
+            </View>
+          </View>
+          <View style={{ gap: 6 }}>
+            <T size={12} weight="800" color={c.mute} style={{ letterSpacing: 0.5 }}>SERVICE CATEGORY</T>
+            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
+              {cat.categories.map((k) => <Chip key={k.slug} label={k.label} active={f.category === k.slug} onPress={() => set('category', k.slug)} />)}
+            </View>
+          </View>
+          <View style={{ gap: 6 }}>
+            <T size={12} weight="800" color={c.mute} style={{ letterSpacing: 0.5 }}>WHAT YOU SUPPLY</T>
+            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
+              {[{ value: 'service', label: 'Service' }, { value: 'goods', label: 'Goods' }, { value: 'mixed', label: 'Mixed' }].map((o) => <Chip key={o.value} label={o.label} active={f.mode === o.value} onPress={() => set('mode', o.value)} />)}
+            </View>
+          </View>
+          <Field label="Description (optional)" value={f.description} onChangeText={(x) => set('description', x)} multiline placeholder="What's included, format, skill level, what to bring…" />
+        </View>
+      ) : null}
+
+      {step === 1 ? (
+        <View style={{ gap: 14 }}>
+          <View style={{ gap: 6 }}>
+            <T size={12} weight="800" color={c.mute} style={{ letterSpacing: 0.5 }}>PRICING MODEL</T>
+            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
+              {['Fixed price', 'Per person', 'Per session', 'Per hour', 'Custom quote', 'Free / included'].map((m) => <Chip key={m} label={m} active={f.pricing_model === m} onPress={() => set('pricing_model', m)} />)}
+            </View>
+          </View>
+          <View style={{ gap: 6 }}>
+            <T size={12} weight="800" color={c.mute} style={{ letterSpacing: 0.5 }}>CURRENCY</T>
+            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
+              {CURRENCIES.map((cur) => <Chip key={cur} label={cur} active={f.currency === cur} onPress={() => set('currency', cur)} />)}
+            </View>
+          </View>
+          {f.pricing_model !== 'Custom quote' && f.pricing_model !== 'Free / included' ? (
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+              <View style={{ flex: 1 }}><T weight="800" size={13}>Price ({f.currency})</T><T size={11} color={c.mute}>Exact amount in {f.currency}</T></View>
+              <Counter value={f.rate} onChange={(x) => set('rate', x)} min={0} max={9999999} step={1} />
+            </View>
+          ) : null}
+          {unitsForCat.length ? (
+            <View style={{ gap: 6 }}>
+              <T size={12} weight="800" color={c.mute} style={{ letterSpacing: 0.5 }}>PRICED PER (UNIT)</T>
+              <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
+                {unitsForCat.map((u) => <Chip key={u} label={label(u)} active={f.unit === u} onPress={() => set('unit', u)} />)}
+              </View>
+            </View>
+          ) : null}
+          <View style={{ gap: 6 }}>
+            <T size={12} weight="800" color={c.mute} style={{ letterSpacing: 0.5 }}>DELIVERY MODE</T>
+            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
+              {DELIVERY_MODES.map((m) => <Chip key={m} label={m} active={f.delivery_modes.includes(m)} onPress={() => toggle('delivery_modes', m)} />)}
+            </View>
+          </View>
+          <View style={{ gap: 6 }}>
+            <T size={12} weight="800" color={c.mute} style={{ letterSpacing: 0.5 }}>DURATION</T>
+            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
+              {DURATIONS.map((d) => <Chip key={d} label={d} active={f.duration === d} onPress={() => set('duration', d)} />)}
+            </View>
+          </View>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+            <View style={{ flex: 1 }}><T weight="800" size={13}>Min attendees</T></View>
+            <Counter value={f.min_attendees} onChange={(x) => set('min_attendees', x)} min={1} max={100} step={1} />
+          </View>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+            <View style={{ flex: 1 }}><T weight="800" size={13}>Max attendees</T></View>
+            <Counter value={f.max_attendees} onChange={(x) => set('max_attendees', x)} min={1} max={500} step={1} />
+          </View>
+        </View>
+      ) : null}
+
+      {step === 2 ? (
+        <View style={{ gap: 14 }}>
+          <DateRangeField label="Available from / until (optional — leave blank for ongoing)" value={{ start: f.avail_from, end: f.avail_until }} onChange={({ start, end }) => { set('avail_from', start); set('avail_until', end); }} />
+          <View style={{ gap: 6 }}>
+            <T size={12} weight="800" color={c.mute} style={{ letterSpacing: 0.5 }}>LEAD TIME REQUIRED</T>
+            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
+              {LEAD_TIMES.map((lt) => <Chip key={lt} label={lt} active={f.lead_time === lt} onPress={() => set('lead_time', lt)} />)}
+            </View>
+          </View>
+          <SportsMulti value={f.sports} onChange={(x) => set('sports', x)} label="Sports this applies to (optional)" />
+          <Field label="What's included (one per line, optional)" value={f.inclusions} onChangeText={(x) => set('inclusions', x)} multiline placeholder="e.g. Full kit, Coaching notes, Video analysis…" />
+          <Field label="What's not included (one per line, optional)" value={f.exclusions} onChangeText={(x) => set('exclusions', x)} multiline placeholder="e.g. Travel, Accommodation…" />
+          <View style={{ borderWidth: 1, borderColor: c.line, borderRadius: 14, padding: 14, backgroundColor: c.paper, gap: 4 }}>
+            <T weight="800" size={14}>{f.title || 'Untitled offering'}</T>
+            <T size={12} color={c.mute}>{f.offering_type || f.mode} · {f.pricing_model}{f.rate > 0 ? ` · ${f.currency} ${f.rate}` : ''}</T>
+            {f.delivery_modes.length ? <T size={12} color={c.mute}>{f.delivery_modes.join(', ')}</T> : null}
+          </View>
+          {[['available', 'Available for booking', 'Buyers can find and request this offering'], ['featured', 'Feature this offering', 'Shown prominently in search results']].map(([key, title, sub]) => (
+            <View key={key} style={{ flexDirection: 'row', alignItems: 'center', gap: 12, padding: 12, borderWidth: 1, borderColor: c.line, borderRadius: 12 }}>
+              <View style={{ flex: 1 }}><T weight="800" size={13}>{title}</T><T size={11} color={c.mute}>{sub}</T></View>
+              <Switch value={f[key]} onValueChange={(v) => set(key, v)} trackColor={{ true: c.pink }} />
+            </View>
+          ))}
+        </View>
+      ) : null}
+
+      <View style={{ flexDirection: 'row', gap: 8, marginTop: 4 }}>
+        {step > 0 ? <Btn title="Back" color={c.paper} ink={c.ink} onPress={() => setStep(step - 1)} style={{ flex: 1 }} /> : null}
+        {step < 2
+          ? <Btn title="Next" disabled={!can} onPress={() => setStep(step + 1)} style={{ flex: 2 }} />
+          : <Btn title="Publish offering" loading={busy} onPress={submit} style={{ flex: 2 }} />}
+      </View>
+    </Sheet>
+  );
+}
+
 function Offerings({ p, cat }) {
   const list = useLoad(() => api.get(`/supplier-profiles/${p.id}/offerings`, { limit: 100 }), [p.id]);
   const act = useDo(list.reload);
   const [form, setForm] = useState(null);
-  const fields = [
-    { key: 'category', label: 'Category', type: 'chips', options: cat.categories.map((k) => ({ value: k.slug, label: k.label })) },
-    { key: 'title', label: 'Title' }, { key: 'description', label: 'Description', type: 'multiline', optional: true },
-    { key: 'mode', label: 'What you supply', type: 'choice', options: [{ value: 'service', label: 'Service' }, { value: 'goods', label: 'Goods' }, { value: 'mixed', label: 'Mixed' }] },
-    { key: 'pricing_model', label: 'Pricing', type: 'choice', options: [{ value: 'quote_only', label: 'Quote only' }, { value: 'fixed', label: 'Fixed price' }] },
-    { key: 'unit', label: 'Priced per', type: 'chips', options: (v) => (cat.categories.find((k) => k.slug === v.category)?.units ?? []).map((u) => ({ value: u, label: label(u) })) },
-    { key: 'currency', label: 'Currency', type: 'currency', endpoint: '/service-currencies', default: p.currencies?.[0] ?? 'INR' },
-    { key: 'rate', label: 'Rate per unit', type: 'money', currency: (v) => v.currency ?? 'INR', show: (v) => v.pricing_model === 'fixed' },
-    { key: 'min_quantity', label: 'Minimum order', type: 'stepper', min: 1, max: 100000, default: 1 },
-    { key: 'inclusions', label: 'Included (one per line)', type: 'multiline', optional: true }, { key: 'exclusions', label: 'Not included (one per line)', type: 'multiline', optional: true },
-    ...scopeFields(cat),
-  ];
-  const lines = (s) => (s ? String(s).split('\n').map((x) => x.trim()).filter(Boolean) : []);
   return (
     <>
       <Btn small title="Add an offering" onPress={() => setForm({})} style={{ alignSelf: 'flex-start' }} />
@@ -286,8 +440,7 @@ function Offerings({ p, cat }) {
         <Row key={o.id} title={o.title} sub={`${catLabel(cat, o.category)} · ${o.mode} · ${o.pricing_model === 'fixed' ? `${money(o.rate_minor, o.currency)} / ${label(o.unit)}` : `quote per ${label(o.unit)}`}`}
           right={<><Status s={o.status} />{o.status !== 'archived' ? <Btn small color={c.paper} ink={c.ink} title="Archive" onPress={() => act(() => api.patch(`/service-offerings/${o.id}`, { row_version: o.row_version, status: 'archived' }), 'Archived')} /> : null}</>} />
       )) : <Empty emoji="🧰" title="No offerings yet" sub="Services never need stock or shipping. Mixed offerings can link a shop product whose stock stays in the shop." />}
-      <FormSheet visible={!!form} onClose={() => setForm(null)} title="New offering" fields={fields} initial={form ?? {}}
-        onSubmit={async (v) => { await api.post(`/supplier-profiles/${p.id}/offerings`, { category: v.category, title: v.title, description: v.description, mode: v.mode, pricing_model: v.pricing_model, unit: v.unit, currency: v.currency, ...(v.pricing_model === 'fixed' ? { rate_minor: v.rate } : {}), min_quantity: v.min_quantity, inclusions: lines(v.inclusions), exclusions: lines(v.exclusions), specs: collectScope(cat, v.category, v, p.timezone) }); list.reload(); return 'Published'; }} />
+      <NewOfferingWizard visible={!!form} onClose={() => setForm(null)} profileId={p.id} p={p} cat={cat} onDone={() => { list.reload(); setForm(null); }} />
     </>
   );
 }

@@ -104,19 +104,117 @@ export function ContractSheet({ id, onClose, onChanged }) {
 }
 
 // ---------------------------------------------------------------------------------------------------------- apply
+const ROLE_STRENGTHS = {
+  referee:   ['Rules mastery', 'Pressure composure', 'Decisive calls', 'Multilingual', 'Multi-sport', 'High-level experience', 'Youth tournaments', 'International finals', 'VAR / tech-assisted', 'Excellent fitness', 'Leadership', 'Communication'],
+  umpire:    ['Rules mastery', 'Pressure composure', 'Decisive calls', 'Multilingual', 'Multi-sport', 'High-level experience', 'Youth tournaments', 'International finals', 'Excellent fitness', 'Leadership', 'Communication'],
+  linesman:  ['Quick reactions', 'Positional awareness', 'Flag discipline', 'Communication', 'Multilingual', 'Excellent fitness', 'Multi-sport', 'High-level experience'],
+  scorer:    ['Attention to detail', 'Technology proficient', 'Fast data entry', 'Multi-sport', 'Bilingual', 'Live broadcast liaison', 'Spreadsheet / software', 'Accuracy under pressure'],
+  doctor:    ['Sports medicine', 'Emergency care', 'Fracture management', 'Concussion protocol', 'Doping control', 'Paediatric care', 'Multi-sport', 'International events', 'On-field first aid', 'Full medical kit', 'Ambulance access'],
+  physio:    ['Injury rehab', 'On-field assessment', 'Sports taping', 'Post-match recovery', 'Multi-sport', 'On-site equipment', 'Manual therapy', 'Exercise prescription'],
+  medic:     ['Emergency care', 'On-field first aid', 'Ambulance access', 'Fracture management', 'Concussion protocol', 'Defibrillator certified', 'Paediatric care', 'Multi-sport'],
+  volunteer: ['Enthusiastic', 'Multilingual', 'People person', 'Physically fit', 'First aid trained', 'Events experience', 'Child safeguarding', 'Adaptable', 'Team player', 'Own transport'],
+  security:  ['Crowd management', 'First aid trained', 'Communication', 'De-escalation', 'SIA licensed', 'Multi-event experience', 'Bomb threat protocol', 'VIP security', 'CCTV monitoring'],
+  assessor:  ['Attention to detail', 'Technical knowledge', 'Impartiality', 'Report writing', 'Multi-sport', 'Coaching experience', 'Data proficiency'],
+  retail:    ['Premium product', 'Award-winning', 'Established brand', 'Pop-up specialist', 'Own payment terminal', 'Eco-friendly packaging', 'Instagram-worthy'],
+  catering:  ['Health-conscious range', 'Youth/kids friendly', 'Vegan/vegetarian', 'Allergy-aware', 'Award-winning', 'Own payment terminal', 'Eco-friendly packaging', 'Licensed to sell alcohol', 'Instagram-worthy'],
+  vendor:    ['Premium product', 'Established brand', 'Pop-up specialist', 'Own payment terminal', 'Eco-friendly packaging', 'Award-winning'],
+};
+const OFFICIAL_ROLES = new Set(['referee', 'umpire', 'linesman', 'scorer', 'doctor', 'physio', 'medic', 'assessor', 'security']);
+const VENDOR_ROLE_SET = new Set(['retail', 'catering', 'vendor']);
+const EXP_OPTS = [
+  { value: 'first_time', label: 'First event' },
+  { value: 'some', label: 'Some experience' },
+  { value: 'experienced', label: 'Regularly active' },
+  { value: 'expert', label: 'Professional / elite' },
+];
+const TRANSPORT_OPTS = [
+  { value: 'own_vehicle', label: 'Own vehicle' },
+  { value: 'public_transport', label: 'Public transport' },
+  { value: 'any', label: 'Either' },
+];
+const PROD_OPTS = [
+  { value: 'retail', label: 'Retail & merchandise' },
+  { value: 'food', label: 'Food' },
+  { value: 'beverage', label: 'Beverages' },
+  { value: 'services', label: 'Services' },
+];
+
 function ApplySheet({ p, onClose, onApplied }) {
   const [sent, setSent] = useState(null);
-  const done = useRef(false); // the form closes itself after a successful send; keep this sheet to offer the documents step
+  const done = useRef(false);
   if (sent) return <PositionDocs assignmentId={sent} title="Add documents for the organiser" onClose={() => { onClose(); onApplied?.(); }} />;
   const vendor = p.pay_direction === 'applicant_pays';
+  const strengths = ROLE_STRENGTHS[p.role] ?? ROLE_STRENGTHS.volunteer;
+  const isOfficial = OFFICIAL_ROLES.has(p.role);
+  const isVendor = VENDOR_ROLE_SET.has(p.role);
   return (
-    <FormSheet visible onClose={() => { if (!done.current) onClose(); }} title={`Apply: ${p.title || ROLE_META[p.role]?.[1]}`} submitLabel="Send application"
+    <FormSheet visible onClose={() => { if (!done.current) onClose(); }}
+      title={`Apply · ${p.title || ROLE_META[p.role]?.[1]}`} submitLabel="Send application"
       fields={[
-        { key: 'message', label: 'Why you are a fit', type: 'multiline', optional: true, hint: `${p.event_name} · ${dates(p)} · ${feeLine(p)}. Your profile is shared with the organiser.` },
-        { key: 'fee', label: vendor ? 'Stall fee you offer' : 'Your fee, if different', type: 'money', currency: p.currency, optional: true },
+        { key: '_ctx', type: 'section', label: `${p.event_name} · ${dates(p)} · ${feeLine(p)}${p.requirements ? `\n\n📋 Requirements: ${p.requirements}` : ''}` },
+        { key: 'message', label: 'Cover statement', type: 'multiline', optional: !isOfficial, placeholder: "Describe your relevant experience, why you're the right person for this event, and what you bring to the team…", hint: 'Your GotMyGame profile, performance record and ratings are shared with the organiser.' },
+        { key: '_strengths_hdr', type: 'section', label: 'What you bring' },
+        { key: 'strengths', label: 'Key strengths', type: 'multi', optional: true, options: strengths },
+        { key: '_exp_hdr', type: 'section', label: 'Experience' },
+        { key: 'experience_level', label: 'Experience level', type: 'chips', optional: true, options: EXP_OPTS },
+        { key: 'years_active', label: 'Years in this role', type: 'stepper', min: 0, max: 50, default: 0, suffix: ' yr', show: (v) => v.experience_level && v.experience_level !== 'first_time' },
+        ...(isOfficial ? [
+          { key: '_cred_hdr', type: 'section', label: 'Credentials' },
+          { key: 'has_qualification', label: 'I hold a valid licence / certification', type: 'switch', hint: 'Officials and crew with verified credentials are highlighted on your application.' },
+          { key: 'qualification_body', label: 'Issuing body / governing body', optional: true, show: (v) => v.has_qualification, placeholder: 'e.g. BCCI, FIFA, World Athletics…' },
+          { key: 'qualification_level', label: 'Grade / badge / licence level', optional: true, show: (v) => v.has_qualification, placeholder: 'e.g. Level 2 — State Panel' },
+          { key: 'qualification_ref', label: 'Licence reference number', optional: true, show: (v) => v.has_qualification, placeholder: 'Optional — the reference on your certificate' },
+          { key: 'qualification_expires', label: 'Expiry date', type: 'date', optional: true, show: (v) => v.has_qualification },
+        ] : []),
+        ...(isVendor ? [
+          { key: '_vendor_hdr', type: 'section', label: 'Stall details' },
+          { key: 'stall_name', label: 'Trading / stall name', placeholder: 'Your brand or trading name' },
+          { key: 'product_category', label: 'Category', type: 'chips', options: PROD_OPTS },
+          { key: 'products_desc', label: "What you're selling", type: 'multiline', placeholder: 'List your main items, any awards, allergen policy, preparation style…' },
+          { key: 'stall_width_m', label: 'Stall width (metres)', type: 'stepper', min: 2, max: 12, default: 3, step: 1, suffix: ' m' },
+          { key: 'power_needed', label: "I'll need power at the stall", type: 'switch' },
+          { key: 'power_amps', label: 'Power requirement (amps)', type: 'stepper', min: 5, max: 100, default: 15, step: 5, suffix: ' A', show: (v) => v.power_needed },
+          { key: 'food_cert', label: 'Food safety certificate number', optional: true, placeholder: 'e.g. FSSAI/MH/2024/00001', show: (v) => ['food', 'beverage'].includes(v.product_category) },
+        ] : []),
+        { key: '_logistics_hdr', type: 'section', label: 'Availability & logistics' },
+        { key: 'confirms_dates', label: `Available for all event dates (${dates(p)})`, type: 'switch', default: true },
+        { key: 'transport', label: 'How will you get there?', type: 'chips', optional: true, options: TRANSPORT_OPTS },
+        { key: 'accommodation_needed', label: "I'll need accommodation at the venue", type: 'switch' },
+        { key: '_fee_hdr', type: 'section', label: vendor ? 'Stall fee' : 'Fee' },
+        { key: 'fee', label: vendor ? 'Stall fee you offer' : 'Your fee, if different', type: 'money', currency: p.currency, optional: true, hint: p.fee_cents > 0 ? `Posted rate is ${feeLine(p)}. Leave blank to accept it, or enter your preferred fee.` : 'No fee posted — enter one if you expect to be paid.' },
+        { key: '_add_hdr', type: 'section', label: 'Additional information' },
+        { key: 'additional', label: 'Anything else the organiser should know', type: 'multiline', optional: true, placeholder: 'Kit colour preference, dietary requirements, specific availability notes…' },
       ]}
       onSubmit={async (v) => {
-        const a = await api.post(`/staff-roles/${p.id}/apply`, { message: v.message || undefined, fee_cents: v.fee || undefined });
+        const appData = {};
+        if (v.strengths?.length) appData.strengths = v.strengths;
+        if (v.experience_level) appData.experience_level = v.experience_level;
+        if (v.years_active) appData.years_active = v.years_active;
+        if (v.has_qualification) {
+          appData.has_qualification = true;
+          if (v.qualification_body) appData.qualification_body = v.qualification_body;
+          if (v.qualification_level) appData.qualification_level = v.qualification_level;
+          if (v.qualification_ref) appData.qualification_ref = v.qualification_ref;
+          if (v.qualification_expires) appData.qualification_expires = v.qualification_expires;
+        }
+        if (v.confirms_dates !== undefined) appData.confirms_dates = v.confirms_dates;
+        if (v.transport) appData.transport = v.transport;
+        if (v.accommodation_needed) appData.accommodation_needed = v.accommodation_needed;
+        if (isVendor) {
+          if (v.stall_name) appData.stall_name = v.stall_name;
+          if (v.product_category) appData.product_category = v.product_category;
+          if (v.products_desc) appData.products_desc = v.products_desc;
+          if (v.stall_width_m) appData.stall_width_m = v.stall_width_m;
+          if (v.power_needed) appData.power_needed = v.power_needed;
+          if (v.power_amps) appData.power_amps = v.power_amps;
+          if (v.food_cert) appData.food_cert = v.food_cert;
+        }
+        if (v.additional) appData.additional = v.additional;
+        const a = await api.post(`/staff-roles/${p.id}/apply`, {
+          message: v.message || undefined,
+          fee_cents: v.fee || undefined,
+          application_data: Object.keys(appData).length ? appData : undefined,
+        });
         done.current = true; setSent(a.id);
         return 'Application sent — add any documents the organiser should see';
       }} />
