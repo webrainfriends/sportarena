@@ -268,6 +268,7 @@ id: 'wellbeing', title: 'Support student wellbeing and development',
 export const NOT_IN_GUIDE = {
   'academy-curriculum.js': 'Curriculum, methodology and coaching-philosophy governance is set up by the academy after the first setup; it is described in docs/academy-curriculum.md, not in this onboarding guide.',
   'para-mentoring.js': 'Para peer mentoring is an athlete-facing feature (athletes discover and connect with peer mentors directly), not an org-onboarding step. It is not part of setting up an academy.',
+  'platform-benchmarks.js': 'Platform Competitive Benchmarks is a platform-admin-only console (not an academy-onboarding step). It is documented in docs/platform-benchmarks.md.',
 };
 
 /** The directories/files the guard test watches for org/academy/venue/coach/tax capability modules. */
