@@ -15,6 +15,7 @@ import { moneyIn } from '../vtime';
 
 import { KINDS, MODES, Explore, Reviews, BucketButton, RatingTag } from './study';
 import { Plan, SharedPathways } from './pathway-plan';
+import { AdaptiveLearn } from './para-learn';
 export { KINDS, MODES };
 export const STAGES = [['new', 'New'], ['in_conversation', 'In conversation'], ['referred', 'Sent to apply'], ['applied', 'Applied'], ['admitted', 'Admitted'], ['enrolled', 'Enrolled'], ['declined', 'Declined'], ['withdrawn', 'Withdrawn'], ['closed', 'Closed']];
 export const label = (list, v) => list.find(([k]) => k === v)?.[1] ?? String(v).replace(/_/g, ' ');
@@ -62,12 +63,13 @@ export function Pathways() {
         </View>
       </GradCard>
       <View style={{ marginTop: 12 }}>
-        <Seg value={tab} onChange={setTab} color={c.violet} options={[{ value: 'explore', label: 'Explore' }, { value: 'plan', label: saved ? `My plan (${saved})` : 'My plan' }, { value: 'learn', label: 'Rules' }, { value: 'enquiries', label: unread ? `Enquiries (${unread})` : 'Enquiries' }, { value: 'credentials', label: 'Badges' }, ...(user.roles.includes('coach') ? [{ value: 'shared', label: 'Shared with me' }] : [])]} />
+        <Seg value={tab} onChange={setTab} color={c.violet} options={[{ value: 'explore', label: 'Explore' }, { value: 'plan', label: saved ? `My plan (${saved})` : 'My plan' }, { value: 'adaptive', label: 'Adaptive sport' }, { value: 'rules', label: 'Rules' }, { value: 'enquiries', label: unread ? `Enquiries (${unread})` : 'Enquiries' }, { value: 'credentials', label: 'Badges' }, ...(user.roles.includes('coach') ? [{ value: 'shared', label: 'Shared with me' }] : [])]} />
       </View>
       {tab === 'explore' ? <Explore push={push} onSaved={bucket.reload} /> : null}
       {tab === 'plan' ? <Plan onExplore={() => setTab('explore')} /> : null}
       {tab === 'shared' ? <SharedPathways push={push} /> : null}
-      {tab === 'learn' ? <Learn onFind={() => setTab('explore')} /> : null}
+      {tab === 'adaptive' ? <AdaptiveLearn push={push} /> : null}
+      {tab === 'rules' ? <Learn onFind={() => setTab('explore')} /> : null}
       {tab === 'enquiries' ? <Enquiries list={enq} push={push} /> : null}
       {tab === 'credentials' ? <MyCredentials /> : null}
     </Screen>

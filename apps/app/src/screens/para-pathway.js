@@ -14,6 +14,7 @@ import { c } from '../theme';
 import { t } from '../i18n';
 import { useNav } from '../nav';
 import { useLayout } from '../layout';
+import { LearnPathSuggestion } from './para-learn';
 
 const STAGES = ['adapted_learning', 'coach_evaluation', 'community_competition', 'official_advancement', 'verified_competition'];
 const PROVENANCE_LABELS = ['player_goal', 'coach_observation', 'competition_result', 'academy_assessment', 'learning_outcome', 'other'];
@@ -346,6 +347,7 @@ export function ParaPathway() {
   const { push } = useNav();
   const { tablet: wide } = useLayout();
   const pw = useLoad(() => api.get('/me/para-pathway'), []);
+  const recs = useLoad(() => api.get('/para/learn/recommendations'), []);
   const [tab, setTab] = useState('plan');
   const [addVisible, setAddVisible] = useState(false);
 
@@ -355,6 +357,11 @@ export function ParaPathway() {
   return (
     <Screen onRefresh={pw.reload} title={t('pp.title')}>
       <StageRail milestones_by_stage={pw.data.milestones_by_stage} />
+      {recs.data?.length > 0 && (
+        <Section title={t('pl.recommend.title')} color={c.violet} style={{ marginBottom: 4 }}>
+          <LearnPathSuggestion recommendations={recs.data} push={push} />
+        </Section>
+      )}
       <MetricStrip data={pw.data} />
       <ClassificationPanel sports={pw.data.para_sports} push={push} />
       <Seg
