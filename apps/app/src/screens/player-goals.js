@@ -18,6 +18,76 @@ const newKey = () => `k${Date.now().toString(36)}${Math.random().toString(36).sl
 const CATEGORIES = ['technical', 'tactical', 'physical', 'mental_performance', 'teamwork', 'match_objective', 'custom'].map((value) => ({ value, label: label(value) }));
 const UNITS = ['s', 'kg', 'cm', 'm', 'km', 'reps', 'min', '%', 'points', 'of 10', 'times'].map((value) => ({ value, label: value }));
 const CADENCE = [{ value: 7, label: 'Weekly' }, { value: 14, label: 'Every 2 weeks' }, { value: 30, label: 'Monthly' }, { value: 90, label: 'Quarterly' }];
+
+const GOAL_STEPS = ['Goal Definition', 'Measure & Milestones', 'Visibility & Plan'];
+const VISIBILITY_OPTS = [{ v: 'private', l: 'Private', s: 'Only you can see this goal' }, { v: 'coaches', l: 'Coaches', s: 'Your assigned coaches can see it' }, { v: 'guardians', l: 'Guardians', s: 'Your guardians can see it' }, { v: 'public', l: 'Public', s: 'Anyone on the platform can see it' }];
+
+function NewGoalWizard({ onClose, formKey, onDone }) {
+  const { toast } = useSession();
+  const [step, setStep] = useState(0);
+  const [busy, setBusy] = useState(false);
+  const today = new Date().toISOString().slice(0, 10);
+  const [f, setF] = useState({ title: '', sport: undefined, category: 'technical', measure: '', target_value: '', unit: '', milestones: '', review_on: '', review_cadence_days: undefined, visibility: 'private', action_plan: '' });
+  const set = (k, v) => setF((p) => ({ ...p, [k]: v }));
+  const can = [() => f.title.trim().length >= 3, () => true, () => true][step]();
+  const submit = async () => {
+    setBusy(true);
+    try {
+      await api.post('/me/goals', { title: f.title.trim(), ...(f.sport ? { sport: f.sport } : {}), category: f.category, ...(f.measure.trim() ? { measure: f.measure.trim() } : {}), ...(f.target_value !== '' ? { target_value: Number(f.target_value) } : {}), ...(f.unit ? { unit: f.unit } : {}), ...(f.review_on ? { review_on: f.review_on } : {}), ...(f.review_cadence_days ? { review_cadence_days: f.review_cadence_days } : {}), visibility: f.visibility, client_key: formKey });
+      toast('Goal set'); onDone(); onClose();
+    } catch (e) { toast('' + e.message); }
+    setBusy(false);
+  };
+  return (
+    <Sheet visible onClose={onClose} title="New Personal Goal">
+      <View style={{ flexDirection: 'row', gap: 6, marginBottom: 4 }}>
+        {GOAL_STEPS.map((s, i) => (<View key={s} style={{ flex: 1, gap: 3 }}><View style={{ height: 4, borderRadius: 2, backgroundColor: i <= step ? c.pink : c.line }} /><T size={10} weight={i === step ? '800' : '500'} color={i === step ? c.ink : c.mute}>{s}</T></View>))}
+      </View>
+      {step === 0 ? (
+        <View style={{ gap: 14 }}>
+          <Field label="What do you want to achieve?" value={f.title} onChangeText={(x) => set('title', x)} placeholder="e.g. Hit 90% first-serve accuracy under match pressure" />
+          <View style={{ gap: 6 }}><T size={12} weight="800" color={c.mute} style={{ letterSpacing: 0.5 }}>KIND OF GOAL</T><View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>{CATEGORIES.map((c2) => <Chip key={c2.value} label={c2.label} active={f.category === c2.value} onPress={() => set('category', c2.value)} />)}</View></View>
+          <Field label="How will you know you've got there? (optional)" value={f.measure} onChangeText={(x) => set('measure', x)} multiline placeholder={'For example: "8 of 10 passes land on target in a training drill"'} />
+          <View style={{ flexDirection: 'row', gap: 8, alignItems: 'flex-end' }}>
+            <View style={{ flex: 1 }}><Field label="Target number (optional)" value={String(f.target_value)} onChangeText={(x) => set('target_value', x.replace(/[^0-9.]/g, ''))} keyboardType="decimal-pad" placeholder="e.g. 90" /></View>
+            <View style={{ flex: 1, gap: 6 }}><T size={12} weight="800" color={c.mute} style={{ letterSpacing: 0.5 }}>UNIT</T><View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 5 }}>{UNITS.map((u) => <Chip key={u.value} label={u.label} active={f.unit === u.value} onPress={() => set('unit', f.unit === u.value ? '' : u.value)} />)}</View></View>
+          </View>
+        </View>
+      ) : null}
+      {step === 1 ? (
+        <View style={{ gap: 14 }}>
+          <Field label="Milestones (optional)" value={f.milestones} onChangeText={(x) => set('milestones', x)} multiline placeholder="Break the goal into checkpoints, e.g. 'Week 4: 70%, Week 8: 80%, Week 12: 90%'" />
+          <DateField label="First review date (optional)" value={f.review_on} onChange={(x) => set('review_on', x)} min={today} optional />
+          <View style={{ gap: 6 }}><T size={12} weight="800" color={c.mute} style={{ letterSpacing: 0.5 }}>REVIEW CADENCE</T><View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>{CADENCE.map((o) => <Chip key={o.value} label={o.label} active={f.review_cadence_days === o.value} onPress={() => set('review_cadence_days', f.review_cadence_days === o.value ? undefined : o.value)} />)}</View></View>
+          <Field label="Action plan (optional)" value={f.action_plan} onChangeText={(x) => set('action_plan', x)} multiline placeholder="Drills, resources, coaching sessions — what will get you there" />
+        </View>
+      ) : null}
+      {step === 2 ? (
+        <View style={{ gap: 14 }}>
+          <View style={{ borderWidth: 1, borderColor: c.line, borderRadius: 14, padding: 14, backgroundColor: c.paper, gap: 3 }}>
+            <T weight="800">{f.title || '—'}</T>
+            <T size={12} color={c.mute}>{CATEGORIES.find((c2) => c2.value === f.category)?.label ?? f.category}</T>
+            {f.target_value !== '' ? <T size={12} color={c.mute}>Target: {f.target_value} {f.unit}</T> : null}
+            {f.review_on ? <T size={12} color={c.mute}>First review: {f.review_on}</T> : null}
+          </View>
+          <View style={{ gap: 6 }}>
+            <T size={12} weight="800" color={c.mute} style={{ letterSpacing: 0.5 }}>WHO CAN SEE THIS GOAL</T>
+            {VISIBILITY_OPTS.map((o) => (
+              <Pressable key={o.v} onPress={() => set('visibility', o.v)} style={{ flexDirection: 'row', alignItems: 'center', gap: 12, padding: 12, borderWidth: 1, borderColor: f.visibility === o.v ? c.pink : c.line, borderRadius: 12, backgroundColor: c.paper }}>
+                <View style={{ flex: 1 }}><T weight="800" size={13}>{o.l}</T><T size={11} color={c.mute}>{o.s}</T></View>
+                <Switch value={f.visibility === o.v} onValueChange={() => set('visibility', o.v)} trackColor={{ true: c.pink }} />
+              </Pressable>
+            ))}
+          </View>
+        </View>
+      ) : null}
+      <View style={{ flexDirection: 'row', gap: 8, marginTop: 4 }}>
+        {step > 0 ? <Btn title="Back" color={c.paper} ink={c.ink} onPress={() => setStep(step - 1)} style={{ flex: 1 }} /> : null}
+        {step < 2 ? <Btn title="Next" disabled={!can} onPress={() => setStep(step + 1)} style={{ flex: 2 }} /> : <Btn title="Set Goal" loading={busy} onPress={submit} style={{ flex: 2 }} />}
+      </View>
+    </Sheet>
+  );
+}
 const KINDS = ['skill', 'tactical', 'conditioning', 'strength', 'recovery', 'mobility'].map((value) => ({ value, label: label(value) }));
 const RATING = { ahead: 'Ahead of plan', on_track: 'On track', needs_attention: 'Needs attention', not_enough_evidence: 'Not enough evidence yet', confirmed_achieved: 'Confirmed achieved' };
 const RATING_CHOICES = Object.entries(RATING).map(([value, l]) => ({ value, label: l }));
@@ -140,18 +210,7 @@ export function MyGoalsBlock({ def, data, self, athleteId, reload }) {
           <GoalCard key={g.id} g={{ ...g, owner_id: athleteId }} self={self} act={act} busy={busy} onProgress={(x) => open('progress', { g: x })} onShare={(kind, id) => setShare({ kind, id })} onEdit={(f) => open(f.mode, { g: f.g })} />
         ))}
       </View>
-      <FormSheet visible={form?.mode === 'new'} onClose={() => setForm(null)} title="New personal goal" submitLabel="Set goal" initial={{ category: 'technical' }}
-        fields={[
-          { key: 'title', label: 'What do you want to achieve?' },
-          { key: 'sport', label: 'Sport', type: 'sport', optional: true },
-          { key: 'category', label: 'Kind of goal', type: 'chips', options: CATEGORIES },
-          { key: 'measure', label: 'How will you know?', type: 'multiline', optional: true, hint: 'For example: "8 of 10 passes land on target".' },
-          { key: 'target_value', label: 'Target number', type: 'number', optional: true },
-          { key: 'unit', label: 'Measured in', type: 'chips', options: UNITS, optional: true, show: (v) => v.target_value !== undefined && v.target_value !== '' },
-          { key: 'review_on', label: 'First review date', type: 'date', optional: true, min: new Date().toISOString().slice(0, 10) },
-          { key: 'review_cadence_days', label: 'Then review', type: 'chips', options: CADENCE, optional: true },
-        ]}
-        onSubmit={async (v) => { await api.post('/me/goals', { ...v, review_cadence_days: v.review_cadence_days ? Number(v.review_cadence_days) : undefined, client_key: form.key }); reload(); return 'Goal set'; }} />
+      {form?.mode === 'new' ? <NewGoalWizard onClose={() => setForm(null)} formKey={form.key} onDone={reload} /> : null}
       <FormSheet visible={form?.mode === 'progress'} onClose={() => setForm(null)} title="Log progress" submitLabel="Save" initial={{}}
         fields={[
           ...(form?.g?.unit ? [{ key: 'value', label: `Where are you now? (${form.g.unit})`, type: 'number', optional: true }] : []),

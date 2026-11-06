@@ -399,11 +399,15 @@ cap({
 // ------------------------------------------------------------------ seasons & cohorts
 cap({
   name: 'create_org_season', method: 'POST', path: '/organisations/:id/seasons', tag: 'Organisations', status: 201, summary: 'Define a season (owner/admin).',
-  input: z.object({ id, name: z.string().min(2).max(80), starts_on: day, ends_on: day }),
+  input: z.object({ id, name: z.string().min(2).max(80), starts_on: day, ends_on: day, type: z.string().max(50).optional(), reg_opens_on: day.optional(), reg_closes_on: day.optional(), sports: z.array(z.string()).optional(), max_athletes: z.number().int().min(0).optional(), max_coaches: z.number().int().min(0).optional(), age_bands: z.array(z.string()).optional(), gender: z.string().max(20).optional(), objective: z.string().max(100).optional(), targets: z.string().max(500).optional(), auto_roll_cohorts: z.boolean().optional(), carry_forward_curriculum: z.boolean().optional(), self_registration: z.boolean().optional(), notify_coaches_on_launch: z.boolean().optional(), admin_notes: z.string().max(1000).optional() }),
   async handler({ user }, i) {
     await orgFor(user, i.id, STAFF, { write: true });
     if (i.ends_on < i.starts_on) throw badRequest('A season cannot end before it starts');
-    return one('INSERT INTO org_seasons(organisation_id, name, starts_on, ends_on) VALUES ($1,$2,$3,$4) RETURNING *', [i.id, i.name, i.starts_on, i.ends_on]);
+    return one(
+      `INSERT INTO org_seasons(organisation_id, name, starts_on, ends_on, type, reg_opens_on, reg_closes_on, sports, max_athletes, max_coaches, age_bands, gender, objective, targets, auto_roll_cohorts, carry_forward_curriculum, self_registration, notify_coaches_on_launch, admin_notes)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19) RETURNING *`,
+      [i.id, i.name, i.starts_on, i.ends_on, i.type ?? null, i.reg_opens_on ?? null, i.reg_closes_on ?? null, i.sports ?? null, i.max_athletes ?? null, i.max_coaches ?? null, i.age_bands ?? null, i.gender ?? null, i.objective ?? null, i.targets ?? null, i.auto_roll_cohorts ?? false, i.carry_forward_curriculum ?? false, i.self_registration ?? false, i.notify_coaches_on_launch ?? true, i.admin_notes ?? null],
+    );
   },
 });
 
@@ -425,14 +429,18 @@ cap({
 cap({
   name: 'create_cohort', method: 'POST', path: '/organisations/:id/cohorts', tag: 'Organisations', status: 201,
   summary: 'Create a cohort (a class, age group or squad) optionally tied to a season, a team and a coach.',
-  input: z.object({ id, name: z.string().min(2).max(80), season_id: id.optional(), team_id: id.optional(), coach_id: id.optional(), programme_id: id.optional().describe('the academy programme this group delivers'), capacity: z.number().int().min(1).max(5000).optional().describe('most people this group can hold') }),
+  input: z.object({ id, name: z.string().min(2).max(80), season_id: id.optional(), team_id: id.optional(), coach_id: id.optional(), programme_id: id.optional().describe('the academy programme this group delivers'), capacity: z.number().int().min(1).max(5000).optional().describe('most people this group can hold'), level: z.string().max(50).optional(), age_group: z.string().max(20).optional(), gender: z.string().max(20).optional(), min_capacity: z.number().int().min(1).optional(), entry_requirements: z.string().max(500).optional(), schedule_days: z.array(z.string()).optional(), session_start_time: z.string().max(10).optional(), session_duration_minutes: z.number().int().min(15).max(480).optional(), session_type: z.string().max(50).optional(), waitlist: z.boolean().optional(), guardian_consent_required: z.boolean().optional(), attendance_tracking: z.boolean().optional(), notify_eligible: z.boolean().optional(), admin_notes: z.string().max(1000).optional() }),
   async handler({ user }, i) {
     await orgFor(user, i.id, STAFF, { write: true });
     if (i.season_id && !(await one("SELECT 1 FROM org_seasons WHERE id=$1 AND organisation_id=$2 AND status='active'", [i.season_id, i.id]))) throw badRequest('That season is not part of this organisation');
     if (i.team_id && !(await one('SELECT 1 FROM teams WHERE id=$1 AND organisation_id=$2', [i.team_id, i.id]))) throw badRequest('Link the team to this organisation first');
     if (i.coach_id && !(await one("SELECT 1 FROM organisation_members WHERE organisation_id=$1 AND user_id=$2 AND status='active' AND role IN ('coach','admin','owner')", [i.id, i.coach_id]))) throw badRequest('The coach must be active staff of this organisation');
     if (i.programme_id && !(await one('SELECT 1 FROM academy_programmes WHERE id=$1 AND organisation_id=$2', [i.programme_id, i.id]))) throw badRequest('That programme is not part of this organisation');
-    return one('INSERT INTO org_cohorts(organisation_id, name, season_id, team_id, coach_id, programme_id, capacity) VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING *', [i.id, i.name, i.season_id ?? null, i.team_id ?? null, i.coach_id ?? null, i.programme_id ?? null, i.capacity ?? null]);
+    return one(
+      `INSERT INTO org_cohorts(organisation_id, name, season_id, team_id, coach_id, programme_id, capacity, level, age_group, gender, min_capacity, entry_requirements, schedule_days, session_start_time, session_duration_minutes, session_type, waitlist, guardian_consent_required, attendance_tracking, notify_eligible, admin_notes)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21) RETURNING *`,
+      [i.id, i.name, i.season_id ?? null, i.team_id ?? null, i.coach_id ?? null, i.programme_id ?? null, i.capacity ?? null, i.level ?? null, i.age_group ?? null, i.gender ?? null, i.min_capacity ?? null, i.entry_requirements ?? null, i.schedule_days ?? null, i.session_start_time ?? null, i.session_duration_minutes ?? null, i.session_type ?? null, i.waitlist ?? false, i.guardian_consent_required ?? false, i.attendance_tracking ?? true, i.notify_eligible ?? false, i.admin_notes ?? null],
+    );
   },
 });
 
