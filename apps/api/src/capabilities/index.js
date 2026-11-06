@@ -395,3 +395,4 @@ import './para-sport-funding.js';
 import './para-learn.js';
 import './event-control-tower.js';
 import './process-guides.js';
+import './platform-benchmarks.js';
