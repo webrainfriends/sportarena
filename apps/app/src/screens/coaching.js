@@ -2,8 +2,8 @@
 //   Athlete: Hire (find a coach · post a request · my coaching) -> CoachProfile -> BookCoachSheet, CoachRequest (compare answers).
 //   Coach:   CoachDesk (confirm, complete, earnings, reviews), CoachBoard (answer requests), CoachSetup (profile + weekly hours).
 import { locale } from '../locale';
-import React, { useEffect, useState } from 'react';
-import { Pressable, View } from 'react-native';
+import React, { useEffect, useRef, useState } from 'react';
+import { Platform, Pressable, ScrollView, Switch, TextInput, View } from 'react-native';
 import { openPage } from '../video-player';
 import { api } from '../api';
 import { useLoad } from '../hooks';
@@ -740,19 +740,409 @@ function RespondSheet({ r, mine, onClose, onDone }) {
   );
 }
 
-/** A person who wants to coach a sport: adds it as a coaching profile with their hourly rate. Also makes them a coach. */
+// ── Elite coaching wizard helpers ─────────────────────────────────────────────
+
+const COACH_TIERS = ['foundation', 'club', 'regional', 'national', 'elite', 'international'];
+const ATHLETE_LEVELS = ['mini', 'youth', 'u21', 'senior', 'masters', 'elite', 'para'];
+const SPECIALISATIONS = ['technical', 'tactical', 'physical', 'mental', 'video', 'sc', 'nutrition', 'injury', 'youth', 'highperf', 'teamdyn', 'movement'];
+const SESSION_FORMATS = ['oneToOne', 'smallGroup', 'team', 'online', 'camp', 'videoReview', 'programme'];
+const PEAK_LEVELS = ['recreational', 'club', 'regional', 'national', 'international'];
+const DBS_OPTS = ['valid', 'pending', 'not_required'];
+const NOTICE_OPTS = [{ value: 0, key: 'sameDay' }, { value: 24, key: 'h24' }, { value: 48, key: 'h48' }, { value: 168, key: 'week' }];
+
+// Language list (ISO 639-1 → display name)
+const LANG_OPTIONS = [
+  { value: 'en', label: 'English' }, { value: 'es', label: 'Español' }, { value: 'fr', label: 'Français' },
+  { value: 'de', label: 'Deutsch' }, { value: 'pt', label: 'Português' }, { value: 'it', label: 'Italiano' },
+  { value: 'zh', label: '中文' }, { value: 'ja', label: '日本語' }, { value: 'ar', label: 'العربية' },
+  { value: 'hi', label: 'हिन्दी' }, { value: 'ta', label: 'தமிழ்' }, { value: 'te', label: 'తెలుగు' },
+  { value: 'ml', label: 'മലയാളം' }, { value: 'mr', label: 'मराठी' }, { value: 'bn', label: 'বাংলা' },
+  { value: 'kn', label: 'ಕನ್ನಡ' }, { value: 'or', label: 'ଓଡ଼ିଆ' }, { value: 'si', label: 'සිංහල' },
+  { value: 'ur', label: 'اردو' }, { value: 'id', label: 'Bahasa Indonesia' }, { value: 'ru', label: 'Русский' },
+  { value: 'ko', label: '한국어' }, { value: 'tr', label: 'Türkçe' }, { value: 'nl', label: 'Nederlands' },
+  { value: 'sv', label: 'Svenska' }, { value: 'pl', label: 'Polski' },
+];
+
+function WizardStepBar({ step, total }) {
+  return (
+    <View style={{ flexDirection: 'row', gap: 4, marginBottom: 20 }} accessibilityRole="progressbar" accessibilityValue={{ min: 1, max: total, now: step }}>
+      {Array.from({ length: total }, (_, i) => (
+        <View key={i} style={{ flex: 1, height: 3, borderRadius: 99, backgroundColor: i < step ? c.pink : c.line }} />
+      ))}
+    </View>
+  );
+}
+
+function SectionLabel({ label }) {
+  return <T weight="700" size={12} color={c.pink} style={{ letterSpacing: 1, marginTop: 20, marginBottom: 8 }}>{label.toUpperCase()}</T>;
+}
+
+function ChipRow({ options, value, onChange, multiSelect }) {
+  const arr = Array.isArray(value) ? value : (value ? [value] : []);
+  return (
+    <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+      {options.map((opt) => {
+        const active = arr.includes(opt.value);
+        return (
+          <Pressable key={opt.value} accessibilityRole="button" accessibilityLabel={opt.label} accessibilityState={{ selected: active }}
+            style={{ paddingHorizontal: 14, paddingVertical: 9, borderRadius: 99, borderWidth: 1.5, borderColor: active ? c.pink : c.line, backgroundColor: active ? c.pinkSoft : c.paper, minHeight: 44 }}
+            onPress={() => {
+              if (multiSelect) {
+                onChange(active ? arr.filter((v) => v !== opt.value) : [...arr, opt.value]);
+              } else {
+                onChange(active ? null : opt.value);
+              }
+            }}>
+            <T size={13} weight={active ? '700' : '400'} color={active ? c.pink : c.ink}>{opt.label}</T>
+          </Pressable>
+        );
+      })}
+    </View>
+  );
+}
+
+function LicenceForm({ visible, initial, onSave, onClose }) {
+  const [form, setForm] = useState(initial ?? { issuing_body: '', licence_level: '', licence_no: '', country: '', expires_on: null });
+  const f = (k) => (v) => setForm((p) => ({ ...p, [k]: v }));
+  if (!visible) return null;
+  return (
+    <View style={{ backgroundColor: c.bg, borderRadius: 12, padding: 16, marginTop: 8, borderWidth: 1, borderColor: c.line }}>
+      <Field label={t('coach.sport.licence.issuingBody')} value={form.issuing_body} onChangeText={f('issuing_body')} placeholder={t('coach.sport.licence.issuingBodyPlaceholder')} />
+      <Field label={t('coach.sport.licence.level')} value={form.licence_level} onChangeText={f('licence_level')} placeholder={t('coach.sport.licence.levelPlaceholder')} />
+      <Field label={t('coach.sport.licence.number')} value={form.licence_no} onChangeText={f('licence_no')} hint={t('coach.sport.licence.numberHint')} secureTextEntry />
+      <MenuField label={t('coach.sport.licence.country')} value={form.country} onChange={f('country')}
+        options={[{ value: 'AU', label: 'Australia' }, { value: 'GB', label: 'United Kingdom' }, { value: 'US', label: 'United States' }, { value: 'IN', label: 'India' }, { value: 'ES', label: 'Spain' }, { value: 'FR', label: 'France' }, { value: 'DE', label: 'Germany' }, { value: 'BR', label: 'Brazil' }, { value: 'AR', label: 'Argentina' }, { value: 'PT', label: 'Portugal' }, { value: 'IT', label: 'Italy' }, { value: 'NL', label: 'Netherlands' }, { value: 'LK', label: 'Sri Lanka' }]} />
+      <DateField label={t('coach.sport.licence.expires')} value={form.expires_on} onChange={f('expires_on')} optional />
+      <Btn title={t('coach.sport.licence.saveBtn')} color={c.pink} onPress={() => { if (form.issuing_body.trim()) onSave(form); }} style={{ marginTop: 8 }} />
+      <Btn title={t('coach.sport.wizard.back')} color={c.paper} ink={c.ink} onPress={onClose} style={{ marginTop: 6 }} />
+    </View>
+  );
+}
+
+function CareerForm({ visible, initial, onSave, onClose }) {
+  const [form, setForm] = useState(initial ?? { org_name: '', role: '', city: '', country: '', started_year: '', ended_year: '', is_current: false });
+  const f = (k) => (v) => setForm((p) => ({ ...p, [k]: v }));
+  if (!visible) return null;
+  return (
+    <View style={{ backgroundColor: c.bg, borderRadius: 12, padding: 16, marginTop: 8, borderWidth: 1, borderColor: c.line }}>
+      <Field label={t('coach.sport.career.orgName')} value={form.org_name} onChangeText={f('org_name')} />
+      <Field label={t('coach.sport.career.role')} value={form.role} onChangeText={f('role')} placeholder={t('coach.sport.career.rolePlaceholder')} />
+      <View style={{ flexDirection: 'row', gap: 10 }}>
+        <View style={{ flex: 1 }}><Field label={t('coach.sport.career.city')} value={form.city} onChangeText={f('city')} /></View>
+        <View style={{ flex: 1 }}><Field label={t('coach.sport.career.country')} value={form.country} onChangeText={f('country')} /></View>
+      </View>
+      <View style={{ flexDirection: 'row', gap: 10 }}>
+        <View style={{ flex: 1 }}><Field label={t('coach.sport.career.startedYear')} value={String(form.started_year || '')} onChangeText={(v) => f('started_year')(v.replace(/\D/g, ''))} keyboardType="numeric" /></View>
+        <View style={{ flex: 1 }}><Field label={t('coach.sport.career.endedYear')} value={String(form.ended_year || '')} onChangeText={(v) => f('ended_year')(v.replace(/\D/g, ''))} keyboardType="numeric" editable={!form.is_current} /></View>
+      </View>
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: 4, minHeight: 44 }}>
+        <Switch value={form.is_current} onValueChange={(v) => setForm((p) => ({ ...p, is_current: v, ended_year: v ? '' : p.ended_year }))} trackColor={{ true: c.pink }} />
+        <T size={14}>{t('coach.sport.career.isCurrent')}</T>
+      </View>
+      <Btn title={t('coach.sport.career.saveBtn')} color={c.pink} onPress={() => { if (form.org_name.trim()) onSave(form); }} style={{ marginTop: 8 }} />
+      <Btn title={t('coach.sport.wizard.back')} color={c.paper} ink={c.ink} onPress={onClose} style={{ marginTop: 6 }} />
+    </View>
+  );
+}
+
+/** Elite 5-step coach sport wizard — replaces the old 4-field flat FormSheet. */
 export function AddCoachSportSheet({ visible, onClose, onDone, initialSport, currency: given }) {
   const myCur = useMyCurrency();
   const currency = given ?? myCur;
+  const { toast } = useSession?.() ?? { toast: () => {} };
+
+  // wizard state
+  const [step, setStep] = useState(1);
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState(null);
+  const [profileId, setProfileId] = useState(null); // set after step 1 POSTs
+
+  // step 1
+  const [sport, setSport] = useState(initialSport ?? null);
+  const [tier, setTier] = useState(null);
+  const [athleteLevels, setAthleteLevels] = useState([]);
+  const [paraEnabled, setParaEnabled] = useState(false);
+  const [yearsCoaching, setYearsCoaching] = useState(1);
+  const [peakLevel, setPeakLevel] = useState(null);
+
+  // step 2
+  const [licences, setLicences] = useState([]);
+  const [showLicenceForm, setShowLicenceForm] = useState(false);
+  const [editLicenceIdx, setEditLicenceIdx] = useState(null);
+  const [dbsStatus, setDbsStatus] = useState(null);
+  const [dbsIssuedOn, setDbsIssuedOn] = useState(null);
+  const [firstAidExpires, setFirstAidExpires] = useState(null);
+  const [degree, setDegree] = useState('');
+
+  // step 3
+  const [specialisations, setSpecialisations] = useState([]);
+  const [formats, setFormats] = useState([]);
+  const [bio, setBio] = useState('');
+  const [coachingLanguages, setCoachingLanguages] = useState([]);
+
+  // step 4
+  const [career, setCareer] = useState([]);
+  const [showCareerForm, setShowCareerForm] = useState(false);
+  const [editCareerIdx, setEditCareerIdx] = useState(null);
+  const [coachingCountries, setCoachingCountries] = useState([]);
+
+  // step 5
+  const [rate1to1, setRate1to1] = useState('');
+  const [rateGroup, setRateGroup] = useState('');
+  const [rateInstitutional, setRateInstitutional] = useState('');
+  const [bookingNotice, setBookingNotice] = useState(24);
+  const [weeklyHours, setWeeklyHours] = useState(10);
+  const [travelWilling, setTravelWilling] = useState(false);
+  const [baseCity, setBaseCity] = useState('');
+
+  const reset = () => {
+    setStep(1); setErr(null); setProfileId(null);
+    setSport(initialSport ?? null); setTier(null); setAthleteLevels([]); setParaEnabled(false); setYearsCoaching(1); setPeakLevel(null);
+    setLicences([]); setShowLicenceForm(false); setEditLicenceIdx(null); setDbsStatus(null); setDbsIssuedOn(null); setFirstAidExpires(null); setDegree('');
+    setSpecialisations([]); setFormats([]); setBio(''); setCoachingLanguages([]);
+    setCareer([]); setShowCareerForm(false); setEditCareerIdx(null); setCoachingCountries([]);
+    setRate1to1(''); setRateGroup(''); setRateInstitutional(''); setBookingNotice(24); setWeeklyHours(10); setTravelWilling(false); setBaseCity('');
+  };
+
+  useEffect(() => { if (!visible) reset(); }, [visible]);
+
+  const goNext = async () => {
+    setErr(null);
+    if (step === 1) {
+      if (!sport) { setErr('Please select a sport.'); return; }
+      setBusy(true);
+      try {
+        const res = await api.post('/me/sport-profiles', { sport, role: 'coach', level: tier ?? 'amateur', experience_years: yearsCoaching });
+        setProfileId(res.id ?? res.sport_profile?.id);
+        setStep(2);
+        if (paraEnabled) { try { await api.post('/me/coach-adaptive', { sport }); } catch {} }
+      } catch (e) { setErr(e.message); } finally { setBusy(false); }
+      return;
+    }
+    if (step < 5) { setStep((s) => s + 1); return; }
+    // Step 5 → finish
+    setBusy(true);
+    try {
+      const id = profileId;
+      const patch = {
+        coaching_tier: tier,
+        athlete_levels: athleteLevels,
+        coaching_specialisations: specialisations,
+        session_formats: formats,
+        coaching_bio: bio.trim() || undefined,
+        peak_playing_level: peakLevel,
+        booking_notice_hours: bookingNotice,
+        group_rate_cents: rateGroup ? Math.round(parseFloat(rateGroup) * 100) : undefined,
+        institutional_rate_cents: rateInstitutional ? Math.round(parseFloat(rateInstitutional) * 100) : undefined,
+        hourly_rate_cents: rate1to1 ? Math.round(parseFloat(rate1to1) * 100) : undefined,
+        weekly_hours: weeklyHours,
+        travel_willing: travelWilling,
+        coaching_languages: coachingLanguages,
+        dbs_status: dbsStatus,
+        dbs_issued_on: dbsIssuedOn,
+        first_aid_expires_on: firstAidExpires,
+        coaching_degree: degree.trim() || undefined,
+        base_city: baseCity.trim() || undefined,
+      };
+      await api.patch(`/me/sport-profiles/${id}/coach`, patch);
+      // persist licences
+      for (const lic of licences) {
+        await api.post(`/me/sport-profiles/${id}/coach/licences`, lic).catch(() => {});
+      }
+      // persist career
+      for (const entry of career) {
+        await api.post(`/me/sport-profiles/${id}/coach/career`, entry).catch(() => {});
+      }
+      toast?.(t('coach.sport.wizard.successToast'));
+      await onDone?.();
+      onClose?.();
+    } catch (e) { setErr(e.message); setBusy(false); }
+  };
+
+  if (!visible) return null;
+
+  const TOTAL = 5;
+  const tierOpts = COACH_TIERS.map((v) => ({ value: v, label: t(`coach.sport.tier.${v}`) }));
+  const athleteLevelOpts = ATHLETE_LEVELS.map((v) => ({ value: v, label: t(`coach.sport.athleteLevels.${v}`) }));
+  const specOpts = SPECIALISATIONS.map((v) => ({ value: v, label: t(`coach.sport.specialisations.${v}`) }));
+  const formatOpts = SESSION_FORMATS.map((v) => ({ value: v, label: t(`coach.sport.formats.${v}`) }));
+  const peakOpts = PEAK_LEVELS.map((v) => ({ value: v, label: t(`coach.sport.peakLevel.${v}`) }));
+  const dbsOpts = DBS_OPTS.map((v) => ({ value: v, label: t(`coach.sport.dbs.${v}`) }));
+  const noticeOpts = NOTICE_OPTS.map((o) => ({ value: o.value, label: t(`coach.sport.bookingNotice.${o.key}`) }));
+
+  const stepTitles = [1, 2, 3, 4, 5].map((s) => t(`coach.sport.wizard.step${s}Title`));
+  const stepSubs = [1, 2, 3, 4, 5].map((s) => t(`coach.sport.wizard.step${s}Sub`));
+
   return (
-    <FormSheet visible={visible} onClose={onClose} title="Coach this sport" submitLabel="Add and continue" initial={{ sport: initialSport, level: 'amateur', experience_years: 1 }}
-      fields={[
-        { key: 'sport', label: 'Sport', type: 'sport' },
-        { key: 'level', label: 'Level you coach at', type: 'chips', options: LEVELS },
-        { key: 'hourly_rate_cents', label: 'Your usual rate per hour', type: 'money', currency, optional: true, hint: 'You can add rate cards for groups, teams and events later.' },
-        { key: 'experience_years', label: 'Years coaching', type: 'stepper', min: 0, max: 60, default: 1 },
-      ]}
-      onSubmit={async (v) => { await api.post('/me/sport-profiles', { ...v, role: 'coach' }); await onDone?.(); return 'You can now answer requests in this sport'; }} />
+    <Sheet visible onClose={() => { reset(); onClose?.(); }} title={t('coach.sport.wizard.title')}>
+      <WizardStepBar step={step} total={TOTAL} />
+      <T weight="800" size={20} style={{ marginBottom: 4 }}>{stepTitles[step - 1]}</T>
+      <T size={13} color={c.mute} style={{ marginBottom: 16 }}>{stepSubs[step - 1]}</T>
+
+      {/* ── Step 1: Sport & Tier ───────────────────────────────────────────────── */}
+      {step === 1 && (
+        <View>
+          <SportSelect label={t('coach.sport.wizard.step1Title')} value={sport} onChange={setSport} />
+          <SectionLabel label={t('coach.sport.tier.label')} />
+          <T size={12} color={c.mute} style={{ marginBottom: 8 }}>{t('coach.sport.tier.hint')}</T>
+          <ChipRow options={tierOpts} value={tier} onChange={setTier} multiSelect={false} />
+
+          <SectionLabel label={t('coach.sport.athleteLevels.label')} />
+          <ChipRow options={athleteLevelOpts} value={athleteLevels} onChange={setAthleteLevels} multiSelect />
+
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: 16, minHeight: 44, padding: 12, borderRadius: 12, backgroundColor: c.bg, borderWidth: 1, borderColor: c.line }}>
+            <Switch value={paraEnabled} onValueChange={setParaEnabled} trackColor={{ true: c.pink }} accessibilityLabel={t('coach.sport.para.toggle')} />
+            <View style={{ flex: 1 }}>
+              <T size={14} weight="600">{t('coach.sport.para.toggle')}</T>
+              <T size={12} color={c.mute}>{t('coach.sport.para.toggleSub')}</T>
+            </View>
+          </View>
+
+          <SectionLabel label={t('coach.sport.yearsCoaching.label')} />
+          <Counter value={yearsCoaching} onChange={setYearsCoaching} min={0} max={60} accessibilityLabel={t('coach.sport.yearsCoaching.label')} />
+
+          <SectionLabel label={t('coach.sport.peakLevel.label')} />
+          <ChipRow options={peakOpts} value={peakLevel} onChange={setPeakLevel} multiSelect={false} />
+        </View>
+      )}
+
+      {/* ── Step 2: Licences & Credentials ───────────────────────────────────── */}
+      {step === 2 && (
+        <View>
+          <SectionLabel label={t('coach.sport.licence.sectionTitle')} />
+          <T size={12} color={c.mute} style={{ marginBottom: 8 }}>{t('coach.sport.wizard.licenceEncHint')}</T>
+          {licences.map((lic, i) => (
+            <View key={i} style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 12, borderRadius: 10, backgroundColor: c.bg, borderWidth: 1, borderColor: c.line, marginBottom: 6 }}>
+              <View style={{ flex: 1 }}>
+                <T weight="700" size={14}>{lic.issuing_body}</T>
+                <T size={12} color={c.mute}>{[lic.licence_level, lic.country].filter(Boolean).join(' · ')}{lic.expires_on ? ` · exp ${lic.expires_on}` : ''}</T>
+              </View>
+              <Pressable style={{ minHeight: 44, minWidth: 44, justifyContent: 'center', alignItems: 'flex-end' }} onPress={() => { setEditLicenceIdx(i); setShowLicenceForm(true); }}>
+                <T size={13} color={c.pink}>{t('coach.sport.licence.editBtn')}</T>
+              </Pressable>
+              <Pressable style={{ minHeight: 44, minWidth: 44, justifyContent: 'center', alignItems: 'flex-end' }} onPress={() => setLicences((p) => p.filter((_, j) => j !== i))}>
+                <T size={13} color={c.mute}>{t('coach.sport.licence.removeBtn')}</T>
+              </Pressable>
+            </View>
+          ))}
+          {!showLicenceForm && (
+            <Btn title={t('coach.sport.licence.addBtn')} color={c.paper} ink={c.pink} style={{ borderWidth: 1.5, borderColor: c.pink, marginBottom: 4 }}
+              onPress={() => { setEditLicenceIdx(null); setShowLicenceForm(true); }} />
+          )}
+          <LicenceForm visible={showLicenceForm} initial={editLicenceIdx != null ? licences[editLicenceIdx] : null}
+            onSave={(form) => {
+              if (editLicenceIdx != null) setLicences((p) => p.map((x, i) => i === editLicenceIdx ? form : x));
+              else setLicences((p) => [...p, form]);
+              setShowLicenceForm(false); setEditLicenceIdx(null);
+            }}
+            onClose={() => { setShowLicenceForm(false); setEditLicenceIdx(null); }} />
+
+          <SectionLabel label={t('coach.sport.safeguarding.sectionTitle')} />
+          <T size={12} color={c.mute} style={{ marginBottom: 8 }}>{t('coach.sport.dbs.status')}</T>
+          <ChipRow options={dbsOpts} value={dbsStatus} onChange={setDbsStatus} multiSelect={false} />
+          {dbsStatus === 'valid' && (
+            <DateField label={t('coach.sport.dbs.issuedOn')} value={dbsIssuedOn} onChange={setDbsIssuedOn} optional />
+          )}
+          <DateField label={t('coach.sport.firstAid.expires')} value={firstAidExpires} onChange={setFirstAidExpires} optional />
+          <Field label={t('coach.sport.degree.label')} value={degree} onChangeText={setDegree} placeholder={t('coach.sport.degree.placeholder')} optional />
+        </View>
+      )}
+
+      {/* ── Step 3: Specialisations & Methods ─────────────────────────────────── */}
+      {step === 3 && (
+        <View>
+          <SectionLabel label={t('coach.sport.specialisations.label')} />
+          <ChipRow options={specOpts} value={specialisations} onChange={setSpecialisations} multiSelect />
+
+          <SectionLabel label={t('coach.sport.formats.label')} />
+          <ChipRow options={formatOpts} value={formats} onChange={setFormats} multiSelect />
+
+          <SectionLabel label={t('coach.sport.bio.label')} />
+          <View style={{ borderWidth: 1.5, borderColor: c.line, borderRadius: 12, padding: 12, minHeight: 100 }}>
+            <TextInput value={bio} onChangeText={(v) => setBio(v.slice(0, 300))} placeholder={t('coach.sport.bio.placeholder')} multiline style={{ color: c.ink, fontSize: 14, lineHeight: 22 }} placeholderTextColor={c.mute} accessibilityLabel={t('coach.sport.bio.label')} />
+          </View>
+          <T size={11} color={c.mute} style={{ marginTop: 4 }}>{bio.length}/300 · {t('coach.sport.bio.hint')}</T>
+
+          <SectionLabel label={t('coach.sport.languages.label')} />
+          <T size={12} color={c.mute} style={{ marginBottom: 8 }}>{t('coach.sport.languages.hint')}</T>
+          <ChipRow options={LANG_OPTIONS.slice(0, 12)} value={coachingLanguages} onChange={setCoachingLanguages} multiSelect />
+        </View>
+      )}
+
+      {/* ── Step 4: Career ────────────────────────────────────────────────────── */}
+      {step === 4 && (
+        <View>
+          <SectionLabel label={t('coach.sport.career.sectionTitle')} />
+          {career.map((entry, i) => (
+            <View key={i} style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 12, borderRadius: 10, backgroundColor: c.bg, borderWidth: 1, borderColor: c.line, marginBottom: 6 }}>
+              <View style={{ flex: 1 }}>
+                <T weight="700" size={14}>{entry.org_name}</T>
+                <T size={12} color={c.mute}>{[entry.role, entry.city, entry.country].filter(Boolean).join(' · ')}</T>
+                <T size={12} color={c.mute}>{entry.started_year}{entry.is_current ? ' – present' : entry.ended_year ? ` – ${entry.ended_year}` : ''}</T>
+              </View>
+              <Pressable style={{ minHeight: 44, minWidth: 44, justifyContent: 'center', alignItems: 'flex-end' }} onPress={() => { setEditCareerIdx(i); setShowCareerForm(true); }}>
+                <T size={13} color={c.pink}>{t('coach.sport.career.saveBtn')}</T>
+              </Pressable>
+              <Pressable style={{ minHeight: 44, minWidth: 44, justifyContent: 'center', alignItems: 'flex-end' }} onPress={() => setCareer((p) => p.filter((_, j) => j !== i))}>
+                <T size={13} color={c.mute}>{t('coach.sport.career.removeBtn')}</T>
+              </Pressable>
+            </View>
+          ))}
+          {!showCareerForm && (
+            <Btn title={t('coach.sport.career.addBtn')} color={c.paper} ink={c.pink} style={{ borderWidth: 1.5, borderColor: c.pink, marginBottom: 4 }}
+              onPress={() => { setEditCareerIdx(null); setShowCareerForm(true); }} />
+          )}
+          <CareerForm visible={showCareerForm} initial={editCareerIdx != null ? career[editCareerIdx] : null}
+            onSave={(form) => {
+              if (editCareerIdx != null) setCareer((p) => p.map((x, i) => i === editCareerIdx ? form : x));
+              else setCareer((p) => [...p, form]);
+              setShowCareerForm(false); setEditCareerIdx(null);
+            }}
+            onClose={() => { setShowCareerForm(false); setEditCareerIdx(null); }} />
+        </View>
+      )}
+
+      {/* ── Step 5: Availability & Rates ──────────────────────────────────────── */}
+      {step === 5 && (
+        <View>
+          <Field label={t('coach.sport.rate1to1.label')} value={rate1to1} onChangeText={setRate1to1} keyboardType="decimal-pad" placeholder="0.00" optional />
+          <Field label={t('coach.sport.rateGroup.label')} value={rateGroup} onChangeText={setRateGroup} keyboardType="decimal-pad" placeholder="0.00" optional />
+          <Field label={t('coach.sport.rateInstitutional.label')} value={rateInstitutional} onChangeText={setRateInstitutional} keyboardType="decimal-pad" placeholder="0.00" hint={t('coach.sport.rateInstitutional.hint')} optional />
+          <T size={12} color={c.mute} style={{ marginBottom: 12 }}>{t('coach.sport.ratesLaterHint')}</T>
+
+          <SectionLabel label={t('coach.sport.bookingNotice.label')} />
+          <ChipRow options={noticeOpts} value={bookingNotice} onChange={setBookingNotice} multiSelect={false} />
+
+          <SectionLabel label={t('coach.sport.weeklyHours.label')} />
+          <Counter value={weeklyHours} onChange={setWeeklyHours} min={1} max={80} suffix={t('coach.sport.weeklyHours.suffix')} accessibilityLabel={t('coach.sport.weeklyHours.label')} />
+
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: 16, minHeight: 44, padding: 12, borderRadius: 12, backgroundColor: c.bg, borderWidth: 1, borderColor: c.line }}>
+            <Switch value={travelWilling} onValueChange={setTravelWilling} trackColor={{ true: c.pink }} accessibilityLabel={t('coach.sport.travel.label')} />
+            <View style={{ flex: 1 }}>
+              <T size={14} weight="600">{t('coach.sport.travel.label')}</T>
+              <T size={12} color={c.mute}>{t('coach.sport.travel.sub')}</T>
+            </View>
+          </View>
+
+          <Field label={t('coach.sport.baseCity.label')} value={baseCity} onChangeText={setBaseCity} hint={t('coach.sport.baseCity.hint')} optional />
+
+          <T size={12} color={c.mute} style={{ marginTop: 12, marginBottom: 4 }}>{t('coach.sport.wizard.finishHint')}</T>
+        </View>
+      )}
+
+      {err ? <T size={13} color={c.red} style={{ marginTop: 8 }}>{err}</T> : null}
+
+      {/* Nav buttons */}
+      <View style={{ flexDirection: 'row', gap: 10, marginTop: 20 }}>
+        {step > 1 && (
+          <Btn title={t('coach.sport.wizard.back')} color={c.paper} ink={c.ink} style={{ flex: 1 }} onPress={() => setStep((s) => s - 1)} />
+        )}
+        <Btn
+          title={step < TOTAL ? t('coach.sport.wizard.continue') : t('coach.sport.wizard.finish')}
+          color={c.pink} loading={busy} style={{ flex: 2 }}
+          onPress={goNext} />
+      </View>
+    </Sheet>
   );
 }
 
