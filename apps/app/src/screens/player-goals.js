@@ -2,11 +2,12 @@
 // the player writes and owns them, a coach sees one only through a share the player can revoke, and a coach's assessment is shown
 // apart from the player's own claim. The coach side (SharedByPlayers) sits in the existing Goals & actions screen.
 import React, { useRef, useState } from 'react';
-import { View } from 'react-native';
+import { Pressable, Switch, View } from 'react-native';
 import { api } from '../api';
 import { useLoad } from '../hooks';
 import { useSession } from '../session';
-import { Btn, Card, Empty, ErrorBox, Loading, Section, T, Tag } from '../ui';
+import { Btn, Card, Chip, Empty, ErrorBox, Field, Loading, Section, Sheet, T, Tag } from '../ui';
+import { DateField } from '../pickers';
 import { FormSheet } from '../FormSheet';
 import { c } from '../theme';
 import { dateTimeIn, localToIso } from '../vtime';
