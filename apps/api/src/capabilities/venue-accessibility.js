@@ -122,7 +122,7 @@ cap({
   async handler(_, i) {
     if (!(await one('SELECT 1 AS x FROM venues WHERE id=$1', [i.venue_id]))) throw notFound('Venue');
     const r = await one(
-      'SELECT * FROM academy_venue_access_features WHERE venue_id=$1 AND feature=$2 AND retired_at IS NULL ORDER BY created_at DESC LIMIT 1',
+      'SELECT * FROM academy_venue_access_features WHERE venue_id=$1 AND feature=$2 AND retired_at IS NULL ORDER BY verified_at DESC LIMIT 1',
       [i.venue_id, i.feature]);
     const outage = r ? await one('SELECT * FROM venue_access_outages WHERE venue_id=$1 AND feature=$2 AND resolved_at IS NULL ORDER BY created_at DESC LIMIT 1', [i.venue_id, i.feature]) : null;
     const expired = !!(r?.expires_at && new Date(r.expires_at) < new Date());

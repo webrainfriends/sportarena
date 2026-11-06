@@ -3,7 +3,7 @@
 // All endpoints: tenant/org auth, guardian consent verification, audit on sensitive reads.
 import { z } from 'zod';
 import { cap, id } from '../registry.js';
-import { tx, many, one, pool } from '../db.js';
+import { tx, many, one, pool, withClient } from '../db.js';
 import { notify } from '../notify.js';
 import { audit } from '../helpers.js';
 import { opsAccess } from '../academy-ops.js';
@@ -34,7 +34,7 @@ cap({
   summary: 'After enrolment: checks whether the programme has adaptive requirements the athlete has not yet shared with the coaching team. Returns the programme\'s publicly-advertised need types (not the athlete\'s clinical record) and the audience they may share with. Auth: athlete themselves or verified guardian.',
   input: z.object({ org_id: id, programme_id: id, athlete_id: id }),
   async handler({ user }, i) {
-    return pool.connect(async (c) => {
+    return withClient(async (c) => {
       if (i.athlete_id !== user.id && !(await guardianLink(user.id, i.athlete_id))) throw notFound('Person');
       if (!(await enrolled({ query: c.query.bind(c) }, i.org_id, i.athlete_id))) throw notFound('Enrolment');
       const prof = (await c.query(
@@ -52,7 +52,7 @@ cap({
         [i.org_id, i.programme_id, i.athlete_id],
       )).rows[0] ?? null;
       const staffRows = await c.query(
-        "SELECT DISTINCT u.id AS user_id, u.display_name FROM academy_session_staff st JOIN academy_sessions s ON s.id=st.session_id JOIN org_cohorts k ON k.id=s.cohort_id JOIN org_enrolments e ON e.cohort_id=k.id JOIN users u ON u.id=st.user_id WHERE s.organisation_id=$1 AND e.athlete_id=$2 AND e.status='enrolled' AND st.status IN ('assigned','confirmed') AND s.starts_at > now() AND s.starts_at < now() + interval '30 days' ORDER BY u.display_name LIMIT 20",
+        "SELECT DISTINCT u.id AS user_id, u.display_name FROM academy_session_staff st JOIN academy_sessions s ON s.id=st.session_id JOIN org_cohorts k ON k.id=s.cohort_id JOIN org_enrolments e ON e.cohort_id=k.id JOIN users u ON u.id=st.user_id WHERE s.organisation_id=$1 AND e.user_id=$2 AND e.status='enrolled' AND st.status IN ('assigned','confirmed') AND s.starts_at > now() AND s.starts_at < now() + interval '30 days' ORDER BY u.display_name LIMIT 20",
         [i.org_id, i.athlete_id],
       );
       return {
@@ -79,12 +79,12 @@ cap({
       if (i.athlete_id !== user.id && !(await guardianLink(user.id, i.athlete_id))) throw notFound('Person');
       await c.query(
         `INSERT INTO academy_enrolment_inclusion_prompts(org_id, enrolment_id, athlete_id, programme_id, dismissed_at)
-         SELECT $1, e.id, $3, $4, now()
-         FROM org_enrolments e JOIN org_cohorts k ON k.id=e.cohort_id AND k.programme_id=$4
-         WHERE e.athlete_id=$3 AND k.organisation_id=$1 AND e.status='enrolled'
-         ORDER BY e.created_at DESC LIMIT 1
+         SELECT $1, e.id, $2, $3, now()
+         FROM org_enrolments e JOIN org_cohorts k ON k.id=e.cohort_id
+         WHERE e.user_id=$2 AND k.organisation_id=$1 AND coalesce(e.programme_id, k.programme_id)=$3 AND e.status='enrolled'
+         ORDER BY e.enrolled_at DESC LIMIT 1
          ON CONFLICT (enrolment_id) DO UPDATE SET dismissed_at=now()`,
-        [i.org_id, user.id, i.athlete_id, i.programme_id],
+        [i.org_id, i.athlete_id, i.programme_id],
       );
       await log(c, i.org_id, null, 'enrolment_inclusion_prompt_dismissed', user.id, { type: 'athlete', id: i.athlete_id }, `programme ${i.programme_id}`);
       return { dismissed: true };
@@ -128,11 +128,11 @@ cap({
       );
       let carried = 0, revoked = 0, prompted = 0;
       for (const share of liveShareRows) {
-        const audience = share.audience_user_ids ?? [];
+        const audience = share.audience_users ?? [];
         const keepIds = audience.filter((uid) => toStaff.has(uid));
         const revokeIds = audience.filter((uid) => fromStaff.has(uid) && !toStaff.has(uid));
         if (revokeIds.length) {
-          await c.query('UPDATE accommodation_shares SET revoked_at=now(), revoked_by=$2 WHERE id=$1 AND revoked_at IS NULL', [share.id, user.id]);
+          await c.query('UPDATE academy_accommodation_shares SET revoked_at=now(), revoked_by=$2 WHERE id=$1 AND revoked_at IS NULL', [share.id, user.id]);
           revoked++;
           await log(c, i.org_id, null, 'accommodation_revoked_on_programme_change', user.id, { type: 'share', id: share.id }, `to programme ${i.to_programme_id}`);
         } else if (keepIds.length) {
@@ -163,27 +163,27 @@ cap({
   summary: 'Guardian- or athlete-facing inclusive progress view: current programme and cohort, attendance summary (last 30 sessions), adapted assessment milestone descriptors (no raw scores), billing credits and outstanding fees, and upcoming sessions with readiness level. Auth: verified guardian or the athlete themselves. No diagnosis returned.',
   input: z.object({ org_id: id, athlete_id: id }),
   async handler({ user }, i) {
-    return pool.connect(async (c) => {
+    return withClient(async (c) => {
       if (i.athlete_id !== user.id && !(await guardianLink(user.id, i.athlete_id))) throw forbidden('Guardian access required');
       const q = c.query.bind(c);
       const enrolRow = (await c.query(
-        "SELECT e.id AS enrolment_id, e.cohort_id, k.name AS cohort_name, k.programme_id, p.title AS programme_title, p.sport FROM org_enrolments e JOIN org_cohorts k ON k.id=e.cohort_id LEFT JOIN academy_programmes p ON p.id=k.programme_id WHERE k.organisation_id=$1 AND e.athlete_id=$2 AND e.status='enrolled' ORDER BY e.created_at DESC LIMIT 1",
+        "SELECT e.id AS enrolment_id, e.cohort_id, k.name AS cohort_name, k.programme_id, p.title AS programme_title, p.sport FROM org_enrolments e JOIN org_cohorts k ON k.id=e.cohort_id LEFT JOIN academy_programmes p ON p.id=k.programme_id WHERE k.organisation_id=$1 AND e.user_id=$2 AND e.status='enrolled' ORDER BY e.enrolled_at DESC LIMIT 1",
         [i.org_id, i.athlete_id],
       )).rows[0];
       if (!enrolRow) throw notFound('Enrolment');
       await audit({ query: q }, user.id, 'get_guardian_inclusive_progress', 'athletes', i.athlete_id);
       const attendanceRows = await c.query(
-        "SELECT s.id AS session_id, s.title, s.starts_at, coalesce(t.status,'expected') AS attendance FROM academy_sessions s JOIN org_cohorts k ON k.id=s.cohort_id LEFT JOIN academy_attendance t ON t.session_id=s.id AND t.athlete_id=$2 WHERE s.organisation_id=$1 AND k.id=$3 AND s.status IN ('published','completed') ORDER BY s.starts_at DESC LIMIT 30",
+        "SELECT s.id AS session_id, s.title, s.starts_at, coalesce(t.status,'expected') AS attendance FROM academy_sessions s JOIN org_cohorts k ON k.id=s.cohort_id LEFT JOIN academy_attendance t ON t.session_id=s.id AND t.user_id=$2 WHERE s.organisation_id=$1 AND k.id=$3 AND s.status IN ('published','completed') ORDER BY s.starts_at DESC LIMIT 30",
         [i.org_id, i.athlete_id, enrolRow.cohort_id],
       );
       const present = attendanceRows.rows.filter((r) => ['present', 'late', 'left_early'].includes(r.attendance)).length;
       const held = attendanceRows.rows.length;
       const milestones = (await c.query(
-        "SELECT aa.descriptor, aa.level_key, aa.signed_off_at, aa.signed_off_by FROM academy_adapted_assessments aa WHERE aa.organisation_id=$1 AND aa.athlete_id=$2 AND aa.signed_off_at IS NOT NULL ORDER BY aa.signed_off_at DESC LIMIT 20",
+        "SELECT aa.descriptors, a.level_key, aa.signed_off_at, aa.signed_off_by FROM academy_adapted_assessments aa JOIN academy_assessments a ON a.id=aa.assessment_id WHERE aa.organisation_id=$1 AND aa.athlete_id=$2 AND aa.signed_off_at IS NOT NULL ORDER BY aa.signed_off_at DESC LIMIT 20",
         [i.org_id, i.athlete_id],
-      )).rows.map((r) => ({ descriptor: r.descriptor, level_key: r.level_key, achieved_at: r.signed_off_at }));
+      )).rows.map((r) => ({ descriptor: r.descriptors, level_key: r.level_key, achieved_at: r.signed_off_at }));
       const creditsRow = (await c.query(
-        "SELECT coalesce(sum(amount_minor) FILTER (WHERE direction='credit'), 0)::bigint AS credits_minor, coalesce(sum(amount_minor) FILTER (WHERE direction='debit' AND status='awaiting_payment'), 0)::bigint AS outstanding_minor, max(currency) AS currency FROM academy_charges WHERE organisation_id=$1 AND athlete_id=$2",
+        "SELECT coalesce(sum(ch.discount_minor + ch.funded_minor) FILTER (WHERE ch.status NOT IN ('cancelled','refunded')), 0)::bigint AS credits_minor, coalesce(sum(ch.amount_minor - ch.settled_minor - ch.adjusted_minor) FILTER (WHERE ch.status='awaiting_payment'), 0)::bigint AS outstanding_minor, max(ch.currency) AS currency FROM academy_charges ch JOIN org_enrolments e ON e.id=ch.enrolment_id WHERE ch.organisation_id=$1 AND e.user_id=$2",
         [i.org_id, i.athlete_id],
       )).rows[0] ?? { credits_minor: 0, outstanding_minor: 0, currency: null };
       const upcoming = (await c.query(

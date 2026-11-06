@@ -37,8 +37,8 @@ const OPEN = ['enquiry', 'trial_requested', 'trial_booked', 'trial_completed', '
 export function AcademyFamily() {
   const { toast } = useSession();
   const nav = useNav();
-  // SupportPreferences navigates with navigate(name, params); the screens it opens read route.params
-  const navigation = { navigate: (name, params = {}) => nav.push(name, { ...params, route: { params } }) };
+  // SupportPreferences navigates with navigate(name, params); the screens it opens take those params as props
+  const navigation = { navigate: (name, params = {}) => nav.push(name, params) };
   const fam = useLoad(() => api.get('/me/academy'), []);
   const [pick, setWho] = useState(null), [tab, setTab] = useState('overview'), [pay, setPay] = useState(null), [apply, setApply] = useState(null), [form, setForm] = useState(null), [slots, setSlots] = useState(null);
   const { tablet } = useLayout();

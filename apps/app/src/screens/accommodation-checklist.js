@@ -6,6 +6,7 @@ import React, { useState } from 'react';
 import { View } from 'react-native';
 import { t } from '../i18n';
 import { api } from '../api';
+import { useSession } from '../session';
 import { useLoad } from '../hooks';
 import { explain, LoadError } from '../access';
 import { Btn, Card, Empty, Loading, Row, T, Tag } from '../ui';
@@ -18,8 +19,8 @@ const TYPE_COLOR = {
   transport: c.orange, communication: c.mint, schedule: c.lime,
 };
 
-export function AccommodationChecklist({ route, toast }) {
-  const { sessionId, sessionTitle } = route?.params ?? {};
+export function AccommodationChecklist({ sessionId, sessionTitle }) {
+  const { toast } = useSession();
   const d = useLoad(() => api.get(`/academy/sessions/${sessionId}/accommodation-checklist`), [sessionId]);
   const [arranging, setArranging] = useState(null);
 

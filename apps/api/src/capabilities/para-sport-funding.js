@@ -87,7 +87,7 @@ cap({
   input: z.object({ sponsor_id: id.optional(), status: z.enum(['draft', 'published', 'closed', 'archived']).optional(), ...page }),
   async handler({ user }, { sponsor_id, status, limit, offset }) {
     const rows = await many(
-      `SELECT sp.id, sp.name, sp.status, sp.currency, sp.budget_cents, sp.awarded_cents, sp.is_para_sport,
+      `SELECT sp.id, sp.name, sp.status, sp.currency, sp.budget_cents, (SELECT COALESCE(SUM(a.amount_cents), 0)::bigint FROM sponsorship_awards a WHERE a.program_id = sp.id AND a.status = 'accepted') AS awarded_cents, sp.is_para_sport,
               sp.para_cost_categories, sp.visibility, sp.starts_on, sp.ends_on, sp.objective,
               s.name AS sponsor_name, s.id AS sponsor_id
          FROM sponsorship_programs sp
@@ -178,9 +178,9 @@ cap({
     }
     return tx(async (c) => {
       const { rows } = await c.query(
-        `INSERT INTO athlete_funding_needs(athlete_id, title, category, para_need_types, para_sport_code, amount_cents, currency, needed_by, note, status)
+        `INSERT INTO athlete_funding_needs(athlete_id, title, category, para_need_types, para_sport_code, amount_cents, currency, needed_by, note_enc, status)
          VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,'open') RETURNING id, title, category, para_need_types, para_sport_code, amount_cents, currency, needed_by, status, created_at`,
-        [athleteId, input.title, input.category, input.para_need_types, input.para_sport_code ?? null, input.amount_cents, input.currency, input.needed_by ?? null, input.note ?? null]);
+        [athleteId, input.title, input.category, input.para_need_types, input.para_sport_code ?? null, input.amount_cents, input.currency, input.needed_by ?? null, input.note ? encrypt(input.note, 'athlete_funding_needs.note') : null]);
       await audit(c, user.id, 'para_funding_need_created', { need_id: rows[0].id, athlete_id: athleteId });
       return rows[0];
     });
@@ -207,7 +207,7 @@ cap({
     const athleteId = input.athlete_id ?? user.id;
     await requireAthleteOwner(user, athleteId);
     return tx(async (c) => {
-      const sp = await one('SELECT s.*, prog.is_para_sport FROM sponsorships s JOIN sponsorship_programs prog ON prog.id = s.program_id WHERE s.id = $1 AND s.recipient_id = $2 AND prog.is_para_sport = TRUE', [input.sponsorship_id, athleteId], c);
+      const sp = await one('SELECT s.*, prog.is_para_sport FROM sponsorships s JOIN sponsorship_programs prog ON prog.id = s.program_id WHERE s.id = $1 AND s.target_type = \'athlete\' AND s.target_id = $2 AND prog.is_para_sport = TRUE', [input.sponsorship_id, athleteId], c);
       if (!sp) throw notFound('Para-sport sponsorship agreement');
       const encUrl = input.evidence_url ? encrypt(input.evidence_url, ENC_CTX) : null;
       const { rows } = await c.query(
@@ -286,6 +286,7 @@ cap({
     const { prog } = await requireSponsorProgramAccess(user, programme_id, 'report');
     const stats = await one(
       `SELECT
+         (SELECT COALESCE(SUM(a.amount_cents), 0)::bigint FROM sponsorship_awards a WHERE a.program_id = $1 AND a.status = 'accepted') AS awarded_cents,
          COUNT(DISTINCT e.athlete_id)                                                     AS athletes_supported,
          COUNT(DISTINCT e.id)                                                              AS evidence_items,
          COUNT(DISTINCT e.id) FILTER (WHERE e.confirmed_at IS NOT NULL)                   AS evidence_confirmed,
@@ -300,7 +301,7 @@ cap({
       programme_id,
       programme_name: prog.name,
       budget_pence: prog.budget_cents,
-      awarded_pence: prog.awarded_cents,
+      awarded_pence: stats.awarded_cents,
       athletes_supported: Number(stats.athletes_supported),
       evidence_items: Number(stats.evidence_items),
       evidence_confirmed: Number(stats.evidence_confirmed),

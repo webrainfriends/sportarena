@@ -3,7 +3,7 @@
 // content stays in Performance Studio. Everything is checked live and refuses to double-book people, groups or courts.
 import { z } from 'zod';
 import { cap, id, page } from '../registry.js';
-import { one, many, tx, pool } from '../db.js';
+import { one, many, tx, pool, withClient } from '../db.js';
 import { badRequest, conflict, forbidden, notFound } from '../errors.js';
 import { audit } from '../helpers.js';
 import { notify } from '../notify.js';
@@ -453,27 +453,36 @@ cap({
   summary: 'For sessions in inclusive programmes: returns assigned staff with their adaptive expertise match against the need types shared for this session. No athlete data or diagnoses are returned. Auth: academy member (assigned staff or schedule permission).',
   input: z.object({ id }),
   async handler({ user }, i) {
-    return pool.connect(async (c) => {
-      const { s } = await sessionFor(user, i.id, null, { c });
+    return withClient(async (c) => {
+      const { s } = await sessionFor(user, i.id, 'view', { c });
       if (!s.programme_id) return { session_id: i.id, staff: [] };
       const prof = (await c.query('SELECT offered_needs FROM academy_programme_inclusion WHERE programme_id=$1', [s.programme_id])).rows[0];
       if (!prof) return { session_id: i.id, staff: [] };
       const sharedTypes = new Set();
       const allShares = (await c.query(
-        "SELECT need_keys, audience_user_ids FROM accommodation_shares WHERE organisation_id=$1 AND revoked_at IS NULL AND expires_on >= current_date",
+        "SELECT need_keys FROM academy_accommodation_shares WHERE organisation_id=$1 AND revoked_at IS NULL AND expires_at > now()",
         [s.organisation_id],
       )).rows;
       for (const share of allShares) {
         for (const key of share.need_keys ?? []) sharedTypes.add(typeOfNeed(key));
       }
+      // Match = a coach with live, declared adaptive expertise (coach_adaptive_expertise) in this session's sport. The schema holds disciplines per
+      // sport, not a link from need types to disciplines, so the shared need types decide only whether there is anything to match.
       const staffRows = await c.query(
-        "SELECT st.user_id, u.display_name, st.role, coalesce(ca.expertise_keys,'{}') AS expertise_keys FROM academy_session_staff st JOIN users u ON u.id=st.user_id LEFT JOIN coach_adaptive_profiles ca ON ca.user_id=st.user_id WHERE st.session_id=$1 AND st.status IN ('assigned','confirmed') ORDER BY u.display_name",
-        [i.id],
+        `SELECT st.user_id, u.display_name, st.role,
+                coalesce(array_agg(DISTINCT ae.discipline) FILTER (WHERE ae.id IS NOT NULL), '{}') AS expertise_keys
+           FROM academy_session_staff st
+           JOIN users u ON u.id = st.user_id
+           LEFT JOIN sports sp ON sp.slug = $2
+           LEFT JOIN coach_adaptive_expertise ae ON ae.coach_id = st.user_id AND ae.sport_id = sp.id AND ae.archived_at IS NULL
+          WHERE st.session_id = $1 AND st.status IN ('assigned','confirmed')
+          GROUP BY st.user_id, u.display_name, st.role
+          ORDER BY u.display_name`,
+        [i.id, s.sport],
       );
       const staff = staffRows.rows.map((r) => {
         const expertise = r.expertise_keys ?? [];
-        const matched = expertise.filter((k) => sharedTypes.has(k));
-        const match_state = sharedTypes.size === 0 ? 'none' : matched.length >= sharedTypes.size ? 'full' : matched.length > 0 ? 'partial' : 'none';
+        const match_state = sharedTypes.size > 0 && expertise.length > 0 ? 'full' : 'none';
         return { user_id: r.user_id, name: r.display_name, role: r.role, expertise, match_state };
       });
       return { session_id: i.id, staff };

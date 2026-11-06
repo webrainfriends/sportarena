@@ -5,7 +5,7 @@
 // Every access of contact preferences or checklist is audit-logged and visible to the athlete.
 import { z } from 'zod';
 import { cap, id } from '../registry.js';
-import { tx, many, one, pool } from '../db.js';
+import { tx, many, one, pool, withClient } from '../db.js';
 import { notify } from '../notify.js';
 import { audit } from '../helpers.js';
 import { encrypt, decrypt } from '../crypto.js';
@@ -85,7 +85,7 @@ cap({
       const purposeKey = i.purpose_key !== undefined ? i.purpose_key : s.purpose_key;
       const purpose = i.purpose !== undefined ? i.purpose : s.purpose;
       const row = (await c.query(
-        'UPDATE academy_accommodation_shares SET need_keys=$2, audience_users=$3, audience_roles=$4, expires_at=$5, purpose_key=$6, purpose=$7, note_enc=$8, updated_at=now() WHERE id=$1 RETURNING *',
+        'UPDATE academy_accommodation_shares SET need_keys=$2, audience_users=$3, audience_roles=$4, expires_at=$5, purpose_key=$6, purpose=$7, note_enc=$8 WHERE id=$1 RETURNING *',
         [s.id, needs, userIds, roles, `${expiresOn}T23:59:59Z`, purposeKey, purpose, noteEnc],
       )).rows[0];
       await log(c, s.organisation_id, s.athlete_id, 'share_revised', user.id, { type: 'share', id: s.id }, needs.map(typeOfNeed).join(','));
@@ -170,7 +170,7 @@ cap({
   summary: 'Staff: access the contact and arrival preferences for the athlete on a specific live share. Only accessible when the caller is in the share\'s audience AND the share includes a communication-type need. Every read is audit-logged and visible to the athlete.',
   input: z.object({ share_id: id }),
   async handler({ user }, i) {
-    return pool.connect(async (c) => {
+    return withClient(async (c) => {
       const q = c.query.bind(c);
       const s = (await c.query('SELECT * FROM academy_accommodation_shares WHERE id=$1', [i.share_id])).rows[0];
       if (!s) throw notFound('Share');
@@ -210,7 +210,7 @@ cap({
   summary: 'Session staff or event coordinator: an actionable checklist of every consented operational need for enrolled athletes, grouped by athlete, with arranged/pending status per item. Only needs the caller is authorised to see are shown (same audience rules as get_session_accommodations). No diagnosis or clinical detail. Every read is audit-logged.',
   input: z.object({ session_id: id }),
   async handler({ user }, i) {
-    return pool.connect(async (c) => {
+    return withClient(async (c) => {
       const q = c.query.bind(c);
       const sess = (await c.query(
         "SELECT s.*, k.programme_id FROM academy_sessions s JOIN org_cohorts k ON k.id=s.cohort_id WHERE s.id=$1",
