@@ -416,6 +416,7 @@ function Authority({ desk }) {
 
 // ------------------------------------------------------------------ screen
 export function ParaClassification() {
+  const { user } = useSession();
   const desk = useLoad(() => api.get('/me/para-desk'), []);
   const [tab, setTab] = useState('me'), [ward, setWard] = useState(null);
   if (desk.error) return <Screen><ErrorBox error={desk.error} onRetry={desk.reload} /></Screen>;

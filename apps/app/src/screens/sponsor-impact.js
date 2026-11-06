@@ -5,6 +5,7 @@ import { useLoad } from '../hooks';
 import { useSession } from '../session';
 import { Btn, Card, Chip, Empty, Loading, Section, Sheet, T, Tag } from '../ui';
 import { FormSheet } from '../FormSheet';
+import { t } from '../i18n';
 import { c } from '../theme';
 import { explain, LoadError } from '../access';
 import { saveText } from '../evidence';
