@@ -2,12 +2,12 @@
 // An administrative sporting classification, never a diagnosis. Everything comes from the para-* capabilities (REST/MCP); sensitive evidence is only ever
 // opened one item at a time by the athlete/guardian or an assigned classifier, and every read is audited on the server.
 import React, { useMemo, useState } from 'react';
-import { View } from 'react-native';
+import { Pressable, ScrollView, View } from 'react-native';
 import { api } from '../api';
 import { useLoad } from '../hooks';
 import { useLayout } from '../layout';
 import { useSession } from '../session';
-import { Btn, Card, Empty, ErrorBox, Loading, Screen, Seg, Sheet, T, Tag } from '../ui';
+import { Btn, Card, Empty, ErrorBox, Field, Loading, Screen, Seg, Sheet, T, Tag } from '../ui';
 import { FormSheet } from '../FormSheet';
 import { MenuField } from '../menu-field';
 import { Kpi } from './academy-ui';
@@ -148,20 +148,248 @@ function CaseSheet({ id, onClose, reload }) {
   );
 }
 
+// ------------------------------------------------------------------ Step indicator for multi-step flows
+function Steps({ current, total }) {
+  return (
+    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 0, marginBottom: 16 }}>
+      {Array.from({ length: total }, (_, i) => (
+        <React.Fragment key={i}>
+          <View style={{ width: 28, height: 28, borderRadius: 14, alignItems: 'center', justifyContent: 'center', backgroundColor: i < current ? c.pink : i === current ? c.pink : c.violetSoft, ...(i === current ? { shadowColor: c.pink, shadowOpacity: 0.35, shadowRadius: 6, shadowOffset: { width: 0, height: 0 }, elevation: 4 } : {}) }}>
+            <T size={12} weight="900" color={i <= current ? '#fff' : c.mute}>{i < current ? '✓' : i + 1}</T>
+          </View>
+          {i < total - 1 ? <View style={{ flex: 1, height: 2, backgroundColor: i < current ? c.pink : c.line }} /> : null}
+        </React.Fragment>
+      ))}
+    </View>
+  );
+}
+
+// ------------------------------------------------------------------ Start-a-classification: 3-step elite flow
+function StartClassificationSheet({ visible, onClose, published, coverage, athleteId, onDone }) {
+  const { toast } = useSession();
+  const [step, setStep] = useState(0);
+  const [sportSearch, setSportSearch] = useState('');
+  const [selectedSportId, setSelectedSportId] = useState(null);
+  const [selectedVersion, setSelectedVersion] = useState(null);
+  const [context, setContext] = useState('initial');
+  const [note, setNote] = useState('');
+  const [submitting, setSubmitting] = useState(false);
+
+  const reset = () => { setStep(0); setSportSearch(''); setSelectedSportId(null); setSelectedVersion(null); setContext('initial'); setNote(''); };
+  const handleClose = () => { reset(); onClose(); };
+
+  // Group published versions by sport for the picker
+  const sportMap = useMemo(() => {
+    const m = {};
+    for (const v of published) {
+      if (!m[v.sport_id]) m[v.sport_id] = { sport_id: v.sport_id, sport: v.sport, emoji: v.emoji ?? '♿', versions: [] };
+      m[v.sport_id].versions.push(v);
+    }
+    // Merge in coverage catalogue (sports without definitions appear as "not yet")
+    for (const s of (coverage ?? [])) {
+      const sid = s.sport_id ?? s.id;
+      if (sid && !m[sid]) m[sid] = { sport_id: sid, sport: s.name, emoji: s.emoji ?? '♿', versions: [] };
+    }
+    return Object.values(m).sort((a, b) => a.sport.localeCompare(b.sport));
+  }, [published, coverage]);
+
+  const filteredSports = useMemo(() => {
+    const q = sportSearch.trim().toLowerCase();
+    return q ? sportMap.filter((s) => s.sport.toLowerCase().includes(q)) : sportMap;
+  }, [sportMap, sportSearch]);
+
+  const selectedSport = sportMap.find((s) => s.sport_id === selectedSportId);
+  // If only one governing body/version for the sport, auto-select
+  const versionOptions = selectedSport?.versions ?? [];
+
+  const submit = async () => {
+    if (!selectedVersion) return;
+    setSubmitting(true);
+    try {
+      await api.post('/para/cases', { athlete_id: athleteId || undefined, body_id: selectedVersion.body_id, sport_id: selectedVersion.sport_id, discipline: selectedVersion.discipline || '', requested_context: context, note: note.trim() || undefined });
+      toast(t('para.submitted'));
+      reset();
+      onClose();
+      onDone?.();
+    } catch (e) { toast(e.message); }
+    finally { setSubmitting(false); }
+  };
+
+  const stepTitles = [t('para.start_sport_step'), t('para.start_auth_step'), t('para.start_review_step')];
+
+  return (
+    <Sheet visible={visible} onClose={handleClose} title={t('para.start')}>
+      <Steps current={step} total={3} />
+
+      {/* Step 0 — Sport picker */}
+      {step === 0 && (
+        <View style={{ gap: 12 }}>
+          <T size={18} weight="900">{t('para.start_sport_title')}</T>
+          <T size={13} color={c.mute}>{t('para.start_sport_sub')}</T>
+          <Field label="" placeholder={t('para.search_sport')} value={sportSearch} onChangeText={setSportSearch} />
+          <ScrollView style={{ maxHeight: 420 }} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
+            {filteredSports.length === 0 ? (
+              <View style={{ padding: 24, alignItems: 'center', gap: 8 }}>
+                <T size={28}>♿</T>
+                <T size={14} color={c.mute} style={{ textAlign: 'center' }}>{t('para.no_sports_found')}</T>
+              </View>
+            ) : filteredSports.map((s) => {
+              const governed = s.versions.length > 0;
+              const isSelected = selectedSportId === s.sport_id;
+              return (
+                <Pressable key={s.sport_id} onPress={() => governed ? setSelectedSportId(s.sport_id) : null}
+                  accessibilityRole="button" accessibilityLabel={join(s.sport, governed ? t('para.sport_governed') : t('para.sport_not_yet'))}
+                  style={{ flexDirection: 'row', alignItems: 'center', gap: 14, padding: 14, borderRadius: 16, borderWidth: 1.5, borderColor: isSelected ? c.pink : c.line, backgroundColor: isSelected ? c.pinkSoft : c.paper, marginBottom: 8, opacity: governed ? 1 : 0.55 }}>
+                  <T size={28} style={{ width: 36, textAlign: 'center' }}>{s.emoji}</T>
+                  <View style={{ flex: 1 }}>
+                    <T size={15} weight="800">{s.sport}</T>
+                    <T size={12} color={c.mute} style={{ marginTop: 2 }}>
+                      {governed ? s.versions.map((v) => `${v.authority} · ${t('para.version', { n: v.version })}`).join(' · ') : t('para.start_sport_no_def')}
+                    </T>
+                  </View>
+                  <Tag label={governed ? t('para.sport_governed') : t('para.sport_not_yet')} color={governed ? c.limeSoft : c.orangeSoft} />
+                </Pressable>
+              );
+            })}
+          </ScrollView>
+          <Btn title={t('para.next')} disabled={!selectedSportId} onPress={() => {
+            const vers = sportMap.find((s) => s.sport_id === selectedSportId)?.versions ?? [];
+            if (vers.length === 1) setSelectedVersion(vers[0]);
+            setStep(1);
+          }} />
+        </View>
+      )}
+
+      {/* Step 1 — Authority, discipline, context, note */}
+      {step === 1 && selectedSport && (
+        <View style={{ gap: 14 }}>
+          <T size={18} weight="900">{selectedSport.emoji} {selectedSport.sport}</T>
+          <View style={{ backgroundColor: c.cyanSoft, borderRadius: 12, padding: 12 }}>
+            <T size={12} color={c.ink}>{t('para.start_notice')}</T>
+          </View>
+
+          {/* Governing body — only shown when multiple govern same sport */}
+          {versionOptions.length > 1 ? (
+            <View style={{ gap: 6 }}>
+              <T size={12} weight="800" color={c.mute} style={{ textTransform: 'uppercase', letterSpacing: 0.5 }}>{t('para.f_authority')}</T>
+              {versionOptions.map((v) => (
+                <Pressable key={v.id} onPress={() => setSelectedVersion(v)} accessibilityRole="radio" accessibilityChecked={selectedVersion?.id === v.id}
+                  style={{ padding: 14, borderRadius: 16, borderWidth: 1.5, borderColor: selectedVersion?.id === v.id ? c.pink : c.line, backgroundColor: selectedVersion?.id === v.id ? c.pinkSoft : c.paper }}>
+                  <T size={14} weight="800">{v.authority}</T>
+                  <T size={12} color={c.mute} style={{ marginTop: 3 }}>{t('para.version', { n: v.version })} · {t('para.f_effective_on', { date: short(v.effective_from) })} · {t('para.panel_size', { n: v.panel_size })}</T>
+                  {v.scope_countries?.length ? <T size={12} color={c.mute}>{v.scope_countries.join(', ')}</T> : null}
+                </Pressable>
+              ))}
+            </View>
+          ) : versionOptions.length === 1 ? (
+            <Card pad={14} style={{ gap: 4 }}>
+              <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                <T size={14} weight="800">{versionOptions[0].authority}</T>
+                <Tag label={t('para.version', { n: versionOptions[0].version })} color={c.cyanSoft} />
+              </View>
+              <T size={12} color={c.mute}>{t('para.panel_size', { n: versionOptions[0].panel_size })} · {t('para.appeal_days', { n: versionOptions[0].appeal_days })} · {t(`para.rule.${versionOptions[0].review_rule}`)}</T>
+              <T size={12} color={c.mute}>{t('para.f_effective_on', { date: short(versionOptions[0].effective_from) })}</T>
+            </Card>
+          ) : (
+            <Card pad={14}><T size={13} color={c.mute}>{t('para.no_definition_sport')}</T></Card>
+          )}
+
+          {/* Classification context */}
+          <View style={{ gap: 8 }}>
+            <T size={12} weight="800" color={c.mute} style={{ textTransform: 'uppercase', letterSpacing: 0.5 }}>{t('para.f_context')}</T>
+            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+              {['initial', 'review', 'reassessment', 'international'].map((k) => (
+                <Pressable key={k} onPress={() => setContext(k)} accessibilityRole="radio" accessibilityChecked={context === k}
+                  style={{ paddingVertical: 8, paddingHorizontal: 14, borderRadius: 12, borderWidth: 1.5, borderColor: context === k ? c.pink : c.line, backgroundColor: context === k ? c.pinkSoft : c.paper }}>
+                  <T size={13} weight="700" color={context === k ? c.pink : c.ink}>{label('context', k)}</T>
+                </Pressable>
+              ))}
+            </View>
+          </View>
+
+          {/* Note for classifiers */}
+          <Field label={t('para.f_note')} value={note} onChangeText={setNote} multiline hint={t('para.f_note_hint')} />
+
+          <View style={{ flexDirection: 'row', gap: 8 }}>
+            <Btn small color={c.paper} ink={c.ink} title={t('common.back')} onPress={() => setStep(0)} style={{ flex: 1 }} />
+            <View style={{ flex: 2 }}>
+              <Btn title={t('para.next')} disabled={versionOptions.length > 1 && !selectedVersion} onPress={() => { if (versionOptions.length === 1) setSelectedVersion(versionOptions[0]); setStep(2); }} />
+            </View>
+          </View>
+        </View>
+      )}
+
+      {/* Step 2 — Review & confirm */}
+      {step === 2 && selectedVersion && (
+        <View style={{ gap: 14 }}>
+          <T size={18} weight="900">{t('para.start_confirm_title')}</T>
+          <View style={{ backgroundColor: c.limeSoft, borderRadius: 12, padding: 12 }}>
+            <T size={12} color={c.ink}>{t('para.confirm_notice')}</T>
+          </View>
+
+          {/* Summary card */}
+          <Card pad={16} style={{ gap: 10 }}>
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+              <View style={{ flexShrink: 1 }}>
+                <T size={16} weight="900">{selectedSport?.emoji} {selectedSport?.sport}</T>
+                <T size={12} color={c.mute} style={{ marginTop: 3 }}>{selectedVersion.authority}</T>
+              </View>
+              <Tag label={label('context', context)} color={c.cyanSoft} />
+            </View>
+            <View style={{ borderTopWidth: 1, borderTopColor: c.line, paddingTop: 10, gap: 7 }}>
+              {[
+                [t('para.f_definition'), `${t('para.version', { n: selectedVersion.version })} · ${short(selectedVersion.effective_from)}`],
+                [t('para.f_panel_size'), `${selectedVersion.panel_size} ${t('para.start_classifiers')}`],
+                [t('para.f_appeal_days'), `${selectedVersion.appeal_days} ${t('para.days')}`],
+                [t('para.f_review_rule'), t(`para.rule.${selectedVersion.review_rule}`) + (selectedVersion.review_months ? ` · ${selectedVersion.review_months} ${t('para.start_months')}` : '')],
+                ...(selectedVersion.discipline ? [[t('para.f_discipline_label'), selectedVersion.discipline]] : []),
+              ].map(([lbl, val]) => (
+                <View key={lbl} style={{ flexDirection: 'row', justifyContent: 'space-between', gap: 8 }}>
+                  <T size={12} color={c.mute}>{lbl}</T>
+                  <T size={12} weight="700" style={{ textAlign: 'right', flexShrink: 1 }}>{val}</T>
+                </View>
+              ))}
+            </View>
+          </Card>
+
+          {/* What happens next */}
+          <T size={12} weight="800" color={c.mute} style={{ textTransform: 'uppercase', letterSpacing: 0.5 }}>{t('para.what_next')}</T>
+          <View style={{ gap: 7 }}>
+            {[t('para.next_step_desk'), t('para.next_step_panel', { n: selectedVersion.panel_size }), t('para.next_step_assessment'), t('para.next_step_decision'), t('para.next_step_appeal', { n: selectedVersion.appeal_days })].map((s, i) => (
+              <T key={i} size={13} color={c.ink}>{s}</T>
+            ))}
+          </View>
+
+          <View style={{ flexDirection: 'row', gap: 8 }}>
+            <Btn small color={c.paper} ink={c.ink} title={t('common.back')} onPress={() => setStep(1)} style={{ flex: 1 }} />
+            <View style={{ flex: 2 }}>
+              <Btn title={submitting ? t('common.loading') : t('para.submit_case')} disabled={submitting} onPress={submit} />
+            </View>
+          </View>
+        </View>
+      )}
+    </Sheet>
+  );
+}
+
 // ------------------------------------------------------------------ athlete / guardian
 function Mine({ athleteId, wards, onWard }) {
   const { toast } = useSession();
   const { tablet } = useLayout();
   const d = useLoad(() => api.get('/me/para-classification', athleteId ? { athlete_id: athleteId } : {}), [athleteId]);
   const defs = useLoad(() => api.get('/para/class-versions', { limit: 100 }), []);
+  const cov = useLoad(() => api.get('/para/coverage', { para: true, limit: 200 }), []);
+  const [startVisible, setStartVisible] = useState(false);
   const [form, setForm] = useState(null), [caseId, setCaseId] = useState(null);
   const x = d.data;
   const run = useRun(toast, d.reload);
   if (d.error) return <ErrorBox error={d.error} onRetry={d.reload} />;
   if (!x) return <Loading />;
   const published = (defs.data?.versions ?? []).filter((v) => v.status === 'published');
+  const coverage = cov.data?.sports ?? [];
   const open = x.cases.filter((k) => ['submitted', 'evidence_review', 'assessment_scheduled', 'assessment_completed', 'panel_review'].includes(k.status));
   const next = x.outcomes.map((o) => o.review_by).filter(Boolean).sort()[0];
+  const hasActions = x.pending_actions.length > 0;
   return (
     <View style={{ gap: 18 }}>
       <Disclaimer />
@@ -170,50 +398,91 @@ function Mine({ athleteId, wards, onWard }) {
         <Kpi label={t('para.kpi_classes')} value={String(x.outcomes.length)} sub={t('para.kpi_classes_sub')} />
         <Kpi label={t('para.kpi_open')} value={String(open.length)} sub={t('para.kpi_open_sub')} />
         <Kpi label={t('para.kpi_review')} value={short(next)} sub={t('para.kpi_review_sub')} tone={x.pending_actions.some((a) => a.kind === 'review_due') ? 'alert' : undefined} />
-        <Kpi label={t('para.kpi_actions')} value={String(x.pending_actions.length)} sub={t('para.kpi_actions_sub')} />
+        <Kpi label={t('para.kpi_actions')} value={String(x.pending_actions.length)} sub={t('para.kpi_actions_sub')} tone={hasActions ? 'alert' : undefined} />
       </Row2>
       <ParaEntries athleteId={athleteId} />
-      <Block title={t('para.current')} right={<Btn small title={t('para.start')} onPress={() => setForm('case')} />}>
-        {x.outcomes.length ? (
-          <Row2>{x.outcomes.map((o) => (
-            <Card key={o.id} pad={16} style={{ flexGrow: 1, flexBasis: tablet ? 300 : '100%', gap: 8 }} accessibilityLabel={join(o.sport, o.class_code, label('status', o.status), o.authority)}>
-              <T size={12} weight="800" color={c.mute}>{o.sport.toUpperCase()}{o.discipline ? ` · ${o.discipline}` : ''}</T>
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
-                <T size={34} weight="800" style={{ letterSpacing: -1 }}>{o.class_code ?? '—'}</T><Tag label={label('status', o.status)} color={TONE[o.status]} />
-                {o.review_overdue ? <Tag label={t('para.review_due')} color={c.orangeSoft} /> : null}
-              </View>
-              <View style={{ gap: 4 }}>
-                <T size={13} weight="800">{t('para.issued_by', { authority: o.authority })}</T>
-                <T size={12} color={c.mute}>{o.decision_ref} · {t('para.version', { n: o.version })}</T>
-                <T size={12} color={c.mute}>{t('para.effective', { date: short(o.effective_from) })}</T>
-                {o.review_by ? <T size={12} color={c.mute}>{t('para.review_by', { date: short(o.review_by) })}</T> : null}
-                {o.expires_on ? <T size={12} color={c.mute}>{t('para.expires', { date: short(o.expires_on) })}</T> : null}
-              </View>
-              {o.appeal ? <Tag label={dot(label('appeal', o.appeal.kind), label('appealstate', o.appeal.status))} color={c.sunSoft} /> : null}
-              {!o.appeal || o.appeal.status !== 'open' ? <Btn small color={c.paper} ink={c.ink} title={t('para.ask_review', { date: o.appeal_open_until })} onPress={() => setForm({ appeal: o })} /> : null}
+
+      {/* Pending actions — prominent when present */}
+      {hasActions ? (
+        <Block title={t('para.next_steps')}>
+          {x.pending_actions.map((a, i) => (
+            <Card key={i} pad={14} style={{ borderLeftWidth: 4, borderLeftColor: a.kind === 'review_due' ? c.red : c.orange }}>
+              <T size={14} weight="800">
+                {a.kind === 'appointment' ? t('para.appointment', { at: when(a.at) }) : a.kind === 'review_due' ? t('para.review_by', { date: a.by }) : a.label ? t('para.evidence_may_be_asked') : ''}
+              </T>
             </Card>
-          ))}</Row2>
+          ))}
+        </Block>
+      ) : null}
+
+      {/* Current classifications — rich cards */}
+      <Block title={t('para.current')} right={<Btn small title={t('para.start')} onPress={() => setStartVisible(true)} />}>
+        {x.outcomes.length ? (
+          <View style={{ gap: 10, flexDirection: tablet ? 'row' : 'column', flexWrap: 'wrap' }}>
+            {x.outcomes.map((o) => (
+              <Card key={o.id} pad={18} style={{ gap: 10, flexGrow: 1, flexBasis: tablet ? 300 : '100%', borderWidth: o.review_overdue ? 2 : 1, borderColor: o.review_overdue ? c.orange : c.line }} accessibilityLabel={join(o.sport, o.class_code, label('status', o.status), o.authority)}>
+                <T size={11} weight="800" color={c.mute} style={{ letterSpacing: 0.5, textTransform: 'uppercase' }}>{o.sport}{o.discipline ? ` · ${o.discipline}` : ''}</T>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+                  <T size={42} weight="900" style={{ letterSpacing: -1.5 }}>{o.class_code ?? '—'}</T>
+                  <View style={{ gap: 6 }}>
+                    <Tag label={label('status', o.status)} color={TONE[o.status]} />
+                    {o.review_overdue ? <Tag label={t('para.review_due')} color={c.orangeSoft} /> : null}
+                    {o.appeal ? <Tag label={dot(label('appeal', o.appeal.kind), label('appealstate', o.appeal.status))} color={c.sunSoft} /> : null}
+                  </View>
+                </View>
+                <View style={{ gap: 5 }}>
+                  <T size={13} weight="800">{t('para.issued_by', { authority: o.authority })}</T>
+                  <T size={12} color={c.mute}>{[o.decision_ref, t('para.version', { n: o.version })].filter(Boolean).join(' · ')}</T>
+                  <T size={12} color={c.mute}>{t('para.effective', { date: short(o.effective_from) })}</T>
+                  {o.review_by ? <T size={12} color={o.review_overdue ? c.orange : c.mute} weight={o.review_overdue ? '800' : '400'}>{t('para.review_by', { date: short(o.review_by) })}</T> : null}
+                  {o.expires_on ? <T size={12} color={c.mute}>{t('para.expires', { date: short(o.expires_on) })}</T> : null}
+                </View>
+                {(!o.appeal || o.appeal.status !== 'open') && o.appeal_open_until ? (
+                  <Btn small color={c.paper} ink={c.ink} title={t('para.ask_review', { date: o.appeal_open_until })} onPress={() => setForm({ appeal: o })} />
+                ) : null}
+              </Card>
+            ))}
+          </View>
         ) : <Empty emoji="🏅" title={t('para.none')} sub={t('para.none_sub')} />}
       </Block>
-      {x.pending_actions.length ? (
-        <Block title={t('para.next_steps')}>{x.pending_actions.map((a, i) => <Card key={i} pad={12}><T size={14}>{a.kind === 'appointment' ? t('para.appointment', { at: when(a.at) }) : a.kind === 'review_due' ? t('para.review_by', { date: a.by }) : a.label ? t('para.evidence_may_be_asked') : ''}</T></Card>)}</Block>
-      ) : null}
+
+      {/* Open cases — stage tracker with detail */}
       <Block title={t('para.cases')}>
         {x.cases.length ? x.cases.map((k) => (
-          <Card key={k.id} pad={14} onPress={() => setCaseId(k.id)} style={{ gap: 8 }} accessibilityLabel={join(k.sport, k.authority, label('stage', k.status))}>
-            <T weight="800">{k.sport} · {k.authority}</T><StageTrack status={k.status} />
+          <Card key={k.id} pad={16} onPress={() => setCaseId(k.id)} style={{ gap: 10 }} accessibilityLabel={join(k.sport, k.authority, label('stage', k.status))}>
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8, flexWrap: 'wrap' }}>
+              <View style={{ flexShrink: 1 }}>
+                <T weight="800" size={14}>{k.sport}{k.discipline ? ` · ${k.discipline}` : ''}</T>
+                <T size={12} color={c.mute} style={{ marginTop: 2 }}>{k.authority}</T>
+              </View>
+              <Tag label={label('context', k.requested_context)} color={c.cyanSoft} />
+            </View>
+            <StageTrack status={k.status} />
+            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10 }}>
+              {k.appointment_on ? <T size={12} color={c.mute}>{t('para.appointment', { at: when(k.appointment_on) })}</T> : null}
+              <T size={12} color={c.mute}>{t('para.age_days', { n: k.age_days })}</T>
+            </View>
           </Card>
-        )) : <T size={13} color={c.mute}>{t('para.no_cases')}</T>}
+        )) : <Empty emoji="📋" title={t('para.no_cases')} sub={t('para.no_cases_sub')} />}
       </Block>
+
       {x.external_references.length ? (
-        <Block title={t('para.external')}>{x.external_references.map((e) => <Card key={e.id} pad={12}><T weight="800">{e.sport} · {e.class_code} · {label('status', e.status)}</T><T size={12} color={c.mute}>{e.authority} · {label('verify', e.verification)}</T></Card>)}</Block>
+        <Block title={t('para.external')}>
+          {x.external_references.map((e) => (
+            <Card key={e.id} pad={14} style={{ gap: 4 }}>
+              <View style={{ flexDirection: 'row', justifyContent: 'space-between', gap: 8, flexWrap: 'wrap' }}>
+                <T weight="800">{e.sport} · {e.class_code}</T>
+                <Tag label={label('verify', e.verification)} color={e.verification === 'verified' ? c.limeSoft : c.sunSoft} />
+              </View>
+              <T size={12} color={c.mute}>{e.authority} · {label('status', e.status)}</T>
+            </Card>
+          ))}
+        </Block>
       ) : null}
-      <FormSheet visible={form === 'case'} onClose={() => setForm(null)} title={t('para.start')} notice={t('para.start_notice')}
-        fields={[{ key: 'definition', label: t('para.f_definition'), type: 'multimenu', max: 1, options: published.map((v) => ({ value: v.id, label: `${v.sport}${v.discipline ? ` · ${v.discipline}` : ''}`, sub: `${v.authority} · ${t('para.version', { n: v.version })}` })) },
-          { key: 'requested_context', label: t('para.f_context'), type: 'chips', options: ['initial', 'review', 'reassessment', 'international'].map((k) => ({ value: k, label: label('context', k) })) },
-          { key: 'note', label: t('para.f_note'), type: 'multiline', optional: true, hint: t('para.f_note_hint') }]}
-        initial={{ requested_context: 'initial' }}
-        onSubmit={async (val) => { const v = published.find((z) => z.id === [].concat(val.definition)[0]); if (!v) throw new Error(t('para.pick_definition')); await api.post('/para/cases', { athlete_id: athleteId || undefined, body_id: v.body_id, sport_id: v.sport_id, discipline: v.discipline, requested_context: val.requested_context, note: val.note || undefined }); toast(t('para.submitted')); await d.reload(); }} />
+
+      {/* 3-step classification starter */}
+      <StartClassificationSheet visible={startVisible} onClose={() => setStartVisible(false)} published={published} coverage={coverage} athleteId={athleteId} onDone={d.reload} />
+
       <FormSheet visible={!!form?.appeal} onClose={() => setForm(null)} title={t('para.ask_review_title')} notice={t('para.appeal_notice')}
         fields={[{ key: 'kind', label: t('para.f_kind'), type: 'chips', options: ['review', 'protest', 'appeal'].map((k) => ({ value: k, label: label('appeal', k) })) }, { key: 'grounds', label: t('para.f_grounds'), type: 'multiline' }]}
         initial={{ kind: 'review' }}
@@ -230,39 +499,65 @@ function Desk({ desk }) {
   const appeals = useLoad(() => api.get('/para/appeals', { scope: 'assigned' }), []);
   const [caseId, setCaseId] = useState(null), [ruling, setRuling] = useState(null);
   const run = useRun(toast, async () => { await cases.reload(); await appeals.reload(); });
+  const liveCount = desk.classifier.filter((k) => k.live).length;
   return (
     <View style={{ gap: 18 }}>
       <Disclaimer />
       <Row2>
-        <Kpi label={t('para.kpi_credentials')} value={`${desk.classifier.filter((k) => k.live).length}/${desk.classifier.length}`} sub={t('para.kpi_credentials_sub')} />
+        <Kpi label={t('para.kpi_credentials')} value={`${liveCount}/${desk.classifier.length}`} sub={t('para.kpi_credentials_sub')} tone={liveCount === 0 ? 'alert' : undefined} />
         <Kpi label={t('para.kpi_assigned')} value={String(desk.assigned_cases)} sub={t('para.kpi_assigned_sub')} />
         <Kpi label={t('para.kpi_appeals')} value={String(desk.assigned_appeals)} sub={t('para.kpi_appeals_sub')} tone={desk.assigned_appeals ? 'alert' : undefined} />
+        <Kpi label={t('para.kpi_desk_decided')} value={String((cases.data?.cases ?? []).filter((k) => k.panel_decided === k.panel_assigned && k.panel_assigned > 0).length)} sub={t('para.kpi_desk_decided_sub')} />
       </Row2>
+
       <Block title={t('para.credentials')}>
         {desk.classifier.length ? desk.classifier.map((k) => (
-          <Card key={k.id} pad={14} accessibilityLabel={join(k.sport, k.grade, k.live ? t('para.live') : label('credstate', k.status))}>
-            <View style={{ flexDirection: 'row', justifyContent: 'space-between', gap: 8, flexWrap: 'wrap' }}><T weight="800">{k.sport}{k.discipline ? ` · ${k.discipline}` : ''}</T><Tag label={k.live ? t('para.live') : label('credstate', k.status)} color={k.live ? c.limeSoft : c.orangeSoft} /></View>
-            <T size={13} color={c.mute}>{k.issuing_body} · {k.grade} · {k.class_codes?.length ? k.class_codes.join(', ') : t('para.all_classes')} · {t('para.expires', { date: k.expires_on })}</T>
+          <Card key={k.id} pad={14} style={{ gap: 6 }} accessibilityLabel={join(k.sport, k.grade, k.live ? t('para.live') : label('credstate', k.status))}>
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+              <T weight="800" size={14}>{k.sport}{k.discipline ? ` · ${k.discipline}` : ''}</T>
+              <Tag label={k.live ? t('para.live') : label('credstate', k.status)} color={k.live ? c.limeSoft : c.orangeSoft} />
+            </View>
+            <T size={12} color={c.mute}>{k.issuing_body} · {k.grade} · {k.class_codes?.length ? k.class_codes.join(', ') : t('para.all_classes')}</T>
+            <T size={12} color={c.mute}>{t('para.expires', { date: short(k.expires_on) })}</T>
           </Card>
         )) : <Empty emoji="🪪" title={t('para.no_credential')} sub={t('para.no_credential_sub')} />}
       </Block>
+
       <Block title={t('para.assigned_cases')}>
-        {cases.data?.cases?.length ? cases.data.cases.map((k) => (
-          <Card key={k.id} pad={14} onPress={() => setCaseId(k.id)} style={{ gap: 8 }} accessibilityLabel={join(k.sport, label('stage', k.status))}>
-            <T weight="800">{k.athlete} · {k.sport}</T><StageTrack status={k.status} />
-            <T size={12} color={c.mute}>{t('para.panel_progress', { done: k.panel_decided, total: k.panel_assigned })} · {t('para.age_days', { n: k.age_days })}</T>
-          </Card>
-        )) : <T size={13} color={c.mute}>{t('para.no_assigned')}</T>}
+        {cases.data?.cases?.length ? cases.data.cases.map((k) => {
+          const needsDecision = k.status === 'panel_review' && k.panel_decided < k.panel_assigned;
+          return (
+            <Card key={k.id} pad={16} onPress={() => setCaseId(k.id)} style={{ gap: 10, borderLeftWidth: needsDecision ? 4 : 0, borderLeftColor: c.pink }} accessibilityLabel={join(k.sport, label('stage', k.status))}>
+              <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8, flexWrap: 'wrap' }}>
+                <View style={{ flexShrink: 1 }}>
+                  <T weight="800" size={14}>{k.athlete}</T>
+                  <T size={12} color={c.mute} style={{ marginTop: 2 }}>{k.sport}{k.discipline ? ` · ${k.discipline}` : ''}</T>
+                </View>
+                {needsDecision ? <Tag label={t('para.desk_record_now')} color={c.pinkSoft} /> : null}
+              </View>
+              <StageTrack status={k.status} />
+              <T size={12} color={c.mute}>{t('para.panel_progress', { done: k.panel_decided, total: k.panel_assigned })} · {t('para.age_days', { n: k.age_days })}</T>
+            </Card>
+          );
+        }) : <Empty emoji="📋" title={t('para.no_assigned')} sub={t('para.no_assigned_sub')} />}
       </Block>
+
       <Block title={t('para.reviews')}>
         {appeals.data?.appeals?.length ? appeals.data.appeals.map((a) => (
-          <Card key={a.id} pad={14} style={{ gap: 6 }}>
-            <View style={{ flexDirection: 'row', justifyContent: 'space-between', gap: 8, flexWrap: 'wrap' }}><T weight="800">{a.athlete} · {a.sport} · {a.class_code ?? '—'}</T><Tag label={dot(label('appeal', a.kind), label('appealstate', a.status))} color={c.sunSoft} /></View>
-            <T size={14}>{a.grounds}</T>
+          <Card key={a.id} pad={16} style={{ gap: 8 }}>
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', gap: 8, flexWrap: 'wrap', alignItems: 'flex-start' }}>
+              <View style={{ flexShrink: 1 }}>
+                <T weight="800" size={14}>{a.athlete} · {a.sport}</T>
+                <T size={12} color={c.mute} style={{ marginTop: 2 }}>{a.class_code ?? '—'} · {t('para.deadline', { date: a.deadline_on })}</T>
+              </View>
+              <Tag label={dot(label('appeal', a.kind), label('appealstate', a.status))} color={c.sunSoft} />
+            </View>
+            <T size={13} color={c.ink}>{a.grounds}</T>
             {a.status === 'open' ? <Btn small title={t('para.rule')} onPress={() => setRuling(a)} /> : null}
           </Card>
-        )) : <T size={13} color={c.mute}>{t('para.no_reviews')}</T>}
+        )) : <Empty emoji="⚖️" title={t('para.no_reviews')} sub={t('para.no_reviews_sub')} />}
       </Block>
+
       <FormSheet visible={!!ruling} onClose={() => setRuling(null)} title={t('para.rule')} notice={t('para.rule_notice')}
         fields={[{ key: 'ruling', label: t('para.f_ruling'), type: 'chips', options: ['upheld', 'dismissed'].map((k) => ({ value: k, label: label('appealstate', k) })) },
           { key: 'class_code', label: t('para.f_class_new'), type: 'text', optional: true, show: (v) => v.ruling === 'upheld' },
