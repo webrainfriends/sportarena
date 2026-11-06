@@ -438,7 +438,7 @@ export function ParaOpportunities({ sports }) {
 export function ParaPathwayEntry() {
   const { push } = useNav();
   const pw = useLoad(() => api.get('/me/para-pathway'), []);
-  if (!pw.data && !pw.error) return null; // silent while loading
+  if (!pw.data && !pw.error) return null;
   if (pw.error) return null;
   const data = pw.data;
   const advancedStage = [...STAGES].reverse().find((s) => (data.milestones_by_stage?.[s]?.length ?? 0) > 0);
