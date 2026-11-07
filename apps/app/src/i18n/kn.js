@@ -6769,6 +6769,28 @@ export default {
   'para.res.superseded': 'Superseded', /* reviewed: false */
   'para.res.provenance_official': 'From an official competition', /* reviewed: false */
   'para.res.provenance_self': 'Self-reported by athlete', /* reviewed: false */
+  'para.passport.section_title': 'Para Sport Achievements', /* reviewed: false */
+  'para.passport.class_codes_hidden': 'Class codes hidden on this link', /* reviewed: false */
+  'para.passport.privacy_note': 'Medical, functional and clinical details are never included in this section or in any export.', /* reviewed: false */
+  'para.passport.class_at_competition': 'Class at competition: {code}', /* reviewed: false */
+  'para.passport.guide_with': 'With guide: {name}', /* reviewed: false */
+  'para.passport.guide_supported': 'Guide-supported event', /* reviewed: false */
+  'para.passport.guide_private': 'Guide name private on this link', /* reviewed: false */
+  'para.passport.class_history_title': 'Classification history', /* reviewed: false */
+  'para.passport.class_history_note': 'Past competition results use the class effective at competition date. No reclassification rewrites old results.', /* reviewed: false */
+  'para.passport.current_class': 'Current class', /* reviewed: false */
+  'para.passport.historic_class': 'Historic', /* reviewed: false */
+  'para.passport.ratified': 'Ratified {date}', /* reviewed: false */
+  'para.passport.pending_ratification': 'Pending ratification', /* reviewed: false */
+  'para.passport.evidence_all': 'All (official + self-reported)', /* reviewed: false */
+  'para.passport.evidence_official': 'Official competitions only', /* reviewed: false */
+  'para.passport.show_class_codes': 'Show para classification codes', /* reviewed: false */
+  'para.passport.show_guide_name': 'Show guide / tandem partner name', /* reviewed: false */
+  'para.passport.show_class_history': 'Show classification timeline', /* reviewed: false */
+  'para.passport.section_divider': 'Para Sport Section (all off by default)', /* reviewed: false */
+  'para.passport.privacy_hint': '🔒 Medical, functional and clinical details are never included. Only class codes, results and guide attribution.', /* reviewed: false */
+  'para.passport.never_shared': 'Never shown: medical, functional or clinical details', /* reviewed: false */
+  'para.passport.consented_link_note': 'Athlete controls this link and can revoke access at any time.', /* reviewed: false */
   'fin.tab.tax': 'ತೆರಿಗೆ',
   'fin.tax.title': 'ತೆರಿಗೆ',
   'fin.tax.intro': 'ನಿಮ್ಮ ಸಂಸ್ಥೆ ಸ್ವೀಕರಿಸಿದ ಮತ್ತು ಪಾವತಿಸಿದ ಹಣದಲ್ಲಿ ಒಳಗೊಂಡಿರುವ ತೆರಿಗೆ, ಲೆಡ್ಜರ್‌ನಿಂದ. ಮರುಪಾವತಿಗಳು ತೆರಿಗೆಯ ತಮ್ಮ ಪಾಲನ್ನು ಹಿಂತಿರುಗಿಸುತ್ತವೆ.',
@@ -13454,6 +13476,28 @@ export default {
   'para.res.superseded': 'Superseded',
   'para.res.provenance_official': 'From an official competition',
   'para.res.provenance_self': 'Self-reported by athlete',
+  'para.passport.section_title': 'Para Sport Achievements',
+  'para.passport.class_codes_hidden': 'Class codes hidden on this link',
+  'para.passport.privacy_note': 'Medical, functional and clinical details are never included in this section or in any export.',
+  'para.passport.class_at_competition': 'Class at competition: {code}',
+  'para.passport.guide_with': 'With guide: {name}',
+  'para.passport.guide_supported': 'Guide-supported event',
+  'para.passport.guide_private': 'Guide name private on this link',
+  'para.passport.class_history_title': 'Classification history',
+  'para.passport.class_history_note': 'Past competition results use the class effective at competition date. No reclassification rewrites old results.',
+  'para.passport.current_class': 'Current class',
+  'para.passport.historic_class': 'Historic',
+  'para.passport.ratified': 'Ratified {date}',
+  'para.passport.pending_ratification': 'Pending ratification',
+  'para.passport.evidence_all': 'All (official + self-reported)',
+  'para.passport.evidence_official': 'Official competitions only',
+  'para.passport.show_class_codes': 'Show para classification codes',
+  'para.passport.show_guide_name': 'Show guide / tandem partner name',
+  'para.passport.show_class_history': 'Show classification timeline',
+  'para.passport.section_divider': 'Para Sport Section (all off by default)',
+  'para.passport.privacy_hint': '🔒 Medical, functional and clinical details are never included. Only class codes, results and guide attribution.',
+  'para.passport.never_shared': 'Never shown: medical, functional or clinical details',
+  'para.passport.consented_link_note': 'Athlete controls this link and can revoke access at any time.',
   'transport.remaining': 'Remaining',
   'transport.boardEmpty': 'No transport runs active right now.',
   'ph.step1_sub': 'Choose the plan type that fits your athlete\'s current phase and goals.',

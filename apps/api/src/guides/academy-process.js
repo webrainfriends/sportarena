@@ -279,6 +279,21 @@ id: 'wellbeing', title: 'Support student wellbeing and development',
     modules: ['plans.js'],
     sources: ['apps/app/src/screens/plans.js'],
   },
+  {
+    id: 'para_passport',
+    title: 'Para-athlete sporting CV',
+    why: 'Athletes competing in para sport can share a governed sporting CV — class codes, class-specific records and guide attribution — with scouts and federations using time-limited, revocable links. Medical and functional details are never included.',
+    steps: [
+      'Athletes open Sports Passport and tap the Para ★ tab to see their class-specific records, personal bests and classification history.',
+      'To share para achievements, the athlete taps + New link, enables Para Achievements in the share wizard, and chooses whether to show classification codes, guide name and class timeline — all default OFF.',
+      'The athlete sets an expiry (up to 90 days) and optionally restricts the link to a named recipient (e.g. an IPC talent scout).',
+      'Medical, functional and clinical details are never included in any shared link or export — only sport class codes, results and guide name when explicitly enabled.',
+      'Reclassifications never rewrite past results: each competition record permanently shows the class in force at that date.',
+      'Coaches and academy staff do not create or manage athlete passport links; the athlete (or their verified guardian for youth athletes) controls all sharing.',
+    ],
+    modules: ['passport.js'],
+    sources: ['apps/app/src/screens/passport.js'],
+  },
 ];
 
 /** Org/academy API modules with no step of their own, and why. Anything not here and not in a step fails the guard test. */
@@ -287,6 +302,7 @@ export const NOT_IN_GUIDE = {
   'para-performance.js': 'Governed para-sport performance insights and coach review are activated per athlete after classification is confirmed; they extend the athlete hub and coaching module, not the initial academy onboarding sequence.',
   'para-mentoring.js': 'Para peer mentoring is an athlete-facing feature (athletes discover and connect with peer mentors directly), not an org-onboarding step. It is not part of setting up an academy.',
   'platform-benchmarks.js': 'Platform Competitive Benchmarks is a platform-admin-only console (not an academy-onboarding step). It is documented in docs/platform-benchmarks.md.',
+  'para-passport-passport.js': 'Para-sport sections of the athlete passport are managed by the athlete in their own Sports Passport (Athlete → Sports Passport → Para ★ tab); they are not an academy-onboarding step.',
 };
 
 /** The directories/files the guard test watches for org/academy/venue/coach/tax capability modules. */
