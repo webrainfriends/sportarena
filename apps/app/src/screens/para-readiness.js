@@ -215,9 +215,11 @@ export function ParaReadinessDashboard({ eventId, role = 'organiser' }) {
     items: (r.items ?? []).filter((i) => i.para_category === cat),
   })).filter((g) => g.items.length > 0);
 
+  const venueId = r.venue_id;
   const tabs = [
     { key: 'checklist', label: t('pr.tab_checklist') },
     { key: 'exceptions', label: t('pr.tab_exceptions') },
+    ...(venueId ? [{ key: 'equipment', label: t('pr.tab_equipment') }] : []),
   ];
 
   return (
@@ -270,6 +272,7 @@ export function ParaReadinessDashboard({ eventId, role = 'organiser' }) {
       )}
 
       {tab === 'exceptions' && <ExceptionsPanel eventId={eventId} />}
+      {tab === 'equipment' && venueId && <AdaptiveEquipReadinessPanel venueId={venueId} eventId={eventId} />}
 
       <SignOffSheet item={signOff} eventId={eventId} onClose={() => setSignOff(null)} onDone={() => { setSignOff(null); reload(); }} />
       <ExceptionSheet item={exception} eventId={eventId} onClose={() => setException(null)} onDone={() => { setException(null); reload(); }} />
@@ -322,5 +325,37 @@ export function ParaAthleteAccess({ eventId }) {
         ))
       }
     </ScrollView>
+  );
+}
+
+// ---------------------------------------------------------------- SPECIALIST EQUIPMENT PANEL
+
+/** Adaptive equipment readiness panel — shown as a tab in the para-readiness dashboard when the event has a venue. */
+function AdaptiveEquipReadinessPanel({ venueId, eventId }) {
+  const data = useLoad(() => api.get(`/venues/${venueId}/adaptive-equipment/readiness`), [venueId]);
+  if (data.loading) return <Loading />;
+  if (data.error) return <ErrorBox error={data.error} />;
+  const assets = data.data?.assets ?? [];
+  const ready = assets.filter((a) => a.readiness === 'ready').length;
+  const total = assets.length;
+  if (!total) return <AEmpty emoji="🪑" title={t('pr.aeq.none')} sub={t('pr.aeq.none_sub')} />;
+  return (
+    <View style={{ gap: 10 }}>
+      <ACard>
+        <AT size={13} weight="700">{t('pr.aeq.summary', { ready, total })}</AT>
+      </ACard>
+      {assets.map((a) => {
+        const tone = a.readiness === 'ready' ? A.green : a.readiness === 'needs_service' ? A.sun : A.red;
+        return (
+          <ACard key={a.id} tone={tone} style={{ gap: 6 }}>
+            <View style={{ flexDirection: 'row', gap: 8, alignItems: 'center' }}>
+              <AT weight="700" style={{ flex: 1 }} numberOfLines={1}>{a.name}</AT>
+              <ATag label={a.readiness === 'ready' ? t('pr.aeq.ready') : a.service_overdue ? t('pr.aeq.service_overdue') : t('pr.aeq.on_loan')} tone={tone} />
+            </View>
+            {a.next_service_due ? <AT size={11} color={A.mute}>{t('pr.aeq.next_service', { date: a.next_service_due })}</AT> : null}
+          </ACard>
+        );
+      })}
+    </View>
   );
 }
