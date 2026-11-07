@@ -130,59 +130,6 @@ function Alerts({ cat, dash }) {
   );
 }
 
-/** The athlete's own connected devices, trends, data quality and alerts (own data only). */
-export function WearablesPanel() {
-  const conns = useLoad(() => api.get('/me/wearables'), []);
-  const provs = useLoad(() => api.get('/me/wearables/providers'), []);
-  const dash = useLoad(() => api.get('/me/wearables/dashboard'), []);
-  const q = useLoad(() => api.get('/me/wearables/quality'), []);
-  const [form, setForm] = useState(null); // 'new' | connection
-  const all = async () => { await Promise.all([conns.reload(), dash.reload(), q.reload()]); };
-  const cat = provs.data?.metrics ?? [];
-  const orgs = provs.data?.organisations ?? [];
-  const have = (dash.data?.tiles ?? []).map((x) => ({ metric: x.metric, label: x.label }));
-  const edit = form && form !== 'new' ? form : null;
-  const fields = edit
-    ? [{ key: 'metrics', label: t('wr.form.metrics'), type: 'multimenu', options: cat.map((m) => ({ value: m.key, label: `${m.label} (${m.unit})` })) },
-      { key: 'sync_every_minutes', label: t('wr.form.every'), type: 'choice', options: [{ value: 60, label: t('wr.every.hour') }, { value: 360, label: t('wr.every.6h') }, { value: 1440, label: t('wr.every.day') }] }]
-    : [
-      { key: 'organisation_id', label: t('wr.form.org'), type: 'custom', render: ({ v, set }) => <MenuField label={t('wr.form.org')} value={v.organisation_id} onChange={(x) => { set('organisation_id', x); set('provider_key', undefined); }} options={orgs.map((o) => ({ value: o.organisation_id, label: o.organisation_name }))} title={t('wr.form.org')} /> },
-      { key: 'provider_key', label: t('wr.form.provider'), type: 'custom', render: ({ v, set }) => <MenuField label={t('wr.form.provider')} value={v.provider_key} onChange={(x) => set('provider_key', x)} options={(orgs.find((o) => o.organisation_id === v.organisation_id)?.providers ?? []).map((p) => ({ value: p.key, label: p.enabled ? p.name : t('wr.form.not_enabled', { name: p.name }), sub: p.scopes?.[0]?.description }))} title={t('wr.form.provider')} /> },
-      { key: 'metrics', label: t('wr.form.metrics'), type: 'multimenu', options: cat.map((m) => ({ value: m.key, label: `${m.label} (${m.unit})` })) },
-      { key: 'access_token', label: t('wr.form.token'), type: 'secret' },
-      { key: 'accept', label: t('wr.form.accept'), type: 'switch', default: false },
-    ];
-  return (
-    <View style={{ gap: 12 }}>
-      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-        <View style={{ flex: 1 }}><T weight="800" size={16}>{t('wr.title')}</T><T size={12} color={c.mute}>{t('wr.sub')}</T></View>
-        <Btn small title={t('wr.add')} onPress={() => setForm('new')} accessibilityLabel={t('wr.add')} />
-      </View>
-      <Tiles dash={dash} />
-      {conns.error ? <ErrorBox error={conns.error} onRetry={conns.reload} /> : !conns.data ? <Loading /> : !conns.data.items.length ? <Empty emoji="⌚" title={t('wr.empty.title')} sub={t('wr.empty.sub')} /> :
-        conns.data.items.map((cn) => <Connection key={cn.id} cn={cn} cat={cat} onChanged={all} onEdit={setForm} />)}
-      <Trend cat={cat} have={have} />
-      <Quality q={q} cat={cat} />
-      <Alerts cat={cat} dash={dash} />
-      <T size={11} color={c.mute}>{t('wr.disclaimer')}</T>
-      <FormSheet visible={!!form} onClose={() => setForm(null)} title={edit ? edit.provider_name : t('wr.add')} submitLabel={t('common.save')} fields={fields}
-        initial={edit ? { metrics: edit.metrics_granted, sync_every_minutes: edit.sync_every_minutes } : { metrics: [] }}
-        onSubmit={async (v) => {
-          try {
-            if (edit) await api.patch(`/me/wearables/${edit.id}`, { version: edit.version, metrics: v.metrics, sync_every_minutes: v.sync_every_minutes });
-            else {
-              if (!v.accept) throw new Error(t('wr.must_accept'));
-              if (!v.organisation_id || !v.provider_key) throw new Error(t('wr.pick_provider'));
-              await api.post('/me/wearables', { organisation_id: v.organisation_id, provider_key: v.provider_key, metrics: v.metrics, access_token: v.access_token, accept_scopes: ['wearables.metrics.read'] });
-            }
-            await all();
-            return t('wr.saved');
-          } catch (e) { if (e?.details?.code === 'stale_version') await conns.reload(); throw new Error(say(e)); }
-        }} />
-    </View>
-  );
-}
-
 // ---------- Elite extensions: ACWR, Readiness, sRPE ----------
 
 const ZONE_COLOR = () => ({ optimal: c.lime, underload: c.cyan, caution: c.sun, excessive: c.red, no_data: c.mute });
