@@ -346,6 +346,23 @@ id: 'wellbeing', title: 'Support student wellbeing and development',
     sources: ['apps/app/src/screens/academy-boarding.js'],
   },
   {
+    id: 'branded_documents',
+    title: 'Issue branded documents',
+    why: 'Generate professional branded PDFs — invoices, training plans, enrolment letters, event timetables and booking confirmations — directly from canonical records without leaving the platform.',
+    steps: [
+      'Set up your brand kit: upload your logo, choose primary and secondary colours, and select a font.',
+      'Choose a document family (invoice, training plan, agreement, timetable, etc.) and start from a curated template.',
+      'Customise blocks in the template designer: header, title, parties, line items, tables and signature blocks.',
+      'Publish the template version — it becomes immutable and can be used to generate documents.',
+      'Generate from a source record: open an invoice, booking, coaching plan or event and tap "Generate Document".',
+      'Download the PDF or share it via a scoped, expiring link that can be revoked at any time.',
+      'All issued documents are stored in the Documents library with full version history and audit trail.',
+    ],
+    target: { screen: 'branded-documents' },
+    modules: ['brand-kits.js', 'document-templates.js', 'document-renderer.js', 'document-library.js'],
+    sources: ['apps/app/src/screens/branded-documents.js', 'apps/app/src/screens/document-library.js', 'apps/app/src/screens/document-viewer.js'],
+  },
+  {
     id: 'coach_development', title: 'Develop and certify your coaching staff',
     why: 'Elite academies like Nadal Academy and Real Madrid CF demand verifiable CPD, structured mentoring and rigorous quality assurance. Build a culture of continuous improvement from day one so every coach is growing, every observation drives action, and compliance is always audit-ready.',
     steps: [
