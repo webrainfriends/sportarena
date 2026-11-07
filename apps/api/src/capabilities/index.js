@@ -362,3 +362,5 @@ import './para-cases.js';
 import './para-outcomes.js';
 import './event-control-tower.js';
 import './process-guides.js';
+
+import './venue-revenue-intelligence.js';
