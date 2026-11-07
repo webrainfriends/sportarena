@@ -5,7 +5,7 @@
 import { createHash } from 'node:crypto';
 import { z } from 'zod';
 import { cap, id, page } from '../registry.js';
-import { one, many } from '../db.js';
+import { one, many, pool } from '../db.js';
 import { badRequest, conflict, notFound } from '../errors.js';
 import { audit } from '../helpers.js';
 import { requireApproved } from '../access.js';
@@ -21,6 +21,8 @@ import { officialEvidence } from '../academy-outcomes.js';
 import { loadLogo, mustAccess } from './branded-documents.js';
 import { progressFor } from './academy-pathways.js';
 import { executiveHome } from './academy-executive.js';
+import { staffingExceptions } from '../academy-ops.js';
+import { academicSection } from '../academics.js';
 
 const TAG = 'Academy';
 const day = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Use a calendar date (YYYY-MM-DD)');
@@ -29,10 +31,12 @@ const daysAgo = (n) => new Date(Date.now() - n * 864e5).toISOString().slice(0, 1
 const ds = (d) => (d ? new Date(d).toISOString().slice(0, 10) : null);
 
 /** The three packs. `type` prefixes generated_documents.source_type, which carries the academy so the download can re-check access live. */
-const KINDS = {
+export const KINDS = {
   progress: { family: 'academy_progress_report', type: 'academy_progress', title: 'Academy progress report' },
   management: { family: 'academy_management_review', type: 'academy_management', title: 'Academy management review' },
   finance: { family: 'academy_finance_pack', type: 'academy_finance', title: 'Academy finance pack' },
+  term: { family: 'academy_term_report', type: 'academy_term', title: 'Academy term report' },
+  campus: { family: 'academy_campus_quality', type: 'academy_campus', title: 'Academy campus quality pack' },
 };
 const NA = 'Not available';
 const money = (m, cur) => (m == null ? NA : `${cur} ${toMajor(Number(m), cur)}`);
@@ -46,7 +50,7 @@ async function inCoachScope(orgId, athleteId, coachId) {
   return !!(await one("SELECT 1 FROM org_enrolments e JOIN org_cohorts k ON k.id=e.cohort_id WHERE k.organisation_id=$1 AND e.user_id=$2 AND k.coach_id=$3 AND e.status IN ('enrolled','paused','completed','graduated') LIMIT 1", [orgId, athleteId, coachId]));
 }
 /** Owner/admin of the academy, the coach of that athlete, the athlete themself, or the verified guardian of a young athlete. 404 for anyone else. */
-async function progressAccess(user, orgId, athleteId) {
+export async function progressAccess(user, orgId, athleteId) {
   const enrolled = await one('SELECT 1 FROM org_enrolments e JOIN org_cohorts k ON k.id=e.cohort_id WHERE k.organisation_id=$1 AND e.user_id=$2 AND e.programme_id IS NOT NULL LIMIT 1', [orgId, athleteId]);
   if (!enrolled) throw notFound('Athlete');
   const staff = await orgFor(user, orgId, [...STAFF, 'coach']).then((r) => r, () => null);
@@ -59,10 +63,13 @@ async function progressAccess(user, orgId, athleteId) {
 }
 const TYPES = Object.fromEntries(Object.values(KINDS).map((k) => [k.type, k]));
 /** Live check for the shared download route (a removed coach, revoked guardian or lapsed role loses access at once). */
-export async function canReadAcademyPack(user, sourceType, sourceId) {
+export async function canReadAcademyPack(user, sourceType, sourceId, documentId = null) {
   const [type, orgId] = sourceType.split(':');
   try {
-    if (type === KINDS.progress.type) await progressAccess(user, orgId, sourceId);
+    // a revoked pack stops opening at once for everyone except the academy's owner/admin, who keep the history
+    if (documentId && await one("SELECT 1 FROM academy_report_packs WHERE document_id=$1 AND status='revoked' LIMIT 1", [documentId])) await orgFor(user, orgId, STAFF);
+    if (type === KINDS.progress.type || type === KINDS.term.type) await progressAccess(user, orgId, sourceId);
+    else if (type === KINDS.campus.type) await orgFor(user, orgId, STAFF);
     else if (type === KINDS.management.type) await orgFor(user, orgId, STAFF);
     else if (type === KINDS.finance.type) await orgFor(user, orgId, STAFF_MONEY);
     else throw notFound('Document');
@@ -72,7 +79,7 @@ export const isAcademyPackType = (t) => Object.hasOwn(TYPES, String(t).split(':'
 
 // ------------------------------------------------------------------ snapshots (what the PDF says, frozen at issue)
 const frame = (kind, org, extra) => ({ title: KINDS[kind].title, organisation: org.name, legal_name: org.legal_name ?? null, address: org.billing_address ?? null, issued_at: new Date().toISOString(), ...extra });
-const orgOf = (orgId) => one('SELECT o.name, ap.legal_name, ap.billing_address FROM organisations o LEFT JOIN academy_profiles ap ON ap.organisation_id=o.id WHERE o.id=$1', [orgId]);
+export const orgOf = (orgId) => one('SELECT o.name, ap.legal_name, ap.billing_address FROM organisations o LEFT JOIN academy_profiles ap ON ap.organisation_id=o.id WHERE o.id=$1', [orgId]);
 const LABEL = {
   decision: { place: 'Placed on the pathway', remain: 'Stays at this level', promote: 'Promoted', move_programme: 'Moved programme', invite_squad: 'Invited to a squad', reassess: 'Reassessment recommended', graduate: 'Graduated', pause: 'Progression paused' },
   outcome: { pending: 'Pending', criteria_met: 'Criteria met', criteria_partly_met: 'Criteria partly met', criteria_not_met: 'Criteria not yet met' },
@@ -166,11 +173,65 @@ export async function financeSnapshot(orgId, from, to) {
   return frame('finance', org, { addressee: `${org.name} finance`, reference: `FIN-${orgId.replace(/-/g, '').slice(0, 8).toUpperCase()}`, sections });
 }
 
+/** Term report: the athlete-safe progress view for a term, plus attendance in that term and the school's progress band where the athlete or guardian shared it. */
+export async function termSnapshot(orgId, athleteId, from, to, viewer) {
+  const base = await progressSnapshot(orgId, athleteId);
+  const att = await one(
+    `SELECT count(*) FILTER (WHERE a.status='present')::int AS present, count(*) FILTER (WHERE a.status='absent')::int AS absent, count(*) FILTER (WHERE a.status='excused')::int AS excused
+       FROM org_attendance a JOIN org_cohorts k ON k.id=a.cohort_id WHERE k.organisation_id=$1 AND a.user_id=$2 AND a.session_date BETWEEN $3 AND $4`, [orgId, athleteId, from, to]);
+  const counted = att.present + att.absent;
+  const ac = await academicSection(pool, viewer, orgId, athleteId).catch(() => ({ access: 'none' }));
+  const academics = ac.access === 'ok' && ac.data?.band
+    ? { title: 'Studies', body: 'Reported by the school and shared with the academy by the athlete or guardian. Grades are never printed.', items: [{ title: ac.data.band.term ?? 'Latest term', value: String(ac.data.band.band).replace(/_/g, ' '), meta: `Source: ${ac.data.band.source_name ?? ac.data.band.source_kind}${ac.data.band.verified ? ' (verified)' : ''}` }] }
+    : { title: 'Studies', body: ac.access === 'no_consent' ? 'Not shared with the academy.' : NA };
+  const sections = base.sections.filter((x) => x.title !== 'Attendance' && x.title !== 'About this report');
+  const head = sections.shift();
+  sections.unshift(head, { title: 'Term', items: [{ title: 'From', value: from }, { title: 'To', value: to }] });
+  const at = sections.findIndex((x) => x.title.startsWith('Official'));
+  sections.splice(at < 0 ? sections.length : at, 0,
+    { title: 'Attendance this term', items: [{ title: 'Attendance', value: counted ? pct(Math.round((att.present / counted) * 1000) / 10) : NA, meta: counted ? `${att.present} present · ${att.absent} absent${att.excused ? ` · ${att.excused} excused (not counted)` : ''}` : 'No sessions recorded in this term' }] }, academics);
+  sections.push({ title: 'About this report', body: 'Coaching assessments are coach-observed, attendance is recorded by the academy, studies are reported by the school and official results come from approved competitions. They are shown side by side and never combined into one score. Coaches\' private notes, health and welfare information and fees are never included.' });
+  return { ...base, title: KINDS.term.title, reference: `TRM-${athleteId.replace(/-/g, '').slice(0, 8).toUpperCase()}`, sections };
+}
+
+/** Campus quality pack: one branch's people, delivery, staffing and finance for a period. Small groups are never printed as a number. */
+export async function campusSnapshot(orgId, branchId, from, to) {
+  const org = await orgOf(orgId);
+  const br = await one('SELECT id, name, city, code, athlete_target FROM academy_branches WHERE id=$1 AND organisation_id=$2', [branchId, orgId]);
+  if (!br) throw notFound('Branch');
+  const progs = (await many("SELECT id, title, capacity, status FROM academy_programmes WHERE organisation_id=$1 AND branch_id=$2 ORDER BY title, id", [orgId, branchId]));
+  const pids = progs.map((p) => p.id);
+  const sections = [{ title: 'Campus', items: [{ title: 'Campus', value: br.name }, { title: 'City', value: br.city ?? NA }, { title: 'From', value: from }, { title: 'To', value: to }, { title: 'Programmes', value: String(progs.length), meta: progs.length ? progs.map((p) => p.title).join(' · ') : 'No programme is assigned to this campus yet' }] }];
+  const gaps = [];
+  if (pids.length) {
+    const enrolled = (await one("SELECT count(DISTINCT e.user_id)::int AS n FROM org_enrolments e WHERE e.programme_id = ANY($1) AND e.status IN ('enrolled','paused')", [pids])).n;
+    const cap_ = progs.filter((p) => p.status === 'published' && p.capacity != null).reduce((a, p) => a + p.capacity, 0);
+    sections.push({ title: 'People and capacity', items: [{ title: 'Active athletes', value: safeCount(enrolled) }, { title: 'Planning target', value: num(br.athlete_target), meta: 'Set on the campus; not a forecast' }, { title: 'Published capacity', value: cap_ ? String(cap_) : NA }] });
+    const sess = await one("SELECT count(*) FILTER (WHERE status IN ('published','completed'))::int AS scheduled, count(*) FILTER (WHERE status='completed')::int AS completed, count(*) FILTER (WHERE status='cancelled')::int AS cancelled FROM academy_sessions WHERE organisation_id=$1 AND programme_id = ANY($2) AND starts_at >= $3::date AND starts_at < $4::date + 1", [orgId, pids, from, to]);
+    const att = await one("SELECT count(*) FILTER (WHERE a.status='present')::int AS present, count(*) FILTER (WHERE a.status='absent')::int AS absent FROM org_attendance a JOIN org_cohorts k ON k.id=a.cohort_id WHERE k.organisation_id=$1 AND k.programme_id = ANY($2) AND a.session_date BETWEEN $3 AND $4", [orgId, pids, from, to]);
+    const st = await staffingExceptions(pool, orgId, from, to);
+    const mine = st.exceptions.filter((x) => pids.includes(x.programme_id));
+    sections.push({ title: 'Delivery', items: [
+      { title: 'Sessions scheduled / completed', value: `${sess.scheduled} / ${sess.completed}` }, { title: 'Sessions cancelled', value: String(sess.cancelled) },
+      { title: 'Cancellation rate', value: pct(sess.scheduled + sess.cancelled ? Math.round((sess.cancelled / (sess.scheduled + sess.cancelled)) * 1000) / 10 : null) },
+      { title: 'Attendance', value: pct(att.present + att.absent ? Math.round((att.present / (att.present + att.absent)) * 1000) / 10 : null) },
+      { title: 'Staffing exceptions', value: String(mine.length), meta: st.capped ? 'Only the first sessions of the period were checked' : 'Sessions that break a configured ratio, minimum-coach, lead or lead-credential rule' },
+    ] });
+  } else gaps.push('No programme is assigned to this campus');
+  const p = await pnl(orgId, { from, to, branchId });
+  for (const c of p.currencies) sections.push({ title: `Finance (${c.currency})`, items: [
+    { title: 'Management revenue', value: money(c.totals.management_revenue_minor, c.currency) }, { title: 'Cash collected', value: money(c.totals.cash_collected_minor, c.currency) }, { title: 'Outstanding', value: money(c.totals.outstanding_minor, c.currency) },
+    { title: 'Staff cost', value: money(c.totals.staff_cost_minor, c.currency) }, { title: 'Venue cost', value: money(c.totals.venue_cost_minor, c.currency) },
+    { title: 'Operating result', value: money(c.totals.operating_result_minor, c.currency), meta: c.totals.cost_picture_complete ? undefined : 'Cost picture is incomplete, so the margin is not shown' }, { title: 'Margin', value: pct(c.totals.margin_pct) }] });
+  sections.push({ title: 'About this pack', body: `${DEFINITIONS.basis} Counts under three are never printed as a number. A figure that cannot be known is shown as "${NA}", never as zero. Currencies are never added together. Legal, clinical and coach-private information is not part of this pack.` });
+  return { ...frame('campus', org, { addressee: `${br.name} campus leadership`, reference: `CMP-${branchId.replace(/-/g, '').slice(0, 8).toUpperCase()}`, sections }), _gaps: gaps, _cost_sources: p.cost_sources };
+}
+
 // ------------------------------------------------------------------ issue + list
 const COLS = 'id, family, source_type, source_id, template_version_id, size_bytes, sha256, pages, generated_by, created_at';
 const view = (r) => ({ ...r, url: `/api/v1/branded-documents/${r.id}/file` });
 
-async function issue(user, kind, orgId, sourceId, snapshot, templateId) {
+export async function issue(user, kind, orgId, sourceId, snapshot, templateId, { fresh = false } = {}) {
   const K = KINDS[kind];
   let ver = null;
   if (templateId) {
@@ -185,7 +246,7 @@ async function issue(user, kind, orgId, sourceId, snapshot, templateId) {
   // identical content for the same person and template is the same document: a retry never makes a second copy, changed data makes a new one
   const { issued_at: _t, ...stable } = snapshot;
   const snapshotSha = createHash('sha256').update(JSON.stringify(stable)).update(ver?.id ?? 'starter').digest('hex');
-  const dup = await one(`SELECT ${COLS} FROM generated_documents WHERE source_type=$1 AND source_id=$2 AND generated_by=$3 AND snapshot_sha=$4 ORDER BY created_at DESC LIMIT 1`, [sourceType, sourceId, user.id, snapshotSha]);
+  const dup = fresh ? null : await one(`SELECT ${COLS} FROM generated_documents d WHERE source_type=$1 AND source_id=$2 AND generated_by=$3 AND snapshot_sha=$4 AND NOT EXISTS (SELECT 1 FROM academy_report_packs p WHERE p.document_id=d.id AND p.status='revoked') ORDER BY created_at DESC LIMIT 1`, [sourceType, sourceId, user.id, snapshotSha]);
   if (dup) return { ...view(dup), duplicate: true };
   const layout = ver ? ver.layout : starterFor(K.family, 'classic');
   const { buffer, pages } = await renderSectionDocument({ layout, kit: ver?.kit_snapshot ?? null, logo: await loadLogo(ver?.logo_asset_id), snapshot });
@@ -241,12 +302,12 @@ cap({
 cap({
   name: 'list_academy_pack_documents', method: 'GET', path: '/organisations/:id/academy/documents', tag: TAG,
   summary: 'PDFs already issued for this academy, newest first: kind progress (give athlete_id; staff, coach, athlete or guardian), management (owner/admin) or finance (owner/admin/finance). Each has a secure, audited download url.',
-  input: z.object({ id, kind: z.enum(['progress', 'management', 'finance']), athlete_id: id.optional(), ...page }),
+  input: z.object({ id, kind: z.enum(['progress', 'term', 'management', 'finance', 'campus']), athlete_id: id.optional(), ...page }),
   async handler({ user }, i) {
     const K = KINDS[i.kind];
     let sourceId = i.id;
-    if (i.kind === 'progress') { if (!i.athlete_id) throw badRequest('Give the athlete'); await progressAccess(user, i.id, i.athlete_id); sourceId = i.athlete_id; }
-    else await orgFor(user, i.id, i.kind === 'management' ? STAFF : STAFF_MONEY);
+    if (i.kind === 'progress' || i.kind === 'term') { if (!i.athlete_id) throw badRequest('Give the athlete'); await progressAccess(user, i.id, i.athlete_id); sourceId = i.athlete_id; }
+    else await orgFor(user, i.id, i.kind === 'finance' ? STAFF_MONEY : STAFF);
     return (await many(`SELECT ${COLS} FROM generated_documents WHERE source_type=$1 AND source_id=$2 ORDER BY created_at DESC, id LIMIT $3 OFFSET $4`, [`${K.type}:${i.id}`, sourceId, i.limit, i.offset])).map(view);
   },
 });

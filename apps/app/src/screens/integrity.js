@@ -2,13 +2,15 @@
 // integrity officers), the case screen, and "My integrity" for the person concerned. The server decides who may see and do what; this shows what it returns.
 // Nothing here interprets a result, scores a person or presents an allegation as a finding.
 import React, { useState } from 'react';
-import { View } from 'react-native';
+import { Switch, View } from 'react-native';
 import { api } from '../api';
 import { useLoad } from '../hooks';
 import { useNav } from '../nav';
 import { useSession } from '../session';
-import { Btn, Card, Empty, H1, Loading, Screen, Section, Seg, T, Tag, Chip } from '../ui';
+import { Btn, Card, Empty, Field, H1, Loading, Screen, Section, Seg, Sheet, T, Tag, Chip } from '../ui';
 import { FormSheet } from '../FormSheet';
+import { DateField } from '../pickers';
+import { EntityPicker } from '../entity-picker';
 import { BodyPicker, Banner, Metric, fmtDate, fmtRange } from '../federation-ui';
 import { Cols, ListCard } from '../federation-bits';
 import { LoadError, explain } from '../access';
@@ -56,11 +58,99 @@ export function IntegrityTab({ id }) {
   );
 }
 
+function IntegrityCaseWizard({ visible, id, catOptions, sports, onClose, onDone, push }) {
+  const { toast } = useSession();
+  const STEPS = ['Incident Classification', 'Details & Evidence', 'Jurisdiction & Submission'];
+  const SEVERITIES = ['Low — minor breach', 'Medium — significant impact', 'High — systemic or criminal'];
+  const REFERRED_TO = ['Club / team', 'League / federation', 'National body', 'GotMyGame Integrity Office', 'Law enforcement / police'];
+  const OUTCOMES = ['Investigation', 'Mediation', 'Suspension', 'Education programme', 'Policy change', 'No preference'];
+  const init = () => ({ category_id: '', subject: [], sport_id: '', severity: '', incident_date: null, location: '', summary: '', parties: '', witnesses: '', evidence: '', source_label: '', anonymous: false, referred_to: '', desired_outcomes: [], consent: false });
+  const [step, setStep] = useState(0);
+  const [v, setV] = useState(init);
+  const [busy, setBusy] = useState(false);
+  const set = (k, val) => setV((p) => ({ ...p, [k]: val }));
+  const toggleOutcome = (x) => set('desired_outcomes', v.desired_outcomes.includes(x) ? v.desired_outcomes.filter((o) => o !== x) : [...v.desired_outcomes, x]);
+  const can = [!!(v.category_id && v.subject.length && v.severity), !!(v.summary.trim()), !!(v.referred_to && v.consent)][step];
+  const reset = () => { setStep(0); setV(init()); };
+  const submit = async () => {
+    setBusy(true);
+    try {
+      const k = await api.post(`/integrity/bodies/${id}/cases`, { category_id: v.category_id, subject_id: v.subject[0]?.id, sport_id: v.sport_id || undefined, summary: v.summary.trim(), source_label: v.source_label || undefined, severity: v.severity, incident_date: v.incident_date ?? undefined, location: v.location || undefined, parties_involved: v.parties || undefined, witnesses: v.witnesses || undefined, evidence_description: v.evidence || undefined, anonymous: v.anonymous, referred_to: v.referred_to, desired_outcomes: v.desired_outcomes.length ? v.desired_outcomes : undefined });
+      onDone(); push('IntegrityCase', { id: k.id }); toast('Case opened'); reset(); onClose();
+    } catch (e) { toast(e.message ?? String(e)); setBusy(false); }
+  };
+  const footer = (
+    <View style={{ flexDirection: 'row', gap: 10 }}>
+      {step > 0 ? <Btn title="Back" color={c.paper} ink={c.ink} onPress={() => setStep(step - 1)} style={{ flex: 1 }} /> : null}
+      {step < 2 ? <Btn title="Next →" disabled={!can} onPress={() => setStep(step + 1)} style={{ flex: 1 }} /> : <Btn title="Open case" loading={busy} disabled={!can || busy} onPress={submit} style={{ flex: 1 }} />}
+    </View>
+  );
+  return (
+    <Sheet visible={visible} onClose={() => { reset(); onClose(); }} title="Open an integrity case" footer={footer}>
+      <View style={{ flexDirection: 'row', gap: 4, marginBottom: 8 }}>
+        {STEPS.map((s, i) => <View key={s} style={{ flex: 1, height: 4, borderRadius: 2, backgroundColor: i < step ? c.violet : i === step ? c.pink : c.p1 }} />)}
+      </View>
+      <T weight="800" size={15} style={{ marginBottom: 8 }}>{STEPS[step]}</T>
+      {step === 0 && (
+        <View style={{ gap: 12 }}>
+          <T weight="700" size={13}>Case category (required)</T>
+          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>{catOptions.map((o) => <Chip key={o.value} label={o.label} active={v.category_id === o.value} onPress={() => set('category_id', o.value)} />)}</View>
+          <EntityPicker label="Person concerned" options={[]} value={v.subject} onChange={(x) => set('subject', x)} noun="person" entityKind="person" />
+          {sports.length ? (
+            <>
+              <T weight="700" size={13}>Sport (optional)</T>
+              <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>{sports.map((o) => <Chip key={o.value} label={o.label} active={v.sport_id === o.value} onPress={() => set('sport_id', v.sport_id === o.value ? '' : o.value)} />)}</View>
+            </>
+          ) : null}
+          <T weight="700" size={13}>Severity</T>
+          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>{SEVERITIES.map((x) => <Chip key={x} label={x} active={v.severity === x} onPress={() => set('severity', x)} />)}</View>
+          <DateField label="Incident date" value={v.incident_date} onChange={(x) => set('incident_date', x)} optional />
+          <Field label="Location / venue" value={v.location} onChangeText={(x) => set('location', x)} optional />
+        </View>
+      )}
+      {step === 1 && (
+        <View style={{ gap: 12 }}>
+          <Card color={c.violetSoft}><T size={13}>Strictly need-to-know. This summary is visible only to integrity officers and the panel. Opening a case is not a finding.</T></Card>
+          <Field label="Summary" value={v.summary} onChangeText={(x) => set('summary', x)} multiline hint="Describe what happened, who was involved, and the impact. This is treated as confidential." />
+          <Field label="Source of the referral" value={v.source_label} onChangeText={(x) => set('source_label', x)} optional hint="For example the authority or report it came from" />
+          <Field label="Parties involved" value={v.parties} onChangeText={(x) => set('parties', x)} optional hint="Names, roles, organisations — only what you know. Partial info is fine." />
+          <Field label="Witnesses" value={v.witnesses} onChangeText={(x) => set('witnesses', x)} optional />
+          <Field label="Evidence description" value={v.evidence} onChangeText={(x) => set('evidence', x)} optional hint="Documents, video, messages — describe what you have. Upload separately." />
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+            <View style={{ flex: 1 }}><T weight="700">Submit anonymously</T><T size={12} color={c.mute}>Your identity will not be shared with any party.</T></View>
+            <Switch value={v.anonymous} onValueChange={(x) => set('anonymous', x)} trackColor={{ true: c.pink }} />
+          </View>
+        </View>
+      )}
+      {step === 2 && (
+        <View style={{ gap: 12 }}>
+          <T weight="700" size={13}>Referred to (required)</T>
+          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>{REFERRED_TO.map((x) => <Chip key={x} label={x} active={v.referred_to === x} onPress={() => set('referred_to', x)} />)}</View>
+          <T weight="700" size={13}>Desired outcome (optional, select all that apply)</T>
+          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>{OUTCOMES.map((x) => <Chip key={x} label={x} active={v.desired_outcomes.includes(x)} onPress={() => toggleOutcome(x)} />)}</View>
+          <Card color={c.cyanSoft}>
+            <T size={13}>All cases are treated with strict confidentiality. You will receive a case reference number on submission.</T>
+          </Card>
+          <Card color={c.p0 ? c.paper : c.paper} style={{ padding: 12, gap: 6 }}>
+            <T weight="800" size={14}>Case Summary</T>
+            <T size={13}>{catOptions.find((o) => o.value === v.category_id)?.label ?? '—'}</T>
+            <T size={13} color={c.mute}>{v.severity}</T>
+            {v.anonymous ? <T size={13} color={c.mute}>Anonymous submission</T> : null}
+          </Card>
+          <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 12 }}>
+            <View style={{ flex: 1 }}><T weight="700">I confirm this information is accurate to the best of my knowledge</T></View>
+            <Switch value={v.consent} onValueChange={(x) => set('consent', x)} trackColor={{ true: c.pink }} />
+          </View>
+        </View>
+      )}
+    </Sheet>
+  );
+}
+
 function CasesView({ id, cats, sports, push }) {
   const [status, setStatus] = useState(null);
   const [open, setOpen] = useState(false);
   const list = useLoad(() => api.get(`/integrity/bodies/${id}/cases`, { status: status ?? undefined, limit: 50 }), [id, status]);
-  const act = useAct(list.reload);
   const catOptions = cats.items.map((k) => ({ value: k.id, label: k.label }));
   return (
     <View style={{ gap: 10 }}>
@@ -75,16 +165,7 @@ function CasesView({ id, cats, sports, push }) {
           sub2={[k.response_overdue ? 'Response overdue' : k.response_due_on && k.status === 'response_due' ? `Response due ${fmtDate(k.response_due_on)}` : null, k.decision_overdue ? 'Decision overdue' : k.decision_due_on ? `Decision by ${fmtDate(k.decision_due_on)}` : null].filter(Boolean).join(' · ')}
           status={k.status} statusLabel={k.status_label} tone={k.response_overdue || k.decision_overdue ? c.orangeSoft : undefined} onPress={() => push('IntegrityCase', { id: k.id })} />
       )) : <Empty emoji="⚖️" title="No cases" sub="Referrals and administrative references you open appear here." />}
-      <FormSheet visible={open} onClose={() => setOpen(false)} title="Open an integrity case" submitLabel="Open case" color={c.violet}
-        notice="The person is told only that there is a matter to open. The notice carries no details."
-        fields={[
-          { key: 'category_id', label: 'Category', type: 'chips', options: catOptions },
-          { key: 'subject_id', label: 'Person concerned', type: 'entity', entityKind: 'person', noun: 'person' },
-          ...(sports.length ? [{ key: 'sport_id', label: 'Sport', type: 'chips', options: sports, optional: true }] : []),
-          { key: 'summary', label: 'Summary (visible to officers and the panel only)', type: 'multiline' },
-          { key: 'source_label', label: 'Source of the referral', optional: true, hint: 'For example the authority or report it came from' },
-        ]}
-        onSubmit={async (v) => { const k = await api.post(`/integrity/bodies/${id}/cases`, v); list.reload(); push('IntegrityCase', { id: k.id }); return 'Case opened'; }} />
+      <IntegrityCaseWizard visible={open} id={id} catOptions={catOptions} sports={sports} onClose={() => setOpen(false)} onDone={list.reload} push={push} />
     </View>
   );
 }

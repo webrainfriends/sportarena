@@ -13,6 +13,8 @@ const req = createRequire(import.meta.url);
 const { chromium } = (() => { for (const n of [process.env.PLAYWRIGHT_PATH, 'playwright-core', 'playwright']) { if (!n) continue; try { return req(n); } catch {} } throw new Error('playwright is not installed'); })();
 import pg from 'pg';
 import { seedPickup } from './lib/pickup-fixture.mjs';
+import { seedKit } from './lib/kit-fixture.mjs';
+import { seedWellbeing } from './lib/wellbeing-fixture.mjs';
 import { ACADEMY_STEPS, SHOT_SIZES, shotFile, sourcesHash, MANIFEST_FILE } from '../../apps/api/src/guides/academy-process.js';
 
 const API_DIR = new URL('../../apps/api/', import.meta.url).pathname;
@@ -64,6 +66,9 @@ try {
   const tt = await call('POST', `/cohorts/${u12.id}/academy/timetable`, { token: owner.token, body: { idempotency_key: `g-${stamp}`, starts_on: monday, ends_on: end, weekdays: [1, 3], start_time: '17:00', duration_min: 60, delivery_type: 'training', lead_id: coach.id } });
   if (tt?.created) await call('POST', `/organisations/${org.id}/academy/sessions/publish`, { token: owner.token, body: { session_ids: tt.created.map((x) => x.id), acknowledge_warnings: true } });
 
+  // a real management-pack draft, built from the academy's own records through the public API, so the Reports step is photographed with a live review queue
+  await call('POST', `/organisations/${org.id}/academy/report-packs`, { token: owner.token, body: { kind: 'management' } });
+
   // a real scouting campaign (a draft with its brief) so the guide step photographs live figures, not an empty screen
   const sports = await call('GET', '/sports', { token: owner.token });
   const football = (sports ?? []).find((x) => x.slug === 'football');
@@ -81,11 +86,34 @@ try {
     const exam = new Date(Date.now() + 5 * 864e5).toISOString().slice(0, 10);
     await call('POST', `/academics/links/${alink.id}/items`, { token: owner.token, body: { items: [{ kind: 'exam', starts_at: `${exam}T04:00:00Z`, ends_at: `${exam}T07:00:00Z`, timezone: 'Asia/Kolkata', high_stakes: true }] } });
   }
-  // young athletes, guardians, one session in the past and its handovers, so the Safety & pickup step photographs real figures
+  // a season plan with a squad linked to a real fixture, so the competition step photographs real figures (everything through the public API)
+  const rivalOwner = await reg('guide_rival', 'Rival Coach', ['coach']);
+  const home = await call('POST', '/teams', { token: owner.token, body: { name: 'U12 Boys', sport: 'football', organisation_id: org.id } });
+  const away = await call('POST', '/teams', { token: rivalOwner.token, body: { name: 'City Juniors U12', sport: 'football' } });
+  const cup = await call('POST', '/events', { token: owner.token, body: { name: 'Regional Youth Cup', sport: 'football', starts_on: new Date(Date.now() + 20 * 864e5).toISOString().slice(0, 10), ends_on: new Date(Date.now() + 21 * 864e5).toISOString().slice(0, 10), entry_fee_cents: 0 } });
+  if (home && away && cup) {
+    for (const [tk, tm] of [[owner, home], [rivalOwner, away]]) { const en = await call('POST', `/events/${cup.id}/entries`, { token: tk.token, body: { team_id: tm.id } }); if (en) await call('PATCH', `/entries/${en.id}`, { token: owner.token, body: { status: 'accepted' } }); }
+    const fx = await call('POST', `/events/${cup.id}/fixtures`, { token: owner.token, body: { home_team_id: home.id, away_team_id: away.id, scheduled_at: new Date(Date.now() + 20 * 864e5 + 10 * 36e5).toISOString() } });
+    const plan = await call('POST', `/organisations/${org.id}/season-plans`, { token: owner.token, body: { name: 'Season 2026-27', starts_on: new Date().toISOString().slice(0, 10), ends_on: new Date(Date.now() + 200 * 864e5).toISOString().slice(0, 10) } });
+    if (plan && fx) await call('POST', `/season-plans/${plan.id}/entries`, { token: owner.token, body: { team_id: home.id, fixture_id: fx.id, cohort_id: u12.id, age_group: 'U12' } });
+  }
+// young athletes, guardians, one session in the past and its handovers, so the Safety & pickup step photographs real figures
   const db = new pg.Pool({ connectionString: DB });
-  await seedPickup({ call, reg, org, owner, coach, cohort: u12, db, apiDir: API_DIR, env: E, log });
+  const fx = await seedPickup({ call, reg, org, owner, coach, cohort: u12, db, apiDir: API_DIR, env: E, log });
+  // kit stock, entitlements, fittings and a few issues (all through the API) so the Kit step photographs real figures
+  const enrolled = await call('GET', `/cohorts/${u12.id}/enrolments`, { token: owner.token });
+  const students = [student, ...fx.kids].map((user) => ({ user, enrolment_id: enrolled.find((e) => e.handle === user.handle)?.enrolment_id }));
+  await seedKit({ call, org, owner, venue, cohort: u12, students, db, log });
   // the academy opts in to campuses (one default campus, no record changed) so the guide step photographs real figures
   await call('POST', `/organisations/${org.id}/campuses/adopt`, { token: owner.token, body: { name: 'Pune Campus', country: 'IN' } });
+
+  // one framework with a checklist, an audit and a finding, so the Accreditation step photographs real figures (all through the API)
+  const inDays = (n) => new Date(Date.now() + n * 864e5).toISOString().slice(0, 10);
+  const fw = await call('POST', `/organisations/${org.id}/academy/accreditation-frameworks`, { token: owner.token, body: { name: 'Coaching Centre Accreditation', body_name: 'National Tennis Federation', kind: 'coaching_standard', level: 'Level 3', next_due_on: inDays(40), requirements: [{ title: 'Coach qualification certificates', evidence_kind: 'coach_credentials' }, { title: 'Premises safety certificate', evidence_kind: 'facility' }, { title: 'Safeguarding policy', evidence_kind: 'policy' }] } });
+  if (fw) {
+    const au = await call('POST', `/academy/accreditation-frameworks/${fw.id}/audits`, { token: owner.token, body: { kind: 'on_site', scheduled_on: inDays(10), starts_at: '09:00', ends_at: '17:00', scope: ['coaches', 'premises'] } });
+    if (au) await call('POST', `/academy/audits/${au.id}/findings`, { token: owner.token, body: { severity: 'medium', title: 'Emergency action plan not signed off', actions: [{ title: 'Obtain the safety officer signature', due_on: inDays(20) }] } });
+  }
 
   // ------------------------------------------------------------------ the browser
   const browser = await chromium.launch({ executablePath: process.env.E2E_CHROMIUM ?? fs.globSync('/opt/pw-browsers/chromium-*/chrome-linux*/chrome')[0], args: ['--no-sandbox'] });
@@ -118,6 +146,7 @@ try {
     suppliers: (p) => inOrg(p, async () => { await click(p, 'Academy'); await click(p, 'Partners'); }),
     programmes: (p) => inOrg(p, async () => { await click(p, 'Academy'); await click(p, 'Programmes'); }),
     coaches: async (p) => { await navTo(p, 'Manage', { id: venue.id, tab: 'coaches' }); await p.getByText('Tie-ups', { exact: true }).first().scrollIntoViewIfNeeded(); await wait(p, 600); },
+    content: (p) => inOrg(p, async () => { await click(p, 'Academy'); await click(p, 'Content'); }),
     development: (p) => inOrg(p, async () => { await click(p, 'Academy'); await click(p, 'Progress'); await click(p, 'Development plans'); }),
     students: (p) => inOrg(p, async () => { await click(p, 'Academy'); await click(p, 'Admissions'); }),
     scouting: (p) => inOrg(p, async () => { await click(p, 'Academy'); await click(p, 'Scouting'); }),
@@ -125,9 +154,16 @@ try {
     tax: async (p) => { await navTo(p, 'Finance', { id: org.id }); await click(p, 'Tax').catch(() => {}); },
     revenue: (p) => inOrg(p, async () => { await click(p, 'Academy'); await click(p, 'Finance'); await click(p, 'Reconciliation'); }),
     reports: (p) => inOrg(p, async () => { await click(p, 'Academy'); }),
-    academics: (p) => inOrg(p, async () => { await click(p, 'Academy'); await click(p, 'Academics'); await click(p, 'Athletes'); }),   // the Academy tab opens on its Home (executive view)
-    campuses: (p) => inOrg(p, async () => { await click(p, 'Campuses'); }),
-    safety: (p) => inOrg(p, async () => { await click(p, 'Academy'); await click(p, 'Safety & pickup'); }),   // the Academy tab opens on its Home (executive view)
+    report_packs: (p) => inOrg(p, async () => { await click(p, 'Academy'); await click(p, 'Reports'); }),
+    academics: (p) => inOrg(p, async () => { await click(p, 'Academy'); await click(p, 'Academics'); await click(p, 'Athletes').catch(() => {}); }),   // the Academy tab opens on its Home (executive view)
+    competition: (p) => inOrg(p, async () => { await click(p, 'Academy'); await click(p, 'Competition & Squads'); }),
+    campuses: (p) => inOrg(p, async () => { await click(p, 'Campuses'); }),   // the Academy tab opens on its Home (executive view)
+    safety: (p) => inOrg(p, async () => { await click(p, 'Academy'); await click(p, 'Safety & pickup'); }),
+    kit: (p) => inOrg(p, async () => { await click(p, 'Academy'); await click(p, 'Kit'); }),   // the Academy tab opens on its Home (executive view)
+    wellbeing: (p) => inOrg(p, async () => { await click(p, 'Academy'); await click(p, 'Wellbeing'); }),
+    inclusion: (p) => inOrg(p, async () => { await click(p, 'Academy'); await click(p, 'Inclusion'); }),
+    accreditation: (p) => inOrg(p, async () => { await click(p, 'Academy'); await click(p, 'Accreditation'); }),
+    placement: (p) => inOrg(p, async () => { await click(p, 'Academy'); await click(p, 'Placement'); }),
   };
   const manifest = { generated_at: new Date().toISOString(), steps: {} };
   for (const [size, viewport] of Object.entries(SHOT_SIZES)) {
@@ -152,6 +188,19 @@ try {
         await page.screenshot({ path: path.join(process.env.UX_SHOTS, `guide-card-2-step-${size}.png`) });
         log(`PASS  card ${size}`);
       } catch (e) { failures++; log(`FAIL  card ${size}: ${e.message.split('\n')[0]}`); await page.screenshot({ path: `/tmp/guide-fail-card-${size}.png` }); }
+      await page.context().close();
+    }
+  }
+  // UX_SHOTS: the Competition & Squads screen (squads, conflicts, participation) at phone, tablet and desktop widths
+  if (process.env.UX_SHOTS) {
+    for (const [size, viewport] of Object.entries({ phone: { width: 390, height: 844 }, tablet: { width: 820, height: 1180 }, desktop: { width: 1280, height: 900 } })) {
+      const page = await open(viewport);
+      try {
+        await inOrg(page, async () => { await click(page, 'Academy'); await click(page, 'Competition & Squads'); });
+        await page.screenshot({ path: path.join(process.env.UX_SHOTS, `competition-squads-${size}.png`), fullPage: true });
+        await click(page, 'Conflicts'); await page.screenshot({ path: path.join(process.env.UX_SHOTS, `competition-conflicts-${size}.png`), fullPage: true });
+        log(`PASS  competition ${size}`);
+      } catch (e) { failures++; log(`FAIL  competition ${size}: ${e.message.split('\n')[0]}`); }
       await page.context().close();
     }
   }

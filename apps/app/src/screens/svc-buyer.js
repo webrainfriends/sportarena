@@ -11,6 +11,7 @@ import { localToIso } from '../vtime';
 import { useDo } from './console-utils';
 import { NeedsPicker } from './svc-needs';
 import { ChainTrace, DocButton, ExportsPanel, Kpi, Kv, Note, PerformanceRecord, Status, Tabs, Wrap, catLabel, collectScope, day, label, money, scopeFields, useCatalogue, when } from './svc-common';
+import { t } from '../i18n';
 
 const TABS = [['plan', 'Plan'], ['rfqs', 'Quotes'], ['orders', 'Orders'], ['invoices', 'Invoices'], ['team', 'People & policy'], ['reports', 'Reports']];
 
@@ -70,13 +71,33 @@ function Plan({ b, cat }) {
     { key: 'needs', label: 'What this service needs', type: 'custom', render: ({ v, set }) => <NeedsPicker buyerId={b.id} category={v.category} startsAt={v.from ? localToIso(v.from, v.start_t || '08:00', tz) : undefined} endsAt={(v.to ?? v.from) ? localToIso(v.to ?? v.from, v.end_t || '18:00', tz) : undefined} value={v.needs ?? []} onChange={(x) => set('needs', x)} /> },
     { key: 'criteria', label: 'How you will accept it (one measurable check per line)', type: 'multiline', optional: true },
     ...scopeFields(cat, tz),
+    // Elite academy supplier & contract fields
+    { key: 'priority', label: t('svc.priority.label'), type: 'chips', options: [{ value: 'critical', label: t('svc.priority.critical') }, { value: 'high', label: t('svc.priority.high') }, { value: 'standard', label: t('svc.priority.standard') }, { value: 'low', label: t('svc.priority.low') }], default: 'standard' },
+    { key: 'contract_type', label: t('svc.qt.contractType'), type: 'chips', optional: true, options: [{ value: 'one_off', label: t('svc.qt.ct.one_off') }, { value: 'retainer', label: t('svc.qt.ct.retainer') }, { value: 'season', label: t('svc.qt.ct.season') }, { value: 'annual', label: t('svc.qt.ct.annual') }] },
+    { key: 'payment_terms', label: t('svc.qt.paymentTerms'), type: 'chips', optional: true, options: [{ value: 'upfront', label: t('svc.qt.pt.upfront') }, { value: 'half_upfront', label: t('svc.qt.pt.half_upfront') }, { value: 'on_delivery', label: t('svc.qt.pt.on_delivery') }, { value: 'net30', label: t('svc.qt.pt.net30') }] },
+    { key: 'sla_hours', label: t('svc.qt.slaHours'), type: 'stepper', min: 1, max: 720, step: 1, suffix: ' hrs', optional: true },
+    { key: 'tech_requirements', label: t('svc.qt.techReq'), type: 'multiline', optional: true },
+    { key: 'quality_standards', label: t('svc.qt.qualityStandards'), type: 'multimenu', optional: true, options: [{ value: 'iso9001', label: 'ISO 9001' }, { value: 'iso14001', label: 'ISO 14001' }, { value: 'bs8454', label: 'BS 8454' }, { value: 'fifa_quality', label: 'FIFA Quality Pro' }, { value: 'itf_level4', label: 'ITF Level 4' }] },
+    { key: 'accessibility_requirements', label: t('svc.qt.accessReq'), type: 'multimenu', optional: true, options: [{ value: 'wheelchair_access', label: 'Wheelchair access' }, { value: 'hearing_loop', label: 'Hearing loop' }, { value: 'visual_guidance', label: 'Visual guidance' }, { value: 'accessible_toilets', label: 'Accessible toilets' }] },
+    { key: 'min_supplier_experience_years', label: t('svc.supp.minExp'), type: 'stepper', min: 0, max: 50, step: 1, suffix: ' yrs', optional: true },
+    { key: 'supplier_references_required', label: t('svc.supp.refsRequired'), type: 'stepper', min: 0, max: 10, step: 1, optional: true },
+    { key: 'people_on_site', label: t('svc.supp.peopleOnSite'), type: 'stepper', min: 1, max: 500, step: 1, optional: true },
+    { key: 'insurance_required', label: t('svc.supp.insuranceRequired'), type: 'switch', default: false },
+    { key: 'prior_sports_venue_exp', label: t('svc.supp.priorSportsVenue'), type: 'switch', default: false },
+    { key: 'security_clearance', label: t('svc.supp.securityClearance'), type: 'switch', default: false },
+    { key: 'para_accessibility_flags', label: t('para.accessFlags'), type: 'multimenu', optional: true, options: [{ value: 'wheelchair_pitch', label: t('para.access.wheelchair_pitch') }, { value: 'para_equipment', label: t('para.access.para_equipment') }, { value: 'guide_runner_support', label: t('para.access.guide_runner_support') }, { value: 'lowered_net', label: t('para.access.lowered_net') }, { value: 'quiet_room', label: t('para.access.quiet_room') }] },
   ];
   const submit = async (v) => {
     const startD = v.from, endD = v.to ?? v.from;
     await api.post(`/service-buyers/${b.id}/requirements`, { category: v.category, title: v.title, lot_id: v.lot_id, quantity: Number(v.quantity), unit: v.unit, headcount: v.headcount || undefined,
       ...(startD ? { starts_at: localToIso(startD, v.start_t || '08:00', tz), ends_at: localToIso(endD, v.end_t || '18:00', tz) } : {}), timezone: tz,
       ...(v.freq && v.freq !== 'none' ? { recurrence: { freq: v.freq, until: v.until } } : {}), budget_minor: v.budget || undefined, currency: b.currency, deadline: v.deadline,
-      competition_id: v.competition?.[0], needs: v.needs ?? [], acceptance_criteria: v.criteria ? String(v.criteria).split('\n').map((x) => x.trim()).filter(Boolean) : [], scope: collectScope(cat, v.category, v, tz) });
+      competition_id: v.competition?.[0], needs: v.needs ?? [], acceptance_criteria: v.criteria ? String(v.criteria).split('\n').map((x) => x.trim()).filter(Boolean) : [], scope: collectScope(cat, v.category, v, tz),
+      priority: v.priority ?? 'standard', contract_type: v.contract_type, payment_terms: v.payment_terms, sla_hours: v.sla_hours || undefined,
+      tech_requirements: v.tech_requirements || undefined, quality_standards: v.quality_standards ?? [], accessibility_requirements: v.accessibility_requirements ?? [],
+      min_supplier_experience_years: v.min_supplier_experience_years || undefined, supplier_references_required: v.supplier_references_required || undefined, people_on_site: v.people_on_site || undefined,
+      insurance_required: v.insurance_required ?? false, prior_sports_venue_exp: v.prior_sports_venue_exp ?? false, security_clearance: v.security_clearance ?? false,
+      para_accessibility_flags: v.para_accessibility_flags ?? [] });
     act(async () => null); return 'Requirement saved';
   };
   if (plan.loading) return <Loading />;

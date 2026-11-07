@@ -18,6 +18,7 @@ import { assertEventReadable, participantSql } from '../spectator.js';
 import { OFFICIAL_ROLES, lockOfficial, assertOfficialEligible, recordHistory, closeOfficial } from '../officials.js';
 import { kitOf, mustAccess } from './branded-documents.js';
 import { assertEventMayProceed } from '../compliance-gates.js';
+import { assertParaReadiness } from './para-readiness.js';
 
 const dt = z.string().datetime({ offset: true });
 const date = z.string().date();
@@ -211,6 +212,8 @@ cap({
       if (i.status && i.status !== ev.status && !NEXT_STATUS[ev.status].includes(i.status)) throw conflict(`An event that is ${ev.status} cannot become ${i.status}`);
       // the compliance rules (#568): publishing an event, and the moment it starts, are where its permits, insurance and safety approvals must be in order
       if (i.status === 'open' && ev.status === 'draft') await assertEventMayProceed(c, user, ev, 'open');
+      // PS-10: para-sport readiness gate — no-op on events with no para requirements
+      if (i.status === 'open' && ev.status === 'draft') await assertParaReadiness(c, ev);
       if (i.status === 'ongoing' && ev.status !== 'ongoing') await assertEventMayProceed(c, user, ev, 'start');
       if ((i.starts_on || i.ends_on) && (await c.query('SELECT coalesce($2::date, ends_on) < coalesce($1::date, starts_on) AS bad FROM events WHERE id=$3', [i.starts_on ?? null, i.ends_on ?? null, i.id])).rows[0].bad) throw badRequest('ends_on is before starts_on');
       if (i.capacity) {

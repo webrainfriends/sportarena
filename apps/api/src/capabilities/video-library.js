@@ -278,3 +278,89 @@ cap({
         ORDER BY e.created_at DESC, e.id LIMIT $2 OFFSET $3`, [user.id, i.limit, i.offset]);
   },
 });
+
+// ---- #317 enhancements ----------------------------------------------------------------
+
+cap({
+  name: 'get_showcase_analytics',
+  method: 'GET', path: '/players/:handle/showcase/analytics', tag: TAG,
+  summary: 'Athlete-only: total and 7-day showcase views plus the top clip by plays. Audit-logged.',
+  input: z.object({ handle: z.string().max(80) }),
+  async handler({ user }, { handle }) {
+    const player = await one('SELECT id FROM users WHERE handle=$1', [handle]);
+    if (!player) throw notFound('Player');
+    if (player.id !== user.id) throw forbidden('own analytics only');
+    const stats = await one(
+      `SELECT COUNT(*)::int AS total_views,
+              COUNT(*) FILTER (WHERE viewed_at >= now() - interval '7 days')::int AS views_7d
+       FROM showcase_views WHERE player_id=$1`,
+      [player.id]);
+    const topClip = await one(
+      `SELECT pv.id, pv.title
+       FROM passport_videos pv
+       WHERE pv.user_id=$1 AND pv.removed_at IS NULL AND pv.archived_at IS NULL AND pv.visibility='public'
+       ORDER BY (SELECT COUNT(*) FROM showcase_views sv WHERE sv.player_id=pv.user_id AND sv.viewed_at >= now() - interval '30 days') DESC, pv.created_at DESC
+       LIMIT 1`,
+      [player.id]);
+    await audit(null, user.id, 'showcase_analytics_read', 'showcase_views', player.id);
+    return { total_views: stats.total_views, views_7d: stats.views_7d, top_clip: topClip || null };
+  },
+});
+
+cap({
+  name: 'reorder_playlist_videos',
+  method: 'PATCH', path: '/me/playlists/:id/order', tag: TAG,
+  summary: 'Idempotent: replace the playlist order. Pass the full ordered video_ids array; version must match (optimistic concurrency).',
+  input: z.object({ id, video_ids: z.array(z.string().uuid()).min(1).max(100), version: z.number().int() }),
+  async handler({ user }, { id: pid, video_ids, version }) {
+    const playlist = await one('SELECT id, version FROM video_playlists WHERE id=$1 AND user_id=$2 AND archived_at IS NULL', [pid, user.id]);
+    if (!playlist) throw notFound('Playlist');
+    if (playlist.version !== version) throw conflict('Stale playlist version — reload and retry');
+    await tx(async (q) => {
+      await q('UPDATE video_playlist_items SET removed_at=now() WHERE playlist_id=$1 AND removed_at IS NULL', [pid]);
+      for (let i = 0; i < video_ids.length; i++) {
+        await q(
+          `INSERT INTO video_playlist_items (playlist_id, video_id, position)
+           VALUES ($1, $2, $3)
+           ON CONFLICT (playlist_id, video_id) WHERE removed_at IS NULL
+           DO UPDATE SET position=$3, removed_at=NULL`,
+          [pid, video_ids[i], i]);
+      }
+      await q('UPDATE video_playlists SET version=version+1 WHERE id=$1', [pid]);
+    });
+    return { reordered: video_ids.length };
+  },
+});
+
+cap({
+  name: 'create_playlist_thumbnail',
+  method: 'POST', path: '/me/playlists/:id/thumbnail', tag: TAG,
+  summary: 'Set a custom cover image for a playlist from an already-uploaded media asset you own.',
+  input: z.object({ id, asset_id: z.string().uuid() }),
+  async handler({ user }, { id: pid, asset_id }) {
+    const playlist = await one('SELECT id FROM video_playlists WHERE id=$1 AND user_id=$2 AND archived_at IS NULL', [pid, user.id]);
+    if (!playlist) throw notFound('Playlist');
+    const asset = await one('SELECT id FROM media_assets WHERE id=$1 AND owner_id=$2', [asset_id, user.id]);
+    if (!asset) throw notFound('Asset');
+    await one('UPDATE video_playlists SET thumbnail_asset_id=$1 WHERE id=$2 RETURNING id', [asset_id, pid]);
+    await audit(null, user.id, 'playlist_thumbnail_set', 'video_playlists', pid);
+    return { playlist_id: pid, thumbnail_asset_id: asset_id };
+  },
+});
+
+cap({
+  name: 'bulk_set_video_visibility',
+  method: 'POST', path: '/me/videos/bulk-visibility', tag: TAG,
+  summary: 'Set visibility for up to 50 videos at once. Guardian media consent is enforced for youth athletes sharing non-private clips.',
+  input: z.object({ video_ids: z.array(z.string().uuid()).min(1).max(50), visibility: z.enum(VIS) }),
+  async handler({ user }, { video_ids, visibility }) {
+    if (visibility !== 'private' && !(await hasConsent(user.id, 'media'))) throw forbidden('guardian_media_consent_required');
+    const result = await one(
+      `WITH upd AS (
+         UPDATE passport_videos SET visibility=$1 WHERE id=ANY($2::uuid[]) AND user_id=$3 AND removed_at IS NULL RETURNING id
+       ) SELECT COUNT(*)::int AS updated FROM upd`,
+      [visibility, video_ids, user.id]);
+    await audit(null, user.id, 'bulk_video_visibility_set', 'passport_videos', user.id);
+    return { updated: result.updated };
+  },
+});

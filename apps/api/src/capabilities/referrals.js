@@ -44,18 +44,22 @@ const COLSQ = 'r.*, f.display_name AS from_name, tu.display_name AS to_name';
 cap({
   name: 'create_referral', credential: true, method: 'POST', path: '/medical/referrals', tag: 'Health', auth: ['doctor'], status: 201,
   summary: 'Doctor drafts a referral for an athlete who granted full access, to a verified platform doctor/physio (`to_provider_id`) or an external provider (`external_recipient`). You choose the urgency and exactly which items are shared (`shared`: label + text) - nothing else is ever visible to the recipient. The athlete must consent to this referral before anyone else can read it.',
-  input: z.object({ athlete_id: id, to_provider_id: id.optional(), external_recipient: t(300).optional(), reason: t(2000).min(1), requested_action: t(1000).optional(), shared: z.array(z.object({ label: t(120).min(1), text: t(4000).min(1) }).strict()).min(1).max(20), urgency: z.enum(['routine', 'priority', 'urgent']).default('routine'), expires_at: z.string().datetime({ offset: true }).optional() })
+  // PS-17: extended provider kinds — prosthetist, rehabilitation_clinician, sports_medicine added.
+  // para_context is an optional nonclinical note linking the referral to a para-sport episode.
+  input: z.object({ athlete_id: id, to_provider_id: id.optional(), external_recipient: t(300).optional(), reason: t(2000).min(1), requested_action: t(1000).optional(), shared: z.array(z.object({ label: t(120).min(1), text: t(4000).min(1) }).strict()).min(1).max(20), urgency: z.enum(['routine', 'priority', 'urgent']).default('routine'), expires_at: z.string().datetime({ offset: true }).optional(), para_context: z.object({ sport: t(100), note: t(500).optional() }).optional().describe('Para-sport episode context (nonclinical). Links the referral to an adaptive episode without disclosing clinical detail.') })
     .refine((v) => !!v.to_provider_id !== !!v.external_recipient, 'Give either a platform recipient or an external recipient'),
   async handler({ user }, i) {
     if (i.athlete_id === user.id || i.to_provider_id === user.id) throw badRequest('Not a valid referral');
     if (i.expires_at && Date.parse(i.expires_at) <= Date.now()) throw badRequest('Expiry must be in the future');
     const cred = await requireVerifiedProvider(user.id, { action: 'create_referral', athleteId: i.athlete_id, types: ['doctor'] });
     if (!(await hasGrant(i.athlete_id, user.id))) throw forbidden('The athlete has not granted you access');
-    if (i.to_provider_id && !(await one("SELECT 1 FROM users WHERE id=$1 AND roles && ARRAY['doctor','physio']::text[]", [i.to_provider_id]))) throw badRequest('That person is not a registered doctor or physio');
+    // PS-17: extended valid platform recipient roles — prosthetist, rehabilitation_clinician, sports_medicine added alongside doctor/physio
+    const EXTENDED_ROLES = ['doctor', 'physio', 'prosthetist', 'rehabilitation_clinician', 'sports_medicine'];
+    if (i.to_provider_id && !(await one(`SELECT 1 FROM users WHERE id=$1 AND roles && $2::text[]`, [i.to_provider_id, EXTENDED_ROLES]))) throw badRequest('That person is not a registered doctor, physio, prosthetist, rehabilitation clinician or sports medicine provider');
     const r = await tx(async (c) => {
       await lockCredential(c, cred); await lockGrant(c, i.athlete_id, user.id);
-      const row = (await c.query(`INSERT INTO clinical_referrals(athlete_id, from_provider_id, to_provider_id, external_recipient, reason_enc, requested_action_enc, shared_enc, urgency, expires_at)
-        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING *`, [i.athlete_id, user.id, i.to_provider_id ?? null, i.external_recipient ?? null, seal({ v: i.reason }, 'reason'), i.requested_action ? seal({ v: i.requested_action }, 'action') : null, seal(i.shared, 'shared'), i.urgency, i.expires_at ?? null])).rows[0];
+      const row = (await c.query(`INSERT INTO clinical_referrals(athlete_id, from_provider_id, to_provider_id, external_recipient, reason_enc, requested_action_enc, shared_enc, urgency, expires_at, para_context)
+        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING *`, [i.athlete_id, user.id, i.to_provider_id ?? null, i.external_recipient ?? null, seal({ v: i.reason }, 'reason'), i.requested_action ? seal({ v: i.requested_action }, 'action') : null, seal(i.shared, 'shared'), i.urgency, i.expires_at ?? null, i.para_context ? JSON.stringify(i.para_context) : null])).rows[0];
       await log(c, row.id, user.id, 'created');
       return row;
     });

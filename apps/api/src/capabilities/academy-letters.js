@@ -19,7 +19,7 @@ import { renderEnrolmentLetter } from '../documents/render.js';
 import { loadLogo, mustAccess } from './branded-documents.js';
 
 const TAG = 'Academy';
-const KIND = { registration: 'Joining fee', deposit: 'Deposit', tuition: 'Tuition', instalment: 'Instalment', trial: 'Trial fee', pack: 'Session pack' };
+const KIND = { registration: 'Joining fee', deposit: 'Deposit', tuition: 'Tuition', instalment: 'Instalment', trial: 'Trial fee', pack: 'Session pack', kit: 'Kit', kit_deposit: 'Kit deposit' };
 const BILLING = { one_time: 'One payment', instalments: 'Instalments', monthly: 'Monthly', pack: 'Session pack' };
 const STATUS = { awaiting_payment: 'Awaiting payment', paid: 'Paid', waived: 'Waived', refunded: 'Refunded', partially_refunded: 'Part refunded', cancelled: 'Cancelled' };
 const ds = (d) => (d ? new Date(d).toISOString().slice(0, 10) : null);

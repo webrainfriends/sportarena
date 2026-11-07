@@ -7,7 +7,9 @@ import { notFound } from './errors.js';
 import { guardianLink } from './youth.js';
 import { accessBlock } from './wellness-sharing.js';
 
-export const CATEGORIES = ['equipment', 'travel', 'coaching', 'competition_fees', 'medical_rehab', 'education', 'living_training', 'other'];
+export const CATEGORIES = ['equipment', 'travel', 'coaching', 'competition_fees', 'medical_rehab', 'education', 'living_training', 'specialised_equipment', 'accessible_transport', 'classification_travel', 'accessible_training_camp', 'other'];
+/** Para-sport-specific funding categories (PS-19). These categories require operational need declaration only — no diagnosis is asked for or stored. */
+export const PARA_CATEGORIES = ['specialised_equipment', 'accessible_transport', 'classification_travel', 'accessible_training_camp', 'competition_fees'];
 export const SECTIONS = ['needs', 'applications', 'support', 'dues'];
 export const PURPOSES = ['funding_planning', 'application_support', 'paperwork'];
 /** Agreement statuses in which the money is committed (matches the sponsor/recipient summary). */

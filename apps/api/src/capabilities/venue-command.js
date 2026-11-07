@@ -285,22 +285,90 @@ cap({
 });
 
 // ------------------------------------------------------------------ compliance register
+export const COMPLIANCE_CATEGORIES = ['operating', 'safety', 'sports_grade', 'food_bev', 'health_medical', 'environmental', 'finance_tax', 'employment', 'events', 'other'];
+export const RENEWAL_STAGES = ['not_started', 'applied', 'in_review', 'issued'];
+export const VERIFICATION_STATUSES = ['self_reported', 'third_party', 'certified'];
+
+const money = z.coerce.number().int().min(0);
 const itemInput = {
-  kind: z.enum(COMPLIANCE_KINDS), title: z.string().trim().min(2).max(160), reference: z.string().trim().max(120).optional(),
+  kind: z.enum(COMPLIANCE_KINDS), title: z.string().trim().min(2).max(160),
+  reference: z.string().trim().max(120).optional(),
   issued_on: day.optional(), expires_on: day.optional(), document_id: id.optional(),
+  // Elite fields
+  category: z.enum(COMPLIANCE_CATEGORIES).optional(),
+  sub_type: z.string().trim().max(80).optional(),
+  issuing_authority: z.string().trim().max(200).optional(),
+  jurisdiction_country: z.string().length(2).toUpperCase().optional(),
+  jurisdiction_region: z.string().trim().max(80).optional(),
+  verification_status: z.enum(VERIFICATION_STATUSES).optional(),
+  coverage_scope: z.array(z.string().uuid()).max(50).optional(),
+  responsible_user_id: id.optional(),
+  alert_recipient_ids: z.array(id).max(20).optional(),
+  reminder_days: z.array(z.number().int().min(1).max(365)).max(10).optional(),
+  renewal_stage: z.enum(RENEWAL_STAGES).optional(),
+  renewal_ref: z.string().trim().max(120).optional(),
+  renewal_expected_on: day.optional(),
+  annual_fee_cents: money.optional(),
+  annual_fee_currency: z.string().length(3).toUpperCase().optional(),
+  renewal_estimate_cents: money.optional(),
+  last_paid_on: day.optional(),
+  conditions_notes: z.string().trim().max(2000).optional(),
 };
+
+const ELITE_COLS = ['category', 'sub_type', 'issuing_authority', 'jurisdiction_country', 'jurisdiction_region',
+  'verification_status', 'responsible_user_id', 'renewal_stage', 'renewal_expected_on',
+  'annual_fee_cents', 'annual_fee_currency', 'renewal_estimate_cents', 'last_paid_on', 'conditions_notes'];
+
+/** Build the elite column assignments for INSERT/UPDATE; jsonb and array fields handled separately. */
+function eliteVals(rest) {
+  return {
+    cols: ELITE_COLS.filter((k) => rest[k] !== undefined),
+    vals: ELITE_COLS.filter((k) => rest[k] !== undefined).map((k) => rest[k] ?? null),
+    coverageScope: rest.coverage_scope !== undefined ? JSON.stringify(rest.coverage_scope ?? []) : undefined,
+    alertRecipients: rest.alert_recipient_ids !== undefined ? rest.alert_recipient_ids ?? [] : undefined,
+    reminderDays: rest.reminder_days !== undefined ? rest.reminder_days ?? [90, 60, 30, 14, 7, 1] : undefined,
+    renewalRef: rest.renewal_ref,
+  };
+}
+
+/** Full item read with all elite fields; reference_enc / renewal_ref_enc returned opaque unless reveal=true. */
+const ITEM_SELECT = `
+  id, kind, category, sub_type, title,
+  issuing_authority, jurisdiction_country, jurisdiction_region, verification_status,
+  coverage_scope, responsible_user_id, alert_recipient_ids, reminder_days,
+  renewal_stage, renewal_expected_on, renewal_ref_enc,
+  annual_fee_cents, annual_fee_currency, renewal_estimate_cents, last_paid_on,
+  conditions_notes, issued_on::text, expires_on::text, document_id,
+  reference_enc, archived_at, created_at, updated_at`;
 
 cap({
   name: 'add_venue_compliance_item', method: 'POST', path: '/venues/:id/compliance', tag: TAG, status: 201,
-  summary: 'Record a licence, certificate or permit for a venue (fire, safety, pool, food, accessibility, tax registration, event permit) with its expiry date so the command centre can warn before it lapses. The licence/reference number is stored encrypted. Venue managers only.',
+  summary: 'Record a licence, certificate or permit for a venue. Supports full elite fields: category, sub-type, issuing authority, jurisdiction (country + region), verification status, coverage scope (whole venue or specific courts), responsible person, alert recipients, configurable reminder cadence (default: 90/60/30/14/7/1 days before expiry), renewal workflow stage, finance tracking (annual fee, renewal estimate, last paid), and conditions notes. The licence/reference number and renewal reference are stored encrypted. Venue managers only.',
   input: z.object({ id, ...itemInput }).refine((i) => !i.expires_on || !i.issued_on || i.expires_on >= i.issued_on, 'expires_on is before issued_on'),
   async handler({ user }, i) {
     await mustManage(user, i.id);
-    const { id: venueId, reference, ...rest } = i;
+    const { id: venueId, reference, renewal_ref, ...rest } = i;
+    const ev = eliteVals(rest);
+    const baseCols = ['venue_id', 'kind', 'title', 'reference_enc', 'issued_on', 'expires_on', 'document_id', 'created_by'];
+    const baseVals = [venueId, rest.kind, rest.title,
+      reference ? encryptFields({ reference }, 'venue_compliance_items', ['reference']).reference_enc : null,
+      rest.issued_on ?? null, rest.expires_on ?? null, rest.document_id ?? null, user.id];
+    const extraCols = [...ev.cols,
+      ...(ev.coverageScope !== undefined ? ['coverage_scope'] : []),
+      ...(ev.alertRecipients !== undefined ? ['alert_recipient_ids'] : []),
+      ...(ev.reminderDays !== undefined ? ['reminder_days'] : []),
+      ...(ev.renewalRef ? ['renewal_ref_enc'] : [])];
+    const extraVals = [...ev.vals,
+      ...(ev.coverageScope !== undefined ? [ev.coverageScope] : []),
+      ...(ev.alertRecipients !== undefined ? [ev.alertRecipients] : []),
+      ...(ev.reminderDays !== undefined ? [ev.reminderDays] : []),
+      ...(ev.renewalRef ? [encryptFields({ renewal_ref: ev.renewalRef }, 'venue_compliance_items', ['renewal_ref']).renewal_ref_enc] : [])];
+    const allCols = [...baseCols, ...extraCols];
+    const allVals = [...baseVals, ...extraVals];
     const row = await one(
-      `INSERT INTO venue_compliance_items (venue_id, kind, title, reference_enc, issued_on, expires_on, document_id, created_by) VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
-       RETURNING id, kind, title, issued_on::text, expires_on::text, created_at`,
-      [venueId, rest.kind, rest.title, reference ? encryptFields({ reference }, 'venue_compliance_items', ['reference']).reference_enc : null, rest.issued_on ?? null, rest.expires_on ?? null, rest.document_id ?? null, user.id]);
+      `INSERT INTO venue_compliance_items (${allCols.join(',')}) VALUES (${allVals.map((_, n) => `$${n + 1}`).join(',')})
+       RETURNING ${ITEM_SELECT}`,
+      allVals);
     await audit(null, user.id, 'venue_compliance_add', 'venue_compliance_items', row.id);
     return row;
   },
@@ -308,38 +376,106 @@ cap({
 
 cap({
   name: 'list_venue_compliance_items', method: 'GET', path: '/venues/:id/compliance', tag: TAG,
-  summary: 'The venue compliance register: licences and permits plus the venue\'s insurance policies and contracts, each with days left and a status (ok, soon within 30 days, expired). Reference numbers are decrypted only with reveal=true, which is audit-logged. Venue managers only.',
-  input: z.object({ id, reveal: z.coerce.boolean().default(false), include_archived: z.coerce.boolean().default(false) }),
+  summary: 'The venue compliance register: licences and permits plus the venue\'s insurance policies and contracts, each with days left and a status (ok, soon within 30 days, expired). Includes compliance score (0-100), expiry forecast by month, total annual cost, and category breakdown. Reference numbers are decrypted only with reveal=true, which is audit-logged. Optionally filter by category. Venue managers only.',
+  input: z.object({ id, reveal: z.coerce.boolean().default(false), include_archived: z.coerce.boolean().default(false), category: z.enum(COMPLIANCE_CATEGORIES).optional() }),
   async handler({ user }, i) {
     await mustManage(user, i.id);
     const venue = await mustFind('venues', i.id);
     const today = toLocal(new Date(), venue.timezone).date;
     const register = await complianceRegister(i.id, today);
-    const rows = await many(`SELECT id, reference_enc, archived_at FROM venue_compliance_items WHERE venue_id=$1 ${i.include_archived ? '' : 'AND archived_at IS NULL'}`, [i.id]);
+    const catFilter = i.category ? ` AND category=$2` : '';
+    const rows = await many(
+      `SELECT ${ITEM_SELECT} FROM venue_compliance_items WHERE venue_id=$1 ${i.include_archived ? '' : 'AND archived_at IS NULL'}${catFilter} ORDER BY expires_on NULLS LAST, title`,
+      i.category ? [i.id, i.category] : [i.id]);
     if (i.reveal) await audit(null, user.id, 'read_pii', 'venue_compliance_items', i.id);
-    const refs = new Map(rows.map((r) => [r.id, i.reveal && r.reference_enc ? decryptFields(r, 'venue_compliance_items', ['reference']).reference : null]));
-    const has = new Map(rows.map((r) => [r.id, Boolean(r.reference_enc)]));
-    return { ...register, items: register.items.map((x) => (x.source === 'compliance' ? { ...x, has_reference: has.get(x.id) ?? false, reference: refs.get(x.id) ?? null } : x)) };
+    const enriched = rows.map((r) => ({
+      ...r,
+      has_reference: Boolean(r.reference_enc),
+      reference: i.reveal && r.reference_enc ? decryptFields(r, 'venue_compliance_items', ['reference']).reference : null,
+      renewal_ref: i.reveal && r.renewal_ref_enc ? decryptFields(r, 'venue_compliance_items', ['renewal_ref']).renewal_ref : null,
+    }));
+    // Compliance analytics
+    const ownItems = enriched.filter((r) => !r.archived_at);
+    const withExpiry = ownItems.filter((r) => r.expires_on);
+    const valid = withExpiry.filter((r) => daysUntil(r.expires_on, today) > SOON_DAYS).length;
+    const expiring = withExpiry.filter((r) => { const d = daysUntil(r.expires_on, today); return d >= 0 && d <= SOON_DAYS; }).length;
+    const expired = withExpiry.filter((r) => daysUntil(r.expires_on, today) < 0).length;
+    const total = withExpiry.length;
+    const score = total === 0 ? 100 : Math.max(0, Math.round(((valid + expiring * 0.5) / total) * 100));
+    const totalAnnualCents = ownItems.reduce((s, r) => s + (r.annual_fee_cents ?? 0), 0);
+    const currency = ownItems.find((r) => r.annual_fee_currency)?.annual_fee_currency ?? null;
+    // 12-month expiry forecast: count items expiring in each of the next 12 calendar months
+    const forecast = Array.from({ length: 12 }, (_, mo) => {
+      const d = new Date(`${today}T00:00:00Z`);
+      d.setUTCMonth(d.getUTCMonth() + mo);
+      const ym = d.toISOString().slice(0, 7);
+      return { month: ym, count: withExpiry.filter((r) => r.expires_on.slice(0, 7) === ym).length };
+    });
+    // Category breakdown
+    const byCategory = {};
+    for (const cat of COMPLIANCE_CATEGORIES) {
+      const items = ownItems.filter((r) => (r.category ?? 'other') === cat);
+      if (items.length) byCategory[cat] = { total: items.length, expired: items.filter((r) => r.expires_on && daysUntil(r.expires_on, today) < 0).length };
+    }
+    return {
+      ...register,
+      items: enriched,
+      analytics: { score, total: ownItems.length, valid, expiring, expired, total_annual_cents: totalAnnualCents, annual_currency: currency, forecast, by_category: byCategory },
+    };
   },
 });
 
 cap({
   name: 'update_venue_compliance_item', method: 'PATCH', path: '/venues/:id/compliance/:item_id', tag: TAG,
-  summary: 'Renew or correct a compliance item (new expiry date, title, reference), or archive it with archived=true. Items are archived, never deleted. Venue managers only.',
-  input: z.object({ id, item_id: id, title: itemInput.title.optional(), kind: itemInput.kind.optional(), reference: itemInput.reference, issued_on: day.nullable().optional(), expires_on: day.nullable().optional(), archived: z.boolean().optional() }),
+  summary: 'Renew or correct a compliance item. Supports all elite fields: new expiry date, renewal workflow stage, finance, responsible person, alert recipients, reminder cadence, conditions notes, and archive. Items are archived, never deleted. Venue managers only.',
+  input: z.object({
+    id, item_id: id,
+    title: itemInput.title.optional(), kind: itemInput.kind.optional(),
+    reference: itemInput.reference,
+    issued_on: day.nullable().optional(), expires_on: day.nullable().optional(),
+    archived: z.boolean().optional(),
+    category: itemInput.category, sub_type: itemInput.sub_type,
+    issuing_authority: itemInput.issuing_authority,
+    jurisdiction_country: itemInput.jurisdiction_country, jurisdiction_region: itemInput.jurisdiction_region,
+    verification_status: itemInput.verification_status,
+    coverage_scope: itemInput.coverage_scope,
+    responsible_user_id: itemInput.responsible_user_id,
+    alert_recipient_ids: itemInput.alert_recipient_ids,
+    reminder_days: itemInput.reminder_days,
+    renewal_stage: itemInput.renewal_stage, renewal_ref: itemInput.renewal_ref,
+    renewal_expected_on: itemInput.renewal_expected_on,
+    annual_fee_cents: itemInput.annual_fee_cents, annual_fee_currency: itemInput.annual_fee_currency,
+    renewal_estimate_cents: itemInput.renewal_estimate_cents, last_paid_on: itemInput.last_paid_on,
+    conditions_notes: itemInput.conditions_notes,
+  }),
   async handler({ user }, i) {
     await mustManage(user, i.id);
     const cur = await one('SELECT id FROM venue_compliance_items WHERE id=$1 AND venue_id=$2', [i.item_id, i.id]);
     if (!cur) throw notFound('Compliance item not found');
+    const ev = eliteVals(i);
+    // Build dynamic SET clause for elite scalar columns
+    const setClauses = [
+      'title=coalesce($3,title)', 'kind=coalesce($4,kind)',
+      'reference_enc=CASE WHEN $5::text IS NULL THEN reference_enc ELSE $5 END',
+      'issued_on=CASE WHEN $6::boolean THEN $7::date ELSE issued_on END',
+      'expires_on=CASE WHEN $8::boolean THEN $9::date ELSE expires_on END',
+      'reminded_at=CASE WHEN $8::boolean THEN NULL ELSE reminded_at END',
+      'archived_at=CASE WHEN $10::boolean IS NULL THEN archived_at WHEN $10 THEN coalesce(archived_at, now()) ELSE NULL END',
+    ];
+    const baseVals = [i.item_id, i.id, i.title ?? null, i.kind ?? null,
+      i.reference ? encryptFields({ reference: i.reference }, 'venue_compliance_items', ['reference']).reference_enc : null,
+      i.issued_on !== undefined, i.issued_on ?? null, i.expires_on !== undefined, i.expires_on ?? null, i.archived ?? null];
+    let p = baseVals.length + 1;
+    const extraVals = [];
+    for (const col of ev.cols) { setClauses.push(`${col}=$${p++}`); extraVals.push(ev.vals[ev.cols.indexOf(col)]); }
+    if (ev.coverageScope !== undefined) { setClauses.push(`coverage_scope=$${p++}`); extraVals.push(ev.coverageScope); }
+    if (ev.alertRecipients !== undefined) { setClauses.push(`alert_recipient_ids=$${p++}`); extraVals.push(ev.alertRecipients); }
+    if (ev.reminderDays !== undefined) { setClauses.push(`reminder_days=$${p++}`); extraVals.push(ev.reminderDays); }
+    if (ev.renewalRef) { setClauses.push(`renewal_ref_enc=$${p++}`); extraVals.push(encryptFields({ renewal_ref: ev.renewalRef }, 'venue_compliance_items', ['renewal_ref']).renewal_ref_enc); }
+    setClauses.push('updated_at=now()');
     const row = await one(
-      `UPDATE venue_compliance_items SET title=coalesce($3,title), kind=coalesce($4,kind),
-              reference_enc=CASE WHEN $5::text IS NULL THEN reference_enc ELSE $5 END,
-              issued_on=CASE WHEN $6::boolean THEN $7::date ELSE issued_on END, expires_on=CASE WHEN $8::boolean THEN $9::date ELSE expires_on END,
-              reminded_at=CASE WHEN $8::boolean THEN NULL ELSE reminded_at END,
-              archived_at=CASE WHEN $10::boolean IS NULL THEN archived_at WHEN $10 THEN coalesce(archived_at, now()) ELSE NULL END, updated_at=now()
-        WHERE id=$1 AND venue_id=$2 RETURNING id, kind, title, issued_on::text, expires_on::text, archived_at`,
-      [i.item_id, i.id, i.title ?? null, i.kind ?? null, i.reference ? encryptFields({ reference: i.reference }, 'venue_compliance_items', ['reference']).reference_enc : null,
-        i.issued_on !== undefined, i.issued_on ?? null, i.expires_on !== undefined, i.expires_on ?? null, i.archived ?? null]);
+      `UPDATE venue_compliance_items SET ${setClauses.join(', ')} WHERE id=$1 AND venue_id=$2 RETURNING ${ITEM_SELECT}`,
+      [...baseVals, ...extraVals]);
     await audit(null, user.id, 'venue_compliance_update', 'venue_compliance_items', row.id);
     return row;
   },

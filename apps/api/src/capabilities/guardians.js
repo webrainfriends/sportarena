@@ -571,3 +571,65 @@ cap({
       [i.child_id ?? null, i.team_id ?? null, i.limit, i.offset]);
   },
 });
+
+cap({
+  name: 'bulk_invite_co_guardian', method: 'POST', path: '/me/bulk-co-guardian-invite', tag: TAG, status: 201,
+  summary: 'Invite a co-parent or co-guardian to manage one or more managed children in one action. Creates a guardian link per child in a single transaction and sends a single notification listing all the children.',
+  input: z.object({
+    email: z.string().email().optional().describe('Email of the person to invite (looked up by email)'),
+    handle: z.string().min(3).max(24).optional().describe('Handle of the person to invite'),
+    child_ids: z.array(id).min(1).max(20).describe('IDs of your managed children to invite the co-guardian for'),
+    relationship: z.enum(RELATIONSHIPS).default('parent'),
+  }).refine((d) => d.email || d.handle, 'Give the co-guardian\'s email or handle'),
+  async handler({ user }, i) {
+    return tx(async (c) => {
+      // Resolve the invitee
+      let invitee;
+      if (i.handle) {
+        invitee = (await c.query('SELECT id, display_name FROM users WHERE handle=$1 AND is_managed=false', [i.handle.replace(/^@/, '').toLowerCase()])).rows[0];
+      } else {
+        invitee = (await c.query('SELECT id, display_name FROM users WHERE email_lower=$1 AND is_managed=false', [i.email.toLowerCase()])).rows[0];
+      }
+      if (!invitee) throw notFound('Person — they need a sportarena account first');
+      if (invitee.id === user.id) throw badRequest('You cannot invite yourself');
+
+      // Confirm all child_ids belong to this guardian
+      const children = (await c.query(
+        'SELECT id, display_name, jurisdiction FROM users WHERE id = ANY($1::uuid[]) AND managed_by_guardian_id=$2 AND is_managed=true',
+        [i.child_ids, user.id]
+      )).rows;
+      if (children.length !== i.child_ids.length) throw forbidden('One or more child IDs are not your managed children');
+
+      const links = [];
+      for (const child of children) {
+        // Skip if a pending or active link already exists for this pair
+        const existing = (await c.query(
+          "SELECT id FROM guardian_links WHERE guardian_id=$1 AND child_id=$2 AND status NOT IN ('declined','revoked') AND revoked_at IS NULL",
+          [invitee.id, child.id]
+        )).rows[0];
+        if (existing) { links.push({ child_id: child.id, existing: true, link_id: existing.id }); continue; }
+
+        const policy = await getPolicy(child.jurisdiction, c);
+        const l = (await c.query(
+          'INSERT INTO guardian_links(guardian_id, child_id, relationship, requested_by, policy_jurisdiction, policy_version) VALUES ($1,$2,$3,$4,$5,$6) RETURNING *',
+          [invitee.id, child.id, i.relationship, user.id, policy.jurisdiction, policy.version]
+        )).rows[0];
+        await logLink(c, l.id, user.id, 'request', null, 'invited', 'bulk_invite');
+        links.push({ child_id: child.id, existing: false, link_id: l.id });
+      }
+
+      const newLinks = links.filter((l) => !l.existing);
+      if (newLinks.length > 0) {
+        const names = children.filter((ch) => newLinks.some((l) => l.child_id === ch.id)).map((ch) => ch.display_name).join(', ');
+        await notify(c, invitee.id, {
+          kind: 'guardian_request',
+          title: 'Family link request',
+          body: `${user.display_name} invited you to co-manage: ${names}. Open Family & guardians to answer.`,
+          data: { bulk: true, child_ids: newLinks.map((l) => l.child_id) },
+        });
+      }
+
+      return { invited: newLinks.length, already_linked: links.filter((l) => l.existing).length, links };
+    });
+  },
+});

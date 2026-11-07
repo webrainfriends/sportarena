@@ -236,45 +236,63 @@ function figures(lines, terms, reserveReleased, adjustments) {
     net_payable_cents: platform - commission - commissionTax - gateway - reserve + reserveReleased + adjustments };
 }
 
+/** Core settlement generation logic, callable programmatically by the schedule sweeper.
+ *  `i` must have { venue_id | contract_id, period_end, dry_run?, notes? }.
+ *  When contract_id is supplied, the venue is resolved from the contract. */
+export async function generateSettlement(user, i) {
+  if (!isPlatform(user)) throw forbidden('Only the platform team can do that');
+  // Resolve venue from contract_id when venue_id is not given
+  let venueId = i.venue_id;
+  if (!venueId && i.contract_id) {
+    const k = await one('SELECT venue_id FROM partner_contracts WHERE id=$1 AND status=\'active\'', [i.contract_id]);
+    if (!k) throw notFound('Contract');
+    if (!k.venue_id) throw badRequest('Contract covers all venues of the partner — supply venue_id explicitly');
+    venueId = k.venue_id;
+  }
+  if (!venueId) throw badRequest('Supply venue_id or contract_id');
+  return tx(async (c) => {
+    await c.query('SELECT pg_advisory_xact_lock(hashtext($1))', [`settle:${venueId}`]);
+    const venue = (await c.query('SELECT id, name, partner_id, currency FROM venues WHERE id=$1', [venueId])).rows[0];
+    if (!venue) throw notFound('Venue');
+    if (!venue.partner_id) throw conflict('This venue has no partner — link it to one first');
+    const contract = await activeContract(c, venue);
+    if (!contract) throw conflict('No accepted, in-force contract covers this venue — generate one and have the partner accept it');
+    const end = new Date(`${i.period_end}T00:00:00Z`); end.setUTCDate(end.getUTCDate() + 1);
+    const lines = await unsettledLines(c, venue.id, end.toISOString());
+    const terms = contract.terms;
+    const releasable = (await c.query(
+      `SELECT id, reserve_held_cents FROM settlements WHERE venue_id=$1 AND status IN ('approved','paid') AND reserve_held_cents > 0 AND reserve_released_by IS NULL AND period_end <= ($2::date - $3::int)`, [venue.id, i.period_end, terms.reserve_days ?? 0])).rows;
+    const released = releasable.reduce((s, r) => s + r.reserve_held_cents, 0);
+    const f = figures(lines, terms, released, 0);
+    const prev = (await c.query("SELECT sales_cents FROM settlements WHERE venue_id=$1 AND status <> 'void' ORDER BY period_end DESC, created_at DESC LIMIT 1", [venue.id])).rows[0];
+    const flags = settlementFlags(f, prev);
+    const { refunds_cents, ...cols } = f;
+    if (i.dry_run) return { dry_run: true, venue_id: venue.id, contract_no: contract.contract_no, currency: venue.currency, period_end: i.period_end, ...f, flags, lines };
+    const last = (await c.query("SELECT period_end FROM settlements WHERE venue_id=$1 AND status <> 'void' ORDER BY period_end DESC LIMIT 1", [venue.id])).rows[0];
+    const no = `STL-${String((await c.query("SELECT nextval('settlement_no_seq') AS n")).rows[0].n).padStart(6, '0')}`;
+    const s = (await c.query(
+      `INSERT INTO settlements(settlement_no, partner_id, venue_id, contract_id, currency, period_start, period_end, commission_bp, flags, notes, created_by,
+         invoices_count, sales_cents, tax_cents, platform_collected_cents, venue_collected_cents, commission_cents, commission_tax_cents, gateway_fee_cents, reserve_held_cents, reserve_released_cents, adjustments_cents, net_payable_cents)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23) RETURNING *`,
+      [no, venue.partner_id, venue.id, contract.id, venue.currency, last ? new Date(new Date(last.period_end).getTime() + 864e5).toISOString().slice(0, 10) : null, i.period_end, terms.commission_bp, JSON.stringify(flags), i.notes ?? null, user.id,
+        cols.invoices_count, cols.sales_cents, cols.tax_cents, cols.platform_collected_cents, cols.venue_collected_cents, cols.commission_cents, cols.commission_tax_cents, cols.gateway_fee_cents, cols.reserve_held_cents, cols.reserve_released_cents, cols.adjustments_cents, cols.net_payable_cents])).rows[0];
+    for (const l of lines) await c.query('INSERT INTO settlement_lines(settlement_id, invoice_id, kind, description, sales_cents, collected_cents, collected_by) VALUES ($1,$2,$3,$4,$5,$6,$7)', [s.id, l.invoice_id, l.kind, l.description, l.sales_cents, l.collected_cents, l.collected_by]);
+    if (releasable.length) await c.query('UPDATE settlements SET reserve_released_by=$2 WHERE id = ANY($1::uuid[])', [releasable.map((r) => r.id), s.id]);
+    await c.query('INSERT INTO partner_events(partner_id, actor_id, action, detail) VALUES ($1,$2,$3,$4)', [venue.partner_id, user.id, 'settlement_drafted', JSON.stringify({ settlement_no: no, net_payable_cents: s.net_payable_cents })]);
+    return { ...s, refunds_cents, flags };
+  });
+}
+
 cap({
   name: 'generate_settlement', method: 'POST', path: '/admin/settlements', tag: TAG, status: 201,
   summary: 'Platform team: settle a venue up to a period end per its active contract. Takes every paid invoice and credit note not yet settled (so nothing is missed or counted twice): commission and its tax, online payment costs and reserve come off what the platform collected; reserves from earlier settlements past their hold period are released. `dry_run: true` previews without saving. Flags unusual figures (negative payout, high refunds, mostly-cash, big swings). Needs an accepted contract.',
   input: z.object({ venue_id: id, period_end: z.string().date(), dry_run: z.boolean().default(false), notes: z.string().max(500).optional() }),
   async handler({ user }, i) {
     platformOnly(user);
-    return tx(async (c) => {
-      await c.query('SELECT pg_advisory_xact_lock(hashtext($1))', [`settle:${i.venue_id}`]);
-      const venue = (await c.query('SELECT id, name, partner_id, currency FROM venues WHERE id=$1', [i.venue_id])).rows[0];
-      if (!venue) throw notFound('Venue');
-      if (!venue.partner_id) throw conflict('This venue has no partner — link it to one first');
-      const contract = await activeContract(c, venue);
-      if (!contract) throw conflict('No accepted, in-force contract covers this venue — generate one and have the partner accept it');
-      const end = new Date(`${i.period_end}T00:00:00Z`); end.setUTCDate(end.getUTCDate() + 1);
-      const lines = await unsettledLines(c, venue.id, end.toISOString());
-      const terms = contract.terms;
-      const releasable = (await c.query(
-        `SELECT id, reserve_held_cents FROM settlements WHERE venue_id=$1 AND status IN ('approved','paid') AND reserve_held_cents > 0 AND reserve_released_by IS NULL AND period_end <= ($2::date - $3::int)`, [venue.id, i.period_end, terms.reserve_days ?? 0])).rows;
-      const released = releasable.reduce((s, r) => s + r.reserve_held_cents, 0);
-      const f = figures(lines, terms, released, 0);
-      const prev = (await c.query("SELECT sales_cents FROM settlements WHERE venue_id=$1 AND status <> 'void' ORDER BY period_end DESC, created_at DESC LIMIT 1", [venue.id])).rows[0];
-      const flags = settlementFlags(f, prev);
-      const { refunds_cents, ...cols } = f;
-      if (i.dry_run) return { dry_run: true, venue_id: venue.id, contract_no: contract.contract_no, currency: venue.currency, period_end: i.period_end, ...f, flags, lines };
-      const last = (await c.query("SELECT period_end FROM settlements WHERE venue_id=$1 AND status <> 'void' ORDER BY period_end DESC LIMIT 1", [venue.id])).rows[0];
-      const no = `STL-${String((await c.query("SELECT nextval('settlement_no_seq') AS n")).rows[0].n).padStart(6, '0')}`;
-      const s = (await c.query(
-        `INSERT INTO settlements(settlement_no, partner_id, venue_id, contract_id, currency, period_start, period_end, commission_bp, flags, notes, created_by,
-           invoices_count, sales_cents, tax_cents, platform_collected_cents, venue_collected_cents, commission_cents, commission_tax_cents, gateway_fee_cents, reserve_held_cents, reserve_released_cents, adjustments_cents, net_payable_cents)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23) RETURNING *`,
-        [no, venue.partner_id, venue.id, contract.id, venue.currency, last ? new Date(new Date(last.period_end).getTime() + 864e5).toISOString().slice(0, 10) : null, i.period_end, terms.commission_bp, JSON.stringify(flags), i.notes ?? null, user.id,
-          cols.invoices_count, cols.sales_cents, cols.tax_cents, cols.platform_collected_cents, cols.venue_collected_cents, cols.commission_cents, cols.commission_tax_cents, cols.gateway_fee_cents, cols.reserve_held_cents, cols.reserve_released_cents, cols.adjustments_cents, cols.net_payable_cents])).rows[0];
-      for (const l of lines) await c.query('INSERT INTO settlement_lines(settlement_id, invoice_id, kind, description, sales_cents, collected_cents, collected_by) VALUES ($1,$2,$3,$4,$5,$6,$7)', [s.id, l.invoice_id, l.kind, l.description, l.sales_cents, l.collected_cents, l.collected_by]);
-      if (releasable.length) await c.query('UPDATE settlements SET reserve_released_by=$2 WHERE id = ANY($1::uuid[])', [releasable.map((r) => r.id), s.id]);
-      await c.query('INSERT INTO partner_events(partner_id, actor_id, action, detail) VALUES ($1,$2,$3,$4)', [venue.partner_id, user.id, 'settlement_drafted', JSON.stringify({ settlement_no: no, net_payable_cents: s.net_payable_cents })]);
-      return { ...s, refunds_cents, flags };
-    });
+    return generateSettlement(user, i);
   },
 });
+
 
 async function loadSettlement(user, sid) {
   const s = await one('SELECT s.*, p.owner_id, p.name AS partner_name, v.name AS venue_name FROM settlements s JOIN partners p ON p.id=s.partner_id JOIN venues v ON v.id=s.venue_id WHERE s.id=$1', [sid]);

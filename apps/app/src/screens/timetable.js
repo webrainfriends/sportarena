@@ -7,9 +7,10 @@ import { useLoad } from '../hooks';
 import { useSession } from '../session';
 import { Btn, Card, Chip, Empty, ErrorBox, Field, Loading, Section, Seg, Sheet, T } from '../ui';
 import { FormSheet } from '../FormSheet';
-import { DateField, TimeField } from '../pickers';
+import { DateField, Stepper, TimeField } from '../pickers';
 import { c } from '../theme';
 import { WEEKDAYS, moneyIn } from '../vtime';
+import { t } from '../i18n';
 import { PaintGrid } from './paintgrid';
 
 const COLORS = [['#8458B3', 'Indigo'], ['#059669', 'Green'], ['#EA580C', 'Orange'], ['#E11D48', 'Red'], ['#0284C7', 'Blue'], ['#D97706', 'Amber'], ['#494D5F', 'Purple']];
@@ -47,67 +48,178 @@ function Toggle({ options, value, onChange }) {
   return <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>{options.map((o) => <Chip key={o.value} label={o.label} active={value.includes(o.value)} onPress={() => onChange(value.includes(o.value) ? value.filter((x) => x !== o.value) : [...value, o.value])} />)}</View>;
 }
 
-/** Open (or close) many courts on many days at once. */
+/** Open (or close) many courts on many days at once — 4-step elite wizard. */
 function BulkSlotsSheet({ venue, data, onClose, onDone }) {
   const { toast } = useSession();
+  const STEPS = [t('tt.wiz.s1'), t('tt.wiz.s2'), t('tt.wiz.s3'), t('tt.wiz.s4')];
+  const [step, setStep] = useState(0);
   const [courts, setCourts] = useState([]);
   const [days, setDays] = useState([1, 2, 3, 4, 5]);
   const [start, setStart] = useState('06:00');
   const [end, setEnd] = useState('22:00');
-  const [cat, setCat] = useState('');           // category id | '' base rate | 'closed'
+  const [cat, setCat] = useState('');
   const [replace, setReplace] = useState('replace');
   const [from, setFrom] = useState(null);
   const [to, setTo] = useState(null);
+  const [bookingType, setBookingType] = useState('public');
+  const [minAdvHours, setMinAdvHours] = useState(1);
+  const [maxAdvDays, setMaxAdvDays] = useState(30);
+  const [maxPerMember, setMaxPerMember] = useState(null);
+  const [bufferMin, setBufferMin] = useState(0);
+  const [eligibility, setEligibility] = useState('everyone');
+  const [ageMin, setAgeMin] = useState(null);
+  const [ageMax, setAgeMax] = useState(null);
+  const [cancelPolicy, setCancelPolicy] = useState('standard');
+  const [lateCancelPct, setLateCancelPct] = useState(0);
+  const [paraSurface, setParaSurface] = useState(false);
+  const [paraEquip, setParaEquip] = useState(false);
+  const [paraNet, setParaNet] = useState(false);
+  const [paraGuide, setParaGuide] = useState(false);
+  const [paraPriority, setParaPriority] = useState('open');
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState(null);
   const active = data.categories.filter((x) => x.active);
+
   const go = async () => {
     setBusy(true); setErr(null);
     try {
-      if (!courts.length) throw new Error('Choose at least one court');
-      if (!days.length) throw new Error('Choose at least one day');
+      if (!courts.length) throw new Error(t('tt.wiz.errCourts'));
+      if (!days.length) throw new Error(t('tt.wiz.errDays'));
       const r = await api.post(`/venues/${venue.id}/timetable`, {
-        resource_ids: courts, weekdays: days, start, end, closed: cat === 'closed', ...(cat && cat !== 'closed' ? { category_id: cat } : {}), replace: replace === 'replace',
-        ...(from ? { valid_from: from } : {}), ...(to ? { valid_to: to } : {}) });
-      toast(r.closed ? `Closed on ${r.courts} court(s)` : `Slots set on ${r.courts} court(s)`); onDone(); onClose();
+        resource_ids: courts, weekdays: days, start, end,
+        closed: cat === 'closed', ...(cat && cat !== 'closed' ? { category_id: cat } : {}),
+        replace: replace === 'replace',
+        ...(from ? { valid_from: from } : {}), ...(to ? { valid_to: to } : {}),
+        booking_type: bookingType, min_advance_booking_hours: minAdvHours,
+        max_advance_booking_days: maxAdvDays,
+        ...(maxPerMember ? { max_bookings_per_member: maxPerMember } : {}),
+        buffer_min: bufferMin, eligibility_who: eligibility,
+        ...(ageMin != null ? { age_min: ageMin } : {}), ...(ageMax != null ? { age_max: ageMax } : {}),
+        cancellation_policy: cancelPolicy, late_cancel_pct: lateCancelPct,
+        para_accessible_surface: paraSurface, para_equipment_on_court: paraEquip,
+        para_lowered_net: paraNet, para_guide_slot: paraGuide, para_priority: paraPriority,
+      });
+      toast(r.closed ? `${t('tt.wiz.closed')} ${r.courts}` : `${t('tt.wiz.set')} ${r.courts}`);
+      onDone(); onClose();
     } catch (e) { setErr(e.message); } finally { setBusy(false); }
   };
+
+  const BOOK_TYPES = ['public', 'members', 'academy_class', 'private_coaching', 'group', 'event_reserved'];
+  const ELIGIBILITY = ['everyone', 'members', 'students', 'staff'];
+  const CANCEL_OPTS = ['flexible', 'standard', 'strict', 'non_refundable'];
+  const PARA_PRI = ['open', 'para_only', 'para_priority'];
+
   return (
-    <Sheet visible onClose={onClose} title="Open slots in bulk">
-      <View style={{ gap: 12 }}>
-        <View style={{ gap: 6 }}>
-          <T weight="800" size={13}>Courts</T>
-          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
-            <Chip label="All courts" active={courts.length === data.courts.length && courts.length > 0} onPress={() => setCourts(courts.length === data.courts.length ? [] : data.courts.map((x) => x.id))} />
-            {[...new Map(data.courts.filter((x) => x.sport_slug).map((x) => [x.sport_slug, x])).values()].map((x) => { const ids = data.courts.filter((y) => y.sport_slug === x.sport_slug).map((y) => y.id); const on = ids.every((i) => courts.includes(i)); return <Chip key={x.sport_slug} label={`${x.sport_emoji ?? ''} All ${x.sport}`} active={on} onPress={() => setCourts(on ? courts.filter((i) => !ids.includes(i)) : [...new Set([...courts, ...ids])])} />; })}
-            {data.courts.map((x) => <Chip key={x.id} label={`${x.sport_emoji ?? ''} ${x.name}`.trim()} active={courts.includes(x.id)} onPress={() => setCourts(courts.includes(x.id) ? courts.filter((y) => y !== x.id) : [...courts, x.id])} />)}
-          </View>
-        </View>
-        <View style={{ gap: 6 }}>
-          <T weight="800" size={13}>Days</T>
-          <View style={{ flexDirection: 'row', gap: 6, flexWrap: 'wrap' }}>
-            <Chip label="Weekdays" onPress={() => setDays([1, 2, 3, 4, 5])} /><Chip label="Weekend" onPress={() => setDays([6, 0])} /><Chip label="Every day" onPress={() => setDays([0, 1, 2, 3, 4, 5, 6])} />
-          </View>
-          <Toggle options={ORDER.map((d) => ({ value: d, label: WEEKDAYS[d] }))} value={days} onChange={setDays} />
-        </View>
-        <View style={{ flexDirection: 'row', gap: 10 }}>
-          <View style={{ flex: 1 }}><TimeField label="From" value={start} onChange={setStart} step={30} /></View>
-          <View style={{ flex: 1 }}><TimeField label="Until" value={end} onChange={setEnd} step={30} endOfDay /></View>
-        </View>
-        <View style={{ gap: 6 }}>
-          <T weight="800" size={13}>Price category</T>
-          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
-            {active.map((x) => <Chip key={x.id} label={`${x.name} · ${moneyIn(x.hourly_rate_cents, venue.currency)}`} active={cat === x.id} onPress={() => setCat(x.id)} />)}
-            <Chip label="Court base rate" active={cat === ''} onPress={() => setCat('')} />
-            <Chip label="🚫 Closed" active={cat === 'closed'} onPress={() => setCat('closed')} />
-          </View>
-          {!active.length ? <T size={12} color={c.mute}>Tip: create categories like Peak and Off-peak first, then pick them here.</T> : null}
-        </View>
-        <DateField label="Season starts" value={from} onChange={setFrom} optional hint="Leave both dates empty for every week. A season takes priority over the everyday timetable." />
-        {from ? <DateField label="Season ends" value={to} onChange={setTo} optional /> : null}
-        <Seg options={[{ value: 'replace', label: 'Replace what is there' }, { value: 'free', label: 'Only where nothing is set' }]} value={replace} onChange={setReplace} color={c.violet} />
-        {err ? <T color={c.red} weight="800">{err}</T> : null}
-        <Btn title={cat === 'closed' ? 'Close these slots' : 'Create slots'} onPress={go} loading={busy} />
+    <Sheet visible onClose={onClose} title={t('tt.wiz.title')}>
+      <Stepper steps={STEPS} current={step} onJump={(i) => i < step && setStep(i)} />
+      <View style={{ gap: 12, marginTop: 8 }}>
+        {step === 0 && (
+          <>
+            <View style={{ gap: 6 }}>
+              <T weight="800" size={13}>{t('tt.wiz.courts')}</T>
+              <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
+                <Chip label={t('tt.wiz.allCourts')} active={courts.length === data.courts.length && courts.length > 0} onPress={() => setCourts(courts.length === data.courts.length ? [] : data.courts.map((x) => x.id))} />
+                {[...new Map(data.courts.filter((x) => x.sport_slug).map((x) => [x.sport_slug, x])).values()].map((x) => { const ids = data.courts.filter((y) => y.sport_slug === x.sport_slug).map((y) => y.id); const on = ids.every((i) => courts.includes(i)); return <Chip key={x.sport_slug} label={`${x.sport_emoji ?? ''} All ${x.sport}`} active={on} onPress={() => setCourts(on ? courts.filter((i) => !ids.includes(i)) : [...new Set([...courts, ...ids])])} />; })}
+                {data.courts.map((x) => <Chip key={x.id} label={`${x.sport_emoji ?? ''} ${x.name}`.trim()} active={courts.includes(x.id)} onPress={() => setCourts(courts.includes(x.id) ? courts.filter((y) => y !== x.id) : [...courts, x.id])} />)}
+              </View>
+            </View>
+            <View style={{ gap: 6 }}>
+              <T weight="800" size={13}>{t('tt.wiz.days')}</T>
+              <View style={{ flexDirection: 'row', gap: 6, flexWrap: 'wrap' }}>
+                <Chip label={t('tt.wiz.weekdays')} onPress={() => setDays([1, 2, 3, 4, 5])} />
+                <Chip label={t('tt.wiz.weekend')} onPress={() => setDays([6, 0])} />
+                <Chip label={t('tt.wiz.everyday')} onPress={() => setDays([0, 1, 2, 3, 4, 5, 6])} />
+              </View>
+              <Toggle options={ORDER.map((d) => ({ value: d, label: WEEKDAYS[d] }))} value={days} onChange={setDays} />
+            </View>
+            <DateField label={t('tt.wiz.seasonFrom')} value={from} onChange={setFrom} optional hint={t('tt.wiz.seasonHint')} />
+            {from ? <DateField label={t('tt.wiz.seasonTo')} value={to} onChange={setTo} optional /> : null}
+            <Btn title={t('common.next')} onPress={() => { if (!courts.length) { setErr(t('tt.wiz.errCourts')); return; } setErr(null); setStep(1); }} />
+          </>
+        )}
+        {step === 1 && (
+          <>
+            <View style={{ flexDirection: 'row', gap: 10 }}>
+              <View style={{ flex: 1 }}><TimeField label={t('tt.wiz.from')} value={start} onChange={setStart} step={30} /></View>
+              <View style={{ flex: 1 }}><TimeField label={t('tt.wiz.until')} value={end} onChange={setEnd} step={30} endOfDay /></View>
+            </View>
+            <View style={{ gap: 6 }}>
+              <T weight="800" size={13}>{t('tt.wiz.priceCat')}</T>
+              <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
+                {active.map((x) => <Chip key={x.id} label={`${x.name} · ${moneyIn(x.hourly_rate_cents, venue.currency)}`} active={cat === x.id} onPress={() => setCat(x.id)} />)}
+                <Chip label={t('tt.wiz.baseRate')} active={cat === ''} onPress={() => setCat('')} />
+                <Chip label={t('tt.wiz.closed')} active={cat === 'closed'} onPress={() => setCat('closed')} />
+              </View>
+              {!active.length ? <T size={12} color={c.mute}>{t('tt.wiz.catTip')}</T> : null}
+            </View>
+            <T weight="800" size={13}>{t('tt.wiz.bookingType')}</T>
+            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
+              {BOOK_TYPES.map((bt) => <Chip key={bt} label={t(`tt.wiz.bt.${bt}`)} active={bookingType === bt} onPress={() => setBookingType(bt)} />)}
+            </View>
+            <Seg options={[{ value: 'replace', label: t('tt.wiz.replace') }, { value: 'free', label: t('tt.wiz.onlyFree') }]} value={replace} onChange={setReplace} color={c.violet} />
+            <View style={{ flexDirection: 'row', gap: 8 }}>
+              <Btn style={{ flex: 1 }} color={c.paper} ink={c.ink} title={t('common.back')} onPress={() => setStep(0)} />
+              <Btn style={{ flex: 1 }} title={t('common.next')} onPress={() => setStep(2)} />
+            </View>
+          </>
+        )}
+        {step === 2 && (
+          <>
+            <T weight="800" size={14}>{t('tt.wiz.rulesTitle')}</T>
+            <View style={{ flexDirection: 'row', gap: 12 }}>
+              <View style={{ flex: 1 }}><T size={12} color={c.mute}>{t('tt.wiz.minAdv')}</T><Stepper value={minAdvHours} onChange={setMinAdvHours} min={0} max={168} step={1} label={t('tt.wiz.hours')} /></View>
+              <View style={{ flex: 1 }}><T size={12} color={c.mute}>{t('tt.wiz.maxAdv')}</T><Stepper value={maxAdvDays} onChange={setMaxAdvDays} min={1} max={365} step={1} label={t('tt.wiz.days')} /></View>
+            </View>
+            <View style={{ flexDirection: 'row', gap: 12 }}>
+              <View style={{ flex: 1 }}><T size={12} color={c.mute}>{t('tt.wiz.buffer')}</T><Stepper value={bufferMin} onChange={setBufferMin} min={0} max={120} step={5} label="min" /></View>
+              <View style={{ flex: 1 }}><T size={12} color={c.mute}>{t('tt.wiz.maxPerMember')}</T><Stepper value={maxPerMember ?? 0} onChange={(v) => setMaxPerMember(v > 0 ? v : null)} min={0} max={30} step={1} /></View>
+            </View>
+            <T weight="800" size={13}>{t('tt.wiz.eligibility')}</T>
+            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
+              {ELIGIBILITY.map((e) => <Chip key={e} label={t(`tt.wiz.elig.${e}`)} active={eligibility === e} onPress={() => setEligibility(e)} />)}
+            </View>
+            <View style={{ flexDirection: 'row', gap: 12 }}>
+              <View style={{ flex: 1 }}><T size={12} color={c.mute}>{t('tt.wiz.ageMin')}</T><Stepper value={ageMin ?? 0} onChange={(v) => setAgeMin(v > 0 ? v : null)} min={0} max={99} step={1} /></View>
+              <View style={{ flex: 1 }}><T size={12} color={c.mute}>{t('tt.wiz.ageMax')}</T><Stepper value={ageMax ?? 0} onChange={(v) => setAgeMax(v > 0 ? v : null)} min={0} max={99} step={1} /></View>
+            </View>
+            <T weight="800" size={13}>{t('tt.wiz.cancelPolicy')}</T>
+            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
+              {CANCEL_OPTS.map((cp) => <Chip key={cp} label={t(`tt.wiz.cp.${cp}`)} active={cancelPolicy === cp} onPress={() => setCancelPolicy(cp)} />)}
+            </View>
+            <T size={12} color={c.mute}>{t('tt.wiz.lateCancelPct')}</T>
+            <Stepper value={lateCancelPct} onChange={setLateCancelPct} min={0} max={100} step={5} label="%" />
+            <View style={{ flexDirection: 'row', gap: 8 }}>
+              <Btn style={{ flex: 1 }} color={c.paper} ink={c.ink} title={t('common.back')} onPress={() => setStep(1)} />
+              <Btn style={{ flex: 1 }} title={t('common.next')} onPress={() => setStep(3)} />
+            </View>
+          </>
+        )}
+        {step === 3 && (
+          <>
+            <T weight="800" size={14}>{t('tt.wiz.paraTitle')}</T>
+            {[
+              [paraSurface, setParaSurface, t('tt.wiz.para.surface')],
+              [paraEquip, setParaEquip, t('tt.wiz.para.equip')],
+              [paraNet, setParaNet, t('tt.wiz.para.net')],
+              [paraGuide, setParaGuide, t('tt.wiz.para.guide')],
+            ].map(([val, setVal, label]) => (
+              <View key={label} style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                <T size={13}>{label}</T>
+                <Chip label={val ? t('common.on') : t('common.off')} active={val} onPress={() => setVal(!val)} />
+              </View>
+            ))}
+            <T weight="800" size={13}>{t('tt.wiz.paraPriority')}</T>
+            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
+              {PARA_PRI.map((p) => <Chip key={p} label={t(`tt.wiz.pp.${p}`)} active={paraPriority === p} onPress={() => setParaPriority(p)} />)}
+            </View>
+            {err ? <T color={c.red} weight="800">{err}</T> : null}
+            <View style={{ flexDirection: 'row', gap: 8 }}>
+              <Btn style={{ flex: 1 }} color={c.paper} ink={c.ink} title={t('common.back')} onPress={() => setStep(2)} />
+              <Btn style={{ flex: 1 }} title={cat === 'closed' ? t('tt.wiz.closeSlots') : t('tt.wiz.createSlots')} onPress={go} loading={busy} />
+            </View>
+          </>
+        )}
+        {err && step !== 3 ? <T color={c.red} weight="800">{err}</T> : null}
       </View>
     </Sheet>
   );

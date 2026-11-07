@@ -361,6 +361,16 @@ export function brandedDocumentsRouter() {
     } catch (e) { fail(res, e); }
   });
 
+  // GET /api/v1/branded-documents/academy-pack/:id/draft -> the frozen snapshot of an academy report pack as a DRAFT-stamped PDF (never stored; audit-logged; staff / drafting coach only)
+  r.get('/branded-documents/academy-pack/:id/draft', limiter, async (req, res) => {
+    try {
+      const user = await who(req);
+      const { draftPdf } = await import('./academy-report-packs.js');
+      const bytes = await draftPdf(user, uuid(req.params.id, 'Report'));
+      res.set({ ...docHeaders('application/pdf', bytes), 'Content-Disposition': 'attachment; filename="draft.pdf"' }).end(bytes);
+    } catch (e) { fail(res, e); }
+  });
+
   r.get('/branded-documents/:id/file', limiter, async (req, res) => {
     try {
       const user = await who(req);
@@ -372,7 +382,7 @@ export function brandedDocumentsRouter() {
         if (!v || !(await canReadReportVersion(user, v))) throw notFound('Document');
       } else if (d.source_type === 'sponsorship_contract') await canReadContractDocument(user, d.source_id); // parties to the agreement only, checked live
       else if (d.source_type === 'export_pack') await canReadPackDocument(user, d.source_id); // the athlete, their verified guardian, or the coach who built it from a still-live share
-      else if (isAcademyPackType(d.source_type)) await canReadAcademyPack(user, d.source_type, d.source_id); // academy progress / management / finance PDFs: role, coach scope or guardian link re-checked live
+      else if (isAcademyPackType(d.source_type)) await canReadAcademyPack(user, d.source_type, d.source_id, d.id); // academy progress / management / finance PDFs: role, coach scope or guardian link re-checked live
       else if (d.source_type === 'academy_enrolment') await canReadEnrolmentLetter(user, d.source_id); // academy staff, the enrolled adult or their verified guardian, checked live
       else if (d.source_type.startsWith('trip_report:')) await canReadTripReport(user, d); // trip staff (or the traveller who made it) while it is under 24 h old, checked live
       else if (d.source_type.startsWith('federation_')) await canReadFederationDocument(user, d.source_type, d.source_id); // the body's officers or the other party, checked live

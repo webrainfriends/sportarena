@@ -21,6 +21,7 @@ const scopeShape = z.object({
   venue_id: id.optional().describe('the venue where the competition was played'),
   format: z.enum(['tournament', 'league', 'friendly', 'camp', 'trial']).optional(),
   position: z.string().min(1).max(40).optional(),
+  sport_class: z.string().min(1).max(40).optional().describe('para sport class (e.g. T54); required when the sport is a para sport'),
 }).strict();
 
 const TIE_RULES = {
@@ -164,6 +165,7 @@ cap({
     if (i.scope.event_id && !(await one('SELECT 1 AS ok FROM events WHERE id=$1 AND sport_id=$2', [i.scope.event_id, sport.id]))) throw unprocessable('That event is not in this sport');
     if (i.scope.venue_id && i.formula_kind === 'rating') throw unprocessable('A skill-rating ranking is not built from results at a venue; pick a results-based formula for a venue leaderboard');
     if (i.scope.venue_id && !(await one('SELECT 1 AS ok FROM venues WHERE id=$1 AND active', [i.scope.venue_id]))) throw unprocessable('That venue was not found');
+    if (sport.is_para && !i.scope.sport_class) throw unprocessable('para_rankings_require_class: Para sport rankings must specify a sport class (e.g. T54) in their scope. Results across different sport classes cannot be compared in one ranking.');
     let direction = 'higher', unit = null;
     if (i.formula_kind === 'rating') { unit = 'level'; if (i.evidence !== 'official') throw unprocessable('A skill level is built from approved competition results only'); }
     else if (i.formula_kind !== 'team_form') {

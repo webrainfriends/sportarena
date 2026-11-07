@@ -1,3 +1,4 @@
+import { qbool } from '../para-catalogue.js';
 import { z } from 'zod';
 import { cap, id, page, roles } from '../registry.js';
 import { one, many, query, tx } from '../db.js';
@@ -226,11 +227,11 @@ cap({
 });
 
 cap({
-  name: 'list_sports', method: 'GET', path: '/sports', tag: 'Directory', auth: 'public', summary: 'All supported sports (Olympic summer/winter and Asian Games programmes and more). Each has a play_type (team, individual, board, esports). Filter by category, play_type or programme.',
-  input: z.object({ category: z.string().optional(), play_type: z.enum(['team', 'individual', 'board', 'esports']).optional(), programme: z.enum(['olympic_summer', 'olympic_winter', 'asian_games']).optional() }),
+  name: 'list_sports', method: 'GET', path: '/sports', tag: 'Directory', auth: 'public', summary: 'All supported sports (Olympic summer/winter, Asian Games, Paralympic and other adaptive programmes and more). Each has a play_type (team, individual, board, esports) and is_para. Filter by category, play_type, programme or para.',
+  input: z.object({ category: z.string().optional(), play_type: z.enum(['team', 'individual', 'board', 'esports']).optional(), programme: z.enum(['olympic_summer', 'olympic_winter', 'asian_games', 'paralympic_summer', 'paralympic_winter', 'other_adaptive']).optional(), para: qbool().optional().describe('true = only para / adaptive sports, false = only standard sports') }),
   handler: (_, i) => many(
-    'SELECT * FROM sports WHERE ($1::text IS NULL OR category = $1) AND ($2::text IS NULL OR play_type = $2) AND ($3::text IS NULL OR $3 = ANY(programmes)) ORDER BY name',
-    [i.category ?? null, i.play_type ?? null, i.programme ?? null],
+    'SELECT * FROM sports WHERE ($1::text IS NULL OR category = $1) AND ($2::text IS NULL OR play_type = $2) AND ($3::text IS NULL OR $3 = ANY(programmes)) AND ($4::boolean IS NULL OR is_para = $4) ORDER BY name',
+    [i.category ?? null, i.play_type ?? null, i.programme ?? null, i.para ?? null],
   ),
 });
 
@@ -315,5 +316,170 @@ cap({
       if (i.role === 'coach') await c.query("UPDATE users SET roles = array_append(roles, 'coach') WHERE id=$1 AND NOT ('coach' = ANY(roles))", [user.id]);
       return row;
     });
+  },
+});
+
+// ── Elite coaching wizard capabilities ───────────────────────────────────────
+
+cap({
+  name: 'update_coach_sport_profile',
+  method: 'PATCH', path: '/me/sport-profiles/:id/coach',
+  tag: 'Identity', auth: 'user',
+  summary: 'Update coaching-specific fields of a coach sport profile: tier, athlete levels, specialisations, session formats, philosophy (encrypted), availability, rate tiers and safeguarding. Patch semantics — only provided fields are updated.',
+  input: z.object({
+    coaching_tier: z.enum(['foundation', 'club', 'regional', 'national', 'elite', 'international']).optional(),
+    athlete_levels: z.array(z.string().max(40)).max(10).optional(),
+    coaching_specialisations: z.array(z.string().max(60)).max(20).optional(),
+    session_formats: z.array(z.string().max(60)).max(10).optional(),
+    coaching_bio: z.string().trim().max(300).optional().nullable(),
+    peak_playing_level: z.enum(['recreational', 'club', 'regional', 'national', 'international']).optional().nullable(),
+    booking_notice_hours: z.number().int().min(0).max(336).optional().nullable(),
+    group_rate_cents: z.number().int().min(0).optional().nullable(),
+    institutional_rate_cents: z.number().int().min(0).optional().nullable(),
+    weekly_hours: z.number().int().min(0).max(80).optional().nullable(),
+    travel_willing: z.boolean().optional(),
+    coaching_languages: z.array(z.string().max(10)).max(20).optional(),
+    dbs_status: z.enum(['valid', 'pending', 'not_required']).optional().nullable(),
+    dbs_issued_on: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional().nullable(),
+    first_aid_expires_on: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional().nullable(),
+    coaching_degree: z.string().trim().max(200).optional().nullable(),
+  }),
+  async handler({ user }, i, { params }) {
+    const profileId = params.id;
+    return tx(async (c) => {
+      const { rows: [p] } = await c.query('SELECT id FROM sport_profiles WHERE id=$1 AND user_id=$2 AND role=$3 AND archived_at IS NULL', [profileId, user.id, 'coach']);
+      if (!p) throw notFound('Coach sport profile');
+      const sets = [];
+      const vals = [profileId];
+      const push = (col, val) => { vals.push(val); sets.push(`${col}=$${vals.length}`); };
+      if (i.coaching_tier !== undefined) push('coaching_tier', i.coaching_tier);
+      if (i.athlete_levels !== undefined) push('athlete_levels', i.athlete_levels);
+      if (i.coaching_specialisations !== undefined) push('coaching_specialisations', i.coaching_specialisations);
+      if (i.session_formats !== undefined) push('session_formats', i.session_formats);
+      if ('coaching_bio' in i) push('coaching_bio_enc', i.coaching_bio ? encrypt(i.coaching_bio, 'sport_profiles.coaching_bio') : null);
+      if ('peak_playing_level' in i) push('peak_playing_level', i.peak_playing_level);
+      if ('booking_notice_hours' in i) push('booking_notice_hours', i.booking_notice_hours);
+      if ('group_rate_cents' in i) push('group_rate_cents', i.group_rate_cents);
+      if ('institutional_rate_cents' in i) push('institutional_rate_cents', i.institutional_rate_cents);
+      if ('weekly_hours' in i) push('weekly_hours', i.weekly_hours);
+      if (i.travel_willing !== undefined) push('travel_willing', i.travel_willing);
+      if (i.coaching_languages !== undefined) push('coaching_languages', i.coaching_languages);
+      if ('dbs_status' in i) push('dbs_status', i.dbs_status);
+      if ('dbs_issued_on' in i) push('dbs_issued_on', i.dbs_issued_on);
+      if ('first_aid_expires_on' in i) push('first_aid_expires_on', i.first_aid_expires_on);
+      if ('coaching_degree' in i) push('coaching_degree', i.coaching_degree);
+      if (sets.length) {
+        sets.push(`updated_at=now()`);
+        await c.query(`UPDATE sport_profiles SET ${sets.join(',')} WHERE id=$1`, vals);
+      }
+      await audit(c, user.id, 'update_coach_sport_profile', 'sport_profiles', profileId);
+      return { ok: true };
+    });
+  },
+});
+
+cap({
+  name: 'get_coach_sport_profile',
+  method: 'GET', path: '/me/sport-profiles/:id/coach',
+  tag: 'Identity', auth: 'user',
+  summary: 'Get coaching-specific fields for one of your coach sport profiles, including career entries and licences. Decrypts coaching bio.',
+  async handler({ user }, _i, { params }) {
+    const profileId = params.id;
+    const { rows: [p] } = await query('SELECT sp.id, sp.coaching_tier, sp.athlete_levels, sp.coaching_specialisations, sp.session_formats, sp.coaching_bio_enc, sp.peak_playing_level, sp.booking_notice_hours, sp.group_rate_cents, sp.institutional_rate_cents, sp.hourly_rate_cents, sp.weekly_hours, sp.travel_willing, sp.coaching_languages, sp.dbs_status, sp.dbs_issued_on, sp.first_aid_expires_on, sp.coaching_degree, sp.experience_years, sp.region FROM sport_profiles sp WHERE sp.id=$1 AND sp.user_id=$2 AND sp.role=$3 AND sp.archived_at IS NULL', [profileId, user.id, 'coach']);
+    if (!p) throw notFound('Coach sport profile');
+    const career = await many('SELECT id, org_name, role, city, country, started_year, ended_year, is_current, sort_order FROM coach_career_entries WHERE sport_profile_id=$1 ORDER BY sort_order, started_year DESC NULLS LAST', [profileId]);
+    const licences = await many('SELECT id, issuing_body, licence_level, country, expires_on, verification_case_id FROM coach_sport_licences WHERE sport_profile_id=$1 ORDER BY created_at', [profileId]);
+    const { coaching_bio_enc, ...rest } = p;
+    if (coaching_bio_enc) await audit(null, user.id, 'read_coaching_bio', 'sport_profiles', profileId);
+    return { ...rest, coaching_bio: coaching_bio_enc ? decrypt(coaching_bio_enc, 'sport_profiles.coaching_bio') : null, career, licences };
+  },
+});
+
+cap({
+  name: 'upsert_coach_career_entry',
+  method: 'POST', path: '/me/sport-profiles/:id/coach/career',
+  tag: 'Identity', auth: 'user', status: 201,
+  summary: 'Add or update a career entry (club/academy history) for a coach sport profile.',
+  input: z.object({
+    entry_id: z.number().int().optional(),
+    org_name: z.string().trim().min(1).max(200),
+    role: z.string().trim().max(100).optional().nullable(),
+    city: z.string().trim().max(100).optional().nullable(),
+    country: z.string().trim().max(80).optional().nullable(),
+    started_year: z.number().int().min(1950).max(2100).optional().nullable(),
+    ended_year: z.number().int().min(1950).max(2100).optional().nullable(),
+    is_current: z.boolean().default(false),
+    sort_order: z.number().int().min(0).max(99).default(0),
+  }),
+  async handler({ user }, i, { params }) {
+    const profileId = params.id;
+    return tx(async (c) => {
+      const { rows: [p] } = await c.query('SELECT id FROM sport_profiles WHERE id=$1 AND user_id=$2 AND role=$3 AND archived_at IS NULL', [profileId, user.id, 'coach']);
+      if (!p) throw notFound('Coach sport profile');
+      if (i.entry_id) {
+        const { rows: [e] } = await c.query('SELECT id FROM coach_career_entries WHERE id=$1 AND user_id=$2', [i.entry_id, user.id]);
+        if (!e) throw notFound('Career entry');
+        const { rows: [row] } = await c.query('UPDATE coach_career_entries SET org_name=$3,role=$4,city=$5,country=$6,started_year=$7,ended_year=$8,is_current=$9,sort_order=$10,updated_at=now() WHERE id=$1 AND user_id=$2 RETURNING id', [i.entry_id, user.id, i.org_name, i.role ?? null, i.city ?? null, i.country ?? null, i.started_year ?? null, i.ended_year ?? null, i.is_current, i.sort_order]);
+        return row;
+      }
+      const { rows: [row] } = await c.query('INSERT INTO coach_career_entries(user_id,sport_profile_id,org_name,role,city,country,started_year,ended_year,is_current,sort_order) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING id', [user.id, profileId, i.org_name, i.role ?? null, i.city ?? null, i.country ?? null, i.started_year ?? null, i.ended_year ?? null, i.is_current, i.sort_order]);
+      return row;
+    });
+  },
+});
+
+cap({
+  name: 'delete_coach_career_entry',
+  method: 'DELETE', path: '/me/sport-profiles/:sport_profile_id/coach/career/:id',
+  tag: 'Identity', auth: 'user', status: 204,
+  summary: 'Remove a career entry from a coach sport profile.',
+  async handler({ user }, _i, { params }) {
+    const { rows: [row] } = await query('DELETE FROM coach_career_entries WHERE id=$1 AND user_id=$2 RETURNING id', [params.id, user.id]);
+    if (!row) throw notFound('Career entry');
+    return null;
+  },
+});
+
+cap({
+  name: 'upsert_coach_sport_licence',
+  method: 'POST', path: '/me/sport-profiles/:id/coach/licences',
+  tag: 'Identity', auth: 'user', status: 201,
+  summary: 'Add or update a coaching licence declaration for a coach sport profile. Licence numbers are encrypted.',
+  input: z.object({
+    licence_id: z.number().int().optional(),
+    issuing_body: z.string().trim().min(1).max(200),
+    licence_level: z.string().trim().max(100).optional().nullable(),
+    licence_no: z.string().max(60).optional().nullable(),
+    country: z.string().trim().max(80).optional().nullable(),
+    expires_on: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional().nullable(),
+    verification_case_id: z.number().int().optional().nullable(),
+  }),
+  async handler({ user }, i, { params }) {
+    const profileId = params.id;
+    return tx(async (c) => {
+      const { rows: [p] } = await c.query('SELECT id FROM sport_profiles WHERE id=$1 AND user_id=$2 AND role=$3 AND archived_at IS NULL', [profileId, user.id, 'coach']);
+      if (!p) throw notFound('Coach sport profile');
+      const enc = encrypt(i.licence_no, 'coach_sport_licences.licence_no');
+      if (i.licence_id) {
+        const { rows: [e] } = await c.query('SELECT id FROM coach_sport_licences WHERE id=$1 AND user_id=$2', [i.licence_id, user.id]);
+        if (!e) throw notFound('Licence');
+        const { rows: [row] } = await c.query('UPDATE coach_sport_licences SET issuing_body=$3,licence_level=$4,licence_no_enc=coalesce($5,licence_no_enc),country=$6,expires_on=$7,verification_case_id=$8,updated_at=now() WHERE id=$1 AND user_id=$2 RETURNING id,issuing_body,licence_level,country,expires_on,verification_case_id', [i.licence_id, user.id, i.issuing_body, i.licence_level ?? null, enc, i.country ?? null, i.expires_on ?? null, i.verification_case_id ?? null]);
+        return row;
+      }
+      const { rows: [row] } = await c.query('INSERT INTO coach_sport_licences(user_id,sport_profile_id,issuing_body,licence_level,licence_no_enc,country,expires_on,verification_case_id) VALUES($1,$2,$3,$4,$5,$6,$7,$8) RETURNING id,issuing_body,licence_level,country,expires_on,verification_case_id', [user.id, profileId, i.issuing_body, i.licence_level ?? null, enc, i.country ?? null, i.expires_on ?? null, i.verification_case_id ?? null]);
+      return row;
+    });
+  },
+});
+
+cap({
+  name: 'delete_coach_sport_licence',
+  method: 'DELETE', path: '/me/sport-profiles/:sport_profile_id/coach/licences/:id',
+  tag: 'Identity', auth: 'user', status: 204,
+  summary: 'Remove a coaching licence declaration.',
+  async handler({ user }, _i, { params }) {
+    const { rows: [row] } = await query('DELETE FROM coach_sport_licences WHERE id=$1 AND user_id=$2 RETURNING id', [params.id, user.id]);
+    if (!row) throw notFound('Licence');
+    return null;
   },
 });

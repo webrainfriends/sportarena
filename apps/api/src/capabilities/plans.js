@@ -10,7 +10,7 @@ import { lockPayableInvoice } from '../booking/credits.js';
 import { startUserPlan } from '../booking/plans.js';
 
 const TAG = 'Memberships & passes';
-const PUBLIC = 'id, venue_id, kind, name, description, price_cents, duration_days, discount_bp, sessions, session_value_cents, valid_days, active, resource_ids, includes, auto_renew, entitlements';
+const PUBLIC = 'id, venue_id, kind, name, description, price_cents, duration_days, discount_bp, sessions, session_value_cents, valid_days, active, resource_ids, includes, auto_renew, entitlements, tier, emoji, tagline, max_members, joining_fee_cents, coaching_hours, booking_lead_priority_hours, sport_slugs, early_bird_price_cents, early_bird_days';
 
 const planFields = {
   name: z.string().min(2).max(80), description: z.string().max(400).optional(),
@@ -21,8 +21,18 @@ const planFields = {
   session_value_cents: z.number().int().min(1).optional().describe('pass: the most one session pays toward a booking (default: price ÷ sessions)'),
   valid_days: z.number().int().min(1).max(3650).optional().describe('pass: usable for this many days after purchase'),
   resource_ids: z.array(id).max(100).default([]).describe('pass (a package): only usable on these areas of the venue; empty = any area'),
-  includes: z.array(z.string().min(1).max(40)).max(12).default([]).describe('perks listed on the offer, e.g. Locker, Towel, Coaching clinic'),
+  includes: z.array(z.string().min(1).max(40)).max(16).default([]).describe('perks listed on the offer, e.g. Locker, Towel, Coaching clinic'),
   auto_renew: z.boolean().default(false).describe('membership (a subscription): a renewal is raised before it ends and the member is asked to pay it'),
+  tier: z.enum(['bronze', 'silver', 'gold', 'platinum', 'elite']).optional().describe('tier label for display ordering and UI theming'),
+  emoji: z.string().max(8).optional().describe('emoji badge shown on the plan card and member wallet'),
+  tagline: z.string().max(120).optional().describe('one-line marketing tagline shown to athletes browsing plans'),
+  max_members: z.number().int().min(1).max(100000).optional().describe('stop selling when this many active holders exist; omit for unlimited'),
+  joining_fee_cents: z.number().int().min(0).max(1_000_000_000).optional().describe('one-time fee charged alongside the first purchase, in minor units of venue currency'),
+  coaching_hours: z.number().int().min(0).max(1000).default(0).describe('included coaching hours per period'),
+  booking_lead_priority_hours: z.number().int().min(0).max(720).default(0).describe('hours before non-members that this plan\'s holders may book; 0 = no priority'),
+  sport_slugs: z.array(z.string().min(1).max(60)).max(20).default([]).describe('restrict to these sport slugs; empty = all sports at the venue'),
+  early_bird_price_cents: z.number().int().min(1).optional().describe('discounted intro price for the first early_bird_days days on sale'),
+  early_bird_days: z.number().int().min(1).max(365).optional().describe('how many days after the plan goes on sale the early-bird price applies'),
 };
 const shape = (i) => {
   if (i.kind === 'membership') {
@@ -51,22 +61,50 @@ cap({
     if (i.kind === 'pass' && i.auto_renew) throw badRequest('Only a membership can renew; sell a pass again instead');
     if (i.resource_ids.length && (await one('SELECT count(*)::int AS n FROM resources WHERE venue_id=$1 AND id = ANY($2::uuid[])', [i.id, i.resource_ids])).n !== new Set(i.resource_ids).size)
       throw badRequest('One of those areas belongs to another venue');
-    return one(`INSERT INTO venue_plans(venue_id, kind, name, description, price_cents, duration_days, discount_bp, sessions, session_value_cents, valid_days, resource_ids, includes, auto_renew, entitlements) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14) RETURNING ${PUBLIC}`,
-      [i.id, i.kind, i.name, i.description ?? null, i.price_cents, s.duration_days, s.discount_bp, s.sessions, s.session_value_cents, s.valid_days, i.resource_ids, i.includes, i.auto_renew, JSON.stringify(i.entitlements ?? {})]);
+    return one(
+      `INSERT INTO venue_plans(venue_id, kind, name, description, price_cents, duration_days, discount_bp, sessions, session_value_cents, valid_days, resource_ids, includes, auto_renew, entitlements,
+         tier, emoji, tagline, max_members, joining_fee_cents, coaching_hours, booking_lead_priority_hours, sport_slugs, early_bird_price_cents, early_bird_days)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24) RETURNING ${PUBLIC}`,
+      [i.id, i.kind, i.name, i.description ?? null, i.price_cents, s.duration_days, s.discount_bp, s.sessions, s.session_value_cents, s.valid_days, i.resource_ids, i.includes, i.auto_renew, JSON.stringify(i.entitlements ?? {}),
+       i.tier ?? null, i.emoji ?? null, i.tagline ?? null, i.max_members ?? null, i.joining_fee_cents ?? null, i.coaching_hours, i.booking_lead_priority_hours, i.sport_slugs, i.early_bird_price_cents ?? null, i.early_bird_days ?? null]);
   },
 });
 
 cap({
   name: 'update_venue_plan', method: 'PATCH', path: '/venue-plans/:id', tag: TAG,
   summary: 'Venue team: edit a plan or stop selling it (active=false). Changes apply to future purchases only; people who already bought keep the terms they paid for.',
-  input: z.object({ id, name: planFields.name.optional(), description: planFields.description, price_cents: planFields.price_cents.optional(), active: z.boolean().optional(), includes: planFields.includes.optional(), auto_renew: z.boolean().optional(), entitlements: z.object({ days: z.array(z.number().int().min(0).max(6)).max(7).default([]), from: z.string().regex(/^\d{2}:\d{2}$/).optional(), to: z.string().regex(/^\d{2}:\d{2}$/).optional(), guest_quota: z.number().int().min(0).max(20).default(0) }).describe('access entitlements read by the venue access layer at check-in: allowed weekdays (0=Sun, empty = every day), a daily window in venue time, and how many guests the member may bring on one visit').optional() }),
+  input: z.object({
+    id,
+    name: planFields.name.optional(), description: planFields.description,
+    price_cents: planFields.price_cents.optional(), active: z.boolean().optional(),
+    includes: planFields.includes.optional(), auto_renew: z.boolean().optional(),
+    entitlements: z.object({ days: z.array(z.number().int().min(0).max(6)).max(7).default([]), from: z.string().regex(/^\d{2}:\d{2}$/).optional(), to: z.string().regex(/^\d{2}:\d{2}$/).optional(), guest_quota: z.number().int().min(0).max(20).default(0) }).describe('access entitlements read by the venue access layer at check-in: allowed weekdays (0=Sun, empty = every day), a daily window in venue time, and how many guests the member may bring on one visit').optional(),
+    tier: planFields.tier, emoji: planFields.emoji, tagline: planFields.tagline,
+    max_members: planFields.max_members, joining_fee_cents: planFields.joining_fee_cents,
+    coaching_hours: planFields.coaching_hours.optional(), booking_lead_priority_hours: planFields.booking_lead_priority_hours.optional(),
+    sport_slugs: planFields.sport_slugs.optional(),
+    early_bird_price_cents: planFields.early_bird_price_cents, early_bird_days: planFields.early_bird_days,
+  }),
   async handler({ user }, i) {
     const p = await mustFind('venue_plans', i.id, 'id, venue_id, sessions');
     await mustManage(user, p.venue_id);
-    return one(`UPDATE venue_plans SET name=coalesce($2,name), description=coalesce($3,description), price_cents=coalesce($4,price_cents), active=coalesce($5,active), includes=coalesce($6,includes),
-                  auto_renew = CASE WHEN kind='membership' THEN coalesce($7,auto_renew) ELSE false END, entitlements=coalesce($8::jsonb,entitlements),
-                  session_value_cents = CASE WHEN $4::int IS NOT NULL AND kind='pass' THEN greatest(1, floor($4::int / sessions)) ELSE session_value_cents END WHERE id=$1 RETURNING ${PUBLIC}`,
-      [i.id, i.name ?? null, i.description ?? null, i.price_cents ?? null, i.active ?? null, i.includes ?? null, i.auto_renew ?? null, i.entitlements ? JSON.stringify(i.entitlements) : null]);
+    return one(
+      `UPDATE venue_plans SET
+         name=coalesce($2,name), description=coalesce($3,description), price_cents=coalesce($4,price_cents),
+         active=coalesce($5,active), includes=coalesce($6,includes),
+         auto_renew = CASE WHEN kind='membership' THEN coalesce($7,auto_renew) ELSE false END,
+         entitlements=coalesce($8::jsonb,entitlements),
+         session_value_cents = CASE WHEN $4::int IS NOT NULL AND kind='pass' THEN greatest(1, floor($4::int / sessions)) ELSE session_value_cents END,
+         tier=coalesce($9,tier), emoji=coalesce($10,emoji), tagline=coalesce($11,tagline),
+         max_members=coalesce($12,max_members), joining_fee_cents=coalesce($13,joining_fee_cents),
+         coaching_hours=coalesce($14,coaching_hours), booking_lead_priority_hours=coalesce($15,booking_lead_priority_hours),
+         sport_slugs=coalesce($16,sport_slugs),
+         early_bird_price_cents=coalesce($17,early_bird_price_cents), early_bird_days=coalesce($18,early_bird_days)
+       WHERE id=$1 RETURNING ${PUBLIC}`,
+      [i.id, i.name ?? null, i.description ?? null, i.price_cents ?? null, i.active ?? null, i.includes ?? null, i.auto_renew ?? null, i.entitlements ? JSON.stringify(i.entitlements) : null,
+       i.tier ?? null, i.emoji ?? null, i.tagline ?? null, i.max_members ?? null, i.joining_fee_cents ?? null,
+       i.coaching_hours ?? null, i.booking_lead_priority_hours ?? null, i.sport_slugs ?? null,
+       i.early_bird_price_cents ?? null, i.early_bird_days ?? null]);
   },
 });
 

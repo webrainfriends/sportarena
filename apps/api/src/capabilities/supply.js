@@ -4,6 +4,8 @@ import { one, many, tx } from '../db.js';
 import { badRequest, conflict, forbidden } from '../errors.js';
 import { isAdmin, mustFind, mustOwn } from '../helpers.js';
 import { createItem, listItems, adjustStock, updateItem, stockHistory } from '../pos/catalogue.js';
+import { receiveSupplyOrder } from '../supply-receive.js';
+import { SLOT_KEYS } from '../kit-slots.js';
 
 const cats = ['equipment', 'apparel', 'nutrition', 'medical', 'merch', 'other', 'food_beverage'];
 // what the venue's front desk may sell or rent (docs/front-desk.md): the same stock rows, with sale terms
@@ -11,13 +13,21 @@ const terms = {
   sellable: z.boolean().optional().describe('offer it at the venue front desk'), stock_kind: z.enum(['consumable', 'rental']).default('consumable').describe('rental kit comes back; consumables do not'),
   sell_price_cents: money.nullable().optional(), rental_fee_cents: money.nullable().optional(), deposit_cents: money.optional(),
 };
+// academy kit (#798): a size is an ordinary stock row; rows of one product share a style_key. Venue items only.
+const kitFields = {
+  style_key: z.string().trim().min(2).max(60).regex(/^[a-z0-9][a-z0-9._-]*$/i, 'letters, numbers, dot, dash or underscore').optional().describe('groups the sizes of one product'),
+  size_label: z.string().trim().min(1).max(20).optional().describe('M, YL, 42, One size ...'), kit_slot: z.enum(SLOT_KEYS).optional(),
+  barcode: z.string().trim().min(3).max(64).optional().describe('what a scanner reads off the label'), serialised: z.boolean().optional().describe('track each unit by serial number'),
+};
+const KIT_KEYS = ['style_key', 'size_label', 'kit_slot', 'barcode', 'serialised'];
 
 cap({
   name: 'create_inventory_item', method: 'POST', path: '/inventory', tag: 'Supply Chain', status: 201,
   summary: 'Track a stock item (balls, kits, bibs, first-aid, merch, food & drink…). Optionally tied to a venue; for a venue\'s item (created by its owner or a venue manager) you can also set what the front desk sells it for, or its rental fee and deposit. Opening stock is written to the stock ledger.',
-  input: z.object({ name: z.string().min(1).max(80), category: z.enum(cats).default('equipment'), sku: z.string().max(40).optional(), quantity: z.number().int().min(0).default(0), reorder_level: z.number().int().min(0).default(0), unit_cost_cents: money.default(0), venue_id: id.optional(), ...terms }),
+  input: z.object({ name: z.string().min(1).max(80), category: z.enum(cats).default('equipment'), sku: z.string().max(40).optional(), quantity: z.number().int().min(0).default(0), reorder_level: z.number().int().min(0).default(0), unit_cost_cents: money.default(0), venue_id: id.optional(), ...terms, ...kitFields }),
   async handler({ user }, i) {
     if (i.venue_id) return createItem(user, i);
+    if (KIT_KEYS.some((k) => i[k] !== undefined)) throw badRequest('Sizes, barcodes and serial tracking are for a venue\'s items — give the item a venue_id');
     if (i.sellable || i.sell_price_cents != null || i.rental_fee_cents != null || i.deposit_cents || i.stock_kind === 'rental') throw badRequest('Sale and rental terms are for a venue\'s items — give the item a venue_id');
     return one('INSERT INTO inventory_items(owner_id, venue_id, name, category, sku, quantity, reorder_level, unit_cost_cents) VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING *', [user.id, null, i.name, i.category, i.sku, i.quantity, i.reorder_level, i.unit_cost_cents]);
   },
@@ -35,7 +45,7 @@ cap({
   name: 'update_inventory_item', method: 'PATCH', path: '/inventory/:id', tag: 'Supply Chain',
   summary: 'Change an item\'s name, cost, front-desk price, rental terms, or archive it (hidden from the desk, history kept). Rental kit has a fee and deposit and is never sold; consumables have a price and are never rented.',
   input: z.object({ id, name: z.string().min(1).max(80).optional(), category: z.enum(cats).optional(), sku: z.string().max(40).optional(), reorder_level: z.number().int().min(0).optional(), unit_cost_cents: money.optional(),
-    sellable: z.boolean().optional(), stock_kind: z.enum(['consumable', 'rental']).optional(), sell_price_cents: money.nullable().optional(), rental_fee_cents: money.nullable().optional(), deposit_cents: money.optional(), archived: z.boolean().optional() }),
+    sellable: z.boolean().optional(), stock_kind: z.enum(['consumable', 'rental']).optional(), sell_price_cents: money.nullable().optional(), rental_fee_cents: money.nullable().optional(), deposit_cents: money.optional(), archived: z.boolean().optional(), ...kitFields }),
   handler: ({ user }, { id: itemId, ...rest }) => updateItem(user, itemId, rest),
 });
 
@@ -80,11 +90,7 @@ cap({
       if (!o) throw badRequest('Order not found');
       mustOwn(user, o.owner_id, 'order');
       if (['received', 'cancelled'].includes(o.status)) throw conflict(`Order already ${o.status}`);
-      if (i.status === 'received') {
-        await c.query('UPDATE inventory_items SET quantity = quantity + $2 WHERE id=$1', [o.item_id, o.quantity]);
-        await c.query("INSERT INTO pos_stock_moves(venue_id, item_id, delta, reason, actor_id, note) SELECT venue_id, id, $2, 'adjust', $3, 'Supply order received' FROM inventory_items WHERE id=$1 AND venue_id IS NOT NULL", [o.item_id, o.quantity, user.id]);
-        return (await c.query('UPDATE supply_orders SET status=$2, received_at=now() WHERE id=$1 RETURNING *', [i.id, i.status])).rows[0];
-      }
+      if (i.status === 'received') return receiveSupplyOrder(c, o, user.id);
       return (await c.query('UPDATE supply_orders SET status=$2 WHERE id=$1 RETURNING *', [i.id, i.status])).rows[0];
     });
   },

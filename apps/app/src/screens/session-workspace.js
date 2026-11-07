@@ -294,7 +294,7 @@ function BlockCard({ b, i, n, range, open, locked, skills, names, onToggle, onPa
         <View style={{ flex: 1, gap: 2 }}>
           <T size={12} color={c.mute} weight="700">{range ? `${head} · ${b.duration_min} ${t('cls.min')}` : head}</T>
           <T weight="800" size={16}>{b.title || t('st.untitled')}</T>
-          <View style={{ flexDirection: 'row', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}><Tag label={t(`cp.kind.${b.kind}`)} />{b.target_rpe ? <Tag label={rpeText(b.target_rpe)} color={c.orangeSoft} /> : null}{b.drill_id ? <Tag label={t('swk.from_drill')} /> : null}{b.area ? <T size={12} color={c.mute}>{b.area}</T> : null}{b.equipment?.length ? <T size={12} color={c.mute}>🎽 {b.equipment.length}</T> : null}{(b.trains ?? []).slice(0, 3).map((x) => <T key={x} size={12} color={c.cyan} weight="700">#{names?.[x] ?? x}</T>)}</View>
+          <View style={{ flexDirection: 'row', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}><Tag label={t(`cp.kind.${b.kind}`)} />{b.target_rpe ? <Tag label={rpeText(b.target_rpe)} color={c.orangeSoft} /> : null}{b.drill_id ? <Tag label={t('swk.from_drill')} /> : null}{(b.tags ?? []).includes('licensed') ? <Tag label={t('cl.sess.licensed_tag')} color={c.cyanSoft} /> : null}{b.area ? <T size={12} color={c.mute}>{b.area}</T> : null}{b.equipment?.length ? <T size={12} color={c.mute}>🎽 {b.equipment.length}</T> : null}{(b.trains ?? []).slice(0, 3).map((x) => <T key={x} size={12} color={c.cyan} weight="700">#{names?.[x] ?? x}</T>)}</View>
         </View>
         <T size={14} color={c.mute}>{open ? '▲' : '▼'}</T>
       </Pressable>

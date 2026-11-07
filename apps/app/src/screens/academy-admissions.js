@@ -10,7 +10,31 @@ import { moneyIn } from '../vtime';
 import { explain } from '../access';
 import { useLayout } from '../layout';
 import { t } from '../i18n';
+import { IntlPanel } from './academy-international';
 import { Block, Fact, Initials, Split, StageBadge, StageTrack, Timeline, TrialSlots, STAGE, ago, hoursLeft, when } from './academy-ui';
+
+function AccommodationPrompt({ o, app }) {
+  const d = useLoad(() => app.programme_id ? api.get(`/organisations/${o.id}/academy/inclusion/enrolment-prompt`, { programme_id: app.programme_id, athlete_id: app.athlete_id }).catch(() => null) : Promise.resolve(null), [o.id, app.programme_id, app.athlete_id]);
+  const [dismissed, setDismissed] = useState(false);
+  if (!d.data?.has_requirements || d.data?.already_shared || dismissed || d.data?.dismissed) return null;
+  return (
+    <View style={{ padding: 12, borderRadius: 16, backgroundColor: c.violetSoft, gap: 8, borderWidth: 1, borderColor: c.line }}>
+      <T weight="800" size={14}>{t('incops.enrolment_prompt_title')}</T>
+      <T size={13} color={c.mute}>{t('incops.enrolment_prompt_body')}</T>
+      <T size={11} color={c.mute}>{t('incops.enrolment_prompt_privacy')}</T>
+      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+        <Btn small title={t('incops.enrolment_prompt_share')} onPress={async () => {
+          try { await api.post(`/organisations/${o.id}/academy/inclusion/enrolment-prompt/dismiss`, { programme_id: app.programme_id, athlete_id: app.athlete_id }); } catch { /* ignore */ }
+          setDismissed(true);
+        }} />
+        <Btn small title={t('incops.enrolment_prompt_later')} color={c.paper} ink={c.ink} onPress={async () => {
+          try { await api.post(`/organisations/${o.id}/academy/inclusion/enrolment-prompt/dismiss`, { programme_id: app.programme_id, athlete_id: app.athlete_id }); } catch { /* ignore */ }
+          setDismissed(true);
+        }} />
+      </View>
+    </View>
+  );
+}
 
 const COLUMNS = [
   ['New', ['enquiry'], 'Fresh enquiries to answer'],
@@ -22,7 +46,7 @@ const COLUMNS = [
 ];
 const CLOSED = ['declined', 'withdrawn', 'expired', 'cancelled'];
 
-export function Admissions({ o, archived, toast, openId, setOpenId, onOpenScouting }) {
+export function Admissions({ o, archived, toast, openId, setOpenId, onOpenScouting, onOpenIntl }) {
   const [view, setView] = useState('board');
   const [programme, setProgramme] = useState(null);
   const [q, setQ] = useState('');
@@ -50,7 +74,7 @@ export function Admissions({ o, archived, toast, openId, setOpenId, onOpenScouti
   );
   return (
     <Split open={!!open} onClose={() => sel(null)} detailTitle="Application" list={body}
-      detail={open ? <Review id={open} archived={archived} toast={toast} onChanged={list.reload} onClose={() => sel(null)} onOpenAthlete={null} onOpenScouting={onOpenScouting} /> : null} />
+      detail={open ? <Review id={open} o={o} archived={archived} toast={toast} onChanged={list.reload} onClose={() => sel(null)} onOpenAthlete={null} onOpenScouting={onOpenScouting} onOpenIntl={onOpenIntl} /> : null} />
   );
 }
 
@@ -118,7 +142,7 @@ function Table({ apps, open, onOpen }) {
 }
 
 /** The review panel: everything staff need to decide, in one place. */
-export function Review({ id, archived, toast, onChanged, onClose, onOpenScouting }) {
+export function Review({ id, o, archived, toast, onChanged, onClose, onOpenScouting, onOpenIntl }) {
   const app = useLoad(() => api.get(`/academy/applications/${id}`), [id]);
   const desk = useLoad(() => (app.data ? api.get(`/academy/programmes/${app.data.programme_id}`) : Promise.resolve(null)), [app.data?.programme_id]);
   const bill = useLoad(() => (app.data ? api.get(`/academy/programmes/${app.data.programme_id}/agreements`, { athlete_id: app.data.athlete_id }).catch(() => []) : Promise.resolve([])), [app.data?.athlete_id, app.data?.programme_id]);
@@ -155,6 +179,8 @@ export function Review({ id, archived, toast, onChanged, onClose, onOpenScouting
           {onOpenScouting ? <Btn small title={t('scout.source.open')} color={c.paper} ink={c.ink} onPress={() => onOpenScouting(a.source.campaign_id)} style={{ alignSelf: 'flex-start' }} /> : null}
         </Block>
       ) : null}
+      {o && live ? <IntlPanel app={a} o={o} archived={archived} toast={toast} onOpen={onOpenIntl} /> : null}
+      {o && a.stage === 'enrolled' ? <AccommodationPrompt o={o} app={a} /> : null}
       <Block title="Application">
         <Fact k="Programme" v={desk.data?.title ?? '…'} />
         <Fact k="Seats" v={seats ? (seats.capacity ? `${seats.seats_taken}/${seats.capacity} taken${seats.waitlisted ? ` · ${seats.waitlisted} waiting` : ''}` : 'No limit') : null} />

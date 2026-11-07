@@ -1,7 +1,7 @@
 // Rewards (issue #509): one place for a member's points, invites and statement; one console component every business embeds to run its programme;
 // one checkout sheet that spends points on any bill. All of it calls the loyalty capabilities (REST/MCP share them); the server enforces every rule.
 import React, { useState } from 'react';
-import { Platform, Share, View } from 'react-native';
+import { Platform, Share, Switch, View } from 'react-native';
 import { api } from '../api';
 import { useLoad } from '../hooks';
 import { useSession } from '../session';
@@ -358,6 +358,133 @@ function MembersSheet({ prog, view, onClose }) {
   );
 }
 
+// ------------------------------------------------------------------ elite 3-step wizard for new rewards programme
+const RP_STEPS = ['Programme Identity', 'Earning & Redemption', 'Eligibility & Launch'];
+const RP_TYPES = ['Loyalty points', 'Achievement badges', 'Leaderboard', 'Milestone rewards', 'Referral', 'Attendance streaks'];
+const RP_APPLIES = ['All members', 'Premium members', 'Youth', 'Coaches', 'Alumni'];
+const RP_EXPIRY = ['Never expire', '6 months', '12 months', '24 months'];
+const RP_REDEEM = ['Discounts', 'Free sessions', 'Merchandise', 'Entry to events', 'Premium features', 'Cash equivalent'];
+const RP_CURRENCIES = ['GBP', 'EUR', 'USD', 'AUD', 'INR', 'SGD', 'AED'];
+
+function RewardsProgramWizard({ visible, onClose, ownerKind, ownerId, spons, onDone, currency: initCurrency }) {
+  const needCurrency = !['venue', 'event'].includes(ownerKind);
+  const [step, setStep] = useState(0);
+  const [v, setV] = useState({ unit: 'points', funding: 'owner', currency: initCurrency ?? undefined, auto_enroll: false, visible_to_members: true });
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState(null);
+  const { toast } = useSession();
+  const set = (k, val) => setV((p) => ({ ...p, [k]: val }));
+  const toggle = (key, item) => set(key, (v[key] ?? []).includes(item) ? (v[key] ?? []).filter((x) => x !== item) : [...(v[key] ?? []), item]);
+
+  const can = [
+    !!v.name?.trim() && (!needCurrency || !!v.currency),
+    true,
+    true,
+  ][step];
+
+  const submit = async () => {
+    setBusy(true); setErr(null);
+    try {
+      await api.post('/loyalty/programmes', { owner_kind: ownerKind, ...(ownerId ? { owner_id: ownerId } : {}), name: v.name, unit: v.unit, ...(needCurrency ? { currency: v.currency } : {}), funding_owner: v.funding, ...(v.funding === 'sponsor' ? { sponsorship_id: v.sponsorship_id } : {}) });
+      onDone(); onClose();
+    } catch (e) { setErr(e.message); } finally { setBusy(false); }
+  };
+
+  return (
+    <Sheet visible={visible} onClose={onClose} title="New rewards programme">
+      <View style={{ flexDirection: 'row', gap: 4, marginBottom: 16 }}>
+        {RP_STEPS.map((s, i) => <View key={i} style={{ flex: 1, height: 4, borderRadius: 2, backgroundColor: i < step ? c.violet : i === step ? c.pink : c.p1 }} />)}
+      </View>
+      <T weight="800" size={15} style={{ marginBottom: 12 }}>{RP_STEPS[step]}</T>
+
+      {step === 0 ? (
+        <View style={{ gap: 12 }}>
+          <Field label="Programme name *" value={v.name ?? ''} onChangeText={(x) => set('name', x)} placeholder='e.g. "Court Club"' hint="Name members will see." />
+          <Field label="Description" value={v.description ?? ''} onChangeText={(x) => set('description', x)} multiline optional placeholder="Tell members what they can earn and spend." />
+          <T weight="700" size={13}>Points called</T>
+          <View style={{ flexDirection: 'row', gap: 8, flexWrap: 'wrap' }}>
+            {[{ value: 'points', label: 'Points' }, { value: 'credits', label: 'Credits' }].map((o) => (
+              <Chip key={o.value} label={o.label} active={v.unit === o.value} onPress={() => set('unit', o.value)} />
+            ))}
+          </View>
+          {needCurrency ? (
+            <>
+              <T weight="700" size={13}>Currency *</T>
+              <View style={{ flexDirection: 'row', gap: 8, flexWrap: 'wrap' }}>
+                {RP_CURRENCIES.map((cur) => <Chip key={cur} label={cur} active={v.currency === cur} onPress={() => set('currency', cur)} />)}
+              </View>
+            </>
+          ) : null}
+          <T weight="700" size={13}>Programme type</T>
+          <View style={{ flexDirection: 'row', gap: 8, flexWrap: 'wrap' }}>
+            {RP_TYPES.map((pt) => <Chip key={pt} label={pt} active={(v.programme_types ?? []).includes(pt)} onPress={() => toggle('programme_types', pt)} />)}
+          </View>
+          <T weight="700" size={13}>Who funds the rewards?</T>
+          <View style={{ flexDirection: 'row', gap: 8, flexWrap: 'wrap' }}>
+            {[{ value: 'owner', label: 'We do' }, ...(ownerKind === 'platform' ? [{ value: 'platform', label: 'GotMyGame' }] : []), ...((spons ?? []).length ? [{ value: 'sponsor', label: 'A sponsor' }] : [])].map((o) => (
+              <Chip key={o.value} label={o.label} active={v.funding === o.value} onPress={() => set('funding', o.value)} />
+            ))}
+          </View>
+          {v.funding === 'sponsor' ? (
+            <View style={{ flexDirection: 'row', gap: 8, flexWrap: 'wrap' }}>
+              {(spons ?? []).map((s) => <Chip key={s.id} label={s.sponsor_name} active={v.sponsorship_id === s.id} onPress={() => set('sponsorship_id', s.id)} />)}
+            </View>
+          ) : null}
+        </View>
+      ) : null}
+
+      {step === 1 ? (
+        <View style={{ gap: 12 }}>
+          <Card color={c.cyanSoft} style={{ padding: 12 }}>
+            <T size={13}>Earn and redemption rules are configured after creating the programme via the full rules engine. These choices below help us pre-configure the defaults.</T>
+          </Card>
+          <T weight="700" size={13}>Points expiry</T>
+          <View style={{ flexDirection: 'row', gap: 8, flexWrap: 'wrap' }}>
+            {RP_EXPIRY.map((e) => <Chip key={e} label={e} active={v.expiry === e} onPress={() => set('expiry', e)} />)}
+          </View>
+          <T weight="700" size={13}>What can points pay for?</T>
+          <View style={{ flexDirection: 'row', gap: 8, flexWrap: 'wrap' }}>
+            {RP_REDEEM.map((r) => <Chip key={r} label={r} active={(v.redeem_options ?? []).includes(r)} onPress={() => toggle('redeem_options', r)} />)}
+          </View>
+          <Counter label="Minimum to redeem (points)" value={v.min_redeem ?? 0} min={0} max={10000} step={10} onChange={(x) => set('min_redeem', x)} />
+          <Counter label="Monthly cap per member (0 = unlimited)" value={v.monthly_cap ?? 0} min={0} max={100000} step={50} onChange={(x) => set('monthly_cap', x)} />
+        </View>
+      ) : null}
+
+      {step === 2 ? (
+        <View style={{ gap: 12 }}>
+          <T weight="700" size={13}>Applies to</T>
+          <View style={{ flexDirection: 'row', gap: 8, flexWrap: 'wrap' }}>
+            {RP_APPLIES.map((a) => <Chip key={a} label={a} active={(v.applies_to ?? []).includes(a)} onPress={() => toggle('applies_to', a)} />)}
+          </View>
+          <Card color={c.p1} style={{ padding: 12, gap: 8 }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+              <T size={14}>Auto-enrol eligible members</T>
+              <Switch value={!!v.auto_enroll} onValueChange={(x) => set('auto_enroll', x)} trackColor={{ false: c.line, true: c.pink }} />
+            </View>
+            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 8 }}>
+              <T size={14}>Show programme to members</T>
+              <Switch value={!!v.visible_to_members} onValueChange={(x) => set('visible_to_members', x)} trackColor={{ false: c.line, true: c.pink }} />
+            </View>
+          </Card>
+          <Card color={c.cyanSoft} style={{ padding: 12 }}>
+            <T weight="700" size={14}>{v.name ?? '—'}</T>
+            <T size={12} color={c.mute}>{v.unit ?? 'points'} · {needCurrency ? (v.currency ?? '—') : (initCurrency ?? '—')} · {v.funding === 'sponsor' ? 'sponsor-funded' : v.funding === 'platform' ? 'platform-funded' : 'funded by you'}</T>
+          </Card>
+          {err ? <T color={c.red} size={13}>{err}</T> : null}
+        </View>
+      ) : null}
+
+      <View style={{ flexDirection: 'row', gap: 10, marginTop: 20 }}>
+        {step > 0 ? <Btn title="Back" color={c.paper} ink={c.ink} onPress={() => setStep((s) => s - 1)} style={{ flex: 1 }} /> : null}
+        {step < 2 ? <Btn title="Next" disabled={!can} onPress={() => setStep((s) => s + 1)} style={{ flex: 1 }} /> : (
+          <Btn title="Create draft" loading={busy} disabled={busy} onPress={submit} style={{ flex: 1 }} />
+        )}
+      </View>
+    </Sheet>
+  );
+}
+
 /**
  * The one place a business runs its rewards. Embed it wherever that business is managed:
  * <LoyaltyConsole ownerKind="venue" ownerId={venue.id} currency={venue.currency} />. Platform staff use ownerKind="platform".
@@ -367,20 +494,13 @@ export function LoyaltyConsole({ ownerKind, ownerId, currency }) {
   const list = useLoad(() => api.get('/loyalty/programmes', { view: 'mine', owner_kind: ownerKind, ...(ownerId ? { owner_id: ownerId } : {}) }), [ownerKind, ownerId]);
   const spons = useLoad(() => api.get('/loyalty/fundable-sponsorships', { owner_kind: ownerKind, ...(ownerId ? { owner_id: ownerId } : {}) }).catch(() => []), [ownerKind, ownerId]);
   const [create, setCreate] = useState(false);
-  const needCurrency = !['venue', 'event'].includes(ownerKind);
   return (
     <Section title="⭐ Rewards & referrals" color={c.sun}>
       <T size={13} color={c.mute}>Reward real activity — completed bookings, paid fees, finished sessions, events played, and friends who join and take part. Every point is in a ledger that is never edited, and each business's points stay its own.</T>
       {list.loading && !list.data ? <Loading /> : list.error ? <ErrorBox error={list.error} onRetry={list.reload} /> : list.data.length ? list.data.map((p) => <ProgrammeCard key={p.id} p={p} owner={ownerKind} onChange={list.reload} />)
         : <Empty emoji="🎁" title="No rewards programme yet" sub="Start one: choose what earns points and what they can pay for, then publish." />}
       <Btn small title="＋ New programme" onPress={() => setCreate(true)} style={{ alignSelf: 'flex-start' }} />
-      <FormSheet visible={create} onClose={() => setCreate(false)} title="New rewards programme" submitLabel="Create draft" initial={{ unit: 'points', funding: 'owner', currency }}
-        fields={[{ key: 'name', label: 'Name members will see', hint: 'e.g. "Court Club"' },
-          { key: 'unit', label: 'Call them', type: 'chips', options: [{ value: 'points', label: 'Points' }, { value: 'credits', label: 'Credits' }] },
-          ...(needCurrency ? [{ key: 'currency', label: 'Currency', type: 'currency' }] : []),
-          { key: 'funding', label: 'Who pays for the rewards?', type: 'chips', options: [{ value: 'owner', label: 'We do' }, ...(ownerKind === 'platform' ? [{ value: 'platform', label: 'GotMyGame' }] : []), ...((spons.data ?? []).length ? [{ value: 'sponsor', label: 'A sponsor' }] : [])] },
-          { key: 'sponsorship_id', label: 'Sponsorship agreement', type: 'chips', options: (spons.data ?? []).map((s) => ({ value: s.id, label: `${s.sponsor_name} · ${moneyIn(Number(s.amount_cents), s.currency)}` })), show: (v) => v.funding === 'sponsor' }]}
-        onSubmit={async (v) => { await api.post('/loyalty/programmes', { owner_kind: ownerKind, ...(ownerId ? { owner_id: ownerId } : {}), name: v.name, unit: v.unit, ...(needCurrency ? { currency: v.currency } : {}), funding_owner: v.funding, ...(v.funding === 'sponsor' ? { sponsorship_id: v.sponsorship_id } : {}) }); list.reload(); return 'Draft created — set up its rules'; }} />
+      <RewardsProgramWizard visible={create} onClose={() => setCreate(false)} ownerKind={ownerKind} ownerId={ownerId} spons={spons.data ?? []} onDone={() => { list.reload(); toast('Draft created — set up its rules'); }} currency={currency} />
     </Section>
   );
 }

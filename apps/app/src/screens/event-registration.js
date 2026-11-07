@@ -13,7 +13,10 @@ import { A, AAvatar, ABar, ABtn, ACard, AChip, AEmpty, ARow, ASection, AStat, AT
 import { FormSheet } from '../FormSheet';
 import { ErrorBox, Field, Loading, Sheet } from '../ui';
 import { saveFile } from '../contracts-ui';
+import { t } from '../i18n';
 import { useDo } from './console-utils';
+import { ParaEntries, ParaRules } from './para-rules';
+import { ParaDesk } from './para-competition';
 
 const STATUS = {
   submitted: ['Awaiting review', A.sun], under_review: ['Under review', A.cyan], registered: ['Registered', A.green], rejected: ['Not accepted', A.red],
@@ -25,7 +28,7 @@ const LISTS = [['active', 'Active'], ['reserve', 'Reserve'], ['development', 'De
 const ORIGINS = [['unclassified', 'Not set'], ['local', 'Local'], ['homegrown', 'Homegrown'], ['foreign', 'Foreign']];
 const KINDS = [['licence', 'Licence'], ['transfer', 'Transfer'], ['loan', 'Loan'], ['disciplinary', 'Suspension / discipline'], ['classification', 'Classification']];
 const RULE_LABEL = { window: 'Registration window', division_age: 'Age category', licence: 'Licence', transfer: 'Transfer', loan: 'Loan', classification: 'Classification', disciplinary: 'Suspension', contract: 'Contract', roster_limit: 'Roster limit', quota: 'Quota', guardian_consent: 'Guardian consent' };
-const SECTIONS = [['queue', 'Queue'], ['rosters', 'Rosters'], ['windows', 'Windows'], ['exceptions', 'Exceptions'], ['holds', 'Clearances'], ['policy', 'Policy'], ['reports', 'Reports']];
+const SECTIONS = [['queue', 'Queue'], ['rosters', 'Rosters'], ['windows', 'Windows'], ['exceptions', 'Exceptions'], ['holds', 'Clearances'], ['para', t('pr.section')], ['policy', 'Policy'], ['reports', 'Reports']];
 const pick = (a) => a.map(([value, label]) => ({ value, label }));
 const dt = (iso, tz) => { try { return new Date(iso).toLocaleString(undefined, { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit', timeZone: tz || undefined }); } catch { return String(iso).slice(0, 16); } };
 const dOnly = (d) => (d ? new Date(`${String(d).slice(0, 10)}T00:00:00`).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' }) : null);
@@ -260,13 +263,15 @@ function Holds({ id, isOrg }) {
 const LIMIT_FIELDS = [['max_total', 'Maximum players per team'], ['max_active', 'Maximum on the active list'], ['max_reserve', 'Maximum on the reserve list'], ['max_development', 'Maximum on the development list']];
 function Policy({ id, setup, reload, isOrg }) {
   const [open, setOpen] = useState(false);
+  const cv = useLoad(() => api.get('/para/class-versions', { limit: 100 }).catch(() => ({ versions: [] })), []);
+  const classOptions = [...new Set((cv.data?.versions ?? []).filter((v) => v.status === 'published').flatMap((v) => v.classes.map((k) => k.code)))].map((code) => ({ value: code, label: code }));
   const p = setup?.policy, r = p?.rules ?? {};
   const act = useDo(reload);
   const initial = useMemo(() => ({
     enforcement: p?.enforcement ?? 'blocking', playing_lists: r.playing_lists ?? ['active', 'reserve'], check_division_age: r.check_division_age ?? true, require_team_affiliation: r.require_team_affiliation ?? true,
     require_guardian_consent: r.require_guardian_consent ?? true, require_contract: r.require_contract ?? false, recheck_at_start: r.recheck_at_start ?? true, required_clearances: r.required_clearances ?? [],
-    waivable: r.waivable ?? [], block_on: r.block_on ?? ['ineligible'], ...Object.fromEntries(LIMIT_FIELDS.map(([k]) => [k, r.roster?.[k] ?? 0])),
-    max_foreign: r.quotas?.max_foreign ?? 0, min_homegrown: r.quotas?.min_homegrown ?? 0, min_local: r.quotas?.min_local ?? 0,
+    allow_provisional: r.allow_provisional ?? false, waivable: r.waivable ?? [], block_on: r.block_on ?? ['ineligible'], ...Object.fromEntries(LIMIT_FIELDS.map(([k]) => [k, r.roster?.[k] ?? 0])),
+    ...Object.fromEntries(Object.entries(r.category_classes ?? {}).map(([k, x]) => [`cc_${k}`, x])), max_foreign: r.quotas?.max_foreign ?? 0, min_homegrown: r.quotas?.min_homegrown ?? 0, min_local: r.quotas?.min_local ?? 0,
     freeze_date: r.roster?.freeze_at ? r.roster.freeze_at.slice(0, 10) : undefined, freeze_time: r.roster?.freeze_at ? new Date(r.roster.freeze_at).toTimeString().slice(0, 5) : undefined,
   }), [p?.version]); // eslint-disable-line react-hooks/exhaustive-deps
   const n = (x) => (x ? x : undefined);
@@ -303,6 +308,7 @@ function Policy({ id, setup, reload, isOrg }) {
           { key: 'require_guardian_consent', label: 'Young people need guardian consent', type: 'switch' }, { key: 'require_contract', label: 'Must hold an active player contract', type: 'switch' },
           { key: 'recheck_at_start', label: 'Check again at kick-off', type: 'switch' },
           { key: 'required_clearances', label: 'Must hold a clear', type: 'multi', optional: true, options: [{ value: 'licence', label: 'Licence' }, { value: 'classification', label: 'Classification' }] },
+          ...(((setup?.divisions ?? []).filter((d) => !d.archived_at).length) ? [{ key: 's4', label: t('pc.policy_sec'), type: 'section' }, ...(setup?.divisions ?? []).filter((d) => !d.archived_at).map((d) => ({ key: `cc_${d.id}`, label: t('pc.policy_cat', { name: d.name }), type: 'multimenu', options: classOptions, placeholder: t('pc.policy_any'), optional: true })), { key: 'allow_provisional', label: t('pc.policy_prov'), type: 'switch' }] : []),
           { key: 'waivable', label: 'Rules an exception may waive', type: 'multi', optional: true, options: Object.entries(RULE_LABEL).map(([value, label]) => ({ value, label })) },
           { key: 'note', label: 'What changed', optional: true }]}
         onSubmit={async (v) => {
@@ -311,7 +317,7 @@ function Policy({ id, setup, reload, isOrg }) {
           const quotas = Object.fromEntries(['max_foreign', 'min_homegrown', 'min_local'].map((k) => [k, n(v[k])]).filter(([, x]) => x != null));
           await api.post(`/events/${id}/registration/policy`, { enforcement: v.enforcement, note: v.note || undefined, expected_version: p?.version ?? 0,
             rules: { playing_lists: v.playing_lists, check_division_age: v.check_division_age, require_team_affiliation: v.require_team_affiliation, require_guardian_consent: v.require_guardian_consent, require_contract: v.require_contract,
-              recheck_at_start: v.recheck_at_start, required_clearances: v.required_clearances ?? [], waivable: v.waivable ?? [], block_on: v.block_on, roster, quotas } });
+              recheck_at_start: v.recheck_at_start, allow_provisional: !!v.allow_provisional, category_classes: Object.fromEntries((setup?.divisions ?? []).map((d) => [d.id, v[`cc_${d.id}`] ?? []]).filter(([, x]) => x.length)), required_clearances: v.required_clearances ?? [], waivable: v.waivable ?? [], block_on: v.block_on, roster, quotas } });
           reload(); return 'Policy published';
         }} />
     </>
@@ -357,6 +363,8 @@ function Mine({ id, e, rosters, reload }) {
       {rosters?.frozen ? <ACard tone={A.orange}><AT weight="800">🧊 Rosters are frozen</AT><AT size={12.5} color={A.mute}>Contact the organiser to register a player now.</AT></ACard> : null}
       {regs.loading && !regs.data ? <Loading /> : regs.error ? <ErrorBox error={regs.error} onRetry={regs.reload} /> : !rows.length ? <AEmpty emoji="🪪" title="No registrations yet" sub={manages ? 'Register your players so they can be selected for matches.' : 'Register with your team to be selectable for matches.'} action="Register" onAction={() => setOpen(true)} /> : rows.map((r) => <RegRow key={r.id} r={r} on={sel === r.id} onPress={() => setSel(r.id)} />)}
       <Sheet visible={!!current} onClose={() => setSel(null)} title="Registration">{current ? <Dark><RegDetail id={id} reg={current} isOrg={false} canAct={manages || current.user_id === user?.id} onDone={done} onClose={() => setSel(null)} /></Dark> : null}</Sheet>
+      <ParaEntries id={id} mine />
+      {manages ? <ParaRules id={id} e={e} isOrg={false} teams={teams} /> : null}
       <RegisterForm id={id} open={open} onClose={() => setOpen(false)} teams={manages ? teams : entrants.map((x) => ({ team_id: x.team_id, team_name: x.name }))} self={!manages} onDone={done} />
     </>
   );
@@ -436,7 +444,9 @@ export function RegistrationTab({ id, e, isOrg, reload }) {
       {section === 'windows' ? <Windows id={id} setup={S} reload={refresh} isOrg /> : null}
       {section === 'exceptions' ? <Exceptions id={id} setup={S} /> : null}
       {section === 'holds' ? <Holds id={id} isOrg /> : null}
+      {section === 'para' ? <ParaDesk id={id} setup={S} /> : null}
       {section === 'policy' ? <Policy id={id} setup={S} reload={refresh} isOrg /> : null}
+      {section === 'para' ? <ParaRules id={id} e={e} setup={S} reload={refresh} isOrg /> : null}
       {section === 'reports' ? <Reports id={id} /> : null}
       <RegisterForm id={id} open={reg} onClose={() => setReg(false)} teams={(e.entrants ?? []).filter((x) => x.team_id).map((x) => ({ team_id: x.team_id, team_name: x.name }))} self={false} staff onDone={refresh} />
     </>

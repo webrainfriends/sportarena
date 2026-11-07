@@ -19,6 +19,7 @@ import { activeSportingSanction } from './integrity.js';
 import { blockingSanction } from './discipline-live.js';
 import { gate, hasObligations } from './compliance.js';
 import { LIC_STATUS } from './federation.js';
+import { DEFINITION, applyOverrides, classOf, evaluateLineup, liveOverrides, loadMembers, memberCheck, packOfPolicy } from './para-rules.js';
 
 export const LISTS = ['active', 'reserve', 'development'];
 export const LIVE = ['submitted', 'under_review', 'registered', 'suspended'];
@@ -37,6 +38,11 @@ export const RULES = z.object({
   // accepts a second-officer-verified external reference and, last, the manual audited dependency. An organiser can never type an athlete into a class.
   classification_mode: z.enum(['governed', 'external_reference']).default('external_reference'),
   allowed_classes: z.array(z.string().trim().min(1).max(20)).max(60).default([]),
+  // para rule pack (#834): the published pack this policy version is locked to; absent = no para rules (every existing competition is unchanged)
+  para_pack_id: z.string().uuid().optional(),
+  // PS-02 (#832): classes accepted per category (division id -> class codes); a category without an entry falls back to allowed_classes. Provisional participation is off unless the policy says so.
+  category_classes: z.record(z.string().uuid(), z.array(z.string().trim().min(1).max(20)).max(60)).default({}),
+  allow_provisional: z.boolean().default(false),
   require_contract: z.boolean().default(false),
   require_guardian_consent: z.boolean().default(true),
   require_compliance: z.boolean().default(true), // obligations of the compliance rulebook (#595) that block registration; no obligations configured = no effect
@@ -69,13 +75,21 @@ async function waiver(c, eventId, userId, rule, at) {
 }
 
 const PARA_SRC = (kind, o) => ({ kind, id: o.id, class_code: o.class_code, class_status: o.status, label: o.authority, ...(o.version ? { version: o.version } : {}), ...(o.decision_ref ? { decision_ref: o.decision_ref } : {}) });
-async function paraCheck(c, rules, event, userId, at, manual) {
-  const allowed = (rules.allowed_classes ?? []).map((x) => x.toUpperCase());
+export const classesFor = (rules, divisionId) => ((divisionId && rules.category_classes?.[divisionId]?.length ? rules.category_classes[divisionId] : rules.allowed_classes) ?? []).map((x) => x.toUpperCase());
+const NO_RECORD = /no (authorised )?classification on record|classification is awaiting|needs review|unverified/i;
+/** Policy-approved provisional participation: only where the policy allows it, only while a classification is pending/under review/not yet on record, never over a "not eligible". */
+async function provisionalFor(c, rules, event, userId, at, r) {
+  if (!rules.allow_provisional || !r || !['pending', 'fail'].includes(r.status) || !NO_RECORD.test(r.reason)) return r;
+  const p = (await q(c).query('SELECT id, valid_until::text AS valid_until FROM para_provisional WHERE event_id=$1 AND user_id=$2 AND revoked_at IS NULL AND valid_until >= $3::date ORDER BY created_at DESC LIMIT 1', [event.id, userId, dayOf(at)])).rows[0];
+  return p ? { ...r, status: 'waived', code: 'classification.waived', reason: `Provisional participation approved under policy until ${p.valid_until} (${r.reason})`, source: { kind: 'para_provisional', id: p.id, valid_until: p.valid_until } } : r;
+}
+async function paraCheck(c, rules, event, userId, at, manual, divisionId) {
+  const allowed = classesFor(rules, divisionId);
   const judge = (o, kind) => {
     const src = PARA_SRC(kind, o);
-    if (o.status === 'not_eligible') return check('classification', 'fail', 'Classification: not eligible for this sport', src);
+    if (o.status === 'not_eligible') return check('classification', 'fail', 'Classification: not eligible for this sport (not a diagnosis)', src);
     if (o.status === 'review_required' || (o.review_by && o.review_by < dayOf(at))) return check('classification', 'pending', `Classification ${o.class_code ?? ''} needs review`.replace('  ', ' '), src);
-    if (allowed.length && !allowed.includes(String(o.class_code).toUpperCase())) return check('classification', 'fail', `Class ${o.class_code} is not a class of this competition`, src);
+    if (allowed.length && !allowed.includes(String(o.class_code).toUpperCase())) return check('classification', 'fail', `Class ${o.class_code} is not a class of this category`, src);
     return check('classification', 'pass', `Class ${o.class_code}${o.status === 'temporary' ? ' (temporary)' : ''} confirmed by ${o.authority}`, src);
   };
   const o = await outcomeAt(q(c), userId, event.sport_id, at);
@@ -84,6 +98,48 @@ async function paraCheck(c, rules, event, userId, at, manual) {
   const x = await verifiedExternalAt(q(c), userId, event.sport_id, at);
   if (x) return judge(x, 'para_external_reference');
   return null; // fall through to the audited manual dependency, then "none on record"
+}
+
+/**
+ * PS-02 (#832): the governed classification check for one person in one category, outside a full evaluation (used at entry, at registration and by the organiser's category check).
+ * Returns null when the competition does not use classification for that category. Never infers a class: governed outcome, then verified external reference, then an unverified dependency (pending).
+ */
+export async function entryClassCheck(c, event, policy, { user_id, division_id = null }, at = new Date()) {
+  const rules = policy.rules, classes = classesFor(rules, division_id);
+  if (!((rules.required_clearances ?? []).includes('classification') || classes.length)) return null;
+  const when = at instanceof Date ? at : new Date(at);
+  const dep = (await q(c).query("SELECT id, status, source_label FROM reg_dependencies WHERE event_id=$1 AND user_id=$2 AND kind='classification' AND superseded_at IS NULL ORDER BY created_at DESC LIMIT 1", [event.id, user_id])).rows[0];
+  let r = await paraCheck(c, rules, event, user_id, when, dep, division_id);
+  if (!r) {
+    const src = dep ? { kind: 'dependency', id: dep.id, label: dep.source_label ?? undefined } : null;
+    r = dep?.status === 'blocked' ? check('classification', 'fail', 'Classification is blocked', src)
+      : dep ? check('classification', 'pending', 'Classification reference is unverified: only a governed outcome or a verified external reference counts', src)
+      : check('classification', 'fail', 'No classification on record', null);
+  }
+  r = await provisionalFor(c, rules, event, user_id, when, r);
+  if (['fail', 'pending', 'unknown'].includes(r.status) && (rules.waivable ?? []).includes('classification')) {
+    const w = await waiver(c, event.id, user_id, 'classification', when);
+    if (w) r = { ...r, status: 'waived', code: 'classification.waived', reason: `${r.reason} (waived by an authorised exception until ${dayOf(w.effective_to)})`, source: { kind: 'exception', id: w.id } };
+  }
+  return r;
+}
+export const checkDecision = (r) => (r.status === 'fail' ? 'ineligible' : r.status === 'unknown' ? 'unknown' : r.status === 'pending' ? 'pending' : 'eligible');
+/** A definitive refusal (not eligible / class outside the category), as opposed to a missing or pending class which is flagged, never guessed. */
+export const isDefinitive = (r) => r.status === 'fail' && !NO_RECORD.test(r.reason);
+
+/** Freeze the class and rule version used for an entry at a stage. Append-only; one row per registration and stage. `enforce`: 'definitive' blocks only a definitive refusal, 'full' applies the policy's block_on. */
+export async function bindEntryClass(c, event, policy, reg, stage, actorId, enforce = 'definitive') {
+  if (!policy) return null;
+  const r = await entryClassCheck(c, event, policy, reg);
+  if (!r) return null;
+  const decision = checkDecision(r);
+  const blocked = policy.enforcement === 'blocking' && (enforce === 'full' ? (policy.rules.block_on ?? ['ineligible']).includes(decision) : isDefinitive(r));
+  if (blocked) throw conflict('The classification does not allow this entry', { code: 'classification_blocked', decision, reason: r.reason, policy_version: policy.version });
+  await q(c).query(
+    `INSERT INTO para_entry_snapshots(event_id, registration_id, user_id, stage, division_id, decision, check_status, reason, source, policy_id, policy_version, allowed_classes, created_by)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13) ON CONFLICT (registration_id, stage) DO NOTHING`,
+    [event.id, reg.id, reg.user_id, stage, reg.division_id ?? null, decision, r.status, r.reason, r.source ? JSON.stringify(r.source) : null, policy.id, policy.version, JSON.stringify(classesFor(policy.rules, reg.division_id)), actorId]);
+  return { check: r, decision };
 }
 
 // `code` is the stable, machine-readable reason (rule + status); `reason` stays the human sentence. Additive: existing consumers keep reading rule/status/reason.
@@ -175,16 +231,17 @@ export async function evaluate(c, ctx, teamId, userId) {
   const NAME = { licence: 'Licence', transfer: 'Transfer clearance', loan: 'Loan clearance', classification: 'Classification', disciplinary: 'Disciplinary status' };
   for (const kind of DEP_KINDS) {
     let d = byKind.get(kind);
-    const required = (rules.required_clearances ?? []).includes(kind) || (kind === 'classification' && (rules.allowed_classes ?? []).length > 0);
+    const required = (rules.required_clearances ?? []).includes(kind) || (kind === 'classification' && classesFor(rules, reg?.division_id).length > 0);
     if (kind === 'classification' && required) {
       // para classification (#488): the authorised outcome in force at `at`, read live; its identity is kept in the check source so the lock snapshot reproduces it
-      const r = await paraCheck(c, rules, event, userId, when, d);
-      if (r) { checks.push(await withWaiver('classification', r)); continue; }
+      const r = await paraCheck(c, rules, event, userId, when, d, reg?.division_id);
+      if (r) { checks.push(await withWaiver('classification', await provisionalFor(c, rules, event, userId, when, r))); continue; }
     }
     const src = d ? { kind: 'dependency', id: d.id, label: d.source_label ?? undefined } : null;
     let r = null;
     if (d?.status === 'blocked') r = check(kind === 'disciplinary' ? 'suspension' : kind, 'fail', kind === 'disciplinary' ? `Suspended${d.valid_until ? ` until ${dayOf(d.valid_until)}` : ''}` : `${NAME[kind]} is blocked`, src);
     else if (d?.status === 'pending') r = check(kind, 'pending', `${NAME[kind]} is awaiting confirmation`, src);
+    else if (d?.status === 'clear' && kind === 'classification') r = check(kind, 'pending', 'Classification reference is unverified: only a governed outcome or a verified external reference counts', src);
     else if (d?.status === 'clear') r = check(kind === 'disciplinary' ? 'suspension' : kind, 'pass', `${NAME[kind]} is clear`, src);
     else if (required) {
       let onFile = false;
@@ -193,7 +250,20 @@ export async function evaluate(c, ctx, teamId, userId) {
     }
     if (!r) continue;
     const key = r.rule === 'suspension' ? 'disciplinary' : r.rule;
-    checks.push(await withWaiver(key, r));
+    checks.push(await withWaiver(key, kind === 'classification' ? await provisionalFor(c, rules, event, userId, when, r) : r));
+  }
+
+  // 5b para rule pack (#834): the person's class and status against the pack the policy is locked to (class code and administrative status only, read live)
+  if (rules.para_pack_id) {
+    const key = `para_pack:${rules.para_pack_id}`;
+    if (!(key in (ctx.cache ??= {}))) ctx.cache[key] = await packOfPolicy(q(c), event, policy);
+    const pack = ctx.cache[key];
+    if (pack) {
+      const def = DEFINITION.parse(pack.definition);
+      const m = memberCheck(def, { user_id: userId, ...(await classOf(q(c), def, event, userId, when)) });
+      const src = { kind: 'para_rule_pack', id: pack.id, version: pack.version, label: pack.publisher };
+      checks.push(await withWaiver('classification', check('para_pack', m.status, m.status === 'pass' ? `Class accepted under ${pack.title} v${pack.version}` : `${m.reason}${m.remediation ? ` — ${m.remediation}` : ''}`, src)));
+    }
   }
 
   // 6 contract (reference to #333): only when the competition requires it
@@ -235,6 +305,30 @@ export async function fixtureSquadIds(c, fixture, teamId) {
   return (await q(c).query(`SELECT user_id FROM team_squads WHERE team_id=$1 AND event_id=$2 AND fixture_id IS NULL AND ${base}`, [teamId, fixture.event_id])).rows.map((r) => r.user_id);
 }
 
+/** Squad rows of a team for a fixture (match squad wins over the event squad), including staff roles and the discipline role kept in `position`. */
+export async function fixtureSquadRows(c, fixture, teamId) {
+  const base = "status IN ('selected','confirmed')";
+  const match = (await q(c).query(`SELECT user_id, role, position FROM team_squads WHERE team_id=$1 AND fixture_id=$2 AND ${base}`, [teamId, fixture.id])).rows;
+  if (match.length) return match;
+  return (await q(c).query(`SELECT user_id, role, position FROM team_squads WHERE team_id=$1 AND event_id=$2 AND fixture_id IS NULL AND ${base}`, [teamId, fixture.event_id])).rows;
+}
+
+/**
+ * The para rule-pack decision for one team's lineup in a fixture (#834), with approved overrides applied. null when the policy has no pack.
+ * `rows` may be supplied (a lineup being tried out) instead of the saved squad. Read-only.
+ */
+export async function paraLineup(c, event, policy, fixture, teamId, { at = new Date(), rows = null } = {}) {
+  const pack = await packOfPolicy(q(c), event, policy);
+  if (!pack) return null;
+  const def = DEFINITION.parse(pack.definition);
+  const names = new Map((await q(c).query('SELECT id, display_name FROM users WHERE id = ANY($1::uuid[])', [(rows ?? await fixtureSquadRows(c, fixture, teamId)).map((r) => r.user_id)])).rows.map((u) => [u.id, u.display_name]));
+  const hidden = await protectedIds([...names.keys()], c);
+  for (const k of hidden) names.set(k, PROTECTED_NAME);
+  const members = await loadMembers(q(c), def, event, rows ?? await fixtureSquadRows(c, fixture, teamId), at, names);
+  const result = applyOverrides(evaluateLineup(def, members), await liveOverrides(q(c), event.id, teamId, fixture?.id ?? null, at));
+  return { pack: { id: pack.id, version: pack.version, title: pack.title, publisher: pack.publisher, source_ref: pack.source_ref }, definition: def, people: members, ...result };
+}
+
 const blocks = (policy, decision) => policy.enforcement === 'blocking' && (policy.rules.block_on ?? ['ineligible']).includes(decision);
 
 /** Evaluate a list of people for a team in a competition. */
@@ -270,6 +364,21 @@ export async function lockFixtureEligibility(c, event, fixture, actorId, stage) 
   }
   const bad = all.filter((r) => blocks(policy, r.decision));
   if (bad.length) throw conflict('Some players in the squads are not eligible for this match', { code: 'eligibility_blocked', policy_version: policy.version, players: bad.map((b) => ({ user_id: b.user_id, team_id: b.team_id, decision: b.decision, reasons: b.checks.filter((x) => x.status !== 'pass').map((x) => x.reason) })) });
+  // para rule pack (#834): lineup-level validation for both teams; a blocking policy stops the lock / kick-off with explanations and remediation
+  const lineups = [];
+  for (const teamId of [fixture.home_team_id, fixture.away_team_id].filter(Boolean)) {
+    const l = await paraLineup(c, event, policy, fixture, teamId, { at: ctx.at });
+    if (l) lineups.push({ teamId, ...l });
+  }
+  const badLineups = lineups.filter((l) => !l.valid && policy.enforcement === 'blocking');
+  if (badLineups.length) throw conflict('A lineup does not meet the sport rules of this competition', { code: 'para_rules_blocked', policy_version: policy.version,
+    teams: badLineups.map((l) => ({ team_id: l.teamId, pack_version: l.pack.version, failures: [...l.checks, ...l.members].filter((k) => k.status === 'fail').map((k) => ({ rule: k.rule, user_id: k.user_id ?? null, reason: k.reason, remediation: k.remediation })) })) });
+  for (const l of lineups) {
+    await q(c).query(
+      `INSERT INTO para_lineup_snapshots(event_id, fixture_id, team_id, stage, pack_id, pack_version, valid, members, checks, overrides, locked_by) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
+       ON CONFLICT (fixture_id, team_id, stage) DO NOTHING`,
+      [event.id, fixture.id, l.teamId, stage, l.pack.id, l.pack.version, l.valid, JSON.stringify(l.people.map(({ name, ...m }) => m)), JSON.stringify({ definition: l.definition, results: l.checks, members: l.members.map((m) => ({ user_id: m.user_id, rule: m.rule, status: m.status, reason: m.reason })) }), JSON.stringify(l.applied_overrides ?? []), actorId]);
+  }
   let locked = 0;
   for (const r of all) {
     const ins = await q(c).query(

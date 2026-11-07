@@ -28,12 +28,15 @@ import { processSponsorTasks } from './sponsor-collaboration.js';
 import { sweepAccessGrants } from './access-grants.js';
 import { syncMembershipGrants } from './access-layer.js';
 import { sweepTickets } from './ticketing.js';
-import { expireAcademyOffers, remindTrials, runAcademyJobs } from './academy-sweeps.js';
+import { expireAcademyOffers, expireAcademyPromotions, remindTrials, remindIntlDeadlines, runAcademyJobs } from './academy-sweeps.js';
 import { sweepPickups } from './pickup-sweeps.js';
+import { expireAcademyContent } from './academy-content.js';
+import { sweepKit } from './kit-sweeps.js';
 import { runAcademicSweeps } from './capabilities/academy-academics.js';
 import { runDueTransfers } from './campus-transfers.js';
 import { runTenderJobs, sendTenderReminders } from './capabilities/tender-reports.js';
 import { deliverDueReports } from './sponsor-report-schedules.js';
+import { draftDueReports } from './academy-report-schedules.js';
 import { deliverDueKpiReports } from './kpi/service.js';
 import { growthMaintenance } from './growth/service.js';
 import { accrueActiveContracts } from './player-contracts.js';
@@ -92,11 +95,15 @@ export const STEPS = [
   ['sponsor_terminations', 'sponsor_terminations_ended', endDueTerminations, 0],
   ['sponsor_terms', 'sponsor_terms_processed', processSponsorshipTerms, 0],
   ['academy_offers', 'academy_offers_expired', expireAcademyOffers, 0],
+  ['academy_promotions', 'academy_promotions_expired', expireAcademyPromotions, 0],
   ['academic_exceptions', 'academic_exceptions_raised', runAcademicSweeps, 0],
   ['campus_transfers', 'campus_transfers_applied', runDueTransfers, 0],
   ['academy_trial_reminders', 'academy_trial_reminders_sent', remindTrials, 0],
+  ['academy_intl_deadlines', 'academy_intl_reminders_sent', remindIntlDeadlines, 0],
   ['academy_jobs', 'academy_jobs', runAcademyJobs, null],
   ['academy_pickup_safety', 'academy_pickup_safety_events', sweepPickups, 0],
+  ['academy_content_licences', 'academy_content_licence_events', async () => (await expireAcademyContent()).expired, 0],
+  ['academy_kit', 'academy_kit_reminders', sweepKit, 0],
   ['billing_schedules', 'billing_periods_raised', raiseScheduledCharges, 0],
   ['collections', 'collection_cases_advanced', runCollections, 0],
   ['access_grants', 'access_grants_revoked', sweepAccessGrants, 0],
@@ -106,6 +113,7 @@ export const STEPS = [
   ['tender_reminders', 'tender_deadline_reminders', sendTenderReminders, 0],
   ['sponsor_tasks', 'sponsor_task_reminders', processSponsorTasks, 0],
   ['sponsor_reports', 'sponsor_reports_delivered', deliverDueReports, 0],
+  ['academy_report_drafts', 'academy_report_drafts_made', draftDueReports, 0],
   ['kpi_reports', 'kpi_reports_delivered', deliverDueKpiReports, 0],
   ['growth_analytics', 'growth_analytics', growthMaintenance, null],
   ['player_contracts', 'contract_earnings_posted', accrueActiveContracts, 0],

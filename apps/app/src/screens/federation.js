@@ -2,7 +2,7 @@
 // One place for everything federation: the bodies you run, your licences, your clubs' affiliations, a directory to find a body, and a way to check a licence.
 // The server decides what each person may do; these screens show what it returns and hide what a role cannot use.
 import React, { useEffect, useMemo, useState } from 'react';
-import { View } from 'react-native';
+import { Switch, View } from 'react-native';
 import { api } from '../api';
 import { useLoad } from '../hooks';
 import { useSession } from '../session';
@@ -10,7 +10,7 @@ import { useNav } from '../nav';
 import { Btn, Card, Chip, Empty, Field, H1, Loading, Screen, Section, Seg, Sheet, T, Tag } from '../ui';
 import { FormSheet } from '../FormSheet';
 import { CountryPicker, countryName } from '../country-picker';
-import { SportSelect, useSports } from '../sportpicker';
+import { SportsMulti, SportSelect, useSports } from '../sportpicker';
 import { DateField } from '../pickers';
 import { openPdf } from '../open-file';
 import { CameraScan, hasCamera } from '../camera-scan';
@@ -25,40 +25,125 @@ export { FederationHome } from './federation-home';
 
 const LEVELS = Object.entries(LEVEL_LABEL).map(([value, label]) => ({ value, label }));
 
-// ------------------------------------------------------------------ set up a federation
-function SetupSheet({ visible, onClose, onDone }) {
+// ------------------------------------------------------------------ set up a federation (elite 3-step wizard)
+const RECOGNISED_BY_OPTS = ['IOC', 'IPC', 'GAISF', 'Government ministry', 'National Olympic Committee', 'None / independent'];
+const MEMBER_TYPE_OPTS = ['Individual athlete', 'Club', 'Association', 'Regional body', 'National body'];
+const FED_STEPS = ['Identity & Authority', 'Jurisdiction & Recognition', 'Structure & Launch'];
+
+function FederationWizard({ visible, onClose, onDone }) {
   const { toast } = useSession();
   const sports = useSports();
   const orgs = useLoad(() => api.get('/organisations').catch(() => []), []);
   const owned = (orgs.data ?? []).filter((o) => o.my_status === 'active' && o.my_role === 'owner' && o.kind !== 'federation');
   const bySlug = useMemo(() => Object.fromEntries((sports.data ?? []).map((s) => [s.slug, s.id])), [sports.data]);
-  const fields = [
-    { key: 'mode', label: 'Start from', type: 'choice', options: [{ value: 'new', label: 'A new organisation' }, ...(owned.length ? [{ value: 'existing', label: 'One I own' }] : [])] },
-    { key: 'name', label: 'Name of the federation, association or league', show: (v) => v.mode !== 'existing' },
-    { key: 'organisation_id', label: 'Which organisation', type: 'chips', options: owned.map((o) => ({ value: o.id, label: o.name })), show: (v) => v.mode === 'existing' },
-    { key: 'level', label: 'Governing level', type: 'chips', options: LEVELS, default: 'national' },
-    { key: 'abbreviation', label: 'Abbreviation', hint: '2 to 8 letters or digits. It starts every affiliation, licence and sanction number.', maxLength: 8 },
-    { key: 'country', label: 'Country', type: 'country', optional: true },
-    { key: 'state', label: 'State or province', optional: true },
-    { key: 'region', label: 'Region', optional: true },
-    { key: 'district', label: 'District', optional: true },
-    { key: 'sports', label: 'Sports governed', type: 'sports' },
-    { key: 'discipline', label: 'Discipline (optional)', optional: true, hint: 'If you govern one discipline of these sports, for example Singles or 7s.' },
-    { key: 'website', label: 'Website', type: 'url', optional: true, show: (v) => v.mode !== 'existing' },
-    { key: 'contact_email', label: 'Public contact email', type: 'email', optional: true, show: (v) => v.mode !== 'existing' },
-  ];
+  const [step, setStep] = useState(0);
+  const [v, setV] = useState({ mode: 'new', level: 'national', is_public: false, open_membership: false });
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState(null);
+  const set = (k, val) => setV((p) => ({ ...p, [k]: val }));
+  const toggle = (key, item) => set(key, (v[key] ?? []).includes(item) ? (v[key] ?? []).filter((x) => x !== item) : [...(v[key] ?? []), item]);
+
+  const can = [
+    (v.mode === 'existing' ? !!v.organisation_id : !!v.name?.trim()) && !!v.level && !!v.abbreviation?.trim() && !!(v.sports ?? []).length,
+    !!v.country,
+    true,
+  ][step];
+
+  const submit = async () => {
+    setBusy(true); setErr(null);
+    try {
+      const body = {
+        level: v.level, abbreviation: String(v.abbreviation ?? '').toUpperCase(),
+        country: v.country || undefined, state: v.state || undefined, region: v.region || undefined,
+        sports: (v.sports ?? []).map((slug) => ({ sport_id: bySlug[slug], discipline: v.discipline || '' })).filter((s) => s.sport_id),
+        ...(v.mode === 'existing' ? { organisation_id: v.organisation_id } : { name: v.name, website: v.website || undefined }),
+      };
+      if (!body.sports.length) throw new Error('Choose the sports you govern');
+      const b = await api.post('/federation/bodies', body);
+      toast(`${b.name} is set up`); onClose(); onDone(b);
+    } catch (e) { setErr(e.message); } finally { setBusy(false); }
+  };
+
   return (
-    <FormSheet visible={visible} onClose={onClose} title="Set up a governing body" fields={fields} initial={{ mode: 'new', level: 'national' }} submitLabel="Create"
-      onSubmit={async (v) => {
-        const body = {
-          level: v.level, abbreviation: String(v.abbreviation ?? '').toUpperCase(), country: v.country || undefined, state: v.state || undefined, region: v.region || undefined, district: v.district || undefined,
-          sports: (v.sports ?? []).map((slug) => ({ sport_id: bySlug[slug], discipline: v.discipline || '' })).filter((s) => s.sport_id),
-          ...(v.mode === 'existing' ? { organisation_id: v.organisation_id } : { name: v.name, website: v.website || undefined, contact_email: v.contact_email || undefined }),
-        };
-        if (!body.sports.length) throw new Error('Choose the sports you govern');
-        const b = await api.post('/federation/bodies', body);
-        toast(`${b.name} is set up`); onDone(b);
-      }} />
+    <Sheet visible={visible} onClose={onClose} title="Set up a governing body">
+      <View style={{ flexDirection: 'row', gap: 4, marginBottom: 16 }}>
+        {FED_STEPS.map((s, i) => <View key={i} style={{ flex: 1, height: 4, borderRadius: 2, backgroundColor: i < step ? c.violet : i === step ? c.pink : c.p1 }} />)}
+      </View>
+      <T weight="800" size={15} style={{ marginBottom: 12 }}>{FED_STEPS[step]}</T>
+
+      {step === 0 ? (
+        <View style={{ gap: 12 }}>
+          {owned.length ? (
+            <View style={{ flexDirection: 'row', gap: 8, flexWrap: 'wrap' }}>
+              {[{ value: 'new', label: 'New organisation' }, { value: 'existing', label: 'One I own' }].map((opt) => (
+                <Chip key={opt.value} label={opt.label} active={v.mode === opt.value} onPress={() => set('mode', opt.value)} />
+              ))}
+            </View>
+          ) : null}
+          {v.mode !== 'existing' ? (
+            <Field label="Federation name *" value={v.name ?? ''} onChangeText={(x) => set('name', x)} placeholder="e.g. National Badminton Federation" />
+          ) : (
+            <View style={{ flexDirection: 'row', gap: 8, flexWrap: 'wrap' }}>
+              {owned.map((o) => <Chip key={o.id} label={o.name} active={v.organisation_id === o.id} onPress={() => set('organisation_id', o.id)} />)}
+            </View>
+          )}
+          <Field label="Abbreviation *" value={v.abbreviation ?? ''} onChangeText={(x) => set('abbreviation', x.toUpperCase())} placeholder="e.g. NBF" hint="2–8 letters or digits. Starts every licence and affiliation number." maxLength={8} />
+          <T weight="700" size={13} style={{ marginTop: 4 }}>Governing level *</T>
+          <View style={{ flexDirection: 'row', gap: 8, flexWrap: 'wrap' }}>
+            {LEVELS.map((l) => <Chip key={l.value} label={l.label} active={v.level === l.value} onPress={() => set('level', l.value)} />)}
+          </View>
+          <SportsMulti label="Sports governed *" value={v.sports ?? []} onChange={(x) => set('sports', x)} />
+          <Field label="Discipline" value={v.discipline ?? ''} onChangeText={(x) => set('discipline', x)} placeholder="e.g. 7s, Singles" hint="If you govern one discipline only." optional />
+          <Field label="Founded year" value={v.founded_year ?? ''} onChangeText={(x) => set('founded_year', x)} placeholder="e.g. 1948" optional />
+        </View>
+      ) : null}
+
+      {step === 1 ? (
+        <View style={{ gap: 12 }}>
+          <Field label="Country *" value={v.country ?? ''} onChangeText={(x) => set('country', x)} placeholder="e.g. India, Australia" hint="Primary country this body governs." />
+          <Field label="State or province" value={v.state ?? ''} onChangeText={(x) => set('state', x)} optional />
+          <Field label="Region" value={v.region ?? ''} onChangeText={(x) => set('region', x)} optional />
+          <T weight="700" size={13} style={{ marginTop: 4 }}>Recognised by</T>
+          <View style={{ flexDirection: 'row', gap: 8, flexWrap: 'wrap' }}>
+            {RECOGNISED_BY_OPTS.map((r) => <Chip key={r} label={r} active={(v.recognised_by ?? []).includes(r)} onPress={() => toggle('recognised_by', r)} />)}
+          </View>
+          {v.mode !== 'existing' ? <Field label="Website" value={v.website ?? ''} onChangeText={(x) => set('website', x)} placeholder="https://" optional /> : null}
+          <Field label="Affiliation code" value={v.affiliation_code ?? ''} onChangeText={(x) => set('affiliation_code', x)} hint="Assigned by parent body, if any." optional />
+        </View>
+      ) : null}
+
+      {step === 2 ? (
+        <View style={{ gap: 12 }}>
+          <T weight="700" size={13}>Membership types</T>
+          <View style={{ flexDirection: 'row', gap: 8, flexWrap: 'wrap' }}>
+            {MEMBER_TYPE_OPTS.map((m) => <Chip key={m} label={m} active={(v.member_types ?? []).includes(m)} onPress={() => toggle('member_types', m)} />)}
+          </View>
+          <Card color={c.p1} style={{ padding: 12, gap: 10 }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+              <T size={14}>List in governing body directory</T>
+              <Switch value={!!v.is_public} onValueChange={(x) => set('is_public', x)} trackColor={{ false: c.line, true: c.pink }} />
+            </View>
+            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 8 }}>
+              <T size={14}>Open to membership applications</T>
+              <Switch value={!!v.open_membership} onValueChange={(x) => set('open_membership', x)} trackColor={{ false: c.line, true: c.pink }} />
+            </View>
+          </Card>
+          <Card color={c.cyanSoft} style={{ padding: 12 }}>
+            <T weight="700" size={14}>{v.mode !== 'existing' ? (v.name ?? '—') : (owned.find((o) => o.id === v.organisation_id)?.name ?? '—')}</T>
+            <T size={12} color={c.mute}>{LEVEL_LABEL[v.level] ?? v.level} · {v.abbreviation ?? '—'}{v.country ? ` · ${v.country}` : ''}</T>
+            <T size={12} color={c.mute}>{(v.sports ?? []).length} sport{(v.sports ?? []).length !== 1 ? 's' : ''} governed</T>
+          </Card>
+          {err ? <T color={c.red} size={13}>{err}</T> : null}
+        </View>
+      ) : null}
+
+      <View style={{ flexDirection: 'row', gap: 10, marginTop: 20 }}>
+        {step > 0 ? <Btn title="Back" color={c.paper} ink={c.ink} onPress={() => setStep((s) => s - 1)} style={{ flex: 1 }} /> : null}
+        {step < 2 ? <Btn title="Next" disabled={!can} onPress={() => setStep((s) => s + 1)} style={{ flex: 1 }} /> : (
+          <Btn title="Create federation" loading={busy} disabled={!can || busy} onPress={submit} style={{ flex: 1 }} />
+        )}
+      </View>
+    </Sheet>
   );
 }
 
@@ -159,7 +244,7 @@ export function Federations() {
           : <Empty emoji="🔎" title="No governing body found" sub="Try another name, sport or level." />}
       </Section>
 
-      <SetupSheet visible={setup} onClose={() => setSetup(false)} onDone={(b) => { mine.reload(); push('FederationHome', { id: b.id }); }} />
+      <FederationWizard visible={setup} onClose={() => setSetup(false)} onDone={(b) => { mine.reload(); push('FederationHome', { id: b.id }); }} />
       <ProfileSheet id={profile} onClose={() => setProfile(null)} />
     </Screen>
   );

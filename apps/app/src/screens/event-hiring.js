@@ -34,6 +34,35 @@ function ReviewSheet({ a, e, onClose, reload }) {
       </View>
       <T size={12} color={c.mute}>@{a.handle}</T>
       {a.message ? <Card pad={12}><T size={14}>{a.message}</T></Card> : <T color={c.mute}>No message from the applicant.</T>}
+      {a.application_data && Object.keys(a.application_data).length > 0 ? (
+        <Card pad={14}>
+          {a.application_data.strengths?.length ? <><T size={11} color={c.mute} style={{marginBottom:4}}>KEY STRENGTHS</T><View style={{flexDirection:'row',flexWrap:'wrap',gap:4,marginBottom:10}}>{a.application_data.strengths.map((s) => <Tag key={s} label={s} color={c.violetSoft} />)}</View></> : null}
+          {a.application_data.experience_level ? <T size={13} style={{marginBottom:2}}>Experience: <T size={13} weight="700">{({first_time:'First event',some:'Some experience',experienced:'Regularly active',expert:'Professional / elite'})[a.application_data.experience_level]}</T>{a.application_data.years_active ? ` · ${a.application_data.years_active} yr` : ''}</T> : null}
+          {a.application_data.has_qualification ? (
+            <View style={{marginTop:6,padding:10,borderRadius:8,backgroundColor:c.limeSoft}}>
+              <T size={12} weight="700" color={c.lime}>✅ LICENCE / CERTIFICATION DECLARED</T>
+              {a.application_data.qualification_body ? <T size={13}>{a.application_data.qualification_body}{a.application_data.qualification_level ? ` · ${a.application_data.qualification_level}` : ''}</T> : null}
+              {a.application_data.qualification_ref ? <T size={12} color={c.mute}>Ref: {a.application_data.qualification_ref}</T> : null}
+              {a.application_data.qualification_expires ? <T size={12} color={c.mute}>Expires: {a.application_data.qualification_expires}</T> : null}
+            </View>
+          ) : null}
+          {a.application_data.stall_name ? (
+            <View style={{marginTop:6}}>
+              <T size={13} weight="700">{a.application_data.stall_name}</T>
+              {a.application_data.products_desc ? <T size={13}>{a.application_data.products_desc}</T> : null}
+              <View style={{flexDirection:'row',flexWrap:'wrap',gap:6,marginTop:4}}>
+                {a.application_data.stall_width_m ? <Tag label={`${a.application_data.stall_width_m}m wide`} /> : null}
+                {a.application_data.power_needed ? <Tag label={`Power${a.application_data.power_amps ? ` ${a.application_data.power_amps}A` : ''}`} color={c.sunSoft} /> : null}
+                {a.application_data.food_cert ? <Tag label={`Food cert: ${a.application_data.food_cert}`} color={c.limeSoft} /> : null}
+              </View>
+            </View>
+          ) : null}
+          {a.application_data.confirms_dates === false ? <T size={13} color={c.red} style={{marginTop:4}}>⚠️ Has not confirmed availability for all dates</T> : null}
+          {a.application_data.transport ? <T size={13} style={{marginTop:2}}>Transport: {({own_vehicle:'Own vehicle',public_transport:'Public transport',any:'Either'})[a.application_data.transport]}</T> : null}
+          {a.application_data.accommodation_needed ? <Tag label="Needs accommodation" color={c.sunSoft} style={{marginTop:4}} /> : null}
+          {a.application_data.additional ? <><T size={11} color={c.mute} style={{marginTop:8,marginBottom:2}}>ADDITIONAL</T><T size={13}>{a.application_data.additional}</T></> : null}
+        </Card>
+      ) : null}
       <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
         <Btn small title={`Documents${a.documents ? ` (${a.documents})` : ''}`} color={c.violet} onPress={() => setDocs(true)} />
         {a.contract_id ? <Btn small title="View contract" color={c.paper} ink={c.ink} onPress={() => setContract(true)} /> : null}
@@ -116,13 +145,34 @@ export function HiringTab({ id, e, roles, staff, reload }) {
         </Sheet>
       ) : null}
 
-      <FormSheet visible={open} onClose={() => setOpen(false)} title="Open a position" submitLabel="Open position" initial={{ role: 'referee', needed: 1, is_public: true }}
-        fields={[{ key: 'role', label: 'Role', type: 'chips', options: ROLES.map(([value, label]) => ({ value, label: `${ROLE_ICON[value]} ${label}` })) }, { key: 'needed', label: 'How many people', type: 'stepper', min: 1, max: 100, default: 1 },
+      <FormSheet visible={open} onClose={() => setOpen(false)} title="Open a position" submitLabel="Open position" initial={{ role: 'referee', needed: 1, is_public: true, qualifications_required: false }}
+        fields={[
+          { key: 'role', label: 'Role', type: 'chips', options: ROLES.map(([value, label]) => ({ value, label: `${ROLE_ICON[value]} ${label}` })) },
+          { key: 'title', label: 'Position title (optional)', optional: true, placeholder: 'e.g. Head of table · Senior volunteer', hint: 'Overrides the role label — use for specialised or senior positions.' },
+          { key: 'needed', label: 'How many people', type: 'stepper', min: 1, max: 500, default: 1 },
           { key: 'fee', label: 'Fee per person', type: 'money', currency: e.currency, optional: true, show: (v) => !STALL.includes(v.role) },
           { key: 'stall_fee', label: 'Stall fee the vendor pays you', type: 'money', currency: e.currency, optional: true, show: (v) => STALL.includes(v.role) },
-          { key: 'notes', label: 'Notes for applicants', type: 'multiline', optional: true, hint: 'Hours, requirements, what to bring. Positions appear on the arena home page for everyone; people apply and you accept them here.' },
-          { key: 'is_public', label: 'Show on the arena for anyone to apply', type: 'switch', default: true }]}
-        onSubmit={async (v) => { await api.post(`/events/${id}/staff-roles`, { role: v.role, needed: v.needed || 1, fee_cents: (STALL.includes(v.role) ? v.stall_fee : v.fee) || 0, notes: v.notes || undefined, is_public: v.is_public !== false }); reload(); return 'Position opened. It is now on the arena'; }} />
+          { key: '_req_hdr', type: 'section', label: 'Requirements' },
+          { key: 'requirements', label: 'What you need from applicants', type: 'multiline', optional: true, placeholder: 'Level 2 referee licence required · Minimum 3 years experience · Must have own kit…', hint: 'Shown to applicants before they apply. Be specific — elite positions attract elite applicants.' },
+          { key: 'min_experience', label: 'Minimum experience', type: 'chips', optional: true, options: [{ value: 'any', label: 'Any' }, { value: 'some', label: 'Some' }, { value: 'experienced', label: 'Experienced' }, { value: 'expert', label: 'Expert / elite' }] },
+          { key: 'qualifications_required', label: 'Valid licence / certification required', type: 'switch', hint: 'Applicants without a declared qualification will be flagged.' },
+          { key: 'application_deadline', label: 'Application deadline', type: 'date', optional: true, hint: 'Automatically closes applications after this date.' },
+          { key: '_pub_hdr', type: 'section', label: 'Visibility' },
+          { key: 'notes', label: 'Notes for applicants', type: 'multiline', optional: true, hint: 'Hours, kit colour, meeting point, additional context.' },
+          { key: 'is_public', label: 'Show on the arena for anyone to apply', type: 'switch', default: true },
+        ]}
+        onSubmit={async (v) => {
+          await api.post(`/events/${id}/staff-roles`, {
+            role: v.role, title: v.title || undefined, needed: v.needed || 1,
+            fee_cents: (STALL.includes(v.role) ? v.stall_fee : v.fee) || 0,
+            notes: v.notes || undefined, is_public: v.is_public !== false,
+            requirements: v.requirements || undefined,
+            min_experience: v.min_experience || undefined,
+            qualifications_required: v.qualifications_required ?? false,
+            application_deadline: v.application_deadline || undefined,
+          });
+          reload(); return 'Position opened — it is now on the arena';
+        }} />
     </>
   );
 }
