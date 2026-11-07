@@ -330,6 +330,27 @@ id: 'wellbeing', title: 'Support student wellbeing and development',
     modules: ['academy-boarding.js'],
     sources: ['apps/app/src/screens/academy-boarding.js'],
   },
+  {
+    id: 'coach_development', title: 'Develop and certify your coaching staff',
+    why: 'Elite academies like Nadal Academy and Real Madrid CF demand verifiable CPD, structured mentoring and rigorous quality assurance. Build a culture of continuous improvement from day one so every coach is growing, every observation drives action, and compliance is always audit-ready.',
+    steps: [
+      'Open Academy, then Coach Development, then Module Library. Tap Add Module to create your CPD catalogue — set the kind (Induction, CPD, Credential, Workshop, Conference), the coaching pillar (Technical, Tactical, Physical, Mental, Lifestyle), CPD hours and whether it is mandatory. Publish the module when it is ready to assign.',
+      'Open a published module and tap Assign. Pick the coach, set a due date and confirm. The coach receives an in-app notification and the assignment appears on their My CPD board. Track completion status (Assigned → In Progress → Submitted → Approved) from the Review tab.',
+      'Coaches submit evidence (certificate, external course, reflection, observation reference or attendance) from their My CPD board. Open the Review tab, check the evidence and tap Approve or Reject. Rejections trigger an appeal right for the coach; resolve appeals from the Appeals tab.',
+      'Open Coach Development, then Mentoring. Tap New Pairing, pick mentor and mentee from your coaching staff, set a start date and cadence (every n weeks) and add development goals. Only one live pairing per mentee per organisation is allowed — the system enforces it.',
+      'Inside a pairing, tap Schedule Session to set a date and duration. After the session the mentor taps Complete Session and records agreed actions. The session timeline is shared between both parties and is append-only for safeguarding purposes.',
+      'Open Coach Development, then TD Quality, then Observations. Tap Add Observation, choose the coach, the session you observed, the pillar focus and an overall 1–5 rating. Add pillar sub-ratings and coaching points. Private strengths and development notes are encrypted and visible only to TD and owner — tap Release to Coach when ready to share feedback.',
+      'From an observation, tap Create Improvement Plan to formalise development commitments. Add timed actions (each with a due date), mark them done as the coach progresses and track open/closed counts at a glance from the plans list.',
+      'Open Coach Development, then Compliance Report to see organisation-wide CPD completion rates, overdue mandatory modules and per-coach CPD hours. Export the report for board review or accreditation audits.',
+    ],
+    target: { academy: 'coach_development' },
+    modules: ['academy-coach-education.js'],
+    sources: [
+      'apps/app/src/screens/academy-coach-education.js',
+      'apps/app/src/screens/academy-coach-mentoring.js',
+      'apps/app/src/screens/academy-td-quality.js',
+    ],
+  },
 ];
 
 /** Org/academy API modules with no step of their own, and why. Anything not here and not in a step fails the guard test. */
