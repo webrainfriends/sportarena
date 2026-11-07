@@ -20,7 +20,7 @@ const ENC_CTX = 'para_sport_delivery_evidence.evidence_url';
 // ----- privacy fence: block any attempt to join clinical / classification tables --------------------
 
 const FORBIDDEN_TABLES = ['health_records', 'clinical_notes', 'classification_cases', 'para_cases', 'para_classification_outcomes', 'accommodation_evidence'];
-function checkNoDisabilityInference(query) {
+export function checkNoDisabilityInference(query) {
   const q = String(query ?? '').toLowerCase();
   for (const t of FORBIDDEN_TABLES) {
     if (q.includes(t)) throw forbidden(`PS-19 privacy fence: query references protected table '${t}'. Sponsors receive financial and operational evidence only.`);
