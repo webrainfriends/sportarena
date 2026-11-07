@@ -11,6 +11,12 @@ export const METRICS = {
   distance: { unit: 'km', label: 'Distance', min: 0, max: 400, agg: 'sum' },
   active_energy: { unit: 'kcal', label: 'Active energy', min: 0, max: 15000, agg: 'sum' },
   steps: { unit: 'count', label: 'Steps', min: 0, max: 150000, agg: 'sum' },
+  // Elite-academy extensions (#583)
+  sleep_quality: { unit: 'score', label: 'Sleep quality score', min: 0, max: 100, agg: 'avg' },
+  spo2: { unit: '%', label: 'Blood oxygen (SpO₂)', min: 70, max: 100, agg: 'avg' },
+  vo2max: { unit: 'ml/kg/min', label: 'VO₂max estimate', min: 20, max: 90, agg: 'avg' },
+  sprint_distance: { unit: 'm', label: 'Sprint distance', min: 0, max: 10000, agg: 'sum' },
+  max_speed: { unit: 'km/h', label: 'Max speed', min: 0, max: 50, agg: 'avg' },
 };
 
 // factor to the canonical unit; a function for non-linear conversions
@@ -22,6 +28,11 @@ const UNITS = {
   km: { km: 1, m: 0.001, mi: 1.609344 },
   kcal: { kcal: 1, kj: 0.239006, j: 0.000239006 },
   count: { count: 1 },
+  score: { score: 1 },
+  '%': { '%': 1 },
+  'ml/kg/min': { 'ml/kg/min': 1 },
+  'm': { m: 1, km: 1000 },
+  'km/h': { 'km/h': 1, 'm/s': 3.6, mph: 1.60934 },
 };
 
 /** Convert a vendor reading. Returns { value, flags } or null when the unit is not understood (the caller records it as unmapped, never guesses). */
@@ -69,4 +80,31 @@ export const ADAPTERS = {
   },
   // Apple Health / Health Connect are pushed from the device app (no server pull); the push uses canonical names and units directly.
   device_push: { path: null, parse: (j) => arr(j, 'readings').map((d) => row(d.metric, d.metric, d.value, d.unit, d.date)) },
+  // Polar AccessLink v3 — exercise transactions + nightly recharge
+  polar: {
+    base: 'https://www.polaraccesslink.com',
+    path: '/v3/users/transaction/exercise',
+    parse: (j) => arr(j, 'exercises').flatMap((d) => [
+      row('training-load-index', 'training_load', d.training_load_status?.training_load_shorthand ?? null, 'au', d.start_time),
+      row('distance', 'distance', d.distance, 'm', d.start_time),
+      row('calories', 'active_energy', d.calories, 'kcal', d.start_time),
+      row('vo2max', 'vo2max', d.vo2max, 'ml/kg/min', d.start_time),
+    ]).concat(
+      arr(j, 'nightly_recharge').flatMap((d) => [
+        row('sleep_score', 'sleep_quality', d.sleep_charge_status?.sleep_charge ?? null, 'score', d.date),
+        row('nightly_recharge_spo2', 'spo2', d.spo2_average ?? null, '%', d.date),
+      ]),
+    ),
+  },
+  // Catapult OpenField API — GPS and accelerometer data for team sports
+  catapult_opf: {
+    base: 'https://openfield.catapultsports.com',
+    path: '/api/v1/activities',
+    parse: (j) => arr(j, 'activities').flatMap((d) => [
+      row('total_distance', 'distance', d.total_distance_m, 'm', d.start_time),
+      row('high_speed_running', 'sprint_distance', d.high_speed_running_m, 'm', d.start_time),
+      row('max_vel', 'max_speed', d.max_velocity_kmh, 'km/h', d.start_time),
+      row('player_load', 'training_load', d.player_load, 'au', d.start_time),
+    ]),
+  },
 };
