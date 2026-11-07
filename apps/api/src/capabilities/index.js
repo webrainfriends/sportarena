@@ -393,6 +393,7 @@ import './para-doctor-consult.js';
 import './para-mentoring.js';
 import './para-pathway.js';
 import './para-sport-funding.js';
+import './para-sport-sponsorship-outcomes.js';
 import './para-learn.js';
 // Merged with screens in the app but never loaded, so their endpoints answered "Route not found".
 import './stream-hub.js';
