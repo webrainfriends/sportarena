@@ -15,6 +15,11 @@ on:
 permissions:
   contents: read
 
+env:
+  # Android builds belong to the gotmygame-android Expo project (apps/app/app.config.js reads this); iOS keeps the project in app.json.
+  EAS_PROJECT_ID: 7ba48908-8676-4a0f-a7e1-34e523fd0d42
+  EAS_PROJECT_SLUG: gotmygame-android
+
 jobs:
   android:
     runs-on: ubuntu-latest
