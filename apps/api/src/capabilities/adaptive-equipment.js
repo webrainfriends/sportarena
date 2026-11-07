@@ -70,17 +70,17 @@ cap({
   }),
   async handler({ user }, i) {
     return tx(async (c) => {
-      const notes_enc = i.notes ? await encrypt(i.notes) : null;
+      const adjustment_notes_enc = i.notes ? await encrypt(i.notes) : null;
       const [row] = await c(
         `INSERT INTO adaptive_assets
           (type, name, sport_codes, org_id, venue_id, size_family, serial_number,
-           purchase_date, purchase_value_cents, currency, funding_agreement_id, notes_enc,
-           status, created_by)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,'available',$13)
+           purchase_date, purchase_value_cents, currency, funding_agreement_id,
+           adjustment_notes_enc, status, owner_id, created_by)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,'available',$13,$13)
          RETURNING *`,
         [i.type, i.name, i.sport_codes, i.org_id, i.venue_id, i.size_family, i.serial_number,
          i.purchase_date, i.purchase_value_cents, i.currency, i.funding_agreement_id,
-         notes_enc, user.id],
+         adjustment_notes_enc, user.id],
       );
       return { id: row.id };
     });
@@ -159,15 +159,15 @@ cap({
   async handler({ user }, i) {
     const asset = await one('SELECT * FROM adaptive_assets WHERE id=$1', [i.id]);
     if (!asset) throw notFound('asset');
-    const notes_enc = i.notes !== undefined ? (i.notes ? await encrypt(i.notes) : null) : asset.notes_enc;
+    const adjustment_notes_enc = i.notes !== undefined ? (i.notes ? await encrypt(i.notes) : null) : asset.adjustment_notes_enc;
     await tx(async (c) => {
       await c(
         `UPDATE adaptive_assets SET
-          name=COALESCE($2,name), status=COALESCE($3,status), notes_enc=$4,
+          name=COALESCE($2,name), status=COALESCE($3,status), adjustment_notes_enc=$4,
           retired_at=CASE WHEN $3='retired' AND retired_at IS NULL THEN NOW() ELSE retired_at END,
           row_version=row_version+1
          WHERE id=$1`,
-        [i.id, i.name, i.status, notes_enc],
+        [i.id, i.name, i.status, adjustment_notes_enc],
       );
     });
     return { ok: true };
@@ -232,10 +232,10 @@ cap({
     return tx(async (c) => {
       const [row] = await c(
         `INSERT INTO adaptive_loans (asset_id,athlete_id,org_id,start_date,end_date,purpose,
-           status,deposit_waived,funding_agreement_id)
-         VALUES ($1,$2,$3,$4,$5,$6,'requested',$7,$8) RETURNING id`,
+           status,deposit_waived,funding_agreement_id,created_by)
+         VALUES ($1,$2,$3,$4,$5,$6,'requested',$7,$8,$9) RETURNING id`,
         [i.asset_id, athlete_id, asset.org_id, i.start_date, i.end_date,
-         i.purpose, i.deposit_waived, i.funding_agreement_id],
+         i.purpose, i.deposit_waived, i.funding_agreement_id, user.id],
       );
       await c('UPDATE adaptive_assets SET status=\'on_loan\', row_version=row_version+1 WHERE id=$1', [i.asset_id]);
       return { id: row.id };
@@ -423,7 +423,7 @@ cap({
     if (!loan) throw notFound('loan');
     return tx(async (c) => {
       await c(
-        'UPDATE adaptive_loans SET status=\'cancelled\', deposit_refunded_at=CASE WHEN deposit_paid_at IS NOT NULL THEN NOW() ELSE NULL END, row_version=row_version+1 WHERE id=$1',
+        'UPDATE adaptive_loans SET status=\'cancelled\', cancelled_at=NOW(), deposit_refunded_at=CASE WHEN deposit_paid_at IS NOT NULL THEN NOW() ELSE NULL END, row_version=row_version+1 WHERE id=$1',
         [i.id],
       );
       await c('UPDATE adaptive_assets SET status=\'available\', row_version=row_version+1 WHERE id=$1', [loan.asset_id]);
@@ -458,8 +458,8 @@ cap({
     if (conflict_check) throw conflict('asset_already_allocated');
     return tx(async (c) => {
       const [row] = await c(
-        'INSERT INTO adaptive_event_allocations (asset_id,event_id,start_dt,end_dt,notes) VALUES ($1,$2,$3,$4,$5) RETURNING id',
-        [i.id, i.event_id, i.start_dt, i.end_dt, i.notes],
+        'INSERT INTO adaptive_event_allocations (asset_id,event_id,start_dt,end_dt,notes,created_by) VALUES ($1,$2,$3,$4,$5,$6) RETURNING id',
+        [i.id, i.event_id, i.start_dt, i.end_dt, i.notes, user.id],
       );
       return { id: row.id };
     });
@@ -529,9 +529,10 @@ cap({
     const asset = await one('SELECT id FROM adaptive_assets WHERE id=$1', [i.asset_id]);
     if (!asset) throw notFound('asset');
     return tx(async (c) => {
+      const slotEnd = new Date(new Date(i.preferred_slot).getTime() + 90 * 60000).toISOString();
       const [row] = await c(
-        "INSERT INTO adaptive_fittings (asset_id,athlete_id,clinician_id,para_case_id,slot_start,status) VALUES ($1,$2,$3,$4,$5::timestamptz,'requested') RETURNING id",
-        [i.asset_id, user.id, i.clinician_id, i.para_case_id, i.preferred_slot],
+        "INSERT INTO adaptive_fittings (asset_id,athlete_id,clinician_id,para_case_id,preferred_slot_start,preferred_slot_end,status,created_by) VALUES ($1,$2,$3,$4,$5::timestamptz,$6::timestamptz,'requested',$2) RETURNING id",
+        [i.asset_id, user.id, i.clinician_id, i.para_case_id, i.preferred_slot, slotEnd],
       );
       return { id: row.id };
     });
@@ -563,7 +564,7 @@ cap({
        JOIN adaptive_assets a ON a.id=f.asset_id
        LEFT JOIN profiles p ON p.user_id=f.athlete_id
        WHERE ${filters.join(' AND ')}
-       ORDER BY f.slot_start DESC LIMIT $${lp - 1} OFFSET $${lp}`,
+       ORDER BY f.preferred_slot_start DESC LIMIT $${lp - 1} OFFSET $${lp}`,
       params,
     );
     return { items };
@@ -588,7 +589,7 @@ cap({
     if (!fit) throw notFound('fitting');
     await tx(async (c) => {
       await c(
-        'UPDATE adaptive_fittings SET status=COALESCE($2,status), slot_start=COALESCE($3::timestamptz,slot_start), row_version=row_version+1 WHERE id=$1',
+        'UPDATE adaptive_fittings SET status=COALESCE($2,status), preferred_slot_start=COALESCE($3::timestamptz,preferred_slot_start), row_version=row_version+1 WHERE id=$1',
         [i.id, i.status, i.slot_start],
       );
     });
@@ -614,7 +615,7 @@ cap({
     await audit({ user, entity: 'adaptive_fitting', entity_id: i.id, action: 'record_outcome' });
     await tx(async (c) => {
       await c(
-        'UPDATE adaptive_fittings SET outcome_notes_enc=$2, recommended_settings_enc=$3, status=\'completed\', row_version=row_version+1 WHERE id=$1',
+        'UPDATE adaptive_fittings SET outcome_notes_enc=$2, recommended_adjustments_enc=$3, status=\'completed\', row_version=row_version+1 WHERE id=$1',
         [i.id, outcome_notes_enc, recommended_settings_enc],
       );
     });
@@ -645,11 +646,12 @@ cap({
     if (!asset) throw notFound('asset');
     const findings_enc = i.findings ? await encrypt(i.findings) : null;
     return tx(async (c) => {
+      const performed = i.performed_at ?? new Date().toISOString().slice(0, 10);
       const [row] = await c(
         `INSERT INTO adaptive_service_records
-          (asset_id,service_type,technician_id,service_order_id,performed_at,next_due,pass_fail,findings_enc)
-         VALUES ($1,$2,$3,$4,$5::date,$6::date,$7,$8) RETURNING id`,
-        [i.id, i.service_type, user.id, i.service_order_id, i.performed_at, i.next_due, i.pass_fail, findings_enc],
+          (asset_id,service_type,technician_name,service_order_id,performed_at,next_due_date,pass_fail,findings_enc,created_by)
+         VALUES ($1,$2,$3,$4,$5::date,$6::date,$7,$8,$9) RETURNING id`,
+        [i.id, i.service_type, i.technician, i.service_order_id, performed, i.next_due, i.pass_fail, findings_enc, user.id],
       );
       await c(
         "UPDATE adaptive_assets SET status=CASE WHEN $2='safety' OR $2='repair' THEN 'in_service' ELSE status END, row_version=row_version+1 WHERE id=$1",
@@ -670,7 +672,7 @@ cap({
     const asset = await one('SELECT id FROM adaptive_assets WHERE id=$1', [i.id]);
     if (!asset) throw notFound('asset');
     const records = await many(
-      'SELECT id,service_type,performed_at,next_due,pass_fail,created_at FROM adaptive_service_records WHERE asset_id=$1 ORDER BY performed_at DESC NULLS LAST',
+      'SELECT id,service_type,performed_at,next_due_date AS next_due,pass_fail,created_at FROM adaptive_service_records WHERE asset_id=$1 ORDER BY performed_at DESC NULLS LAST',
       [i.id],
     );
     return { records };
@@ -687,7 +689,7 @@ cap({
     const asset = await one('SELECT * FROM adaptive_assets WHERE id=$1', [i.id]);
     if (!asset) throw notFound('asset');
     const latest_svc = await one(
-      'SELECT next_due, service_type FROM adaptive_service_records WHERE asset_id=$1 ORDER BY performed_at DESC NULLS LAST LIMIT 1',
+      'SELECT next_due_date AS next_due, service_type FROM adaptive_service_records WHERE asset_id=$1 ORDER BY performed_at DESC NULLS LAST LIMIT 1',
       [i.id],
     );
     const service_overdue = latest_svc?.next_due ? new Date(latest_svc.next_due) < new Date() : false;
