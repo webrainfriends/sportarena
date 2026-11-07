@@ -3,7 +3,7 @@ import { Pressable, View } from 'react-native';
 import { api } from '../api';
 import { useLoad } from '../hooks';
 import { useSession } from '../session';
-import { Btn, Card, Chip, ErrorBox, H2, Loading, T } from '../ui';
+import { Btn, Card, Chip, ErrorBox, H2, Loading, Tag, T, Wrap } from '../ui';
 import { FormSheet } from '../FormSheet';
 import { c, day } from '../theme';
 
@@ -133,6 +133,67 @@ export function AthleteProfilePanel({ p, onChanged }) {
           onSubmit={async (v) => { await api.post(`/me/sport-profiles/${p.id}/measurements`, { ...v, value: Number(v.value) }); await reload(); return 'Measurement saved'; }} />
       ) : null}
     </View>
+  );
+}
+
+const NEED_LABEL_AP = {
+  wav: 'WAV', securement: 'Securement', guide_dog: 'Guide dog', hearing_loop: 'Hearing loop',
+  escort: 'Escort', manual_support: 'Manual support', medication_carry_on: 'Medication carry-on',
+  rooming_roll_in: 'Roll-in shower', rooming_hoist: 'Room hoist', rooming_ground_floor: 'Ground floor / lift',
+};
+const NEED_OPTS_AP = Object.entries(NEED_LABEL_AP).map(([k, v]) => ({ value: k, label: v }));
+
+/** Travel assistance: athlete's consented access needs across all open trips they are a party to. */
+export function TravelAssistanceSection({ participantId, canEdit }) {
+  const { toast } = useSession();
+  const [adding, setAdding] = useState(false);
+  const st = useLoad(() => api.get('/me/travel-access-needs').catch(() => ({ needs: [] })), [participantId]);
+  const needs = st.data?.needs ?? [];
+  return (
+    <Card style={{ marginTop: 16 }}>
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+        <H2 style={{ flex: 1 }}>Travel assistance</H2>
+        {canEdit ? <Btn small title="＋ Add need" onPress={() => setAdding(true)} /> : null}
+      </View>
+      <T size={12.5} color={c.mute} style={{ marginBottom: 10 }}>
+        Your consented access requirements across active trips. Notes are encrypted — only trip ops/managers can read them. Providers receive only the need type when you share it.
+      </T>
+      {needs.length ? (
+        <Wrap gap={8}>
+          {needs.map((n) => (
+            <View key={n.id} style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+              <Tag label={NEED_LABEL_AP[n.need_type] ?? n.need_type} color={n.scope === 'provider_minimal' ? c.cyanSoft : c.violetSoft} />
+              <T size={10}>{n.scope === 'ops_only' ? '🔒' : '🔓'}</T>
+            </View>
+          ))}
+        </Wrap>
+      ) : (
+        <T size={13} color={c.mute}>No access needs declared. Add one to let trip managers plan appropriate transport and accommodation.</T>
+      )}
+      {st.error ? <T size={12} color={c.red} style={{ marginTop: 6 }}>Could not load travel needs.</T> : null}
+      {adding ? (
+        <FormSheet visible onClose={() => setAdding(false)} title="Add travel access need" submitLabel="Save"
+          notice="Your note is encrypted — only trip ops/managers can read it. Providers receive only the need type when you set scope to 'Share with provider'."
+          fields={[
+            { key: 'need_type', label: 'Need type', type: 'chips', options: NEED_OPTS_AP },
+            { key: 'scope', label: 'Share with provider', type: 'switch', default: false },
+            { key: 'note', label: 'Private note (optional)', type: 'text', optional: true, multiline: true },
+          ]}
+          onSubmit={async (v) => {
+            const trips = await api.get('/trips', { status: 'open', limit: 20 });
+            for (const trip of trips ?? []) {
+              const party = await api.get(`/trips/${trip.id}/party`).catch(() => ({ party: [] }));
+              const me = (party.party ?? []).find((p) => p.user_id === participantId);
+              if (me) {
+                await api.post(`/trips/${trip.id}/access/needs`, { need_type: v.need_type, scope: v.scope ? 'provider_minimal' : 'ops_only', note: v.note || undefined }).catch(() => {});
+              }
+            }
+            await st.reload();
+            setAdding(false);
+            toast('Access need saved');
+          }} />
+      ) : null}
+    </Card>
   );
 }
 

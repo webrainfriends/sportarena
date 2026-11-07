@@ -10,6 +10,7 @@ import { audit } from '../helpers.js';
 import { notify } from '../notify.js';
 import { authority, need, mustBeActive, canSome } from '../federation.js';
 import { hist, today } from '../para.js';
+import { STATE_SQL, LABEL, PROGRAMMES, qbool } from '../para-catalogue.js';
 
 const TAG = 'Para classification';
 const t = (n) => z.string().trim().max(n);
@@ -26,8 +27,21 @@ async function sportOfBody(c, bodyId, sportId, discipline) {
   if (!ok) throw badRequest('That governing body does not govern this sport/discipline');
 }
 
+/** Governing-body evidence (PS-01 #831): where the rule comes from, who published it, where it applies and what it permits. Nothing here is defaulted or invented. */
+export const GOVERNED = {
+  source_url: z.string().trim().url().max(500).regex(/^https?:\/\//).optional().describe('the official source (https) of the governing document'),
+  publisher: t(160).min(2).optional().describe('the publisher of the governing document, e.g. the international federation'),
+  scope_countries: z.array(z.string().trim().length(2).toUpperCase()).max(250).default([]).describe('ISO-3166 alpha-2 countries the rule applies to; empty = worldwide'),
+  scope_competitions: z.array(t(120)).max(60).default([]).describe('competitions/levels the rule applies to; empty = every competition of the body'),
+  event_categories: z.array(t(80)).max(80).default([]).describe('event categories exactly as the governing document names them'),
+  adaptations: z.array(t(120)).max(60).default([]).describe('adaptations the rule permits (equipment, format, rule changes)'),
+  permitted_roles: z.array(t(60)).max(30).default([]).describe('participant and support roles the rule permits (guide, pusher, caller, assistant ...)'),
+  classification_required: z.boolean().default(true).describe('whether THIS governing rule requires official classification to compete'),
+};
+
 const VERSION_COLS = `v.id, v.body_id, org.name AS authority, v.sport_id, s.name AS sport, v.discipline, v.version, v.title, v.source_ref, v.effective_from::text AS effective_from, v.effective_to::text AS effective_to,
   v.status, v.panel_size, v.review_rule, v.review_months, v.appeal_days, v.published_at,
+  v.source_url, v.publisher, v.scope_countries, v.scope_competitions, v.event_categories, v.adaptations, v.permitted_roles, v.classification_required, v.approval_status, v.supersedes_id, v.deprecated_at, v.deprecated_reason,
   coalesce((SELECT json_agg(json_build_object('id', k.id, 'code', k.code, 'name', k.name, 'events', k.events, 'categories', k.categories, 'status_rules', k.status_rules) ORDER BY k.code) FROM para_classes k WHERE k.version_id=v.id), '[]') AS classes`;
 const VERSION_FROM = 'para_class_versions v JOIN governing_bodies b ON b.id=v.body_id JOIN organisations org ON org.id=b.organisation_id JOIN sports s ON s.id=v.sport_id';
 
@@ -39,6 +53,7 @@ cap({
     effective_from: day, panel_size: z.number().int().min(1).max(7).default(1).describe('classifiers who must independently agree under the governing process'),
     review_rule: z.enum(['none', 'fixed_term', 'review_required']).default('none'), review_months: z.number().int().min(1).max(240).optional(),
     appeal_days: z.number().int().min(1).max(365).default(14), classes: z.array(CLASS).min(1).max(120),
+    ...GOVERNED,
   }).strict().refine((i) => i.review_rule === 'none' || i.review_months, { message: 'review_months is required when a review rule applies' }),
   handler: ({ user }, i) => tx(async (c) => {
     const auth = await authority(user, i.body_id, { c });
@@ -50,9 +65,11 @@ cap({
     await c.query('SELECT pg_advisory_xact_lock(hashtext($1))', [`para:${i.body_id}:${i.sport_id}:${i.discipline}`]);
     const n = (await c.query('SELECT coalesce(max(version),0)+1 AS n FROM para_class_versions WHERE body_id=$1 AND sport_id=$2 AND discipline=$3', [i.body_id, i.sport_id, i.discipline])).rows[0].n;
     const v = (await c.query(
-      `INSERT INTO para_class_versions(body_id, sport_id, discipline, version, title, source_ref, effective_from, panel_size, review_rule, review_months, appeal_days, created_by)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) RETURNING id, version`,
-      [i.body_id, i.sport_id, i.discipline, n, i.title, i.source_ref, i.effective_from, i.panel_size, i.review_rule, i.review_months ?? null, i.appeal_days, user.id])).rows[0];
+      `INSERT INTO para_class_versions(body_id, sport_id, discipline, version, title, source_ref, effective_from, panel_size, review_rule, review_months, appeal_days, created_by,
+         source_url, publisher, scope_countries, scope_competitions, event_categories, adaptations, permitted_roles, classification_required)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20) RETURNING id, version`,
+      [i.body_id, i.sport_id, i.discipline, n, i.title, i.source_ref, i.effective_from, i.panel_size, i.review_rule, i.review_months ?? null, i.appeal_days, user.id,
+        i.source_url ?? null, i.publisher ?? null, i.scope_countries, i.scope_competitions, i.event_categories, i.adaptations, i.permitted_roles, i.classification_required])).rows[0];
     for (const k of i.classes) await c.query('INSERT INTO para_classes(version_id, code, name, events, categories, status_rules) VALUES ($1,$2,$3,$4,$5,$6)', [v.id, k.code.toUpperCase(), k.name, k.events, k.categories, k.status_rules ?? null]);
     await hist(c, 'version', v.id, null, 'drafted', { to: 'draft', actor: user.id, detail: { version: n } });
     return { id: v.id, version: n, status: 'draft' };
@@ -71,11 +88,13 @@ cap({
     need(auth, 'governance', v.sport_id);
     mustBeActive(auth.body);
     if (v.status !== 'draft') throw conflict(`This version is already ${v.status}`);
+    if (v.approval_status === 'rejected') throw conflict('This version was rejected; revise it by drafting a new version');
+    if (v.source_url && v.approval_status !== 'submitted') throw conflict('A version with an official source is submitted for approval before it is published');
     // dual control: the person who drafted a version does not publish it when someone else holds the authority
     if (v.created_by === user.id && !auth.admin) throw conflict('A second officer publishes a version after it has been drafted');
     await c.query("UPDATE para_class_versions SET status='retired', effective_to=$4 WHERE body_id=$1 AND sport_id=$2 AND discipline=$3 AND status='published'",
       [v.body_id, v.sport_id, v.discipline, v.effective_from]);
-    await c.query("UPDATE para_class_versions SET status='published', published_by=$2, published_at=now() WHERE id=$1", [v.id, user.id]);
+    await c.query("UPDATE para_class_versions SET status='published', approval_status='approved', published_by=$2, published_at=now() WHERE id=$1", [v.id, user.id]);
     await hist(c, 'version', v.id, null, 'published', { from: 'draft', to: 'published', actor: user.id, detail: { version: v.version } });
     return { id: v.id, version: v.version, status: 'published' };
   }),
@@ -100,12 +119,30 @@ cap({
 
 cap({
   name: 'para_sport_coverage', method: 'GET', path: '/para/coverage', tag: TAG,
-  summary: 'Which catalogue sports have a published governed classification definition and which do not. Sports without one are labelled as a gap; no generic default is applied.',
-  input: z.object({}),
-  handler: async () => {
+  summary: 'Which catalogue sports have a governed classification definition and which do not. Sports without one are labelled as a gap; no generic default is applied. Filter with para (only para / adaptive sports), q, programme, state or country_iso (PS-29: returns regional_governance for each sport when a country is specified); the summary counts para sports by governance state (PS-01).',
+  input: z.object({ para: qbool().optional(), q: z.string().trim().max(80).optional(), programme: z.enum(PROGRAMMES).optional(), state: z.enum(['governed', 'awaiting', 'deprecated', 'gap']).optional(), country_iso: z.string().trim().length(2).toUpperCase().optional() }),
+  handler: async (_, i) => {
     const rows = await many(
-      `SELECT s.id, s.slug, s.name, s.category, EXISTS (SELECT 1 FROM para_class_versions v WHERE v.sport_id=s.id AND v.status='published') AS has_definition FROM sports s ORDER BY s.name`);
-    return { sports: rows.map((r) => ({ ...r, coverage: r.has_definition ? 'governed' : 'gap', label: r.has_definition ? 'Governed definition published' : 'No governing definition published — classification unavailable' })) };
+      `SELECT * FROM (SELECT s.id, s.slug, s.name, s.emoji, s.category, s.play_type, s.is_para, s.programmes, b.slug AS base_slug, b.name AS base_name, ${STATE_SQL} AS state,
+              EXISTS (SELECT 1 FROM para_class_versions v WHERE v.sport_id=s.id AND v.status='published') AS has_definition
+         FROM sports s LEFT JOIN sports b ON b.id=s.base_sport_id) x
+        WHERE ($1::boolean IS NOT TRUE OR x.is_para) AND ($2::text IS NULL OR x.name ILIKE '%' || $2 || '%') AND ($3::text IS NULL OR $3 = ANY(x.programmes)) AND ($4::text IS NULL OR x.state=$4)
+        ORDER BY x.name`, [i.para ?? null, i.q ?? null, i.programme ?? null, i.state ?? null]);
+    const para = await many(`SELECT ${STATE_SQL} AS state FROM sports s WHERE s.is_para`);
+    const n = (st) => para.filter((r) => r.state === st).length;
+    // PS-29: when country_iso is provided, annotate each sport with its regional governance record
+    let regionalMap = {};
+    if (i.country_iso) {
+      const rg = await many(
+        `SELECT sport_id, governing_body, source_url, federation_connection_type, review_status, effective_from::text AS effective_from
+           FROM para_regional_governance WHERE country_iso=$1 AND review_status IN ('sourced','verified')`,
+        [i.country_iso]);
+      for (const r of rg) regionalMap[r.sport_id] = r;
+    }
+    return {
+      summary: { para_sports: para.length, governed: n('governed'), awaiting: n('awaiting'), deprecated: n('deprecated'), gap: n('gap') },
+      sports: rows.map((r) => ({ ...r, coverage: r.has_definition ? 'governed' : 'gap', label: LABEL[r.state], regional_governance: regionalMap[r.id] ?? null })),
+    };
   },
 });
 

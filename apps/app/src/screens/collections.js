@@ -2,14 +2,15 @@
 // Finance tab, a club's Collections tab and a venue's memberships; it only calls the collections API. What is owed stays on the canonical charge /
 // invoice / payment; this screen is the work queue, the recurring schedules, the policy and the report around them.
 import React, { useEffect, useRef, useState } from 'react';
-import { ScrollView, View } from 'react-native';
+import { ScrollView, Switch, View } from 'react-native';
 import { api } from '../api';
 import { useLoad } from '../hooks';
 import { useSession } from '../session';
 import { explain } from '../access';
-import { Btn, Chip, Empty, ErrorBox, Field, Loading, Row, Seg, Sheet, T, Tag } from '../ui';
+import { Btn, Card, Chip, Empty, ErrorBox, Field, Loading, Row, Seg, Sheet, T, Tag } from '../ui';
 import { FormSheet } from '../FormSheet';
-import { DateField } from '../pickers';
+import { Counter, DateField } from '../pickers';
+import { EntityPicker } from '../entity-picker';
 import { c } from '../theme';
 import { t } from '../i18n';
 import { moneyIn } from '../vtime';
@@ -217,6 +218,86 @@ function CaseDetail({ id, target, archived, onChanged }) {
 }
 
 // ------------------------------------------------------------------------------------------------------------------------ schedules
+function RecurringScheduleWizard({ visible, orgId, people, defaultCurrency, idemKey, onClose, onDone }) {
+  const { toast } = useSession();
+  const STEPS = ['Who & What', 'Timing & Rules', 'Advanced & Launch'];
+  const KINDS = [{ value: 'monthly', label: 'Monthly' }, { value: 'term', label: 'Termly' }, { value: 'season', label: 'Seasonal' }, { value: 'custom', label: 'Every N months' }];
+  const CURRENCIES = ['GBP', 'EUR', 'USD', 'AUD', 'INR', 'SGD', 'AED'];
+  const GRACE = [0, 3, 7, 14];
+  const init = () => ({ enrolment: [], kind: 'monthly', every_months: 1, label: '', currency: defaultCurrency ?? 'GBP', amount_text: '', first_due_on: plusDays(todayStr(), 7), periods: 10, tax_pct: 0, raise_days_before: 7, grace_days: 7, payer: [], mandate_ref: '', auto_enroll: false, send_receipt: true });
+  const [step, setStep] = useState(0);
+  const [v, setV] = useState(init);
+  const [busy, setBusy] = useState(false);
+  const set = (k, val) => setV((p) => ({ ...p, [k]: val }));
+  const can = [!!(v.enrolment.length && v.label.trim() && v.amount_text), !!(v.first_due_on && v.periods > 0), true][step];
+  const reset = () => { setStep(0); setV(init()); };
+  const submit = async () => {
+    setBusy(true);
+    try {
+      const r = await api.post('/billing-schedules', { organisation_id: orgId, enrolment_id: v.enrolment[0]?.id, kind: v.kind, every_months: v.kind === 'custom' ? v.every_months : undefined, label: v.label.trim(), currency: v.currency, amount_minor: Math.round(Number(v.amount_text) * 100), first_due_on: v.first_due_on, periods: v.periods, tax_rate_bp: Math.round((v.tax_pct ?? 0) * 100), raise_days_before: v.raise_days_before, payer_id: v.payer[0]?.id ?? undefined, mandate_ref: v.mandate_ref || undefined, idempotency_key: idemKey });
+      onDone(); toast(r.replay ? 'Already created' : `Schedule created — ${r.raised_now} charge${r.raised_now === 1 ? '' : 's'} raised now`); reset(); onClose();
+    } catch (e) { toast(explain(e)); setBusy(false); }
+  };
+  const footer = (
+    <View style={{ flexDirection: 'row', gap: 10 }}>
+      {step > 0 ? <Btn title="Back" color={c.paper} ink={c.ink} onPress={() => setStep(step - 1)} style={{ flex: 1 }} /> : null}
+      {step < 2 ? <Btn title="Next →" disabled={!can} onPress={() => setStep(step + 1)} style={{ flex: 1 }} /> : <Btn title="Create schedule" loading={busy} disabled={busy} onPress={submit} style={{ flex: 1 }} />}
+    </View>
+  );
+  return (
+    <Sheet visible={visible} onClose={() => { reset(); onClose(); }} title="New recurring schedule" footer={footer}>
+      <View style={{ flexDirection: 'row', gap: 4, marginBottom: 8 }}>
+        {STEPS.map((s, i) => <View key={s} style={{ flex: 1, height: 4, borderRadius: 2, backgroundColor: i < step ? c.violet : i === step ? c.pink : c.p1 }} />)}
+      </View>
+      <T weight="800" size={15} style={{ marginBottom: 8 }}>{STEPS[step]}</T>
+      {step === 0 && (
+        <View style={{ gap: 12 }}>
+          <EntityPicker label="Who is billed for" options={people} value={v.enrolment} onChange={(x) => set('enrolment', x)} noun="person" />
+          <Field label="What it is for" value={v.label} onChangeText={(x) => set('label', x)} hint='Shown on the invoice, e.g. "Membership 2030/31".' />
+          <T weight="700" size={13}>Payment rhythm</T>
+          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>{KINDS.map((k) => <Chip key={k.value} label={k.label} active={v.kind === k.value} onPress={() => set('kind', k.value)} />)}</View>
+          {v.kind === 'custom' ? <Counter label="Months between payments" value={v.every_months} min={1} max={12} onChange={(x) => set('every_months', x)} /> : null}
+          <T weight="700" size={13}>Currency</T>
+          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>{CURRENCIES.map((x) => <Chip key={x} label={x} active={v.currency === x} onPress={() => set('currency', x)} />)}</View>
+          <Field label={`Amount each time (${v.currency})`} value={v.amount_text} onChangeText={(x) => set('amount_text', x.replace(/[^0-9.]/g, ''))} keyboardType="decimal-pad" placeholder="0" />
+        </View>
+      )}
+      {step === 1 && (
+        <View style={{ gap: 12 }}>
+          <DateField label="First due date" value={v.first_due_on} onChange={(x) => set('first_due_on', x)} />
+          <Counter label="Number of payments" value={v.periods} min={1} max={60} onChange={(x) => set('periods', x)} hint="How many times this schedule runs" />
+          <Counter label="Raise invoice N days early" value={v.raise_days_before} min={0} max={60} onChange={(x) => set('raise_days_before', x)} hint="Days before due date to issue the invoice" />
+          <Counter label="Tax included in the amount (%)" value={v.tax_pct} min={0} max={50} onChange={(x) => set('tax_pct', x)} hint="Shown on the invoice; 0 if not applicable" />
+          <T weight="700" size={13}>Grace days before case opens</T>
+          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>{GRACE.map((n) => <Chip key={n} label={n === 0 ? 'No grace' : `${n} days`} active={v.grace_days === n} onPress={() => set('grace_days', n)} />)}</View>
+        </View>
+      )}
+      {step === 2 && (
+        <View style={{ gap: 12 }}>
+          <EntityPicker label="Billed to (guardian override)" options={people} value={v.payer} onChange={(x) => set('payer', x)} noun="guardian" optional />
+          <T size={12} color={c.mute}>Only needed for a young person with more than one guardian. Young people are always billed to a verified guardian, never to the child.</T>
+          <Field label="Provider mandate reference" value={v.mandate_ref} onChangeText={(x) => set('mandate_ref', x)} optional hint="A mandate is a permission to collect, not a payment. Leave blank until a provider is connected." />
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+            <View style={{ flex: 1 }}><T weight="700">Send receipt on each collection</T></View>
+            <Switch value={v.send_receipt} onValueChange={(x) => set('send_receipt', x)} trackColor={{ true: c.pink }} />
+          </View>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+            <View style={{ flex: 1 }}><T weight="700">Auto-enrol eligible members</T></View>
+            <Switch value={v.auto_enroll} onValueChange={(x) => set('auto_enroll', x)} trackColor={{ true: c.pink }} />
+          </View>
+          <Card color={c.cyanSoft} style={{ marginTop: 4 }}>
+            <T weight="800" size={14}>Schedule Summary</T>
+            <T size={13} style={{ marginTop: 4 }}>{v.label || '—'}</T>
+            <T size={13} color={c.mute}>{KINDS.find((k) => k.value === v.kind)?.label} · {v.currency} {v.amount_text || '0'} × {v.periods}</T>
+            <T size={13} color={c.mute}>First due: {v.first_due_on}</T>
+          </Card>
+          <T size={12} color={c.mute}>Charges and invoices are raised {v.raise_days_before} days before each due date. Pausing or ending raises no more charges; raised charges are kept.</T>
+        </View>
+      )}
+    </Sheet>
+  );
+}
+
 function Schedules({ target, archived }) {
   const { toast } = useSession();
   const orgId = target.organisation_id;
@@ -258,24 +339,7 @@ function Schedules({ target, archived }) {
           </View>
         ) : null}
       </Sheet>
-      <FormSheet visible={form} onClose={() => setForm(false)} title="New recurring schedule" submitLabel="Create schedule" initial={{ kind: 'monthly', currency: profile.data?.currency ?? undefined, periods: 10, every_months: 1, first_due_on: plusDays(todayStr(), 7), tax_pct: 0, raise_days_before: 7 }}
-        fields={[
-          { key: 'enrolment_id', label: 'Who is billed for', type: 'entity', entityKind: 'person', noun: 'person', options: people.data ?? [] },
-          { key: 'kind', label: 'Rhythm', type: 'chips', options: [{ value: 'monthly', label: 'Monthly' }, { value: 'term', label: 'Termly' }, { value: 'season', label: 'Seasonal' }, { value: 'custom', label: 'Every N months' }] },
-          { key: 'every_months', label: 'Months between payments', type: 'stepper', min: 1, max: 12, show: (v) => v.kind === 'custom' },
-          { key: 'label', label: 'What it is for', hint: 'Shown on the invoice, e.g. “Membership 2030/31”.' },
-          { key: 'currency', label: 'Currency', type: 'currency' }, { key: 'amount_minor', label: 'Amount each time', type: 'money', currency: (v) => v.currency ?? 'GBP' },
-          { key: 'first_due_on', label: 'First due date', type: 'date' }, { key: 'periods', label: 'Number of payments', type: 'stepper', min: 1, max: 60 },
-          { key: 'tax_pct', label: 'Tax included in the amount', type: 'stepper', min: 0, max: 50, suffix: '%' },
-          { key: 'raise_days_before', label: 'Raise the invoice this many days early', type: 'stepper', min: 0, max: 60 },
-          { key: 'payer_id', label: 'Billed to', type: 'entity', entityKind: 'person', noun: 'guardian', optional: true, hint: 'Only needed for a young person with more than one guardian. Young people are always billed to a verified guardian, never to the child.' },
-          { key: 'mandate_ref', label: 'Provider mandate reference', optional: true, hint: 'Optional. A mandate is a permission to collect, kept apart from the invoice and its payment. Until a payment provider is connected, the invoice is raised and the payer is asked to pay.' },
-        ]}
-        onSubmit={async (v) => {
-          const { tax_pct, ...rest } = v;
-          const r = await api.post('/billing-schedules', { organisation_id: orgId, ...rest, tax_rate_bp: Math.round((tax_pct ?? 0) * 100), ...(v.kind === 'custom' ? {} : { every_months: undefined }), idempotency_key: key.current });
-          list.reload(); return r.replay ? 'Already created' : `Schedule created — ${r.raised_now} charge${r.raised_now === 1 ? '' : 's'} raised now`;
-        }} />
+      <RecurringScheduleWizard visible={form} orgId={orgId} people={people.data ?? []} defaultCurrency={profile.data?.currency} idemKey={key.current} onClose={() => setForm(false)} onDone={() => list.reload()} />
     </Panel>
   );
 }

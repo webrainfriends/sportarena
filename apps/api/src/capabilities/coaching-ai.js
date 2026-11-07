@@ -15,7 +15,7 @@ import { authorise, series } from './coaching-goals.js';
 const TAG = 'Coaching copilot';
 const COACH = ['coach'];
 const day = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
-const TASKS = ['plan_session', 'player_focus', 'summarise_session', 'player_progress', 'team_patterns', 'suggest_actions', 'match_debrief', 'ask', 'compare_metrics'];
+const TASKS = ['plan_session', 'player_focus', 'summarise_session', 'player_progress', 'team_patterns', 'suggest_actions', 'match_debrief', 'ask', 'compare_metrics', 'para_insight'];
 const letters = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
 const MEDICAL = /\b(diagnos\w*|prescrib\w*|medicat\w*|dosage|injur\w*|rehab\w*|treatment|return[- ]to[- ]play|cleared (to|for) (play|train)|fit to play)\b/i;
 const clip = (s, n) => String(s ?? '').slice(0, n);
@@ -39,6 +39,7 @@ const TASK_BRIEF = {
   match_debrief: 'Draft a post-match debrief from the coach\'s notes and the official result in the data: what went well, what to improve, lessons for training. Never change or question the official result.',
   ask: 'Answer the coach\'s question using only the records in the data. If the records do not answer it, say so.',
   compare_metrics: 'Explain how each selected metric changed from the previous period to the current one, one item per metric, citing its ref (M1, M2 …). Do not combine metrics into a single score, do not compare metrics with different units, and say plainly when a period has too little data. Subjective coach scores, athlete-reported numbers and official counts must stay distinct.',
+  para_insight: 'Describe measurable metric trends for this para-sport athlete using only the numeric data provided. You MUST NOT infer, suggest, reference or imply: physical impairment, medical diagnosis, disability category, competition classification status, eligibility determination, or any clinical assessment. Cite only source refs provided. Use insight_type: trend (consistent direction), plateau (no meaningful change), milestone (new best), regression (decline), or training_recommendation (suggested focus area). Set insufficient_data:true and return nothing else if fewer than 3 data points exist.',
 };
 
 /** Read what the model may see. Permission is checked before any record is queried, and only the coach's own records are read. */
@@ -129,6 +130,37 @@ async function metricFacts(user, i, g) {
   if (!metrics.length) throw badRequest('None of the chosen metrics can be compared');
   g.facts = { task_window: g.facts.task_window, players: g.facts.players, metrics, notes: [], goals: [], open_actions: [], attendance: [] };
   g.limitations.splice(0, g.limitations.length, ...g.limitations.filter((l) => !/notes? (of yours|in this period)|has only \d+ note/.test(l)));
+}
+
+/** Gather para-sport context for the para_insight task. Strips ALL clinical/health fields before returning. */
+async function gatherParaContext(user, athleteId, sportKey, classCode, from, to) {
+  await requireRelationship(user, athleteId);
+  // classification state — only administrative fields; never health/clinical/eligibility determination
+  const src = await one(`SELECT class_code, status, authority, decision_ref, valid_until, assigned_at FROM para_class_assignments WHERE user_id=$1 AND class_code=$2 AND status='confirmed' ORDER BY assigned_at DESC LIMIT 1`, [athleteId, classCode]);
+  const classState = src ? { class_code: src.class_code, authority: src.authority, decision_ref: src.decision_ref, valid_until: src.valid_until } : null;
+  // metric trends scoped to class version
+  const rows = await many(
+    `SELECT p.metric AS metric_key, to_char(coalesce(p.achieved_on,p.recorded_at::date),'YYYY-MM-DD') AS on_day,
+            p.value::float8 AS value, p.provenance, p.unit
+       FROM performances p JOIN sports s ON s.id=p.sport_id
+      WHERE p.user_id=$1 AND s.slug=$2 AND coalesce(p.achieved_on,p.recorded_at::date) BETWEEN $3::date AND $4::date
+        AND ((p.provenance='approved_competition' AND p.status='approved') OR (p.provenance IN ('self_reported','imported','coach_logged','wearable') AND p.status IN ('recorded','approved')))
+        AND para_class_version_id IS NOT DISTINCT FROM (SELECT para_class_version_id FROM performances p2 WHERE p2.user_id=$1 AND p2.metric=p.metric ORDER BY p2.recorded_at DESC LIMIT 1)
+      ORDER BY p.metric, coalesce(p.achieved_on,p.recorded_at::date) LIMIT 300`,
+    [athleteId, sportKey, from, to]);
+  const metricMap = new Map();
+  for (const r of rows) {
+    if (!metricMap.has(r.metric_key)) metricMap.set(r.metric_key, { metric_key: r.metric_key, unit: r.unit, points: [] });
+    metricMap.get(r.metric_key).points.push({ on: r.on_day, value: r.value, provenance: r.provenance });
+  }
+  // readiness score from workload/readiness (#329) — numeric only, no health details
+  let readiness_score = null;
+  try {
+    const wr = await one(`SELECT readiness_score FROM athlete_readiness WHERE user_id=$1 ORDER BY recorded_at DESC LIMIT 1`, [athleteId]);
+    readiness_score = wr?.readiness_score ?? null;
+  } catch { /* table may not exist in all environments */ }
+  const source_refs = [...metricMap.keys()].map((mk, n) => ({ ref: `M${n + 1}`, metric_key: mk }));
+  return { class_state: classState, metric_data: [...metricMap.values()], source_refs, readiness_score, window: { from, to } };
 }
 
 /** What we can say without a model: grouped, source-linked, strictly observed. */

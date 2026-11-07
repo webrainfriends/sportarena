@@ -13,11 +13,11 @@ import { isYouth } from './youth.js';
 import { socialLive } from './social.js';
 import { spendKindAllowance } from './spectator.js';
 
-export const ROLES = ['owner', 'moderator', 'member'];
+export const ROLES = ['owner', 'moderator', 'peer_mentor', 'member'];
 export const POST_CTX = 'market_posts.body';
 export const COMMENT_CTX = 'market_comments.body';
 export const REPORT_CTX = 'social_reports.decision';
-export const LIMITS = { communitiesOwned: 20, postsPerHour: 30, commentsPerHour: 120, invitesPerHour: 30, joinsPerHour: 30, messagesPerHour: 300 };
+export const LIMITS = { communitiesOwned: 20, postsPerHour: 30, commentsPerHour: 120, invitesPerHour: 30, joinsPerHour: 30, messagesPerHour: 300, mentorshipsPerMonth: 20 };
 /** Notification kinds grouped for the person's "what do you want to hear about" switches (each maps onto the existing muted_kinds list). */
 export const SOCIAL_CATEGORIES = {
   people: ['follow_new', 'follow_request', 'friend_request', 'friend_accepted'],

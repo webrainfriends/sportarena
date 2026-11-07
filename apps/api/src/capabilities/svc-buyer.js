@@ -104,6 +104,21 @@ const reqFields = {
   lot_id: id.optional(), event_id: id.optional(), venue_id: id.optional(), competition_id: id.optional(),
   compliance_kinds: z.array(z.enum(CREDENTIAL_KINDS)).max(9).default([]),
   needs: z.array(needItem).max(30).default([]),
+  // Elite academy wizard fields
+  priority: z.enum(['critical', 'high', 'standard', 'low']).default('standard'),
+  tech_requirements: z.string().max(2000).optional(),
+  quality_standards: z.array(z.string().max(80)).max(20).default([]),
+  accessibility_requirements: z.array(z.string().max(80)).max(20).default([]),
+  contract_type: z.enum(['one_off', 'retainer', 'season', 'annual']).optional(),
+  sla_hours: z.number().int().positive().optional(),
+  payment_terms: z.enum(['upfront', 'half_upfront', 'on_delivery', 'net30']).optional(),
+  min_supplier_experience_years: z.number().int().min(0).optional(),
+  supplier_references_required: z.number().int().min(0).optional(),
+  people_on_site: z.number().int().positive().optional(),
+  insurance_required: z.boolean().default(false),
+  prior_sports_venue_exp: z.boolean().default(false),
+  security_clearance: z.boolean().default(false),
+  para_accessibility_flags: z.array(z.string().max(80)).max(20).default([]),
 };
 const check = async (c, buyer, i) => {
   const cat = CATEGORY[i.category];
@@ -131,10 +146,14 @@ cap({
       const chosen = await normaliseNeeds(c, r.needs);
       r.compliance_kinds = [...new Set([...r.compliance_kinds, ...chosen.kinds])];
       return (await c.query(
-        `INSERT INTO svc_requirements(buyer_id, lot_id, event_id, venue_id, category, subcategory, title, scope, quantity, unit, headcount, starts_at, ends_at, timezone, recurrence, site_access, qualifications, budget_minor, currency, owner_id, depends_on, deadline, acceptance_criteria, created_by, competition_id, compliance_kinds, needs)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27) RETURNING *`,
+        `INSERT INTO svc_requirements(buyer_id, lot_id, event_id, venue_id, category, subcategory, title, scope, quantity, unit, headcount, starts_at, ends_at, timezone, recurrence, site_access, qualifications, budget_minor, currency, owner_id, depends_on, deadline, acceptance_criteria, created_by, competition_id, compliance_kinds, needs,
+           priority, tech_requirements, quality_standards, accessibility_requirements, contract_type, sla_hours, payment_terms, min_supplier_experience_years, supplier_references_required, people_on_site, insurance_required, prior_sports_venue_exp, security_clearance, para_accessibility_flags)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31,$32,$33,$34,$35,$36,$37,$38,$39,$40,$41) RETURNING *`,
         [bid, r.lot_id ?? null, r.event_id ?? buyer.event_id ?? null, r.venue_id ?? buyer.venue_id ?? null, r.category, r.subcategory ?? null, r.title, r.scope, r.quantity, r.unit, r.headcount ?? null, r.starts_at ?? null, r.ends_at ?? null, r.timezone,
-          r.recurrence ?? null, r.site_access ?? null, r.qualifications, r.budget_minor ?? null, r.currency ?? buyer.currency, r.owner_id ?? null, r.depends_on, r.deadline ?? null, r.acceptance_criteria, user.id, r.competition_id ?? null, r.compliance_kinds, JSON.stringify(chosen.needs)])).rows[0];
+          r.recurrence ?? null, r.site_access ?? null, r.qualifications, r.budget_minor ?? null, r.currency ?? buyer.currency, r.owner_id ?? null, r.depends_on, r.deadline ?? null, r.acceptance_criteria, user.id, r.competition_id ?? null, r.compliance_kinds, JSON.stringify(chosen.needs),
+          r.priority ?? 'standard', r.tech_requirements ?? null, r.quality_standards ?? [], r.accessibility_requirements ?? [], r.contract_type ?? null, r.sla_hours ?? null, r.payment_terms ?? null,
+          r.min_supplier_experience_years ?? null, r.supplier_references_required ?? null, r.people_on_site ?? null,
+          r.insurance_required ?? false, r.prior_sports_venue_exp ?? false, r.security_clearance ?? false, r.para_accessibility_flags ?? []])).rows[0];
     });
   },
 });

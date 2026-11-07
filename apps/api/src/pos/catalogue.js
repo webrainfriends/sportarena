@@ -10,7 +10,7 @@ import { isAdmin } from '../helpers.js';
 import { restoreStock } from './sale.js';
 import { openShiftFor } from './shifts.js';
 
-const ITEM = 'id, name, category, sku, quantity, reorder_level, unit_cost_cents, sellable, sell_price_cents, stock_kind, rental_fee_cents, deposit_cents, damaged_qty, archived_at, (quantity <= reorder_level) AS low_stock';
+const ITEM = 'id, name, category, sku, quantity, reorder_level, unit_cost_cents, sellable, sell_price_cents, stock_kind, rental_fee_cents, deposit_cents, damaged_qty, archived_at, style_key, size_label, kit_slot, barcode, serialised, (quantity <= reorder_level) AS low_stock';
 
 export async function catalogue(user, { venue_id, q }) {
   const { role } = await posRole(user, venue_id);
@@ -65,16 +65,19 @@ function checkTerms(t) {
   if (t.stock_kind !== 'rental' && (t.rental_fee_cents != null || (t.deposit_cents ?? 0) > 0)) throw badRequest('Only rental kit has a rental fee or a deposit');
   if (t.sellable && t.stock_kind !== 'rental' && t.sell_price_cents == null) throw badRequest('Set a selling price before offering this at the desk');
   if (t.sellable && t.stock_kind === 'rental' && t.rental_fee_cents == null) throw badRequest('Set a rental fee (0 for free loan kit) before offering this at the desk');
+  if (t.serialised && t.sellable) throw badRequest('Serial-numbered kit is issued to an athlete by serial number, not sold from the shelf');
 }
 
 export async function createItem(user, i) {
   const { venue } = await mustBeManager(user, i.venue_id);
   checkTerms(i);
+  if (i.serialised && i.quantity > 0) throw badRequest('Serial-numbered kit starts at zero: register each unit by its serial number');
   return tx(async (c) => {
     const it = (await c.query(
-      `INSERT INTO inventory_items(owner_id, venue_id, name, category, sku, quantity, reorder_level, unit_cost_cents, sellable, sell_price_cents, stock_kind, rental_fee_cents, deposit_cents)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13) RETURNING ${ITEM}`,
-      [venue.owner_id, i.venue_id, i.name, i.category, i.sku ?? null, i.quantity, i.reorder_level ?? 0, i.unit_cost_cents ?? 0, i.sellable ?? (i.sell_price_cents != null || i.rental_fee_cents != null), i.sell_price_cents ?? null, i.stock_kind, i.rental_fee_cents ?? null, i.deposit_cents ?? 0])).rows[0];
+      `INSERT INTO inventory_items(owner_id, venue_id, name, category, sku, quantity, reorder_level, unit_cost_cents, sellable, sell_price_cents, stock_kind, rental_fee_cents, deposit_cents, style_key, size_label, kit_slot, barcode, serialised)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18) RETURNING ${ITEM}`,
+      [venue.owner_id, i.venue_id, i.name, i.category, i.sku ?? null, i.quantity, i.reorder_level ?? 0, i.unit_cost_cents ?? 0, i.sellable ?? (i.sell_price_cents != null || i.rental_fee_cents != null), i.sell_price_cents ?? null, i.stock_kind, i.rental_fee_cents ?? null, i.deposit_cents ?? 0,
+        i.style_key ?? null, i.size_label ?? null, i.kit_slot ?? null, i.barcode ?? null, i.serialised ?? false])).rows[0];
     if (i.quantity > 0) await c.query("INSERT INTO pos_stock_moves(venue_id, item_id, delta, reason, actor_id, note) VALUES ($1,$2,$3,'adjust',$4,'Opening stock')", [i.venue_id, it.id, i.quantity, user.id]);
     await audit(c, user.id, 'pos_create_item', 'inventory_items', it.id);
     return it;
@@ -86,14 +89,17 @@ export async function updateItem(user, itemId, i) {
   if (!cur) throw notFound('Item');
   await itemAccess(user, cur);
   const next = { stock_kind: i.stock_kind ?? cur.stock_kind, sellable: i.sellable ?? cur.sellable, sell_price_cents: i.sell_price_cents === undefined ? cur.sell_price_cents : i.sell_price_cents,
-    rental_fee_cents: i.rental_fee_cents === undefined ? cur.rental_fee_cents : i.rental_fee_cents, deposit_cents: i.deposit_cents ?? cur.deposit_cents };
+    rental_fee_cents: i.rental_fee_cents === undefined ? cur.rental_fee_cents : i.rental_fee_cents, deposit_cents: i.deposit_cents ?? cur.deposit_cents, serialised: i.serialised ?? cur.serialised };
+  if (i.serialised !== undefined && i.serialised !== cur.serialised && cur.quantity > 0) throw badRequest('Stock already counted cannot switch to serial-numbered tracking: it would no longer match its units');
   checkTerms(next);
   return tx(async (c) => {
     const out = (await c.query(
       `UPDATE inventory_items SET name=coalesce($2,name), category=coalesce($3,category), sku=coalesce($4,sku), reorder_level=coalesce($5,reorder_level), unit_cost_cents=coalesce($6,unit_cost_cents),
-              sellable=$7, sell_price_cents=$8, stock_kind=$9, rental_fee_cents=$10, deposit_cents=$11, archived_at=CASE WHEN $12::boolean IS NULL THEN archived_at WHEN $12 THEN coalesce(archived_at, now()) ELSE NULL END
+              sellable=$7, sell_price_cents=$8, stock_kind=$9, rental_fee_cents=$10, deposit_cents=$11, archived_at=CASE WHEN $12::boolean IS NULL THEN archived_at WHEN $12 THEN coalesce(archived_at, now()) ELSE NULL END,
+              style_key=coalesce($13,style_key), size_label=coalesce($14,size_label), kit_slot=coalesce($15,kit_slot), barcode=coalesce($16,barcode), serialised=$17
         WHERE id=$1 RETURNING ${ITEM}`,
-      [itemId, i.name ?? null, i.category ?? null, i.sku ?? null, i.reorder_level ?? null, i.unit_cost_cents ?? null, next.sellable, next.sell_price_cents, next.stock_kind, next.rental_fee_cents, next.deposit_cents, i.archived ?? null])).rows[0];
+      [itemId, i.name ?? null, i.category ?? null, i.sku ?? null, i.reorder_level ?? null, i.unit_cost_cents ?? null, next.sellable, next.sell_price_cents, next.stock_kind, next.rental_fee_cents, next.deposit_cents, i.archived ?? null,
+        i.style_key ?? null, i.size_label ?? null, i.kit_slot ?? null, i.barcode ?? null, next.serialised])).rows[0];
     await audit(c, user.id, 'pos_update_item', 'inventory_items', itemId);
     return out;
   });
@@ -104,6 +110,7 @@ export async function adjustStock(user, itemId, { delta, reason }) {
   const cur = await one('SELECT * FROM inventory_items WHERE id=$1', [itemId]);
   if (!cur) throw notFound('Item');
   await itemAccess(user, cur);
+  if (cur.serialised) throw badRequest('Serial-numbered kit changes through its units (receive, issue, return, write off), not by a count');
   return tx(async (c) => {
     const r = await c.query('UPDATE inventory_items SET quantity = quantity + $2 WHERE id=$1 AND quantity + $2 >= 0 RETURNING quantity', [itemId, delta]);
     if (!r.rowCount) throw conflict('Not enough stock');

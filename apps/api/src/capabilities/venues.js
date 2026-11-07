@@ -95,12 +95,14 @@ cap({
 
 cap({
   name: 'list_venues', method: 'GET', path: '/venues', tag: 'Venues & Booking', auth: 'public',
-  summary: 'Browse and search venues: by name/city/sport, near a point (lat, lng, radius_km), by price, by amenity, and — with available_from/available_to — only venues with a free area in that window. Sort by name, distance, rating or price.',
+  summary: 'Browse and search venues: by name/city/sport, near a point (lat, lng, radius_km), by price, by amenity, by verified access features and — with available_from/available_to — only venues with a free area in that window. Sort by name, distance, rating or price.',
   input: z.object({
     city: z.string().optional(), q: z.string().optional(), sport: z.string().optional(),
     lat: z.coerce.number().min(-90).max(90).optional(), lng: z.coerce.number().min(-180).max(180).optional(), radius_km: z.coerce.number().min(0.1).max(20000).optional(), bbox: bboxField,
     max_hourly_rate_cents: z.coerce.number().int().min(0).optional(), amenity: z.string().optional(),
     available_from: dt.optional(), available_to: dt.optional(),
+    access_features: z.string().optional().describe('comma-separated access feature keys to require (all must be present)'),
+    access_confidence: z.enum(['any', 'self_reported_or_better', 'third_party_or_better', 'certified']).optional(),
     sort: z.enum(['name', 'distance', 'rating', 'price']).default('name'), ...page,
   }).refine((i) => (i.lat == null) === (i.lng == null), 'lat and lng go together').refine((i) => (i.available_from == null) === (i.available_to == null), 'available_from and available_to go together'),
   async handler({ user }, i) {
@@ -109,6 +111,9 @@ cap({
     if (i.sort === 'distance' && i.lat == null) throw badRequest('sort=distance needs lat and lng');
     if (i.bbox && !parseBbox(i.bbox)) throw badRequest('bbox must be south,west,north,east');
     const box = parseBbox(i.bbox);
+    const accessFeatureKeys = i.access_features ? i.access_features.split(',').map((s) => s.trim()).filter(Boolean) : [];
+    const confidenceMin = { any: null, self_reported_or_better: 'self_reported', third_party_or_better: 'third_party', certified: 'certified' }[i.access_confidence ?? 'any'];
+    const confidenceValues = { self_reported: ['self_reported', 'third_party', 'certified'], third_party: ['third_party', 'certified'], certified: ['certified'] };
     const rows = await many(
       `WITH base AS (
          SELECT v.*,
@@ -138,7 +143,53 @@ cap({
                 CASE WHEN $11 = 'price' THEN min_hourly_rate_cents END ASC NULLS LAST, name
        LIMIT $12 OFFSET $13`,
       [i.city ?? null, i.q ?? null, sport?.id ?? null, i.amenity ?? null, i.lat ?? null, i.lng ?? null, i.max_hourly_rate_cents ?? null, i.radius_km ?? null, i.available_from ?? null, i.available_to ?? null, i.sort, i.limit, i.offset, user?.id ?? null, box?.south ?? null, box?.west ?? null, box?.north ?? null, box?.east ?? null]);
-    return rows.map((v) => ({ ...v, map_links: mapLinks(v) }));
+    // Post-filter and annotate with access feature states if requested
+    let result = rows;
+    if (accessFeatureKeys.length) {
+      const venueIds = rows.map((v) => v.id);
+      if (venueIds.length) {
+        const featureRows = await many(
+          `SELECT f.venue_id, f.feature, f.confidence, f.expires_at,
+                  (o.id IS NOT NULL) AS outage_active
+             FROM academy_venue_access_features f
+             LEFT JOIN venue_access_outages o ON o.venue_id=f.venue_id AND o.feature=f.feature AND o.resolved_at IS NULL
+            WHERE f.venue_id = ANY($1) AND f.retired_at IS NULL`,
+          [venueIds]);
+        const byVenue = new Map();
+        for (const r of featureRows) {
+          if (!byVenue.has(r.venue_id)) byVenue.set(r.venue_id, new Map());
+          byVenue.get(r.venue_id).set(r.feature, r);
+        }
+        result = rows
+          .filter((v) => {
+            const feats = byVenue.get(v.id) ?? new Map();
+            return accessFeatureKeys.every((f) => {
+              const r = feats.get(f);
+              if (!r) return false;
+              if (r.outage_active) return false;
+              if (r.expires_at && new Date(r.expires_at) < new Date()) return false;
+              if (confidenceMin) {
+                const allowed = confidenceValues[confidenceMin] ?? [];
+                return allowed.includes(r.confidence);
+              }
+              return true;
+            });
+          })
+          .map((v) => {
+            const feats = byVenue.get(v.id) ?? new Map();
+            const access_feature_states = accessFeatureKeys.map((f) => {
+              const r = feats.get(f);
+              if (!r) return { feature: f, state: 'unknown' };
+              const expired = !!(r.expires_at && new Date(r.expires_at) < new Date());
+              if (r.outage_active) return { feature: f, state: 'outage' };
+              if (expired) return { feature: f, state: 'expired' };
+              return { feature: f, state: r.confidence };
+            });
+            return { ...v, access_feature_states };
+          });
+      }
+    }
+    return result.map((v) => ({ ...v, map_links: mapLinks(v) }));
   },
 });
 

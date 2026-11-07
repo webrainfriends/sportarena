@@ -14,6 +14,7 @@ import { PROVIDERS } from '../integrations/registry.js';
 import { METRICS, ADAPTERS } from '../wearables/normalise.js';
 import { storeReadings, syncConnection, evaluateAlerts, TOKEN_CTX } from '../wearables/sync.js';
 import { shareBlock, shareEvent, reasonText } from '../wellness-sharing.js';
+import { computeACWR, computeReadiness } from '../wearables/acwr.js';
 
 const TAG = 'Athlete health';
 const NOT_MEDICAL = 'Descriptive readings from the athlete\'s own devices. Not a diagnosis, medical advice or clearance to train or play; missing days are never estimated.';
@@ -280,6 +281,238 @@ cap({
         athletes.push({ athlete: who, share_id: s.id, window_days: days, providers: conns.map((x) => ({ provider_key: x.provider_key, status: x.status, last_success_at: x.last_success_at })), metrics });
       }
       return { athletes, unavailable, basis: NOT_MEDICAL };
+    });
+  },
+});
+
+// ---- Connected devices (#327) —- athlete-scoped device management --------------------------
+// OAuth tokens are AES-256-GCM encrypted at rest. Data is NEVER hard-deleted: archived_at or status='unlinked'.
+
+cap({
+  name: 'list_connected_devices', method: 'GET', path: '/me/devices', tag: TAG,
+  summary: 'Your connected health platforms and wearables: provider, last-sync, battery where available, status.',
+  input: z.object({}),
+  async handler({ user }) {
+    return many(
+      `SELECT id, provider, display_name, last_sync_at, battery_pct, status, paused_at, created_at
+       FROM connected_devices WHERE user_id=$1 AND archived_at IS NULL ORDER BY created_at ASC`,
+      [user.id]);
+  },
+});
+
+cap({
+  name: 'connect_device', method: 'POST', path: '/me/devices', tag: TAG, status: 201,
+  summary: 'Connect a health platform or wearable device. OAuth token stored encrypted; re-connecting an existing provider updates its token.',
+  input: z.object({
+    provider: z.enum(['apple_health','google_fit','garmin','polar','whoop','fitbit','suunto']),
+    display_name: z.string().max(100).optional(),
+    oauth_token: z.string().max(4096).optional(),
+    oauth_token_expiry: z.string().datetime().optional(),
+  }),
+  async handler({ user }, { provider, display_name, oauth_token, oauth_token_expiry }) {
+    const token_enc = oauth_token ? encrypt(oauth_token, `device:token:${user.id}:${provider}`) : null;
+    const device = await one(
+      `INSERT INTO connected_devices (user_id, provider, display_name, token_enc, token_expiry, status)
+       VALUES ($1,$2,$3,$4,$5,'active')
+       ON CONFLICT (user_id, provider) DO UPDATE SET
+         display_name = COALESCE(EXCLUDED.display_name, connected_devices.display_name),
+         token_enc    = COALESCE(EXCLUDED.token_enc, connected_devices.token_enc),
+         token_expiry = COALESCE(EXCLUDED.token_expiry, connected_devices.token_expiry),
+         status       = 'active',
+         paused_at    = NULL,
+         archived_at  = NULL
+       RETURNING id, provider, display_name, status, created_at`,
+      [user.id, provider, display_name || provider, token_enc, oauth_token_expiry || null]);
+    await audit(null, user.id, 'device_connected', 'connected_devices', device.id);
+    return device;
+  },
+});
+
+cap({
+  name: 'disconnect_device', method: 'DELETE', path: '/me/devices/:id', tag: TAG,
+  summary: 'Revoke a device connection. Tokens are wiped; all historical data is kept (soft-delete via status=unlinked).',
+  input: z.object({ id }),
+  async handler({ user }, { id: devId }) {
+    const device = await one(
+      `UPDATE connected_devices SET status='unlinked', token_enc=NULL, archived_at=now()
+       WHERE id=$1 AND user_id=$2 AND archived_at IS NULL RETURNING id, provider`,
+      [devId, user.id]);
+    if (!device) throw notFound('Device');
+    await audit(null, user.id, 'device_disconnected', 'connected_devices', devId);
+    return { id: devId, disconnected: true };
+  },
+});
+
+cap({
+  name: 'pause_device_sync', method: 'PATCH', path: '/me/devices/:id', tag: TAG,
+  summary: 'Pause or resume sync for a connected device without revoking the token.',
+  input: z.object({ id, paused: z.boolean() }),
+  async handler({ user }, { id: devId, paused }) {
+    const device = await one(
+      `UPDATE connected_devices SET paused_at=$1, status=$2
+       WHERE id=$3 AND user_id=$4 AND archived_at IS NULL RETURNING id, status`,
+      [paused ? new Date() : null, paused ? 'paused' : 'active', devId, user.id]);
+    if (!device) throw notFound('Device');
+    return { id: devId, paused };
+  },
+});
+
+cap({
+  name: 'get_device_sync_history', method: 'GET', path: '/me/devices/:id/history', tag: TAG,
+  summary: 'Device detail + recent activities (default 7 days, up to 90).',
+  input: z.object({ id, days: z.coerce.number().int().min(1).max(90).default(7) }),
+  async handler({ user }, { id: devId, days }) {
+    const device = await one(
+      `SELECT id, provider, display_name, last_sync_at, battery_pct, status
+       FROM connected_devices WHERE id=$1 AND user_id=$2 AND archived_at IS NULL`,
+      [devId, user.id]);
+    if (!device) throw notFound('Device');
+    const activities = await many(
+      `SELECT id, activity_type, started_at, ended_at, metrics, source
+       FROM device_activities
+       WHERE device_id=$1 AND started_at >= now() - ($2 || ' days')::interval AND archived_at IS NULL
+       ORDER BY started_at DESC LIMIT 100`,
+      [devId, days]);
+    return { device, activities, days, basis: NOT_MEDICAL };
+  },
+});
+
+cap({
+  name: 'manual_activity_import', method: 'POST', path: '/me/activities/import', tag: TAG, status: 201,
+  summary: 'Manually import an activity. Creates a device_activity record and a matching session_load for ACWR.',
+  input: z.object({
+    activity_type: z.enum(['run','cycle','swim','strength','sleep','other']),
+    started_at: z.string().datetime(),
+    ended_at: z.string().datetime().optional(),
+    metrics: z.record(z.unknown()).optional(),
+    source_filename: z.string().max(255).optional(),
+  }),
+  async handler({ user }, { activity_type, started_at, ended_at, metrics, source_filename }) {
+    const device = await one(
+      `SELECT id FROM connected_devices WHERE user_id=$1 AND archived_at IS NULL ORDER BY created_at LIMIT 1`,
+      [user.id]);
+    if (!device) throw badRequest('connect a device first to enable activity import');
+    const src_id = source_filename || `manual_${user.id}_${Date.now()}`;
+    const activity = await one(
+      `INSERT INTO device_activities (device_id, user_id, activity_type, started_at, ended_at, metrics, source, source_id)
+       VALUES ($1,$2,$3,$4,$5,$6,'manual_import',$7)
+       ON CONFLICT (device_id, source_id) DO NOTHING
+       RETURNING id, activity_type, started_at`,
+      [device.id, user.id, activity_type, started_at, ended_at || null, JSON.stringify(metrics || {}), src_id]);
+    if (activity) {
+      const mins = ended_at
+        ? Math.max(1, Math.round((new Date(ended_at) - new Date(started_at)) / 60000))
+        : 60;
+      await query(
+        `INSERT INTO session_loads (user_id, kind, minutes, rpe, logged_at)
+         VALUES ($1,$2,$3,6,$4) ON CONFLICT DO NOTHING`,
+        [user.id, activity_type === 'sleep' ? 'other' : activity_type, mins, started_at]);
+    }
+    return activity || { imported: false, reason: 'duplicate' };
+  },
+});
+
+// ---------- ACWR and readiness (#583 elite extensions) ----------
+
+cap({
+  name: 'get_my_acwr', method: 'GET', path: '/me/wearables/acwr', tag: TAG,
+  summary: 'Your own Acute:Chronic Workload Ratio from the last 35 days of training load (device sources + self-reported sRPE). ACWR = 7-day avg / 28-day avg. The zone (underload / optimal / caution / excessive) describes your load pattern; it is not a medical assessment.',
+  input: z.object({}),
+  async handler({ user }) {
+    const data = await computeACWR(user.id);
+    return { ...data, basis: NOT_MEDICAL };
+  },
+});
+
+cap({
+  name: 'get_my_readiness', method: 'GET', path: '/me/wearables/readiness', tag: TAG,
+  summary: 'A 0–100 training readiness indicator derived from HRV, sleep duration and resting heart rate over the last 7 days, with the direction (improving / stable / declining). Not a medical clearance or fitness-to-play verdict.',
+  input: z.object({}),
+  async handler({ user }) { return computeReadiness(user.id); },
+});
+
+cap({
+  name: 'get_team_acwr', method: 'GET', path: '/wearables/team/acwr', tag: TAG,
+  summary: 'Coach: ACWR zone and readiness summary for all athletes currently sharing wearables with you. Sorted by highest concern first. Only through a live wellness share; each view is logged.',
+  input: z.object({}),
+  async handler({ user }) {
+    return tx(async (c) => {
+      const shares = (await c.query("SELECT s.* FROM wellness_shares s WHERE s.recipient_id=$1 AND s.recipient_kind='coach' AND s.revoked_at IS NULL AND s.expires_at > now() AND 'wearables' = ANY(s.fields) ORDER BY s.created_at", [user.id])).rows;
+      if (!shares.length) return { athletes: [], unavailable: [], basis: NOT_MEDICAL };
+      const athletes = [], unavailable = [];
+      for (const s of shares) {
+        const block = await shareBlock(c, s);
+        const who = (await c.query('SELECT id, display_name, handle FROM users WHERE id=$1', [s.athlete_id])).rows[0];
+        if (block) { unavailable.push({ athlete: who, reason: reasonText(block) }); continue; }
+        const acwr = await computeACWR(s.athlete_id);
+        const readiness = await computeReadiness(s.athlete_id);
+        await shareEvent(c, s, user.id, 'viewed', { acwr: true });
+        await audit(c, user.id, 'read_acwr_shared', 'wellness_shares', s.id);
+        athletes.push({ athlete: who, ...acwr, readiness_score: readiness.score, readiness_direction: readiness.direction });
+      }
+      const zoneOrder = { excessive: 0, caution: 1, underload: 2, optimal: 3, no_data: 4 };
+      athletes.sort((a, b) => (zoneOrder[a.zone] ?? 4) - (zoneOrder[b.zone] ?? 4));
+      return { athletes, unavailable, basis: NOT_MEDICAL };
+    });
+  },
+});
+
+// ---------- sRPE (session RPE) (#583 elite extensions) ----------
+
+const rpeSchema = z.object({ rpe: z.number().int().min(1).max(10), duration_minutes: z.number().int().min(1).max(600), logged_on: z.string().date().optional(), sport: z.string().max(60).optional(), notes: z.string().max(500).optional() });
+
+cap({
+  name: 'log_session_rpe', method: 'POST', path: '/me/wearables/srpe', tag: TAG, status: 201,
+  summary: 'Self-report your perceived session intensity (Borg CR-10, 1–10) and duration in minutes. Session load = rpe × duration_minutes (arbitrary units, same scale as device training load). One entry per sport per day.',
+  input: rpeSchema,
+  async handler({ user }, i) {
+    const on = i.logged_on ?? new Date().toISOString().slice(0, 10);
+    const r = await one(
+      `INSERT INTO session_rpe_logs(user_id, logged_on, rpe, duration_minutes, sport, notes)
+       VALUES ($1,$2,$3,$4,$5,$6)
+       ON CONFLICT (user_id, logged_on, coalesce(sport,'')) WHERE archived_at IS NULL DO UPDATE SET rpe=EXCLUDED.rpe, duration_minutes=EXCLUDED.duration_minutes, notes=EXCLUDED.notes, updated_at=now()
+       RETURNING id, logged_on::text AS logged_on, rpe, duration_minutes, sport, notes`,
+      [user.id, on, i.rpe, i.duration_minutes, i.sport ?? null, i.notes ?? null],
+    );
+    await evaluateAlerts(user.id);
+    return { ...r, session_load: r.rpe * r.duration_minutes };
+  },
+});
+
+cap({
+  name: 'list_session_rpe', method: 'GET', path: '/me/wearables/srpe', tag: TAG,
+  summary: 'Your own sRPE log for the last N days. Each entry shows the session load (rpe × duration_minutes) which feeds into your ACWR calculation.',
+  input: z.object({ days: z.coerce.number().int().min(1).max(90).default(28) }),
+  async handler({ user }, i) {
+    const rows = await many(
+      'SELECT id, logged_on::text AS logged_on, rpe, duration_minutes, sport, notes, (rpe * duration_minutes)::int AS session_load, created_at FROM session_rpe_logs WHERE user_id=$1 AND archived_at IS NULL AND logged_on > current_date - $2::int ORDER BY logged_on DESC',
+      [user.id, i.days],
+    );
+    return { items: rows, days: i.days };
+  },
+});
+
+cap({
+  name: 'get_team_srpe', method: 'GET', path: '/wearables/team/srpe', tag: TAG,
+  summary: 'Coach: sRPE logs for all athletes currently sharing wearables with you, for the last 14 days. Only through a live wellness share.',
+  input: z.object({ days: z.coerce.number().int().min(1).max(28).default(14) }),
+  async handler({ user }, i) {
+    return tx(async (c) => {
+      const shares = (await c.query("SELECT s.* FROM wellness_shares s WHERE s.recipient_id=$1 AND s.recipient_kind='coach' AND s.revoked_at IS NULL AND s.expires_at > now() AND 'wearables' = ANY(s.fields) ORDER BY s.created_at", [user.id])).rows;
+      const result = [];
+      for (const s of shares) {
+        const block = await shareBlock(c, s);
+        if (block) continue;
+        const who = (await c.query('SELECT id, display_name FROM users WHERE id=$1', [s.athlete_id])).rows[0];
+        const logs = (await c.query(
+          'SELECT logged_on::text AS logged_on, rpe, duration_minutes, sport, (rpe * duration_minutes)::int AS session_load FROM session_rpe_logs WHERE user_id=$1 AND archived_at IS NULL AND logged_on > current_date - $2::int ORDER BY logged_on DESC',
+          [s.athlete_id, i.days],
+        )).rows;
+        await shareEvent(c, s, user.id, 'viewed', { srpe: true });
+        await audit(c, user.id, 'read_srpe_shared', 'wellness_shares', s.id);
+        result.push({ athlete: who, logs });
+      }
+      return { athletes: result };
     });
   },
 });

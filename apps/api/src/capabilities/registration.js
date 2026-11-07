@@ -15,7 +15,7 @@ import { hasOrgGrant } from '../org-access.js';
 import { YOUTH_SQL, checkGuardianScope, guardianLink, requireConsent } from '../youth.js';
 import { fromLocal, validTimezone } from '../booking/time.js';
 import { canManageTeam } from './teams.js';
-import { LIVE, LISTS, RULES, latestPolicy, protectedIds, PROTECTED_NAME } from '../registration.js';
+import { LIVE, LISTS, RULES, latestPolicy, protectedIds, PROTECTED_NAME, bindEntryClass } from '../registration.js';
 
 const TAG = 'Competition registration';
 const iso = z.string().date();
@@ -236,6 +236,7 @@ cap({
           [ev.id, team.id, target, i.division_id ?? null, i.roster_list, source, win?.id ?? null, windowKind, exceptionId, user.id, i.reason ? encrypt(i.reason, 'reg_registrations.note') : null])).rows[0];
       } catch (e) { throw isDup(e) ? conflict('This player already has a live registration in this competition', { code: 'duplicate_registration' }) : e; }
       await snapshotRow(c, row.id, 'submitted', user.id, { note: i.reason });
+      await bindEntryClass(c, ev, policy, { id: row.id, user_id: target, division_id: i.division_id ?? null }, 'submitted', user.id, 'definitive');
       if (ev.organizer_id !== user.id) await notify(c, ev.organizer_id, { kind: 'registration', title: `${team.name}: a registration awaits review`, body: ev.name, data: { event_id: ev.id, registration_id: row.id } });
       return (await c.query(`SELECT ${REG_COLS} FROM ${REG_FROM} WHERE r.id=$1`, [row.id])).rows[0];
     });
@@ -319,6 +320,7 @@ cap({
              decided_by=$11, decided_at=now(), note_enc=coalesce($12, note_enc), row_version=row_version+1, updated_at=now() WHERE id=$1`,
           [i.id, TO[i.action], next.roster_list, next.origin_class, next.division_id, regNo, i.effective_from ?? null, i.effective_to ?? null, today, ev.ends_on ?? null, user.id, i.reason ? encrypt(i.reason, 'reg_registrations.note') : null]);
       } catch (e) { throw isDup(e) ? conflict('That registration number is already used in this competition') : e; }
+      if (i.action === 'register') await bindEntryClass(c, ev, await latestPolicy(ev.id, c), { id: i.id, user_id: cur.user_id, division_id: next.division_id }, 'registered', user.id, 'definitive');
       const row = await snapshotRow(c, i.id, ({ start_review: 'review_started', register: 'registered', reject: 'rejected', suspend: 'suspended', reinstate: 'reinstated', expire: 'expired' })[i.action], user.id, { from, note: i.reason });
       const team = (await c.query('SELECT name, owner_id FROM teams WHERE id=$1', [row.team_id])).rows[0];
       const says = { register: 'registered', reject: 'not accepted', suspend: 'suspended', reinstate: 'reinstated', expire: 'expired' }[i.action];

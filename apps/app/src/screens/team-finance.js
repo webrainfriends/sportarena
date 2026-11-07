@@ -9,7 +9,7 @@ import { useLoad } from '../hooks';
 import { useSession } from '../session';
 import { Btn, Card, Chip, Empty, ErrorBox, Field, H1, Loading, Row, Screen, Section, Sheet, StatPill, T, Tag } from '../ui';
 import { FormSheet } from '../FormSheet';
-import { Counter, DateField } from '../pickers';
+import { Counter, DateField, DateRangeField } from '../pickers';
 import { EntityPicker } from '../entity-picker';
 import { PaySheet } from '../PaySheet';
 import { moneyIn } from '../vtime';
@@ -27,6 +27,94 @@ const CADENCE_OF = (offsets) => Object.entries(CADENCE).find(([, x]) => JSON.str
 const newKey = () => `k-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
 const Bar = ({ pct, color = c.mint }) => <View style={{ height: 8, borderRadius: 4, backgroundColor: c.line, overflow: 'hidden' }}><View style={{ height: 8, width: `${Math.min(100, pct)}%`, backgroundColor: color }} /></View>;
 const ChargeTag = ({ ch }) => <Tag label={ch.overdue ? 'Overdue' : STATUS[ch.status]?.[0] ?? ch.status} color={ch.overdue ? c.redSoft : STATUS[ch.status]?.[1]} />;
+
+function FundraiserWizard({ visible, t, cur, onClose, onDone }) {
+  const { toast } = useSession();
+  const STEPS = ['Campaign Identity', 'Timeline & Visibility', 'Rewards & Launch'];
+  const FUND_TYPES = ['Kit & equipment', 'Travel & away fixtures', 'Venue & pitch hire', 'Youth development', 'Medical & physio', 'Technology & software', 'Community programme', 'General fund'];
+  const CURRENCIES = ['GBP', 'EUR', 'USD', 'AUD', 'INR', 'SGD', 'AED'];
+  const VISIBILITY = ['Club members only', 'Public on GotMyGame', 'Invite only'];
+  const UPDATE_FREQ = ['On milestone', 'Weekly', 'At close'];
+  const init = () => ({ title: '', fund_type: '', description: '', currency: cur, target_text: '', starts_on: null, ends_on: null, min_contribution: 0, visibility: 'Club members only', allow_anonymous: false, gift_aid: false, update_freq: 'On milestone', reward_tiers: '', featured: false, notify_members: true });
+  const [step, setStep] = useState(0);
+  const [v, setV] = useState(init);
+  const [busy, setBusy] = useState(false);
+  const set = (k, val) => setV((p) => ({ ...p, [k]: val }));
+  const can = [!!(v.title.trim() && v.fund_type && v.description.trim() && v.target_text), true, true][step];
+  const reset = () => { setStep(0); setV(init()); };
+  const submit = async () => {
+    setBusy(true);
+    try {
+      const r = await api.post(`/teams/${t.id}/fundraisers`, { title: v.title.trim(), purpose: v.description.trim(), fund_type: v.fund_type, target_minor: Math.round(Number(v.target_text) * 100), currency: v.currency, closes_on: v.ends_on ?? undefined, opens_on: v.starts_on ?? undefined, min_contribution_minor: v.min_contribution > 0 ? v.min_contribution * 100 : undefined, visibility: v.visibility, allow_anonymous: v.allow_anonymous, gift_aid_eligible: v.gift_aid, update_frequency: v.update_freq, reward_tiers: v.reward_tiers || undefined, featured: v.featured, notify_members: v.notify_members });
+      onDone(); toast(r.status === 'active' ? 'Fundraiser is open' : 'Sent to the team owner to approve'); reset(); onClose();
+    } catch (e) { toast(e.message); setBusy(false); }
+  };
+  const footer = (
+    <View style={{ flexDirection: 'row', gap: 10 }}>
+      {step > 0 ? <Btn title="Back" color={c.paper} ink={c.ink} onPress={() => setStep(step - 1)} style={{ flex: 1 }} /> : null}
+      {step < 2 ? <Btn title="Next →" disabled={!can} onPress={() => setStep(step + 1)} style={{ flex: 1 }} /> : <Btn title="Create fundraiser" loading={busy} disabled={busy} onPress={submit} style={{ flex: 1 }} />}
+    </View>
+  );
+  return (
+    <Sheet visible={visible} onClose={() => { reset(); onClose(); }} title="New fundraiser" footer={footer}>
+      <View style={{ flexDirection: 'row', gap: 4, marginBottom: 8 }}>
+        {STEPS.map((s, i) => <View key={s} style={{ flex: 1, height: 4, borderRadius: 2, backgroundColor: i < step ? c.violet : i === step ? c.pink : c.p1 }} />)}
+      </View>
+      <T weight="800" size={15} style={{ marginBottom: 8 }}>{STEPS[step]}</T>
+      {step === 0 && (
+        <View style={{ gap: 12 }}>
+          <Field label="Campaign title" value={v.title} onChangeText={(x) => set('title', x)} placeholder="e.g. Season 2026/27 Kit Fund" />
+          <T weight="700" size={13}>Fundraiser type</T>
+          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>{FUND_TYPES.map((x) => <Chip key={x} label={x} active={v.fund_type === x} onPress={() => set('fund_type', x)} />)}</View>
+          <Field label="What the money is for" value={v.description} onChangeText={(x) => set('description', x)} multiline hint="Tell supporters what you're raising for and why it matters" />
+          <T weight="700" size={13}>Currency</T>
+          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>{CURRENCIES.map((x) => <Chip key={x} label={x} active={v.currency === x} onPress={() => set('currency', x)} />)}</View>
+          <Field label={`Target amount (${v.currency})`} value={v.target_text} onChangeText={(x) => set('target_text', x.replace(/[^0-9.]/g, ''))} keyboardType="decimal-pad" placeholder="0" />
+        </View>
+      )}
+      {step === 1 && (
+        <View style={{ gap: 12 }}>
+          <DateRangeField label="Campaign dates" valueFrom={v.starts_on} valueTo={v.ends_on} onChangeFrom={(x) => set('starts_on', x)} onChangeTo={(x) => set('ends_on', x)} optional />
+          <Counter label="Minimum contribution" value={v.min_contribution} min={0} step={1} onChange={(x) => set('min_contribution', x)} hint="Minimum donation amount, 0 = any" />
+          <T weight="700" size={13}>Visibility</T>
+          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>{VISIBILITY.map((x) => <Chip key={x} label={x} active={v.visibility === x} onPress={() => set('visibility', x)} />)}</View>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+            <View style={{ flex: 1 }}><T weight="700">Allow anonymous contributions</T></View>
+            <Switch value={v.allow_anonymous} onValueChange={(x) => set('allow_anonymous', x)} trackColor={{ true: c.pink }} />
+          </View>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+            <View style={{ flex: 1 }}><T weight="700">UK Gift Aid eligible</T><T size={12} color={c.mute}>Organisation must be registered charity</T></View>
+            <Switch value={v.gift_aid} onValueChange={(x) => set('gift_aid', x)} trackColor={{ true: c.pink }} />
+          </View>
+          <T weight="700" size={13}>Campaign update frequency</T>
+          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>{UPDATE_FREQ.map((x) => <Chip key={x} label={x} active={v.update_freq === x} onPress={() => set('update_freq', x)} />)}</View>
+        </View>
+      )}
+      {step === 2 && (
+        <View style={{ gap: 12 }}>
+          <Field label="Reward tiers" value={v.reward_tiers} onChangeText={(x) => set('reward_tiers', x)} multiline optional hint="e.g. £10 = name on kit, £50 = signed photo" />
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+            <View style={{ flex: 1 }}><T weight="700">Feature on team homepage</T></View>
+            <Switch value={v.featured} onValueChange={(x) => set('featured', x)} trackColor={{ true: c.pink }} />
+          </View>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+            <View style={{ flex: 1 }}><T weight="700">Notify team members when launched</T></View>
+            <Switch value={v.notify_members} onValueChange={(x) => set('notify_members', x)} trackColor={{ true: c.pink }} />
+          </View>
+          <Card color={c.cyanSoft} style={{ marginTop: 4 }}>
+            <T weight="800" size={14}>Campaign Summary</T>
+            <T size={13} style={{ marginTop: 4 }}>{v.title || '—'}</T>
+            {v.fund_type ? <T size={13} color={c.mute}>{v.fund_type}</T> : null}
+            <T size={13}>Target: {v.currency} {v.target_text || '0'}</T>
+            {v.starts_on || v.ends_on ? <T size={13} color={c.mute}>{v.starts_on ?? 'Open'} → {v.ends_on ?? 'No end date'}</T> : null}
+            <T size={13} color={c.mute}>Visibility: {v.visibility}</T>
+          </Card>
+          <T size={12} color={c.mute}>The team owner approves this fundraiser before anyone can give.</T>
+        </View>
+      )}
+    </Sheet>
+  );
+}
 
 export function TeamFinance({ t, w }) {
   const { toast, user } = useSession();
@@ -165,14 +253,7 @@ export function TeamFinance({ t, w }) {
         ]}
         onSubmit={async (v) => { await api.post(`/teams/${t.id}/dues-plans`, { title: v.title, amount_minor: v.amount_minor, every_months: v.every_months, starts_on: v.starts_on, due_days: v.due_days, ends_on: v.ends_on }); reload(); return 'Recurring dues started'; }} />
 
-      <FormSheet visible={sheet === 'fund'} onClose={() => setSheet(null)} title="New fundraiser" submitLabel="Create"
-        fields={[
-          { key: 'title', label: 'Name' },
-          { key: 'purpose', label: 'What the money is for', type: 'multiline', hint: 'The team owner approves this purpose before anyone can give.' },
-          { key: 'target_minor', label: 'Target', type: 'money', currency: cur },
-          { key: 'closes_on', label: 'Closes', type: 'date', optional: true },
-        ]}
-        onSubmit={async (v) => { const r = await api.post(`/teams/${t.id}/fundraisers`, v); reload(); return r.status === 'active' ? 'Fundraiser is open' : 'Sent to the team owner to approve'; }} />
+      <FundraiserWizard visible={sheet === 'fund'} t={t} cur={cur} onClose={() => setSheet(null)} onDone={reload} />
 
       <FormSheet visible={!!sheet?.give} onClose={() => setSheet(null)} title={`Give to ${sheet?.give?.title ?? ''}`} submitLabel="Continue to payment"
         initial={{ anonymous: false }}

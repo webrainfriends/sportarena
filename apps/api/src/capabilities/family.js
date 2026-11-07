@@ -174,6 +174,39 @@ cap({
     });
     todo.sort((a, b) => (b.overdue ? 1 : 0) - (a.overdue ? 1 : 0) || (a.due_at ? Date.parse(a.due_at) : Infinity) - (b.due_at ? Date.parse(b.due_at) : Infinity) || a.title.localeCompare(b.title));
     const money = [...charges, ...academy];
-    return { from, to, dependents, todo, due: sum(money), overdue: money.filter((r) => r.overdue).length, unread_notifications: unread[0].n };
+
+    // Family coordination section: surface volunteer openings, carpool offers and live streams
+    // for teams that any verified dependent belongs to (issue #915 §11, gap items J06/J07/J08).
+    // All data is already accessible to this guardian via its constituent endpoints; this is a
+    // read-only projection with no new authority.
+    let coordination = null;
+    if (ids.length) {
+      const teamIds = [...new Set(teams.map((t) => t.id))];
+      const [volRows, carpoolRows, streamRows] = await Promise.all([
+        teamIds.length ? many(
+          `SELECT tvp.team_id, t.name AS team_name, count(*)::int AS position_count, min(tvp.shift_start) AS shift_start
+             FROM team_volunteer_positions tvp JOIN teams t ON t.id=tvp.team_id
+            WHERE tvp.team_id = ANY($1::uuid[]) AND tvp.archived_at IS NULL AND tvp.shift_start > now()
+              AND (SELECT count(*) FROM team_volunteer_applications tva WHERE tva.position_id=tvp.id AND tva.status='approved') < tvp.capacity
+            GROUP BY tvp.team_id, t.name ORDER BY min(tvp.shift_start) LIMIT 3`, [teamIds]) : [],
+        teamIds.length ? many(
+          `SELECT co.event_id, e.name AS event_name, count(*)::int AS offer_count, min(co.departure_time) AS departure_time
+             FROM carpool_offers co JOIN events e ON e.id=co.event_id
+            WHERE e.team_id = ANY($1::uuid[]) AND co.status='open' AND co.departure_time > now() AND co.departure_time < now() + interval '7 days'
+            GROUP BY co.event_id, e.name ORDER BY min(co.departure_time) LIMIT 3`, [teamIds]) : [],
+        teamIds.length ? many(
+          `SELECT es.id AS stream_id, e.name AS event_name, t.name AS team_name, e.team_id,
+                  EXISTS (SELECT 1 FROM team_members tm WHERE tm.team_id=e.team_id AND tm.user_id = ANY($2::uuid[]) AND tm.status='active') AS child_playing
+             FROM event_streams es JOIN events e ON e.id=es.event_id JOIN teams t ON t.id=e.team_id
+            WHERE e.team_id = ANY($1::uuid[]) AND es.is_live=true LIMIT 3`, [teamIds, ids]) : [],
+      ]);
+      coordination = {
+        volunteer_openings: volRows,
+        carpool_offers: carpoolRows,
+        streams_live_now: streamRows,
+      };
+    }
+
+    return { from, to, dependents, todo, due: sum(money), overdue: money.filter((r) => r.overdue).length, unread_notifications: unread[0].n, coordination };
   },
 });

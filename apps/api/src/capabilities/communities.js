@@ -21,7 +21,9 @@ const personCols = 'u.id, u.handle, u.display_name, u.avatar_emoji, u.avatar_col
 
 const card = (c, extra = {}) => ({
   id: c.id, slug: c.slug, name: c.name, description: c.description, city: c.city, sport: c.sport_slug ? { slug: c.sport_slug, name: c.sport_name, emoji: c.sport_emoji } : null,
-  visibility: c.visibility, join_mode: c.join_mode, audience: c.audience, members: c.members ?? undefined, created_at: c.created_at, ...extra,
+  visibility: c.visibility, join_mode: c.join_mode, audience: c.audience, members: c.members ?? undefined,
+  para_sports: c.para_sports ?? [], adaptive: c.adaptive ?? false,
+  created_at: c.created_at, ...extra,
 });
 const CARD_SQL = `c.*, s.slug AS sport_slug, s.name AS sport_name, s.emoji AS sport_emoji,
   (SELECT count(*)::int FROM community_members m WHERE m.community_id=c.id AND m.status='active') AS members,
@@ -49,6 +51,8 @@ cap({
     name: z.string().min(3).max(80), slug: z.string().min(3).max(60).regex(/^[a-z0-9][a-z0-9-]*[a-z0-9]$/).optional(), description: z.string().max(600).optional(),
     sport: z.string().max(60).optional(), city: z.string().max(80).optional(),
     visibility: z.enum(['public', 'private', 'hidden']).default('public'), join_mode: z.enum(['open', 'request', 'invite']).default('open'), audience: z.enum(['adults', 'all']).default('adults'),
+    para_sports: z.array(z.string().max(60)).max(10).optional().describe('Para/adaptive sport slugs this community focuses on'),
+    adaptive: z.boolean().default(false).describe('Mark this as a para / adaptive-sport community'),
   }),
   async handler({ user }, i) {
     if (await isYouth(user.id)) throw forbidden('Young people cannot start communities');
@@ -61,8 +65,8 @@ cap({
       const owned = (await c.query("SELECT count(*)::int AS n FROM communities WHERE owner_id=$1 AND archived_at IS NULL", [user.id])).rows[0].n;
       if (owned >= LIMITS.communitiesOwned) throw conflict('You already run the maximum number of communities');
       const row = (await c.query(
-        `INSERT INTO communities(slug, name, description, sport_id, city, visibility, join_mode, audience, owner_id) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
-         ON CONFLICT DO NOTHING RETURNING id, slug`, [slug, i.name, i.description ?? null, sport, i.city ?? null, i.visibility, i.join_mode, i.audience, user.id])).rows[0];
+        `INSERT INTO communities(slug, name, description, sport_id, city, visibility, join_mode, audience, owner_id, para_sports, adaptive) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
+         ON CONFLICT DO NOTHING RETURNING id, slug`, [slug, i.name, i.description ?? null, sport, i.city ?? null, i.visibility, i.join_mode, i.audience, user.id, i.para_sports ?? [], i.adaptive ?? false])).rows[0];
       if (!row) throw conflict('That address is taken — choose another name or address');
       await c.query("INSERT INTO community_members(community_id, user_id, role, status) VALUES ($1,$2,'owner','active')", [row.id, user.id]);
       await audit(c, user.id, 'create_community', 'communities', row.id);
@@ -74,7 +78,7 @@ cap({
 cap({
   name: 'list_communities', method: 'GET', path: '/communities', tag: TAG,
   summary: 'Find communities (newest first, cursor-paged). scope=discover lists public and private communities you are not blocked from; scope=mine lists the ones you belong to. Hidden communities appear only to their members and invitees. Private communities show their card but never their content.',
-  input: z.object({ scope: z.enum(['discover', 'mine']).default('discover'), q: z.string().max(80).optional(), sport: z.string().max(60).optional(), city: z.string().max(80).optional(), limit, before }),
+  input: z.object({ scope: z.enum(['discover', 'mine']).default('discover'), q: z.string().max(80).optional(), sport: z.string().max(60).optional(), city: z.string().max(80).optional(), adaptive: z.coerce.boolean().optional().describe('Filter to para / adaptive-sport communities'), para_sport: z.string().max(60).optional().describe('Filter by a para sport slug'), limit, before }),
   async handler({ user }, i) {
     const [ts, cid] = parseCursor(i.before);
     if (ts === undefined) throw badRequest('before must be a cursor from a previous page');
@@ -91,9 +95,11 @@ cap({
           AND (mm.status = 'active' OR c.audience = 'all' OR NOT EXISTS (SELECT 1 FROM users yu WHERE yu.id=$1 AND yu.youth_until IS NOT NULL AND yu.youth_until > current_date))
           AND ($3::text IS NULL OR c.name ILIKE '%'||$3||'%' OR c.description ILIKE '%'||$3||'%')
           AND ($4::uuid IS NULL OR c.sport_id=$4) AND ($5::text IS NULL OR c.city ILIKE $5)
+          AND ($9::boolean IS NULL OR c.adaptive = $9)
+          AND ($10::text IS NULL OR c.para_sports @> ARRAY[$10::text])
           AND ($6::timestamptz IS NULL OR (c.created_at, c.id) < ($6::timestamptz, $7::uuid))
         ORDER BY c.created_at DESC, c.id DESC LIMIT $8`,
-      [user.id, i.scope, i.q ?? null, sport, i.city ?? null, ts, cid, i.limit + 1]);
+      [user.id, i.scope, i.q ?? null, sport, i.city ?? null, ts, cid, i.limit + 1, i.adaptive ?? null, i.para_sport ?? null]);
     const page = rows.slice(0, i.limit);
     return { items: page.map((c) => card(c, { my_role: c.my_status === 'active' ? c.my_role : null, my_status: c.my_status ?? null, invited: c.invited })), next: rows.length > i.limit ? cursorOf(page.at(-1)) : null };
   },

@@ -63,12 +63,13 @@ export function DoctorHome() {
       <H1>Doctor workspace</H1>
       <T size={13} color={c.mute}>Hello Dr {user.display_name}. You only see patients who have shared access with you; every read is logged.</T>
       <View style={{ marginTop: 10, alignSelf: 'flex-start' }}><Btn small title="Shared wellness" color={c.paper} ink={c.ink} onPress={() => push('SharedWellness')} accessibilityLabel="Open wellness athletes shared with me" /></View>
-      <View style={{ marginTop: 10 }}><Seg options={[{ value: 'overview', label: 'Overview', emoji: '🏠' }, { value: 'patients', label: 'Patients', emoji: '🧑‍⚕️' }, { value: 'results', label: 'Results', emoji: '🧪' }, { value: 'referrals', label: 'Referrals', emoji: '↗️' }]} value={tab} onChange={setTab} color={c.mint} /></View>
+      <View style={{ marginTop: 10 }}><Seg options={[{ value: 'overview', label: 'Overview', emoji: '🏠' }, { value: 'patients', label: 'Patients', emoji: '🧑‍⚕️' }, { value: 'results', label: 'Results', emoji: '🧪' }, { value: 'referrals', label: 'Referrals', emoji: '↗️' }, { value: 'adaptive', label: 'Adaptive', emoji: '♿' }]} value={tab} onChange={setTab} color={c.mint} /></View>
       <View style={{ gap: 12, marginTop: 10 }}>
         {tab === 'overview' && <Overview patients={patients} go={go} setTab={setTab} />}
         {tab === 'patients' && <Patients patients={patients} go={go} />}
         {tab === 'results' && <ResultsQueue names={names} go={go} />}
         {tab === 'referrals' && <ReferralInbox />}
+        {tab === 'adaptive' && <AdaptiveTab go={go} />}
       </View>
     </Screen>
   );
@@ -199,11 +200,13 @@ function ReferralInbox() {
 
 // ---------- Patient file ----------
 
-const SECTIONS = [{ value: 'encounters', label: 'Encounters', emoji: '📝' }, { value: 'context', label: 'Allergies & meds', emoji: '💊' }, { value: 'plans', label: 'Care plans', emoji: '🗂️' }, { value: 'results', label: 'Results', emoji: '🧪' }, { value: 'referrals', label: 'Referrals', emoji: '↗️' }, { value: 'clearance', label: 'Fit to play', emoji: '✅' }];
+const SECTIONS = [{ value: 'encounters', label: 'Encounters', emoji: '📝' }, { value: 'context', label: 'Allergies & meds', emoji: '💊' }, { value: 'plans', label: 'Care plans', emoji: '🗂️' }, { value: 'results', label: 'Results', emoji: '🧪' }, { value: 'referrals', label: 'Referrals', emoji: '↗️' }, { value: 'clearance', label: 'Fit to play', emoji: '✅' }, { value: 'episodes', label: 'Injuries', emoji: '🩺' }];
 
 function PatientFile({ athlete, onBack }) {
   const [sec, setSec] = useState(athlete.section ?? 'encounters');
-  const Body = { encounters: Encounters, context: Context, plans: Plans, results: Results, referrals: PatientReferrals, clearance: Clearance }[sec];
+  const { InjuryEpisodeEntry } = require('./injury-episode');
+  const episodes = (id) => <InjuryEpisodeEntry athleteId={id} athleteName={athlete.name} />;
+  const Body = { encounters: Encounters, context: Context, plans: Plans, results: Results, referrals: PatientReferrals, clearance: Clearance, episodes: ({ id }) => episodes(id) }[sec];
   return (
     <Screen>
       <Btn small title="‹ All patients" color={c.paper} ink={c.ink} onPress={onBack} style={{ alignSelf: 'flex-start' }} />
@@ -560,6 +563,188 @@ function PatientReferrals({ id }) {
       </Wait>
       {form ? <ReferralSheet athleteId={id} onClose={() => setForm(false)} onDone={q.reload} /> : null}
     </Block>
+  );
+}
+
+// ---------- Adaptive tab (PS-17) ----------
+
+const SPORTS_LIST = ['athletics', 'archery', 'badminton', 'boccia', 'canoe', 'cycling', 'equestrian', 'football_5a_side', 'goalball', 'judo', 'powerlifting', 'rowing', 'shooting', 'sitting_volleyball', 'swimming', 'table_tennis', 'taekwondo', 'triathlon', 'wheelchair_basketball', 'wheelchair_fencing', 'wheelchair_rugby', 'wheelchair_tennis', 'blind_football', 'para_alpine_skiing', 'para_cross_country_skiing', 'para_biathlon', 'para_ice_hockey', 'wheelchair_curling', 'other'];
+const SPORT_EMOJI = { athletics: '🏃', archery: '🏹', badminton: '🏸', boccia: '🎯', canoe: '🛶', cycling: '🚴', equestrian: '🐴', swimming: '🏊', wheelchair_basketball: '🏀', wheelchair_tennis: '🎾', other: '♿' };
+const sportEmoji = (s) => SPORT_EMOJI[s] ?? '♿';
+
+const CLINICAL_BOUNDARY_NOTICE = (
+  <Card color="#FEF3C7" pad={12} style={{ borderLeftWidth: 4, borderLeftColor: '#D97706' }}>
+    <T weight="900" size={13} color="#92400E">⚠️ Classification boundary</T>
+    <T size={12} color="#92400E" style={{ marginTop: 4 }}>Clinical consultations recorded here are entirely separate from para-sport classification decisions. A fit-to-play or return-to-sport clearance is never an official classification decision. Classification remains with the designated classifiers under their own governance. Do not reference or imply classification status in any summary shared with coaches or staff.</T>
+  </Card>
+);
+
+function SpecialismSheet({ visible, current, onClose, onSaved }) {
+  const [selected, setSelected] = useState(current ?? []);
+  const act = useAct();
+  if (!visible) return null;
+  const toggle = (s) => setSelected((prev) => prev.includes(s) ? prev.filter((x) => x !== s) : [...prev, s]);
+  const save = async () => {
+    for (const s of selected) {
+      if (!current?.includes(s)) await api.post('/para-doctor/specialism', { sport: s });
+    }
+    onSaved();
+    onClose();
+  };
+  return (
+    <Sheet visible={visible} onClose={onClose} title="Para-sport specialisms">
+      <T size={13} color={c.mute}>Select the adaptive sports you have clinical expertise in. This appears on your profile; it is not a classification credential.</T>
+      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 10 }}>
+        {SPORTS_LIST.map((s) => (
+          <Btn key={s} small title={`${sportEmoji(s)} ${s.replace(/_/g, ' ')}`} color={selected.includes(s) ? c.mint : c.paper} ink={selected.includes(s) ? c.ink : c.mute} onPress={() => toggle(s)} accessibilityLabel={`Toggle ${s}`} />
+        ))}
+      </View>
+      <Btn title="Save specialisms" color={c.mint} ink={c.ink} onPress={save} style={{ marginTop: 14, alignSelf: 'flex-start' }} accessibilityLabel="Save selected specialisms" />
+    </Sheet>
+  );
+}
+
+function TemplateSheet({ visible, onClose, onSaved }) {
+  const [sport, setSport] = useState('');
+  const [fieldCount, setFieldCount] = useState(1);
+  if (!visible) return null;
+  return (
+    <FormSheet visible={visible} onClose={onClose} title="New consult template" color={c.mint} submitLabel="Create template"
+      fields={[
+        { key: 'sport', label: 'Para-sport', type: 'choice', options: SPORTS_LIST.map((s) => ({ value: s, label: `${sportEmoji(s)} ${s.replace(/_/g, ' ')}` })) },
+        { key: 'name', label: 'Template name', type: 'text', hint: 'E.g. "Post-prosthetic fit review"' },
+        { key: 'description', label: 'Description / clinical scope', type: 'multiline', optional: true },
+        { key: 'status', label: 'Status', type: 'choice', options: [{ value: 'draft', label: 'Draft' }, { value: 'active', label: 'Active' }], default: 'draft' },
+        { key: 's_fields', label: 'Template fields', type: 'section' },
+        ...([1, 2, 3, 4, 5].flatMap((n) => [
+          { key: `f${n}_key`, label: `Field ${n} key`, type: 'text', optional: n > 1, hint: n === 1 ? 'Short identifier, e.g. "mobility_score"' : undefined },
+          { key: `f${n}_label`, label: `Field ${n} label`, type: 'text', optional: n > 1, show: (v) => n === 1 || !!v[`f${n - 1}_key`] },
+          { key: `f${n}_type`, label: `Field ${n} type`, type: 'choice', options: ['text', 'number', 'date', 'choice', 'multiline'], optional: true, show: (v) => !!v[`f${n}_key`] },
+        ])),
+      ]}
+      onSubmit={async (v) => {
+        const fields = [1, 2, 3, 4, 5].filter((n) => v[`f${n}_key`]).map((n) => ({ key: v[`f${n}_key`], label: v[`f${n}_label`], type: v[`f${n}_type`] ?? 'text' }));
+        await api.post('/para-doctor/template', { sport: v.sport, name: v.name, description: v.description, fields_json: fields, status: v.status ?? 'draft' });
+        onSaved(); return 'Template created';
+      }} />
+  );
+}
+
+function SupportSummarySheet({ visible, onClose, onSaved }) {
+  const [athlete, setAthlete] = useState([]);
+  if (!visible) return null;
+  return (
+    <Sheet visible={visible} onClose={onClose} title="Draft nonclinical support summary">
+      <Card color="#FEF3C7" pad={10} style={{ borderLeftWidth: 3, borderLeftColor: '#D97706', marginBottom: 10 }}>
+        <T size={12} color="#92400E" weight="800">Nonclinical content only</T>
+        <T size={12} color="#92400E">This summary is for operational staff (coaches, event managers). It must NOT contain diagnosis, medication, test results, allergies or classification status. It requires athlete consent before anyone can see it.</T>
+      </Card>
+      <T size={13} weight="800" color={c.ink} style={{ marginBottom: 6 }}>Athlete</T>
+      <EntityPicker label="Athlete" value={athlete} onChange={setAthlete} noun="athlete" single />
+      <FormSheet inline color={c.mint} submitLabel="Send for athlete consent" onClose={onClose}
+        fields={[
+          { key: 'audience_label', label: 'Who this is for', type: 'text', hint: 'E.g. "Event operations team" or "Academy coaching staff"' },
+          { key: 'content', label: 'Support summary content', type: 'multiline', hint: 'Operational access needs, emergency contacts, general support requirements. No clinical information.' },
+        ]}
+        onSubmit={async (v) => {
+          if (!athlete[0]) throw new Error('Select an athlete');
+          await api.post('/para-doctor/summary/draft', { athlete_id: athlete[0].id, audience_label: v.audience_label, content: v.content });
+          onSaved(); return 'Draft created — athlete will be asked to consent';
+        }} />
+    </Sheet>
+  );
+}
+
+function AdaptiveTab({ go }) {
+  const specialisms = useLoad(() => api.get('/para-doctor/specialisms'), []);
+  const templates = useLoad(() => api.get('/para-doctor/templates'), []);
+  const episodes = useLoad(() => api.get('/para-doctor/episodes', { limit: 50 }), []);
+  const summaries = useLoad(() => api.get('/para-doctor/summaries', { role: 'author', limit: 50 }), []);
+  const act = useAct(specialisms.reload, templates.reload, episodes.reload, summaries.reload);
+  const [specSheet, setSpecSheet] = useState(false);
+  const [tplSheet, setTplSheet] = useState(false);
+  const [sumSheet, setSumSheet] = useState(false);
+
+  const SUMMARY_TAG = { pending_consent: ['Awaiting consent', c.sun], active: ['Active', c.lime], revoked: ['Revoked', NEUTRAL] };
+
+  return (
+    <View style={{ gap: 14 }}>
+      {/* Specialisms */}
+      <Block title="Para-sport specialisms" action="Edit" onAction={() => setSpecSheet(true)}>
+        <T size={12} color={c.mute}>Sports in which you have clinical expertise for adaptive athletes. Required to create consult templates or draft support summaries for a given sport.</T>
+        <Wait q={specialisms} empty={<Empty emoji="♿" title="No specialisms declared" sub="Add the adaptive sports you work with to enable consult templates and support summaries." />}>
+          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 6 }}>
+            {(specialisms.data ?? []).map((s) => <Tag key={s.sport} label={`${sportEmoji(s.sport)} ${s.sport.replace(/_/g, ' ')}`} color={c.mintSoft} />)}
+          </View>
+        </Wait>
+        <SpecialismSheet visible={specSheet} current={(specialisms.data ?? []).map((s) => s.sport)} onClose={() => setSpecSheet(false)} onSaved={specialisms.reload} />
+      </Block>
+
+      {/* Consult templates */}
+      <Block title="Consult templates" action="＋ New" onAction={() => setTplSheet(true)}>
+        <T size={12} color={c.mute}>Sport-specific clinical consultation templates under your credential. Active templates are available when creating a para episode.</T>
+        <Wait q={templates} empty={<Empty emoji="📋" title="No templates yet" sub="Create sport-specific templates to structure para-athlete consultations." />}>
+          {(templates.data ?? []).map((t) => (
+            <Card key={t.id} pad={12}>
+              <View style={{ flexDirection: 'row', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+                <T size={18}>{sportEmoji(t.sport)}</T>
+                <T weight="900">{t.name}</T>
+                <Tag label={t.status} color={t.status === 'active' ? c.lime : NEUTRAL} />
+                <Tag label={t.sport.replace(/_/g, ' ')} color={c.cyanSoft} />
+              </View>
+              {t.description ? <T size={12} color={c.mute} style={{ marginTop: 4 }}>{t.description}</T> : null}
+              <T size={12} color={c.mute}>{t.field_count ?? 0} field(s) · used {t.use_count ?? 0} time(s)</T>
+            </Card>
+          ))}
+        </Wait>
+        <TemplateSheet visible={tplSheet} onClose={() => setTplSheet(false)} onSaved={templates.reload} />
+      </Block>
+
+      {/* Active para episodes */}
+      <Block title="Para episodes" action={null}>
+        <T size={12} color={c.mute}>Active and recent consultations with para-athletes. Each episode links to the athlete's full patient file and referral chain.</T>
+        <Wait q={episodes} empty={<Empty emoji="🗂️" title="No active para episodes" sub="Episodes appear here when an appointment with a para-athlete is associated with a template." />}>
+          {(episodes.data ?? []).map((ep) => (
+            <Card key={ep.id} pad={12}>
+              <View style={{ flexDirection: 'row', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+                <T size={18}>{sportEmoji(ep.sport)}</T>
+                <T weight="900">{ep.athlete_name ?? 'Athlete'}</T>
+                <Tag label={ep.sport.replace(/_/g, ' ')} color={c.cyanSoft} />
+                <Tag label={ep.status} color={ep.status === 'active' ? c.lime : NEUTRAL} />
+              </View>
+              {ep.template_name ? <T size={12} color={c.mute}>Template: {ep.template_name}</T> : null}
+              <Bar>
+                <Btn small title="Open patient file" color={c.mint} ink={c.ink} onPress={() => go(ep.athlete_id, 'encounters')} accessibilityLabel={`Open patient file for ${ep.athlete_name}`} />
+              </Bar>
+            </Card>
+          ))}
+        </Wait>
+      </Block>
+
+      {/* Support summaries */}
+      <Block title="Nonclinical support summaries" action="＋ Draft" onAction={() => setSumSheet(true)}>
+        <T size={12} color={c.mute}>Operational summaries for coaches and event staff — nonclinical only. Each requires explicit athlete consent before anyone can read it. Revocable at any time by the athlete.</T>
+        <Wait q={summaries} empty={<Empty emoji="📄" title="No summaries drafted" sub="Draft a nonclinical summary for a consenting athlete. Operational information only." />}>
+          {(summaries.data ?? []).map((s) => {
+            const [tagLabel, tagColor] = SUMMARY_TAG[s.status] ?? [s.status, NEUTRAL];
+            return (
+              <Card key={s.id} pad={12}>
+                <View style={{ flexDirection: 'row', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+                  <T weight="900">{s.athlete_name ?? 'Athlete'}</T>
+                  <Tag label={tagLabel} color={tagColor} />
+                </View>
+                <T size={12} color={c.mute}>For: {s.audience_label}</T>
+                {s.status === 'active' ? <T size={12} color={c.mute}>Consented {s.athlete_consented_at ? day(s.athlete_consented_at) : ''} · {s.access_count ?? 0} person(s) have access</T> : null}
+              </Card>
+            );
+          })}
+        </Wait>
+        <SupportSummarySheet visible={sumSheet} onClose={() => setSumSheet(false)} onSaved={summaries.reload} />
+      </Block>
+
+      {/* Classification boundary — always visible */}
+      {CLINICAL_BOUNDARY_NOTICE}
+    </View>
   );
 }
 

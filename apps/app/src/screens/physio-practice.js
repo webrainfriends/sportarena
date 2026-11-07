@@ -10,6 +10,7 @@ import { PracticeCompliance } from './health-privacy';
 import { Counter, DateField, DateRangeField } from '../pickers';
 import { ProviderPanels } from './insurance-panel';
 import { Insights, LogExercise, MyProgress, PatientsTab, Suggestions } from './physio-tracking';
+import { ParaAdaptiveTab, AthleteMyRehab } from './physio-para-rehab';
 import { c, day } from '../theme';
 import { moneyIn } from '../vtime';
 
@@ -386,10 +387,11 @@ export function PracticePanel() {
   const go = (t, f = null) => { setFocus(f); setTab(t); };
   return (
     <View style={{ gap: 10 }}>
-      <Seg options={[{ value: 'overview', label: 'Overview', emoji: '🏠' }, { value: 'patients', label: 'Patients', emoji: '🧑‍⚕️' }, { value: 'plans', label: 'Plans', emoji: '📝' }, { value: 'library', label: 'Exercises', emoji: '🏃' }, { value: 'insights', label: 'Insights', emoji: '📊' }, { value: 'services', label: 'Services', emoji: '🩺' }, { value: 'offers', label: 'Offers', emoji: '🏷️' }, { value: 'packages', label: 'Packages', emoji: '🎟️' }, { value: 'money', label: 'Tax & revenue', emoji: '🧾' }, { value: 'panels', label: 'Insurance', emoji: '🛡️' }, { value: 'compliance', label: 'Compliance', emoji: '🛡️' }]} value={tab} onChange={(t) => go(t)} color={c.violet} />
+      <Seg options={[{ value: 'overview', label: 'Overview', emoji: '🏠' }, { value: 'patients', label: 'Patients', emoji: '🧑‍⚕️' }, { value: 'plans', label: 'Plans', emoji: '📝' }, { value: 'adaptive', label: 'Adaptive', emoji: '♿' }, { value: 'library', label: 'Exercises', emoji: '🏃' }, { value: 'insights', label: 'Insights', emoji: '📊' }, { value: 'services', label: 'Services', emoji: '🩺' }, { value: 'offers', label: 'Offers', emoji: '🏷️' }, { value: 'packages', label: 'Packages', emoji: '🎟️' }, { value: 'money', label: 'Tax & revenue', emoji: '🧾' }, { value: 'panels', label: 'Insurance', emoji: '🛡️' }, { value: 'compliance', label: 'Compliance', emoji: '🛡️' }]} value={tab} onChange={(t) => go(t)} color={c.violet} />
       {tab === 'overview' && <Overview go={go} />}
       {tab === 'patients' && <PatientsTab focus={focus} onFocusDone={() => setFocus(null)} />}
       {tab === 'insights' && <Insights onOpen={(x) => go('patients', { patient_id: x.patient_id, section: x.tab === 'plans' ? 'home' : x.tab })} />}
+      {tab === 'adaptive' && <ParaAdaptiveTab />}
       {tab === 'services' && <Services currency={currency} />}
       {tab === 'offers' && <Offers currency={currency} />}
       {tab === 'packages' && <Packages currency={currency} />}
@@ -458,6 +460,7 @@ export function MyRehab() {
         )) : <Empty emoji="🎟️" title="No packages" sub="Buy a package when you book a service that offers one." />}
       </Section>
       <MyProgress />
+      <AthleteMyRehab />
       {open ? <PlanView id={open} onClose={() => setOpen(null)} onChanged={plans.reload} /> : null}
       {paying ? <PaySheet target={paying} onClose={() => setPaying(null)} onDone={pk.reload} /> : null}
     </View>

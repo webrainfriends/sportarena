@@ -2,6 +2,8 @@
 // what will appear there and the next action, never a made-up figure. Strings go through t(); colours are theme tokens only.
 import React, { useState } from 'react';
 import { Pressable, View } from 'react-native';
+import { api } from '../api';
+import { useLoad } from '../hooks';
 import { Btn, Card, Empty, Sheet, T, Tag } from '../ui';
 import { c } from '../theme';
 import { t } from '../i18n';
@@ -400,6 +402,33 @@ export function RevenueIntelligenceCard({ d, go }) {
         accessibilityLabel={t('ri.hub.open')}
         onPress={() => go('VenueRevenueIntelligence', { venueId: d.venue?.id })}
       />
+/** Adaptive equipment summary for the venue hub: availability strip + quick CTA. */
+export function AdaptiveEquipmentSection({ venueId, go }) {
+  const { data, loading } = useLoad(() => api.get(`/venues/${venueId}/adaptive-equipment/readiness`), [venueId]);
+  if (loading) return null;
+  const assets = data?.assets ?? [];
+  const available = assets.filter((a) => a.readiness === 'ready').length;
+  const needsService = assets.filter((a) => a.readiness === 'needs_service').length;
+  const onLoan = assets.filter((a) => a.status === 'on_loan').length;
+  if (!assets.length) return <Empty emoji="♿" title={t('vh.aeq.none')} sub={t('vh.aeq.none_sub')} />;
+  return (
+    <View style={{ gap: 10 }}>
+      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+        <Stat label={t('vh.aeq.available')} value={String(available)} />
+        <Stat label={t('vh.aeq.on_loan')} value={String(onLoan)} tone={onLoan ? undefined : undefined} />
+        {needsService > 0 ? <Stat label={t('vh.aeq.needs_service')} value={String(needsService)} tone="alert" /> : null}
+      </View>
+      {assets.slice(0, 4).map((a) => (
+        <Card key={a.id} pad={12} accessibilityLabel={`${a.name}: ${t(`adaptiveEquip.type.${a.type}`)}, ${t(`adaptiveEquip.status.${a.readiness}`)}`}>
+          <View style={{ flexDirection: 'row', gap: 8, alignItems: 'center' }}>
+            <T weight="700" style={{ flex: 1 }} numberOfLines={1}>{a.name}</T>
+            <Tag label={t(`adaptiveEquip.type.${a.type}`)} color={c.violet} />
+            <Tag label={a.readiness === 'ready' ? t('vh.aeq.ready') : t('vh.aeq.not_ready')} color={a.readiness === 'ready' ? c.mint : c.orange} />
+          </View>
+        </Card>
+      ))}
+      {assets.length > 4 ? <T size={12} color={c.mute} style={{ textAlign: 'right' }}>{t('vh.aeq.more', { n: assets.length - 4 })}</T> : null}
+      <Btn small title={t('vh.aeq.manage')} color={c.paper} onPress={() => go({ route: 'AdaptiveEquipmentHub', params: { venueId } })} />
     </View>
   );
 }

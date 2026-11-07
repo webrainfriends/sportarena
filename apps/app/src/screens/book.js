@@ -10,6 +10,7 @@ import { useBasket } from '../basket';
 import { useLayout } from '../layout';
 import { Bubble, Btn, Card, Empty, ErrorBox, Field, H1, ListScreen, Loading, Row, Screen, Seg, Section, Sheet, T, Tag } from '../ui';
 import { FormSheet } from '../FormSheet';
+import { t } from '../i18n';
 import { venueFormProps } from './venue-register';
 import { Gallery, VenueReviews } from './venue-media';
 import { VenuePlans } from './plans';
@@ -82,6 +83,8 @@ export function Book({ sport: initialSport } = {}) {
   const [hour, setHour] = useState(null);       // start hour, or null = any time
   const [pickDate, setPickDate] = useState(false);
   const [month, setMonth] = useState(new Date().toISOString().slice(0, 7));
+  const [accessFeatures, setAccessFeatures] = useState([]);
+  const [accessConf, setAccessConf] = useState('');
   const mine = useLoad(() => api.get('/reservations', { limit: 20 }), []);
   const note = useLoad(() => api.get('/notifications', { unread: true, limit: 1 }), []);
   const favs = useLoad(() => api.get('/me/favourites'), []);
@@ -93,13 +96,13 @@ export function Book({ sport: initialSport } = {}) {
     const from = new Date(`${date}T${String(hour).padStart(2, '0')}:00:00`);
     return { available_from: from.toISOString(), available_to: new Date(from.getTime() + 3600e3).toISOString() };
   }, [date, hour]);
-  const venues = useLoad(() => api.get('/venues', { q, sport, amenity, sort: near ? sort : sort === 'distance' ? 'name' : sort, lat: near?.lat, lng: near?.lng, ...win, limit: 60 }), [q, sport, sort, amenity, near, win.available_from]);
+  const venues = useLoad(() => api.get('/venues', { q, sport, amenity, sort: near ? sort : sort === 'distance' ? 'name' : sort, lat: near?.lat, lng: near?.lng, ...win, limit: 60, ...(accessFeatures.length ? { access_features: accessFeatures.join(',') } : {}), ...(accessConf ? { access_confidence: accessConf } : {}) }), [q, sport, sort, amenity, near, win.available_from, accessFeatures.join(','), accessConf]);
   const amenities = useMemo(() => [...new Set((venues.data ?? []).flatMap((x) => x.amenities ?? []))].sort(), [venues.data]);
 
   const canLocate = Platform.OS === 'web' && typeof navigator !== 'undefined' && !!navigator.geolocation;
   const locate = () => navigator.geolocation.getCurrentPosition((p) => { setNear({ lat: p.coords.latitude, lng: p.coords.longitude }); setSort('distance'); }, () => {});
   const cols = L.tablet ? (L.width >= 1100 ? 3 : 2) : 1;
-  const activeFilters = [amenity, sort !== 'name' && sort, date].filter(Boolean).length;
+  const activeFilters = [amenity, sort !== 'name' && sort, date, accessFeatures.length && 'acc', accessConf].filter(Boolean).length;
   const todayStr = new Date().toISOString().slice(0, 10);
 
   // Venues are a virtualized grid: only the cards on screen are built. Short rows are padded so a lone last card keeps its column width.
@@ -168,8 +171,21 @@ export function Book({ sport: initialSport } = {}) {
         <Seg options={[['name', 'A–Z'], ['rating', 'Top rated'], ['price', 'Lowest price'], ...(near ? [['distance', 'Nearest']] : [])].map(([value, label]) => ({ value, label }))} value={sort} onChange={setSort} color={c.violet} />
         {canLocate ? <Btn small title={near ? '📍 Using your location' : '📍 Use my location'} color={c.paper} onPress={locate} style={{ alignSelf: 'flex-start' }} /> : null}
         {amenities.length ? <><T weight="700">Facilities</T><Seg options={[{ value: '', label: 'Any' }, ...amenities.map((a) => ({ value: a, label: a }))]} value={amenity} onChange={setAmenity} color={c.cyan} /></> : null}
+        <T weight="700">{t('acc.filter.title')}</T>
+        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
+          {['step_free_route','lift','accessible_changing','accessible_toilet','accessible_parking','pool_hoist','tactile_markings','hearing_loop','quiet_room','wheelchair_circulation','accessible_viewing','accessible_emergency_egress','accessible_drop_off'].map((f) => {
+            const sel = accessFeatures.includes(f);
+            return <Pressable key={f} onPress={() => setAccessFeatures((prev) => sel ? prev.filter((x) => x !== f) : [...prev, f])} style={{ borderRadius: 999, borderWidth: 1.5, borderColor: sel ? c.pink : c.line, backgroundColor: sel ? c.pinkSoft : c.paper, paddingHorizontal: 12, paddingVertical: 7, minHeight: 36 }} accessibilityRole="checkbox" accessibilityState={{ checked: sel }} accessibilityLabel={t(`acc.feat.${f}`)}><T size={12} weight="700" color={sel ? c.pink : c.ink}>{t(`acc.feat.${f}`)}</T></Pressable>;
+          })}
+        </View>
+        {accessFeatures.length > 0 && (
+          <>
+            <T weight="700">{t('acc.filter.confidence')}</T>
+            <Seg options={[{ value: '', label: t('acc.filter.any') }, { value: 'self_reported_or_better', label: t('acc.filter.self_reported') }, { value: 'third_party_or_better', label: t('acc.filter.third_party') }, { value: 'certified', label: t('acc.filter.certified') }]} value={accessConf} onChange={setAccessConf} color={c.lime} />
+          </>
+        )}
         <Btn title="Done" onPress={() => setFilters(false)} />
-        <Btn small title="Reset" color={c.paper} onPress={() => { setSort('name'); setAmenity(''); setDate(null); setHour(null); setNear(null); }} />
+        <Btn small title="Reset" color={c.paper} onPress={() => { setSort('name'); setAmenity(''); setDate(null); setHour(null); setNear(null); setAccessFeatures([]); setAccessConf(''); }} />
       </Sheet>
       <Sheet visible={pickDate} onClose={() => setPickDate(false)} title="When do you want to play?">
         <Calendar month={month} onMonth={setMonth} value={date} minDate={todayStr} onChange={(d) => { setDate(d); setPickDate(false); }} />

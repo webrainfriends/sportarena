@@ -21,7 +21,12 @@ import { buyerOf } from '../booking/invoices.js';
 import { FAMILIES, STARTERS, checkLayout, layoutSchema, starterFor } from '../documents/layout.js';
 import { canReadReportVersion, reportVersionFor } from '../coaching-report-access.js';
 import { LOGO_LIMITS, inspectLogo } from '../documents/image.js';
-import { renderInvoice, renderCoachingReport } from '../documents/render.js';
+import {
+  renderInvoice, renderCoachingReport,
+  renderCoachingPlan, renderCoachAgreement, renderRefereeAppointment,
+  renderEventTimetable, renderBookingConfirmation, renderRehabPlan,
+  renderCarePlan, renderPurchaseOrder, renderHireAgreement, renderBusinessLetter,
+} from '../documents/render.js';
 import { canReadContractDocument } from './sponsorship-contracts.js';
 import { canReadEnrolmentLetter } from './academy-letters.js';
 import { LOADERS } from '../svc/documents.js';
@@ -298,6 +303,350 @@ cap({
   },
 });
 
+// ─── Document library ───────────────────────────────────────────────────────
+
+cap({
+  name: 'list_my_documents', method: 'GET', path: '/documents', tag: TAG,
+  summary: 'List branded PDFs you generated, newest first. Filter by family, status or date range.',
+  input: z.object({ family: z.string().optional(), status: z.string().optional(), from_date: z.string().optional(), to_date: z.string().optional(), page: z.number().int().min(1).default(1), per_page: z.number().int().min(1).max(100).default(20) }),
+  async handler({ user }, i) {
+    const offset = (i.page - 1) * i.per_page;
+    const rows = await many(
+      `SELECT d.id, d.family, d.source_type, d.source_id, d.template_version_id, d.size_bytes, d.sha256, d.pages, d.created_at
+         FROM generated_documents d
+        WHERE d.generated_by=$1
+          AND ($2::text IS NULL OR d.family=$2)
+          AND ($3::text IS NULL OR d.family=$3)
+          AND ($4::timestamptz IS NULL OR d.created_at >= $4::timestamptz)
+          AND ($5::timestamptz IS NULL OR d.created_at <= $5::timestamptz)
+        ORDER BY d.created_at DESC, d.id
+        LIMIT $6 OFFSET $7`,
+      [user.id, i.family ?? null, i.status ?? null, i.from_date ?? null, i.to_date ?? null, i.per_page, offset]);
+    return { data: rows.map((r) => ({ ...r, url: `/api/v1/branded-documents/${r.id}/file` })), page: i.page, per_page: i.per_page };
+  },
+});
+
+cap({
+  name: 'get_document_meta', method: 'GET', path: '/documents/:document_id', tag: TAG,
+  summary: 'Full metadata for one generated document, including template version and brand kit snapshot.',
+  input: z.object({ document_id: z.string().uuid() }),
+  async handler({ user }, i) {
+    const d = await one(
+      `SELECT d.*, tv.version AS template_version, tv.kit_snapshot, tv.layout
+         FROM generated_documents d
+         LEFT JOIN document_template_versions tv ON tv.id=d.template_version_id
+        WHERE d.id=$1 AND d.generated_by=$2`,
+      [i.document_id, user.id]);
+    if (!d) throw notFound('Document');
+    return { ...d, url: `/api/v1/branded-documents/${d.id}/file` };
+  },
+});
+
+cap({
+  name: 'list_document_versions', method: 'GET', path: '/documents/:document_id/versions', tag: TAG,
+  summary: 'All versions rendered for the same source record as this document, newest first.',
+  input: z.object({ document_id: z.string().uuid() }),
+  async handler({ user }, i) {
+    const d = await one('SELECT family, source_type, source_id FROM generated_documents WHERE id=$1 AND generated_by=$2', [i.document_id, user.id]);
+    if (!d) throw notFound('Document');
+    const rows = await many(
+      `SELECT id, family, source_type, source_id, template_version_id, size_bytes, sha256, pages, created_at
+         FROM generated_documents
+        WHERE source_type=$1 AND source_id=$2 AND family=$3
+        ORDER BY created_at DESC, id`,
+      [d.source_type, d.source_id, d.family]);
+    return rows.map((r) => ({ ...r, url: `/api/v1/branded-documents/${r.id}/file` }));
+  },
+});
+
+cap({
+  name: 'regenerate_document', method: 'POST', path: '/documents/:document_id/regenerate', tag: TAG,
+  summary: 'Queue a regeneration of this document from the same source and template. The original is never touched.',
+  input: z.object({ document_id: z.string().uuid() }),
+  async handler({ user }, i) {
+    requireApproved(user);
+    const d = await one('SELECT * FROM generated_documents WHERE id=$1 AND generated_by=$2', [i.document_id, user.id]);
+    if (!d) throw notFound('Document');
+    const job = await one(
+      `INSERT INTO render_jobs(family, source_type, source_id, template_version_id, actor_id, idempotency_key)
+       VALUES ($1,$2,$3,$4,$5,$6) RETURNING id, status, queued_at`,
+      [d.family, d.source_type, d.source_id, d.template_version_id, user.id,
+        `regen:${d.id}:${Date.now()}`]);
+    return { job_id: job.id, status: job.status, queued_at: job.queued_at };
+  },
+});
+
+// ─── Document sharing ────────────────────────────────────────────────────────
+
+cap({
+  name: 'share_document', method: 'POST', path: '/documents/:document_id/share', tag: TAG,
+  summary: 'Create a scoped, expiring share link for a generated document.',
+  input: z.object({ document_id: z.string().uuid(), shared_with_email: z.string().email().optional(), expires_in_hours: z.number().int().min(1).max(720).default(72), max_accesses: z.number().int().min(1).optional() }),
+  async handler({ user }, i) {
+    requireApproved(user);
+    const d = await one('SELECT id FROM generated_documents WHERE id=$1 AND generated_by=$2', [i.document_id, user.id]);
+    if (!d) throw notFound('Document');
+    const expiresAt = new Date(Date.now() + i.expires_in_hours * 3600_000);
+    const share = await one(
+      `INSERT INTO document_shares(document_id, shared_by, shared_with_email, expires_at, max_accesses)
+       VALUES ($1,$2,$3,$4,$5)
+       RETURNING id, token, document_id, shared_with_email, expires_at, max_accesses, created_at`,
+      [i.document_id, user.id, i.shared_with_email ?? null, expiresAt, i.max_accesses ?? null]);
+    await one('INSERT INTO document_access_log(document_id, actor_id, action) VALUES ($1,$2,$3)', [i.document_id, user.id, 'share']);
+    return { ...share, url: `/api/v1/shared/${share.token}` };
+  },
+});
+
+cap({
+  name: 'list_document_shares', method: 'GET', path: '/documents/:document_id/shares', tag: TAG,
+  summary: 'List active (not revoked, not expired) share links for a document.',
+  input: z.object({ document_id: z.string().uuid() }),
+  async handler({ user }, i) {
+    const d = await one('SELECT id FROM generated_documents WHERE id=$1 AND generated_by=$2', [i.document_id, user.id]);
+    if (!d) throw notFound('Document');
+    return many(
+      `SELECT id, token, shared_with_email, expires_at, max_accesses, accessed_count, created_at
+         FROM document_shares
+        WHERE document_id=$1 AND revoked_at IS NULL AND expires_at > now()
+        ORDER BY created_at DESC`,
+      [i.document_id]);
+  },
+});
+
+cap({
+  name: 'revoke_share', method: 'DELETE', path: '/documents/:document_id/shares/:share_id', tag: TAG,
+  summary: 'Revoke a share link immediately. Anyone who tries the link after this will get a 403.',
+  input: z.object({ document_id: z.string().uuid(), share_id: z.string().uuid() }),
+  async handler({ user }, i) {
+    const d = await one('SELECT id FROM generated_documents WHERE id=$1 AND generated_by=$2', [i.document_id, user.id]);
+    if (!d) throw notFound('Document');
+    const s = await one('UPDATE document_shares SET revoked_at=now() WHERE id=$1 AND document_id=$2 AND revoked_at IS NULL RETURNING id', [i.share_id, i.document_id]);
+    if (!s) throw notFound('Share');
+    await one('INSERT INTO document_access_log(document_id, actor_id, action) VALUES ($1,$2,$3)', [i.document_id, user.id, 'revoke']);
+    return { revoked: true, share_id: s.id };
+  },
+});
+
+// ─── Render jobs ─────────────────────────────────────────────────────────────
+
+cap({
+  name: 'get_render_job', method: 'GET', path: '/render-jobs/:job_id', tag: TAG,
+  summary: 'Get the status of a render job (queued, running, done, failed, cancelled).',
+  input: z.object({ job_id: z.string().uuid() }),
+  async handler({ user }, i) {
+    const j = await one('SELECT id, status, family, source_type, source_id, document_id, error_message, pages, queued_at, started_at, finished_at FROM render_jobs WHERE id=$1 AND actor_id=$2', [i.job_id, user.id]);
+    if (!j) throw notFound('Render job');
+    return j;
+  },
+});
+
+cap({
+  name: 'cancel_render_job', method: 'POST', path: '/render-jobs/:job_id/cancel', tag: TAG,
+  summary: 'Cancel a queued render job before it starts.',
+  input: z.object({ job_id: z.string().uuid() }),
+  async handler({ user }, i) {
+    const j = await one("UPDATE render_jobs SET status='cancelled', finished_at=now() WHERE id=$1 AND actor_id=$2 AND status='queued' RETURNING id, status", [i.job_id, user.id]);
+    if (!j) throw notFound('Render job (must be queued and owned by you)');
+    return { cancelled: true, job_id: j.id };
+  },
+});
+
+// ─── Batch generate ──────────────────────────────────────────────────────────
+
+cap({
+  name: 'batch_generate_documents', method: 'POST', path: '/documents/batch-generate', tag: TAG,
+  summary: 'Queue rendering one document per source record (same family and template). Max 50 records per call. Each gets an idempotency key so retries are safe.',
+  input: z.object({ family: z.string(), source_ids: z.array(z.string().uuid()).min(1).max(50), template_version_id: z.string().uuid(), brand_kit_id: z.string().uuid().optional() }),
+  async handler({ user }, i) {
+    requireApproved(user);
+    const ver = await one('SELECT id FROM document_template_versions WHERE id=$1', [i.template_version_id]);
+    if (!ver) throw notFound('Template version');
+    const jobs = [];
+    for (const sourceId of i.source_ids) {
+      const idempotencyKey = `${i.family}:${sourceId}:${i.template_version_id}`;
+      const j = await one(
+        `INSERT INTO render_jobs(family, source_id, template_version_id, brand_kit_id, actor_id, idempotency_key)
+         VALUES ($1,$2,$3,$4,$5,$6)
+         ON CONFLICT (idempotency_key) DO UPDATE SET idempotency_key=EXCLUDED.idempotency_key
+         RETURNING id, status, queued_at`,
+        [i.family, sourceId, i.template_version_id, i.brand_kit_id ?? null, user.id, idempotencyKey]);
+      jobs.push({ job_id: j.id, source_id: sourceId, status: j.status });
+    }
+    return { jobs, total: jobs.length };
+  },
+});
+
+// ─── New family generate endpoints ───────────────────────────────────────────
+
+const GEN_INPUT = z.object({ source_id: id, template_version_id: id.optional(), brand_kit_id: id.optional(), sample: z.boolean().default(false) });
+
+async function resolveVerAndKit(user, family, templateVersionId, brandKitId) {
+  let ver = null, kit = null, logo = null;
+  if (templateVersionId) {
+    ver = await one('SELECT tv.*, t.family FROM document_template_versions tv JOIN document_templates t ON t.id=tv.template_id WHERE tv.id=$1', [templateVersionId]);
+    if (!ver) throw notFound('Template version');
+    if (ver.family !== family) throw badRequest('That template version is for a different document family');
+    kit = ver.kit_snapshot ?? null;
+    logo = await loadLogo(ver.logo_asset_id);
+  } else if (brandKitId) {
+    const k = await kitOf(brandKitId);
+    await mustAccess(user, k, 'Brand kit');
+    kit = k; logo = await loadLogo(k.logo_asset_id);
+  }
+  return { ver, kit, logo };
+}
+
+async function saveGeneratedDoc(family, sourceType, sourceId, ver, logo, buffer, pages, userId) {
+  const { id: did, file } = await saveEncrypted('documents', 'generated_documents.file', buffer);
+  const row = await one(
+    `INSERT INTO generated_documents(id, family, source_type, source_id, template_version_id, logo_asset_id, file_name, size_bytes, sha256, pages, generated_by)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) RETURNING id, family, source_type, source_id, template_version_id, size_bytes, sha256, pages, created_at`,
+    [did, family, sourceType, sourceId, ver?.id ?? null, ver?.logo_asset_id ?? null, file, buffer.length, createHash('sha256').update(buffer).digest('hex'), pages, userId]);
+  await one('INSERT INTO document_access_log(document_id, actor_id, action) VALUES ($1,$2,$3)', [did, userId, 'generate']);
+  await audit(null, userId, 'generate_document', 'generated_documents', did);
+  return { ...row, url: `/api/v1/branded-documents/${did}/file` };
+}
+
+cap({
+  name: 'generate_coaching_plan_document', method: 'POST', path: '/branded-documents/coaching-plan', tag: TAG, auth: ['coach'],
+  summary: 'Render a branded coaching / training plan PDF from the coaching plan record.',
+  input: GEN_INPUT,
+  async handler({ user }, i) {
+    requireApproved(user);
+    const snap = await one('SELECT * FROM coaching_plans WHERE id=$1 AND coach_id=$2', [i.source_id, user.id]) ?? { title: 'Training plan', coach_name: user.name ?? '', weeks: [] };
+    const { ver, kit, logo } = await resolveVerAndKit(user, 'coaching_plan', i.template_version_id, i.brand_kit_id);
+    const layout = ver?.layout ?? starterFor('coaching_plan', 'classic');
+    const { buffer, pages } = await renderCoachingPlan({ layout, kit, logo, snapshot: snap, sample: i.sample });
+    return saveGeneratedDoc('coaching_plan', 'coaching_plan', i.source_id, ver, logo, buffer, pages, user.id);
+  },
+});
+
+cap({
+  name: 'generate_coach_agreement_document', method: 'POST', path: '/branded-documents/coach-agreement', tag: TAG, auth: ['coach', 'organizer'],
+  summary: 'Render a branded coaching agreement PDF.',
+  input: GEN_INPUT,
+  async handler({ user }, i) {
+    requireApproved(user);
+    const snap = await one('SELECT * FROM coach_agreements WHERE id=$1 AND (coach_id=$2 OR organiser_id=$2)', [i.source_id, user.id]) ?? { title: 'Coaching Agreement' };
+    const { ver, kit, logo } = await resolveVerAndKit(user, 'coach_agreement', i.template_version_id, i.brand_kit_id);
+    const layout = ver?.layout ?? starterFor('coach_agreement', 'classic');
+    const { buffer, pages } = await renderCoachAgreement({ layout, kit, logo, snapshot: snap, sample: i.sample });
+    return saveGeneratedDoc('coach_agreement', 'coach_agreement', i.source_id, ver, logo, buffer, pages, user.id);
+  },
+});
+
+cap({
+  name: 'generate_referee_letter_document', method: 'POST', path: '/branded-documents/referee-letter', tag: TAG, auth: ['organizer'],
+  summary: 'Render a branded referee / official appointment letter PDF.',
+  input: GEN_INPUT,
+  async handler({ user }, i) {
+    requireApproved(user);
+    const snap = await one('SELECT * FROM official_assignments WHERE id=$1', [i.source_id]) ?? { title: 'Appointment Letter' };
+    const { ver, kit, logo } = await resolveVerAndKit(user, 'referee_letter', i.template_version_id, i.brand_kit_id);
+    const layout = ver?.layout ?? starterFor('referee_letter', 'classic');
+    const { buffer, pages } = await renderRefereeAppointment({ layout, kit, logo, snapshot: snap, sample: i.sample });
+    return saveGeneratedDoc('referee_letter', 'referee_letter', i.source_id, ver, logo, buffer, pages, user.id);
+  },
+});
+
+cap({
+  name: 'generate_event_timetable_document', method: 'POST', path: '/branded-documents/event-timetable', tag: TAG, auth: ['organizer'],
+  summary: 'Render a branded event programme / fixture timetable PDF.',
+  input: GEN_INPUT,
+  async handler({ user }, i) {
+    requireApproved(user);
+    const snap = await one('SELECT * FROM events WHERE id=$1', [i.source_id]) ?? { event_name: 'Event Programme', slots: [] };
+    const { ver, kit, logo } = await resolveVerAndKit(user, 'event_timetable', i.template_version_id, i.brand_kit_id);
+    const layout = ver?.layout ?? starterFor('event_timetable', 'classic');
+    const { buffer, pages } = await renderEventTimetable({ layout, kit, logo, snapshot: snap, sample: i.sample });
+    return saveGeneratedDoc('event_timetable', 'event_timetable', i.source_id, ver, logo, buffer, pages, user.id);
+  },
+});
+
+cap({
+  name: 'generate_booking_confirmation_document', method: 'POST', path: '/branded-documents/booking-confirmation', tag: TAG,
+  summary: 'Render a branded booking confirmation PDF from a reservation.',
+  input: GEN_INPUT,
+  async handler({ user }, i) {
+    requireApproved(user);
+    const snap = await one('SELECT r.*, v.name AS venue_name FROM reservations r JOIN venues v ON v.id=r.venue_id WHERE r.id=$1 AND (r.user_id=$2 OR v.id IN (SELECT venue_id FROM venue_managers WHERE user_id=$2))', [i.source_id, user.id]) ?? { booking_ref: i.source_id };
+    const { ver, kit, logo } = await resolveVerAndKit(user, 'booking_confirmation', i.template_version_id, i.brand_kit_id);
+    const layout = ver?.layout ?? starterFor('booking_confirmation', 'classic');
+    const { buffer, pages } = await renderBookingConfirmation({ layout, kit, logo, snapshot: snap, sample: i.sample });
+    return saveGeneratedDoc('booking_confirmation', 'booking_confirmation', i.source_id, ver, logo, buffer, pages, user.id);
+  },
+});
+
+cap({
+  name: 'generate_rehab_plan_document', method: 'POST', path: '/branded-documents/rehab-plan', tag: TAG, auth: ['physio'],
+  summary: 'Render a branded rehabilitation / exercise plan PDF. Physiotherapist role required.',
+  input: GEN_INPUT,
+  async handler({ user }, i) {
+    requireApproved(user);
+    const snap = await one('SELECT * FROM rehab_plans WHERE id=$1 AND physio_id=$2', [i.source_id, user.id]) ?? { title: 'Rehabilitation Plan', phases: [] };
+    const { ver, kit, logo } = await resolveVerAndKit(user, 'rehab_plan', i.template_version_id, i.brand_kit_id);
+    const layout = ver?.layout ?? starterFor('rehab_plan', 'classic');
+    const { buffer, pages } = await renderRehabPlan({ layout, kit, logo, snapshot: snap, sample: i.sample });
+    return saveGeneratedDoc('rehab_plan', 'rehab_plan', i.source_id, ver, logo, buffer, pages, user.id);
+  },
+});
+
+cap({
+  name: 'generate_care_plan_document', method: 'POST', path: '/branded-documents/care-plan', tag: TAG, auth: ['doctor'],
+  summary: 'Render a branded care plan PDF. Doctor role required.',
+  input: GEN_INPUT,
+  async handler({ user }, i) {
+    requireApproved(user);
+    const snap = await one('SELECT * FROM care_plans WHERE id=$1 AND doctor_id=$2', [i.source_id, user.id]) ?? { title: 'Approved Care Plan' };
+    const { ver, kit, logo } = await resolveVerAndKit(user, 'care_plan', i.template_version_id, i.brand_kit_id);
+    const layout = ver?.layout ?? starterFor('care_plan', 'classic');
+    const { buffer, pages } = await renderCarePlan({ layout, kit, logo, snapshot: snap, sample: i.sample });
+    return saveGeneratedDoc('care_plan', 'care_plan', i.source_id, ver, logo, buffer, pages, user.id);
+  },
+});
+
+cap({
+  name: 'generate_purchase_order_document', method: 'POST', path: '/branded-documents/purchase-order', tag: TAG, auth: ['organizer', 'supplier'],
+  summary: 'Render a branded purchase order PDF from a service order.',
+  input: GEN_INPUT,
+  async handler({ user }, i) {
+    requireApproved(user);
+    const snap = await one('SELECT so.*, sp.name AS supplier_name FROM svc_orders so LEFT JOIN svc_profiles sp ON sp.id=so.supplier_id WHERE so.id=$1', [i.source_id]) ?? { po_number: i.source_id, lines: [] };
+    const { ver, kit, logo } = await resolveVerAndKit(user, 'purchase_order', i.template_version_id, i.brand_kit_id);
+    const layout = ver?.layout ?? starterFor('purchase_order', 'classic');
+    const { buffer, pages } = await renderPurchaseOrder({ layout, kit, logo, snapshot: snap, sample: i.sample });
+    return saveGeneratedDoc('purchase_order', 'purchase_order', i.source_id, ver, logo, buffer, pages, user.id);
+  },
+});
+
+cap({
+  name: 'generate_hire_agreement_document', method: 'POST', path: '/branded-documents/hire-agreement', tag: TAG, auth: ['organizer', 'venue_manager'],
+  summary: 'Render a branded venue hire agreement PDF.',
+  input: GEN_INPUT,
+  async handler({ user }, i) {
+    requireApproved(user);
+    const snap = await one('SELECT r.*, v.name AS venue_name FROM reservations r JOIN venues v ON v.id=r.venue_id WHERE r.id=$1', [i.source_id]) ?? { title: 'Venue Hire Agreement' };
+    const { ver, kit, logo } = await resolveVerAndKit(user, 'hire_agreement', i.template_version_id, i.brand_kit_id);
+    const layout = ver?.layout ?? starterFor('hire_agreement', 'classic');
+    const { buffer, pages } = await renderHireAgreement({ layout, kit, logo, snapshot: snap, sample: i.sample });
+    return saveGeneratedDoc('hire_agreement', 'hire_agreement', i.source_id, ver, logo, buffer, pages, user.id);
+  },
+});
+
+cap({
+  name: 'generate_business_letter_document', method: 'POST', path: '/branded-documents/business-letter', tag: TAG,
+  summary: 'Render a branded business letter PDF. Any authenticated user can generate a business letter.',
+  input: GEN_INPUT,
+  async handler({ user }, i) {
+    requireApproved(user);
+    const snap = { title: 'Business Letter', sender_name: user.name ?? '', source_id: i.source_id };
+    const { ver, kit, logo } = await resolveVerAndKit(user, 'business_letter', i.template_version_id, i.brand_kit_id);
+    const layout = ver?.layout ?? starterFor('business_letter', 'classic');
+    const { buffer, pages } = await renderBusinessLetter({ layout, kit, logo, snapshot: snap, sample: i.sample });
+    return saveGeneratedDoc('business_letter', 'business_letter', i.source_id, ver, logo, buffer, pages, user.id);
+  },
+});
+
 /** Binary routes (raw logo upload/serve, PDF preview and download). Same auth and the same access checks as the capabilities above. */
 export function brandedDocumentsRouter() {
   const r = express.Router();
@@ -361,6 +710,34 @@ export function brandedDocumentsRouter() {
     } catch (e) { fail(res, e); }
   });
 
+  // GET /api/v1/branded-documents/academy-pack/:id/draft -> the frozen snapshot of an academy report pack as a DRAFT-stamped PDF (never stored; audit-logged; staff / drafting coach only)
+  r.get('/branded-documents/academy-pack/:id/draft', limiter, async (req, res) => {
+    try {
+      const user = await who(req);
+      const { draftPdf } = await import('./academy-report-packs.js');
+      const bytes = await draftPdf(user, uuid(req.params.id, 'Report'));
+      res.set({ ...docHeaders('application/pdf', bytes), 'Content-Disposition': 'attachment; filename="draft.pdf"' }).end(bytes);
+    } catch (e) { fail(res, e); }
+  });
+
+  // GET /api/v1/shared/:token  — public token-based document access; re-checks expiry and revocation on every request
+  r.get('/shared/:token', limiter, async (req, res) => {
+    try {
+      const share = await one(
+        `SELECT s.*, d.file_name, d.id AS doc_id FROM document_shares s
+           JOIN generated_documents d ON d.id=s.document_id
+          WHERE s.token=$1 AND s.revoked_at IS NULL AND s.expires_at > now()`,
+        [req.params.token]);
+      if (!share) throw forbidden('This share link has expired or been revoked');
+      if (share.max_accesses != null && share.accessed_count >= share.max_accesses) throw forbidden('This share link has reached its access limit');
+      await one('UPDATE document_shares SET accessed_count=accessed_count+1 WHERE id=$1', [share.id]);
+      await one('INSERT INTO document_access_log(document_id, share_token, action, ip_hash) VALUES ($1,$2,$3,$4)', [share.doc_id, req.params.token, 'download', createHash('sha256').update(req.ip ?? '').digest('hex').slice(0, 16)]);
+      const bytes = await loadEncrypted('documents', 'generated_documents.file', share.file_name);
+      res.set({ ...docHeaders('application/pdf', bytes), 'Content-Disposition': `attachment; filename="${share.doc_id}.pdf"` });
+      res.end(bytes);
+    } catch (e) { fail(res, e.code === 'ENOENT' ? notFound('Document') : e); }
+  });
+
   r.get('/branded-documents/:id/file', limiter, async (req, res) => {
     try {
       const user = await who(req);
@@ -372,7 +749,7 @@ export function brandedDocumentsRouter() {
         if (!v || !(await canReadReportVersion(user, v))) throw notFound('Document');
       } else if (d.source_type === 'sponsorship_contract') await canReadContractDocument(user, d.source_id); // parties to the agreement only, checked live
       else if (d.source_type === 'export_pack') await canReadPackDocument(user, d.source_id); // the athlete, their verified guardian, or the coach who built it from a still-live share
-      else if (isAcademyPackType(d.source_type)) await canReadAcademyPack(user, d.source_type, d.source_id); // academy progress / management / finance PDFs: role, coach scope or guardian link re-checked live
+      else if (isAcademyPackType(d.source_type)) await canReadAcademyPack(user, d.source_type, d.source_id, d.id); // academy progress / management / finance PDFs: role, coach scope or guardian link re-checked live
       else if (d.source_type === 'academy_enrolment') await canReadEnrolmentLetter(user, d.source_id); // academy staff, the enrolled adult or their verified guardian, checked live
       else if (d.source_type.startsWith('trip_report:')) await canReadTripReport(user, d); // trip staff (or the traveller who made it) while it is under 24 h old, checked live
       else if (d.source_type.startsWith('federation_')) await canReadFederationDocument(user, d.source_type, d.source_id); // the body's officers or the other party, checked live

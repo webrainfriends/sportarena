@@ -247,12 +247,13 @@ function Reports({ id, data, reload: reloadFile }) {
   );
 }
 
-const FILE_TABS = [{ value: 'sessions', label: 'Sessions', emoji: '📝' }, { value: 'progress', label: 'Progress', emoji: '📈' }, { value: 'goals', label: 'Goals', emoji: '🎯' }, { value: 'home', label: 'Home exercise', emoji: '🏠' }, { value: 'reports', label: 'Reports', emoji: '📄' }];
+const FILE_TABS = [{ value: 'sessions', label: 'Sessions', emoji: '📝' }, { value: 'progress', label: 'Progress', emoji: '📈' }, { value: 'goals', label: 'Goals', emoji: '🎯' }, { value: 'home', label: 'Home exercise', emoji: '🏠' }, { value: 'reports', label: 'Reports', emoji: '📄' }, { value: 'episodes', label: 'Injuries', emoji: '🩺' }];
 
 function PatientFile({ patient, section, onBack }) {
   const [tab, setTab] = useState(section ?? 'sessions');
   const q = useLoad(() => api.get(`/physio/patients/${patient.athlete_id}/progress`), [patient.athlete_id]);
   const s = q.data?.sessions;
+  const { InjuryEpisodeEntry } = require('./injury-episode');
   return (
     <View style={{ gap: 10 }}>
       <Btn small title="‹ All patients" color={c.paper} ink={c.ink} onPress={onBack} style={{ alignSelf: 'flex-start' }} />
@@ -260,7 +261,8 @@ function PatientFile({ patient, section, onBack }) {
       <Card color={c.mintSoft} pad={12}><T weight="800">Shared with you by the patient</T><T size={12} color={c.mute}>You see this file while they keep access on and your verification is current. Reads and writes are logged.</T></Card>
       {s ? <View style={{ flexDirection: 'row', gap: 8 }}><View style={{ flex: 1 }}><StatPill value={s.signed_notes} label="NOTES" /></View><View style={{ flex: 1 }}><StatPill value={s.appointments_completed} label="VISITS" /></View><View style={{ flex: 1 }}><StatPill value={q.data.goals.filter((g) => g.status === 'active').length} label="OPEN GOALS" /></View></View> : null}
       <Seg options={FILE_TABS} value={tab} onChange={setTab} color={c.mint} />
-      {tab === 'sessions' ? <Encounters id={patient.athlete_id} title="Session notes" /> : (
+      {tab === 'episodes' ? <InjuryEpisodeEntry athleteId={patient.athlete_id} athleteName={patient.display_name} /> :
+       tab === 'sessions' ? <Encounters id={patient.athlete_id} title="Session notes" /> : (
         <Wait q={q}>{(d) => (tab === 'progress' ? <Progress id={patient.athlete_id} data={d} reload={q.reload} /> : tab === 'goals' ? <Goals id={patient.athlete_id} data={d} reload={q.reload} /> : tab === 'home' ? <HomeExercise data={d} /> : <Reports id={patient.athlete_id} data={d} reload={q.reload} />)}</Wait>)}
     </View>
   );

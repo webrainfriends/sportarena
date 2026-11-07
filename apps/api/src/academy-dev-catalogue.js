@@ -139,6 +139,13 @@ const UNIVERSAL = {
 
 const BY_SPORT = new Map();
 for (const [fam, def] of Object.entries(FAMILIES)) for (const s of def.sports) BY_SPORT.set(s, fam);
+// Para / adaptive sports (PS-01 #831) use the competency family of the standard sport they adapt. Boccia and goalball have no standard counterpart and stay on the labelled generic fallback.
+const PARA_BASE = { 'para-athletics': 'athletics', 'para-swimming': 'swimming', 'para-badminton': 'badminton', 'wheelchair-basketball': 'basketball', 'sitting-volleyball': 'volleyball', 'blind-football': 'football',
+  'cerebral-palsy-football': 'football', 'amputee-football': 'football', 'wheelchair-tennis': 'tennis', 'para-table-tennis': 'table-tennis', 'para-judo': 'judo', 'para-taekwondo': 'taekwondo', 'para-archery': 'archery',
+  'para-shooting': 'shooting', 'para-cycling': 'cycling', 'para-rowing': 'rowing', 'para-canoe': 'canoe-sprint', 'para-equestrian': 'equestrian', 'para-triathlon': 'triathlon', 'wheelchair-fencing': 'fencing',
+  'wheelchair-rugby': 'rugby', 'para-powerlifting': 'powerlifting', 'para-ice-hockey': 'ice-hockey', 'para-alpine-skiing': 'alpine-skiing', 'para-biathlon': 'biathlon', 'para-cross-country-skiing': 'cross-country-skiing',
+  'para-snowboard': 'snowboarding', 'wheelchair-curling': 'curling', 'para-sailing': 'sailing', 'para-climbing': 'climbing', 'para-surfing': 'surfing', 'para-dance-sport': 'dancesport' };
+for (const [para, base] of Object.entries(PARA_BASE)) if (BY_SPORT.has(base) && !BY_SPORT.has(para)) BY_SPORT.set(para, BY_SPORT.get(base));
 
 /** The framework for one sport: { family, label, fallback, domains: { technical:[…], …, academic:[…], personal:[…] } }. */
 export function frameworkFor(sportSlug) {

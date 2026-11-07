@@ -4,16 +4,17 @@ import { SanctionBadge } from './federation-club';
 import { SubjectPanel } from './insurance';
 import { AvailabilityPicker, MySelections } from './team-manage';
 import React, { useEffect, useState } from 'react';
-import { View } from 'react-native';
+import { Switch, View } from 'react-native';
 import { api } from '../api';
 import { useLoad } from '../hooks';
 import { useSession } from '../session';
 import { useNav } from '../nav';
 import { PersonActions } from '../social/people';
-import { Field, Avatar, Btn, Bubble, Card, Chip, Empty, ErrorBox, GradCard, H1, H2, Loading, ListScreen, Row, Screen, Seg, Section, StatPill, T, Tag } from '../ui';
+import { Field, Avatar, Btn, Bubble, Card, Chip, Empty, ErrorBox, GradCard, H1, H2, Loading, ListScreen, Row, Screen, Seg, Section, Sheet, StatPill, T, Tag } from '../ui';
 import { AdSlot } from '../ads';
 import { AcademiesTab, SuppliersTab } from './directory';
 import { FormSheet } from '../FormSheet';
+import { Counter } from '../pickers';
 import { Reviews, TrophyShelf, Stars } from '../blocks';
 import { EventFacts, EventHeader, SpectatorBody, Sponsors } from './spectate';
 import { SportSelect } from '../sportpicker';
@@ -38,14 +39,78 @@ export function TeamInvites({ onChanged }) {
   );
 }
 
-/** "Start a team" form. Lives with the rest of creating and managing in the Schedule tab. */
+const TEAM_TYPES = ['Club', 'Academy', 'School', 'Professional', 'National', 'Recreational'];
+const COMPETITION_LEVELS = ['Grassroots', 'Amateur', 'Semi-Pro', 'Professional', 'National', 'International'];
+const GENDER_OPTS = [{ v: 'male', l: 'Male' }, { v: 'female', l: 'Female' }, { v: 'mixed', l: 'Mixed' }];
+const STEPS_TEAM = ['Identity', 'Structure & Schedule', 'Roster & Launch'];
+
+/** "Start a team" — 3-step wizard: Identity / Structure & Schedule / Roster & Launch */
 export function StartTeamSheet({ visible, onClose, onCreated }) {
   const { push } = useNav();
+  const { toast } = useSession();
+  const [step, setStep] = useState(0);
+  const [busy, setBusy] = useState(false);
+  const [f, setF] = useState({ name: '', sport: '', description: '', emoji: '', color: '#8458B3', city: '', team_type: 'Club', competition_level: 'Amateur', gender: 'mixed', founded_year: '', max_squad_size: 25, training_days: [], training_time: '', open_trials: false, public_profile: true });
+  const set = (k, v) => setF((p) => ({ ...p, [k]: v }));
+  const can = [() => f.name.trim().length >= 2 && !!f.sport, () => true, () => true][step]();
+  const submit = async () => {
+    setBusy(true);
+    try {
+      const tm = await api.post('/teams', { name: f.name.trim(), sport: f.sport, ...(f.description.trim() ? { description: f.description.trim() } : {}), ...(f.emoji ? { emoji: f.emoji } : {}), color: f.color, ...(f.city ? { city: f.city } : {}), team_type: f.team_type, competition_level: f.competition_level, gender: f.gender, ...(f.founded_year ? { founded_year: Number(f.founded_year) } : {}), ...(f.max_squad_size > 0 ? { max_squad_size: f.max_squad_size } : {}), training_days: f.training_days, ...(f.training_time ? { training_time: f.training_time } : {}), open_trials: f.open_trials, public_profile: f.public_profile });
+      toast('Team created — invite your players from the Roster tab');
+      onCreated?.();
+      push('TeamWorkspace', { id: tm.id });
+    } catch (e) { toast('' + e.message); }
+    setBusy(false);
+  };
   return (
-    <FormSheet visible={visible} onClose={onClose} title="Start a team" submitLabel="Create team"
-      fields={[{ key: 'name', label: 'Team name' }, { key: 'sport', label: 'Sport', type: 'sport' }, { key: 'description', label: 'About the team', type: 'multiline', optional: true },
-          { key: 'emoji', label: 'Mascot emoji', optional: true }, { key: 'color', label: 'Team colour', type: 'chips', optional: true, options: TEAM_COLOURS }, { key: 'city', label: 'City or area', type: 'region', optional: true }]}
-        onSubmit={async (v) => { const t = await api.post('/teams', v); onCreated?.(); push('TeamWorkspace', { id: t.id }); return 'Team created — invite your players from the Roster tab'; }} />
+    <Sheet visible={visible} onClose={onClose} title="Start a Team">
+      <View style={{ flexDirection: 'row', gap: 6, marginBottom: 4 }}>
+        {STEPS_TEAM.map((s, i) => (<View key={s} style={{ flex: 1, gap: 3 }}><View style={{ height: 4, borderRadius: 2, backgroundColor: i <= step ? c.pink : c.line }} /><T size={10} weight={i === step ? '800' : '500'} color={i === step ? c.ink : c.mute}>{s}</T></View>))}
+      </View>
+      {step === 0 ? (
+        <View style={{ gap: 14 }}>
+          <Field label="Team name" value={f.name} onChangeText={(x) => set('name', x)} placeholder="e.g. FC Barcelona Academy U16" />
+          <SportSelect label="Primary sport" value={f.sport} onChange={(x) => set('sport', x)} />
+          <View style={{ gap: 6 }}><T size={12} weight="800" color={c.mute} style={{ letterSpacing: 0.5 }}>TEAM TYPE</T><View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>{TEAM_TYPES.map((k) => <Chip key={k} label={k} active={f.team_type === k} onPress={() => set('team_type', k)} />)}</View></View>
+          <View style={{ gap: 6 }}><T size={12} weight="800" color={c.mute} style={{ letterSpacing: 0.5 }}>COMPETITION LEVEL</T><View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>{COMPETITION_LEVELS.map((l) => <Chip key={l} label={l} active={f.competition_level === l} onPress={() => set('competition_level', l)} />)}</View></View>
+          <View style={{ gap: 6 }}><T size={12} weight="800" color={c.mute} style={{ letterSpacing: 0.5 }}>GENDER</T><View style={{ flexDirection: 'row', gap: 6 }}>{GENDER_OPTS.map((g) => <Chip key={g.v} label={g.l} active={f.gender === g.v} onPress={() => set('gender', g.v)} />)}</View></View>
+          <Field label="Description (optional)" value={f.description} onChangeText={(x) => set('description', x)} multiline placeholder="Club philosophy, playing style, what you stand for" />
+          <View style={{ flexDirection: 'row', gap: 10 }}>
+            <View style={{ flex: 1 }}><Field label="Mascot emoji (optional)" value={f.emoji} onChangeText={(x) => set('emoji', x)} placeholder="e.g. 🦁" /></View>
+            <View style={{ flex: 1 }}><Field label="City or area (optional)" value={f.city} onChangeText={(x) => set('city', x)} placeholder="Barcelona" /></View>
+          </View>
+          <View style={{ gap: 6 }}><T size={12} weight="800" color={c.mute} style={{ letterSpacing: 0.5 }}>TEAM COLOUR</T><View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>{TEAM_COLOURS.map((tc) => <Chip key={tc.value} label={tc.label} active={f.color === tc.value} onPress={() => set('color', tc.value)} />)}</View></View>
+        </View>
+      ) : null}
+      {step === 1 ? (
+        <View style={{ gap: 14 }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}><View style={{ flex: 1 }}><T weight="800" size={13}>Max squad size</T><T size={11} color={c.mute}>Invitation or trial limit</T></View><Counter value={f.max_squad_size} onChange={(x) => set('max_squad_size', x)} min={3} max={500} step={1} /></View>
+          <Field label="Year founded (optional)" value={f.founded_year} onChangeText={(x) => set('founded_year', x.replace(/\D/g, ''))} keyboardType="number-pad" placeholder="e.g. 2018" />
+          <View style={{ gap: 6 }}><T size={12} weight="800" color={c.mute} style={{ letterSpacing: 0.5 }}>TRAINING DAYS</T><View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>{['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].map((d) => <Chip key={d} label={d} active={f.training_days.includes(d)} onPress={() => set('training_days', f.training_days.includes(d) ? f.training_days.filter((x) => x !== d) : [...f.training_days, d])} />)}</View></View>
+          <Field label="Training start time (optional)" value={f.training_time} onChangeText={(x) => set('training_time', x)} placeholder="e.g. 18:00" keyboardType="numbers-and-punctuation" />
+        </View>
+      ) : null}
+      {step === 2 ? (
+        <View style={{ gap: 14 }}>
+          <View style={{ borderWidth: 1, borderColor: c.line, borderRadius: 14, padding: 14, backgroundColor: c.paper, gap: 3 }}>
+            <T weight="800">{f.name || '—'}</T>
+            <T size={12} color={c.mute}>{f.team_type} · {f.competition_level} · {f.sport}</T>
+            {f.city ? <T size={12} color={c.mute}>{f.city}</T> : null}
+            {f.training_days.length ? <T size={12} color={c.mute}>Trains {f.training_days.join(', ')}</T> : null}
+            <T size={12} color={c.mute}>Up to {f.max_squad_size} players</T>
+          </View>
+          <View style={{ gap: 8 }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, padding: 12, borderWidth: 1, borderColor: c.line, borderRadius: 12 }}><View style={{ flex: 1 }}><T weight="800" size={13}>Open for trials</T><T size={11} color={c.mute}>Athletes can request a trial slot from your public profile</T></View><Switch value={f.open_trials} onValueChange={(v) => set('open_trials', v)} trackColor={{ true: c.pink }} /></View>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, padding: 12, borderWidth: 1, borderColor: c.line, borderRadius: 12 }}><View style={{ flex: 1 }}><T weight="800" size={13}>Public profile</T><T size={11} color={c.mute}>Other platform users can find and follow the team</T></View><Switch value={f.public_profile} onValueChange={(v) => set('public_profile', v)} trackColor={{ true: c.pink }} /></View>
+          </View>
+        </View>
+      ) : null}
+      <View style={{ flexDirection: 'row', gap: 8, marginTop: 4 }}>
+        {step > 0 ? <Btn title="Back" color={c.paper} ink={c.ink} onPress={() => setStep(step - 1)} style={{ flex: 1 }} /> : null}
+        {step < 2 ? <Btn title="Next" disabled={!can} onPress={() => setStep(step + 1)} style={{ flex: 2 }} /> : <Btn title="Create Team" loading={busy} onPress={submit} style={{ flex: 2 }} />}
+      </View>
+    </Sheet>
   );
 }
 

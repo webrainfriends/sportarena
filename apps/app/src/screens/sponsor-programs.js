@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Platform, View } from 'react-native';
+import { Platform, Switch, View } from 'react-native';
 import { api } from '../api';
 import { openProtected } from '../open-file';
 import { useLoad } from '../hooks';
@@ -9,7 +9,7 @@ import { Btn, Card, Chip, Empty, Field, H1, Loading, Row, Screen, Section, Seg, 
 import { RegionPicker } from '../region-picker';
 import { FormSheet } from '../FormSheet';
 import { EntityPicker } from '../entity-picker';
-import { SportSelect } from '../sportpicker';
+import { SportsMulti, SportSelect } from '../sportpicker';
 import { c } from '../theme';
 import { asSponsorRole } from '../sponsor-roles';
 import { explain, LoadError } from '../access';
@@ -18,7 +18,7 @@ import { ProgramAwards, MyOffers } from './sponsor-awards';
 import { ProgramBudget } from './sponsor-budgets';
 import { fieldsOf, filled, fmtMoney } from '../application-forms';
 import { SponsorTasks, ApplicationThread } from './sponsor-collaboration';
-import { ApplicationEvidence } from './sponsor-impact';
+import { ApplicationEvidence, ParaDeliveryEvidence } from './sponsor-impact';
 import { EligibilityCheckSheet, EligibilityRules, OutcomeTag, ScreeningPanel } from './sponsor-screening';
 import { t } from '../i18n';
 
@@ -64,13 +64,26 @@ const programFields = (brands, create) => [
     { key: 'offer_validity_days', label: 'An issued offer can be accepted for (days)', type: 'stepper', min: 1, max: 365, default: 14 },
     { key: 'waitlist_enabled', label: 'Waitlist awards that do not fit the budget', type: 'switch' },
   ]),
+  { key: 'is_para_sport', label: t('psf.programme.paraToggle'), type: 'switch', hint: t('psf.programme.paraToggleHint') },
+  { key: 'para_cost_categories', label: t('psf.programme.costCategories'), type: 'multi',
+    options: [
+      { value: 'specialised_equipment', label: t('psf.need.specialisedEquipment') },
+      { value: 'accessible_transport',  label: t('psf.need.accessibleTransport') },
+      { value: 'classification_travel', label: t('psf.need.classificationTravel') },
+      { value: 'accessible_training_camp', label: t('psf.need.accessibleTrainingCamp') },
+      { value: 'competition_fees', label: 'Competition Entry Fees' },
+    ],
+    show: (v) => !!v.is_para_sport,
+    hint: t('psf.programme.privacyNote'),
+  },
   { key: 'recurring', label: 'Runs in recurring rounds', type: 'switch' },
   { key: 'cadence', label: 'A new round every', type: 'chips', options: [{ value: 'monthly', label: 'Month' }, { value: 'quarterly', label: 'Quarter' }, { value: 'yearly', label: 'Year' }], default: 'monthly', show: (v) => v.recurring },
   { key: 'open_days', label: 'Each round stays open for (days)', type: 'stepper', min: 1, max: 365, default: 14, show: (v) => v.recurring },
 ];
 const toBody = (v) => {
-  const { recurring, cadence, open_days, max_awards, ...rest } = v;
-  return { ...rest, max_awards: max_awards || undefined, recurrence: recurring ? { cadence, open_days } : undefined };
+  const { recurring, cadence, open_days, max_awards, is_para_sport, para_cost_categories, ...rest } = v;
+  return { ...rest, max_awards: max_awards || undefined, recurrence: recurring ? { cadence, open_days } : undefined,
+    is_para_sport: !!is_para_sport, para_cost_categories: is_para_sport ? (para_cost_categories ?? []) : [] };
 };
 
 const Bar = ({ done, total }) => (
@@ -79,8 +92,145 @@ const Bar = ({ done, total }) => (
   </View>
 );
 
+// ------------------------------------------------------------------ elite 3-step wizard for new programs
+const SP_STEPS = ['Program Identity', 'Budget & Terms', 'Sports & Launch'];
+const SP_CATEGORIES = ['Kit & equipment', 'Travel & accommodation', 'Nutrition', 'Medical & physio', 'Technology', 'Prize money', 'Educational', 'Venue', 'General cash'];
+const SP_CURRENCIES = ['GBP', 'EUR', 'USD', 'AUD', 'INR', 'SGD', 'AED'];
+const PARA_COST_OPTS = [
+  { value: 'specialised_equipment', label: 'Specialised equipment' },
+  { value: 'accessible_transport', label: 'Accessible transport' },
+  { value: 'classification_travel', label: 'Classification travel' },
+  { value: 'accessible_training_camp', label: 'Accessible training camp' },
+  { value: 'competition_fees', label: 'Competition fees' },
+];
+
+function SponsorProgramWizard({ visible, onClose, brands, onDone }) {
+  const [step, setStep] = useState(0);
+  const [v, setV] = useState({ visibility: 'public', target_types: ['athlete', 'team', 'event'], max_awards: 0, recurring: false, is_para_sport: false, verified_only: false });
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState(null);
+  const { push } = useNav();
+  const set = (k, val) => setV((p) => ({ ...p, [k]: val }));
+  const toggle = (key, item) => set(key, (v[key] ?? []).includes(item) ? (v[key] ?? []).filter((x) => x !== item) : [...(v[key] ?? []), item]);
+
+  const can = [
+    !!v.sponsor_id && !!v.name?.trim(),
+    !!v.currency && (v.budget_cents ?? 0) > 0,
+    true,
+  ][step];
+
+  const submit = async () => {
+    setBusy(true); setErr(null);
+    try {
+      const { recurring, cadence, open_days, max_awards, is_para_sport, para_cost_categories, ...rest } = v;
+      const body = { ...rest, max_awards: max_awards || undefined, recurrence: recurring ? { cadence, open_days } : undefined, is_para_sport: !!is_para_sport, para_cost_categories: is_para_sport ? (para_cost_categories ?? []) : [] };
+      const p = await api.post('/sponsorship-programs', body);
+      onClose(); onDone(p);
+    } catch (e) { setErr(e.message); } finally { setBusy(false); }
+  };
+
+  return (
+    <Sheet visible={visible} onClose={onClose} title="New sponsorship program">
+      <View style={{ flexDirection: 'row', gap: 4, marginBottom: 16 }}>
+        {SP_STEPS.map((s, i) => <View key={i} style={{ flex: 1, height: 4, borderRadius: 2, backgroundColor: i < step ? c.violet : i === step ? c.pink : c.p1 }} />)}
+      </View>
+      <T weight="800" size={15} style={{ marginBottom: 12 }}>{SP_STEPS[step]}</T>
+
+      {step === 0 ? (
+        <View style={{ gap: 12 }}>
+          <T weight="700" size={13}>Brand *</T>
+          <View style={{ flexDirection: 'row', gap: 8, flexWrap: 'wrap' }}>
+            {brands.map((b) => <Chip key={b.id} label={`${b.emoji ?? ''} ${b.name}`.trim()} active={v.sponsor_id === b.id} onPress={() => set('sponsor_id', b.id)} />)}
+          </View>
+          <Field label="Program name *" value={v.name ?? ''} onChangeText={(x) => set('name', x)} placeholder="e.g. Youth Tennis Development Fund" />
+          <Field label="Objective" value={v.objective ?? ''} onChangeText={(x) => set('objective', x)} multiline hint="What this funding achieves — applicants see it." optional />
+          <T weight="700" size={13}>Visibility</T>
+          <View style={{ flexDirection: 'row', gap: 8, flexWrap: 'wrap' }}>
+            {[{ value: 'public', label: 'Public — searchable' }, { value: 'invitation_only', label: 'Invitation only' }].map((o) => (
+              <Chip key={o.value} label={o.label} active={v.visibility === o.value} onPress={() => set('visibility', o.value)} />
+            ))}
+          </View>
+          <T weight="700" size={13}>Program category</T>
+          <View style={{ flexDirection: 'row', gap: 8, flexWrap: 'wrap' }}>
+            {SP_CATEGORIES.map((cat) => <Chip key={cat} label={cat} active={(v.categories ?? []).includes(cat)} onPress={() => toggle('categories', cat)} />)}
+          </View>
+        </View>
+      ) : null}
+
+      {step === 1 ? (
+        <View style={{ gap: 12 }}>
+          <T weight="700" size={13}>Currency *</T>
+          <View style={{ flexDirection: 'row', gap: 8, flexWrap: 'wrap' }}>
+            {SP_CURRENCIES.map((cur) => <Chip key={cur} label={cur} active={v.currency === cur} onPress={() => set('currency', cur)} />)}
+          </View>
+          <Field label="Total budget *" value={v.budget_cents ? String(v.budget_cents / 100) : ''} onChangeText={(x) => set('budget_cents', Math.round(parseFloat(x || '0') * 100))} placeholder="e.g. 50000" keyboardType="numeric" hint={`Whole amount in ${v.currency ?? 'chosen currency'}`} />
+          <Field label="Largest single award" value={v.max_award_cents ? String(v.max_award_cents / 100) : ''} onChangeText={(x) => set('max_award_cents', x ? Math.round(parseFloat(x) * 100) : undefined)} placeholder="Leave blank for no limit" optional />
+          <T weight="700" size={13}>Who can apply</T>
+          <View style={{ flexDirection: 'row', gap: 8, flexWrap: 'wrap' }}>
+            {[{ value: 'athlete', label: 'Athletes' }, { value: 'team', label: 'Teams' }, { value: 'event', label: 'Events' }].map((o) => (
+              <Chip key={o.value} label={o.label} active={(v.target_types ?? []).includes(o.value)} onPress={() => toggle('target_types', o.value)} />
+            ))}
+          </View>
+          <Card color={c.p1} style={{ padding: 12, gap: 8 }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+              <T size={14}>Para / adaptive sport fund</T>
+              <Switch value={!!v.is_para_sport} onValueChange={(x) => set('is_para_sport', x)} trackColor={{ false: c.line, true: c.pink }} />
+            </View>
+            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+              <T size={14}>Verified applicants only</T>
+              <Switch value={!!v.verified_only} onValueChange={(x) => set('verified_only', x)} trackColor={{ false: c.line, true: c.pink }} />
+            </View>
+            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+              <T size={14}>Recurring rounds</T>
+              <Switch value={!!v.recurring} onValueChange={(x) => set('recurring', x)} trackColor={{ false: c.line, true: c.pink }} />
+            </View>
+          </Card>
+          {v.is_para_sport ? (
+            <>
+              <T weight="700" size={13}>Para cost categories</T>
+              <View style={{ flexDirection: 'row', gap: 8, flexWrap: 'wrap' }}>
+                {PARA_COST_OPTS.map((o) => <Chip key={o.value} label={o.label} active={(v.para_cost_categories ?? []).includes(o.value)} onPress={() => toggle('para_cost_categories', o.value)} />)}
+              </View>
+            </>
+          ) : null}
+          {v.recurring ? (
+            <>
+              <T weight="700" size={13}>Cadence</T>
+              <View style={{ flexDirection: 'row', gap: 8, flexWrap: 'wrap' }}>
+                {[{ value: 'monthly', label: 'Monthly' }, { value: 'quarterly', label: 'Quarterly' }, { value: 'yearly', label: 'Yearly' }].map((o) => (
+                  <Chip key={o.value} label={o.label} active={v.cadence === o.value} onPress={() => set('cadence', o.value)} />
+                ))}
+              </View>
+            </>
+          ) : null}
+        </View>
+      ) : null}
+
+      {step === 2 ? (
+        <View style={{ gap: 12 }}>
+          <SportsMulti label="Sports (leave empty for any)" value={v.sports ?? []} onChange={(x) => set('sports', x)} optional />
+          <Card color={c.cyanSoft} style={{ padding: 12 }}>
+            <T weight="700" size={14}>{v.name ?? '—'}</T>
+            <T size={12} color={c.mute}>{brands.find((b) => b.id === v.sponsor_id)?.name ?? '—'} · {v.currency ?? '—'} · {fmt(v.budget_cents ?? 0, v.currency ?? 'GBP')} total</T>
+            <T size={12} color={c.mute}>{v.visibility === 'invitation_only' ? 'Invitation only' : 'Public call'} · {(v.target_types ?? []).join(', ')}</T>
+          </Card>
+          {err ? <T color={c.red} size={13}>{err}</T> : null}
+        </View>
+      ) : null}
+
+      <View style={{ flexDirection: 'row', gap: 10, marginTop: 20 }}>
+        {step > 0 ? <Btn title="Back" color={c.paper} ink={c.ink} onPress={() => setStep((s) => s - 1)} style={{ flex: 1 }} /> : null}
+        {step < 2 ? <Btn title="Next" disabled={!can} onPress={() => setStep((s) => s + 1)} style={{ flex: 1 }} /> : (
+          <Btn title="Create draft" loading={busy} disabled={!can || busy} onPress={submit} style={{ flex: 1 }} />
+        )}
+      </View>
+    </Sheet>
+  );
+}
+
 /** Brand staff: the programs of the brands I run. */
 export function SponsorPrograms() {
+  const { toast } = useSession();
   const { push } = useNav();
   const [status, setStatus] = useState('published');
   const [form, setForm] = useState(false);
@@ -102,8 +252,7 @@ export function SponsorPrograms() {
           <T size={12}>{p.open_round_id ? `Round open until ${deadline(p.open_round_closes_at, null)}` : 'No round open'}{p.pending_applications ? ` · ${p.pending_applications} to review` : ''}</T>
         </Card>
       )) : <Empty emoji="🎯" title={`No ${status} programs`} sub={may.length ? 'Create a program to start funding athletes, teams and events.' : 'Programs of the brands you run appear here.'} />}
-      <FormSheet visible={form} onClose={() => setForm(false)} title="New sponsorship program" submitLabel="Create draft" fields={programFields(may, true)}
-        onSubmit={async (v) => { const p = await api.post('/sponsorship-programs', toBody(v)); list.reload(); push('SponsorProgram', { id: p.id }); return 'Draft created — add a round, then publish'; }} />
+      <SponsorProgramWizard visible={form} onClose={() => setForm(false)} brands={may} onDone={(p) => { list.reload(); push('SponsorProgram', { id: p.id }); toast('Draft created — add a round, then publish'); }} />
     </Screen>
   );
 }
@@ -135,7 +284,11 @@ export function SponsorProgram({ id }) {
     <Screen onRefresh={reloadAll} refreshing={prog.loading && !!p}>
       <View style={{ flexDirection: 'row', gap: 8, alignItems: 'center' }}><H1 style={{ flex: 1 }}>{p.name}</H1><Tag label={p.status} color={STATUS_TONE[p.status]} /></View>
       {stale ? <Banner action="Dismiss" onAction={() => setStale(false)}>Someone else changed this program while you were working. The latest version is shown now — review it and try again.</Banner> : null}
-      <T size={12} color={c.mute}>{VISIBILITY_LABEL[p.visibility]} · {p.sponsor_name} · you: {p.my_role}{p.starts_on ? ` · ${when(p.starts_on)} – ${p.ends_on ? when(p.ends_on) : 'open'}` : ''}</T>
+      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginBottom: 4 }}>
+        <T size={12} color={c.mute}>{VISIBILITY_LABEL[p.visibility]} · {p.sponsor_name} · you: {p.my_role}{p.starts_on ? ` · ${when(p.starts_on)} – ${p.ends_on ? when(p.ends_on) : 'open'}` : ''}</T>
+        {p.is_para_sport ? <Tag label={t('psf.title')} color={c.violetSoft} accessibilityLabel={t('psf.title')} /> : null}
+      </View>
+      {p.is_para_sport ? <View accessibilityRole="note" style={{ backgroundColor: c.cyanSoft, borderRadius: 8, padding: 10, marginBottom: 6 }}><T size={12}>{t('psf.programme.privacyNote')}</T></View> : null}
       <Card>
         <T weight="900">{fmt(p.awarded_cents, p.currency)} of {fmt(p.budget_cents, p.currency)} awarded</T>
         <Bar done={p.awarded_cents} total={p.budget_cents} />
@@ -154,6 +307,7 @@ export function SponsorProgram({ id }) {
           </View>
         ) : <T size={12} color={c.mute} style={{ marginTop: 8 }}>Your role can read this program; managers and approvers run it.</T>}
       </Card>
+      {p.is_para_sport ? <ParaDeliveryEvidence programmeId={p.id} may={may} /> : null}
       <SponsorTasks target={{ program_id: p.id }} shareable={false} />
       <EligibilityRules program={p} may={may} onChanged={reloadAll} />
       <Section title="Rounds" color={c.sun} action={may && ['draft', 'published'].includes(p.status) ? '+ Round' : undefined} onAction={() => setForm('round')}>

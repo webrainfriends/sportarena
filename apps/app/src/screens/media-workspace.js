@@ -2,13 +2,15 @@
 // It shows exactly what a licence grants: the rights held, the games and events they cover, the media the partner may use with its embargo and release conditions, the production
 // schedule and accreditation actions, the data feeds, and notices. A media agreement never opens a team, player or organisation record, so none appears here.
 import React, { useState } from 'react';
-import { View } from 'react-native';
+import { View, Switch } from 'react-native';
 import { api } from '../api';
 import { useLoad } from '../hooks';
 import { useSession } from '../session';
 import { A, ABtn, ACard, AChip, AEmpty, AHero, ARow, AScreen, ASection, AStat, AT, AG } from '../arena';
-import { ErrorBox, Loading } from '../ui';
+import { Btn, Card, Chip, ErrorBox, Field, Loading, Sheet, T } from '../ui';
 import { FormSheet } from '../FormSheet';
+import { SportsMulti } from '../sportpicker';
+import { c } from '../theme';
 import { PARTNER_KINDS, rightLabel, fmtDT, fmtRange, money, nice, badgeOf, StateTag, Tags, crewRole } from '../media-ui';
 import { OfferForm, LicenceSheet } from './media-licence';
 import { ProductionPanel, StreamsPanel } from './media-production';
@@ -17,6 +19,93 @@ import { ClipsPanel } from './clips';
 import { t } from '../i18n';
 
 const TABS = [['rights', '🧾 Rights'], ['schedule', '🗓️ Games'], ['production', '🎬 Production'], ['streams', '📺 Streams'], ['media', '🎞️ Media'], ['highlights', `✨ ${t('clips.tab')}`], ['find', '🔎 Find rights']];
+
+const MEDIA_TYPES = ['News outlet', 'Sports magazine', 'Broadcast / TV', 'Podcast', 'Digital / social media', 'Photography agency', 'Video production', 'Official club media', 'Independent journalist'];
+const COVERAGE_SCOPES = ['Local', 'National', 'International', 'Specialist / niche'];
+const CONTENT_TYPES = ['Match reports', 'Interviews', 'Livestream', 'Photography', 'Analysis & opinion', 'Stats & data', 'Long-form features'];
+const AUDIENCE_SIZES = ['Under 1 k', '1 k – 10 k', '10 k – 100 k', '100 k – 1 M', 'Over 1 M'];
+
+function MediaPartnerWizard({ visible, onClose, orgs, existing, onSubmit }) {
+  const [step, setStep] = useState(0);
+  const [v, setV] = useState({ org_id: '', media_type: '', accreditation: false, access_requests: true, featured: false, coverage_scopes: [], content_types: [], sports: [] });
+  const set = (k, val) => setV((p) => ({ ...p, [k]: val }));
+  const toggle = (k, item) => set(k, v[k].includes(item) ? v[k].filter((x) => x !== item) : [...v[k], item]);
+  const steps = ['Organisation & Identity', 'Coverage & Accreditation', 'Access & Launch'];
+  const can = [v.org_id && v.media_type, true, true];
+  const bar = (
+    <View style={{ flexDirection: 'row', gap: 4, marginBottom: 16 }}>
+      {steps.map((s, i) => <View key={s} style={{ flex: 1, height: 4, borderRadius: 2, backgroundColor: i < step ? c.violet : i === step ? c.pink : c.p1 }} />)}
+    </View>
+  );
+  return (
+    <Sheet visible={visible} onClose={onClose} title="Register as a media partner">
+      {bar}
+      <T weight="900" size={16} style={{ marginBottom: 12 }}>{steps[step]}</T>
+      {step === 0 && (
+        <View style={{ gap: 14 }}>
+          <T size={13} color={c.mute}>Choose the organisation you are registering as a media partner.</T>
+          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+            {(orgs ?? []).map((o) => <Chip key={o.id} label={o.name} active={v.org_id === o.id} onPress={() => set('org_id', o.id)} />)}
+          </View>
+          <T weight="800" size={13} color={c.mute} style={{ marginTop: 4 }}>Media type</T>
+          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+            {MEDIA_TYPES.map((m) => <Chip key={m} label={m} active={v.media_type === m} onPress={() => set('media_type', m)} />)}
+          </View>
+          <Field label="Headline / tagline" value={v.headline ?? ''} onChangeText={(t) => set('headline', t)} optional />
+          <Field label="Description" value={v.description ?? ''} onChangeText={(t) => set('description', t)} multiline optional />
+          <Field label="Website" value={v.website ?? ''} onChangeText={(t) => set('website', t)} optional />
+        </View>
+      )}
+      {step === 1 && (
+        <View style={{ gap: 14 }}>
+          <T weight="800" size={13} color={c.mute}>Sports specialisms</T>
+          <SportsMulti value={v.sports} onChange={(s) => set('sports', s)} />
+          <T weight="800" size={13} color={c.mute}>Coverage scope</T>
+          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+            {COVERAGE_SCOPES.map((s) => <Chip key={s} label={s} active={v.coverage_scopes.includes(s)} onPress={() => toggle('coverage_scopes', s)} />)}
+          </View>
+          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+            <T weight="800" size={14}>Holds active press accreditation</T>
+            <Switch value={v.accreditation} onValueChange={(val) => set('accreditation', val)} thumbColor={c.p5} trackColor={{ false: c.p1, true: c.pink }} />
+          </View>
+          {v.accreditation && <Field label="Accreditation body" value={v.accreditation_body ?? ''} onChangeText={(t) => set('accreditation_body', t)} placeholder="e.g. National Press Club, FA accreditation" optional />}
+          <T weight="800" size={13} color={c.mute}>Audience size</T>
+          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+            {AUDIENCE_SIZES.map((s) => <Chip key={s} label={s} active={v.audience_size === s} onPress={() => set('audience_size', s)} />)}
+          </View>
+          <T weight="800" size={13} color={c.mute}>Content types</T>
+          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+            {CONTENT_TYPES.map((ct) => <Chip key={ct} label={ct} active={v.content_types.includes(ct)} onPress={() => toggle('content_types', ct)} />)}
+          </View>
+        </View>
+      )}
+      {step === 2 && (
+        <View style={{ gap: 14 }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+            <View style={{ flex: 1 }}><T weight="800" size={14}>Open to access requests</T><T size={12} color={c.mute}>Organisations can send you rights requests</T></View>
+            <Switch value={v.access_requests} onValueChange={(val) => set('access_requests', val)} thumbColor={c.p5} trackColor={{ false: c.p1, true: c.pink }} />
+          </View>
+          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+            <View style={{ flex: 1 }}><T weight="800" size={14}>Feature in media partners directory</T></View>
+            <Switch value={v.featured} onValueChange={(val) => set('featured', val)} thumbColor={c.p5} trackColor={{ false: c.p1, true: c.pink }} />
+          </View>
+          <Card pad={12}>
+            <T weight="800">{(orgs ?? []).find((o) => o.id === v.org_id)?.name ?? ''}</T>
+            <T size={12} color={c.mute}>{v.media_type}{v.coverage_scopes.length ? ` · ${v.coverage_scopes.join(', ')}` : ''}</T>
+          </Card>
+          <Card color={c.cyanSoft} pad={12}>
+            <T size={13} weight="700">Your media profile is live immediately. Organisations can invite you to events, grant pitch-side access, and share embargoed media.</T>
+          </Card>
+        </View>
+      )}
+      <View style={{ flexDirection: 'row', gap: 10, marginTop: 20 }}>
+        {step > 0 && <Btn title="Back" color={c.paper} ink={c.ink} onPress={() => setStep(step - 1)} style={{ flex: 1 }} />}
+        {step < 2 && <Btn title="Next" color={c.pink} disabled={!can[step]} onPress={() => setStep(step + 1)} style={{ flex: 1 }} />}
+        {step === 2 && <Btn title="Register" color={c.pink} onPress={() => { onSubmit(v); onClose(); }} style={{ flex: 1 }} />}
+      </View>
+    </Sheet>
+  );
+}
 
 export function MediaWorkspace() {
   const { toast } = useSession();
@@ -114,9 +203,7 @@ export function MediaWorkspace() {
         </>
       )}
 
-      <FormSheet visible={reg} onClose={() => setReg(false)} title="Register as a media partner" notice="Choose an organisation you own or administer. Create one first under Organisations if you have none."
-        fields={[{ key: 'organisation_id', label: 'Organisation', type: 'chips', options: (orgs.data ?? []).filter((o) => o.my_status === 'active' && ['owner', 'admin'].includes(o.my_role) && o.status === 'active' && !w.partners.some((p) => p.organisation_id === o.id)).map((o) => ({ value: o.id, label: o.name })) }, { key: 'kind', label: 'What kind of media partner', type: 'chips', options: PARTNER_KINDS.map((k) => ({ value: k, label: nice(k) })), default: 'broadcaster' }]}
-        submitLabel="Register" onSubmit={async (v) => { await api.post('/media/partners', v); reload(); return 'Registered. You can now be offered rights.'; }} />
+      <MediaPartnerWizard visible={reg} onClose={() => setReg(false)} orgs={(orgs.data ?? []).filter((o) => o.my_status === 'active' && ['owner', 'admin'].includes(o.my_role) && o.status === 'active' && !w.partners.some((p) => p.organisation_id === o.id))} onSubmit={async (vals) => { await api.post('/media/partners', { organisation_id: vals.org_id, kind: PARTNER_KINDS.includes(vals.media_type?.toLowerCase().replace(/ /g, '_')) ? vals.media_type?.toLowerCase().replace(/ /g, '_') : 'broadcaster', headline: vals.headline, description: vals.description, website: vals.website, sports: vals.sports, coverage_scopes: vals.coverage_scopes, content_types: vals.content_types, audience_size: vals.audience_size, accreditation: vals.accreditation, accreditation_body: vals.accreditation_body, access_requests: vals.access_requests, featured: vals.featured }); reload(); toast('Registered. You can now be offered rights.'); }} />
       {open ? <LicenceSheet id={open} onClose={() => setOpen(null)} onChanged={reload} /> : null}
     </AScreen>
   );

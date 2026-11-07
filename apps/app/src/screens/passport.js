@@ -19,6 +19,12 @@ const nice = (s) => String(s).replace(/_/g, ' ');
 const num = (v) => (v === null || v === undefined ? '–' : Number.isInteger(+v) ? String(+v) : String(Math.round(+v * 100) / 100));
 const unitOf = (u) => (u === 's' ? ' s' : u === 'm' ? ' m' : '');
 const AWARD = { cup: '🏆', trophy: '🏅', medal_gold: '🥇', medal_silver: '🥈', medal_bronze: '🥉', mvp: '🌟', badge: '🎖️' };
+const PARA_SECTIONS = [
+  ['show_para_class', 'Para classification codes', 'class codes'],
+  ['show_para_guide', 'Guide / tandem partner name', 'guide name'],
+  ['show_para_class_history', 'Classification timeline', 'class history'],
+];
+const PARA_EVIDENCE_OPTIONS = [{ value: 'all', label: 'All (official + self-reported)' }, { value: 'official', label: 'Official competitions only' }];
 
 /** A scannable QR code drawn as one SVG path (white quiet zone included). */
 export function QrCode({ value, size = 200, label = "QR code for the passport link" }) {
@@ -56,6 +62,107 @@ const Stat = ({ value, label }) => (
     <T weight="700" size={10} color={c.mute} style={{ letterSpacing: 0.9, marginTop: 2 }}>{label}</T>
   </View>
 );
+
+/** Para achievements section: class-specific records, PBs, guide attribution and classification history. Privacy-controlled per link. */
+function ParaPassportSection({ data }) {
+  const paraRecords = data.para_records ?? [];
+  const paraResults = (data.verified_results ?? []).filter((r) => r.sport_class);
+  const classHistory = data.para_class_history ?? [];
+  const privacy = data.para_privacy;
+
+  if (!paraRecords.length && !paraResults.length) return null;
+
+  const byClass = new Map();
+  for (const rec of paraRecords) {
+    const key = rec.sport_class ?? 'unknown';
+    if (!byClass.has(key)) byClass.set(key, []);
+    byClass.get(key).push(rec);
+  }
+  const resultsByClass = new Map();
+  for (const r of paraResults) {
+    const key = r.sport_class ?? 'unknown';
+    if (!resultsByClass.has(key)) resultsByClass.set(key, []);
+    resultsByClass.get(key).push(r);
+  }
+  const allClasses = [...new Set([...byClass.keys(), ...resultsByClass.keys()])];
+
+  return (
+    <Card pad={16}>
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+        <H2 style={{ flex: 1 }}>Para Sport Achievements</H2>
+        {privacy?.show_para_class === false && <Tag label="Class codes hidden" color={c.violetSoft} />}
+      </View>
+      <T size={12} color={c.mute} style={{ marginBottom: 10 }}>Class-specific records and personal bests. Class codes shown only on links where the athlete enabled them.</T>
+      <View style={{ backgroundColor: c.violetSoft, borderRadius: 10, padding: 10, marginBottom: 12 }}>
+        <T size={11} color={c.mute}>🔒 Medical, functional and clinical details are never included in this section or in any export.</T>
+      </View>
+      {allClasses.map((sportClass) => {
+        const recs = byClass.get(sportClass) ?? [];
+        const res = resultsByClass.get(sportClass) ?? [];
+        const firstRec = recs[0] ?? res[0];
+        const sport = firstRec?.sport ?? firstRec?.sport_slug ?? '';
+        return (
+          <View key={sportClass} style={{ marginBottom: 14 }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+              <T weight="800" size={13}>{sport}</T>
+              {sportClass && sportClass !== 'unknown' && (
+                <View style={{ backgroundColor: c.violetSoft, borderRadius: 8, paddingHorizontal: 10, paddingVertical: 3, borderWidth: 1, borderColor: c.line }}>
+                  <T size={12} weight="800" color={c.ink}>{sportClass}</T>
+                </View>
+              )}
+            </View>
+            {recs.map((rec) => (
+              <View key={rec.metric + rec.record_type} style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 8, borderTopWidth: 1, borderColor: c.line }}>
+                <View style={{ flex: 1 }}>
+                  <T size={12} weight="600">{rec.metric}</T>
+                  <T size={10} color={c.mute} style={{ marginTop: 2 }}>
+                    {rec.record_type?.replace(/_/g, ' ')}
+                    {rec.ratified_at ? ` · Ratified ${new Date(rec.ratified_at).toLocaleDateString()}` : rec.status === 'pending_ratification' ? ' · Pending ratification' : ''}
+                  </T>
+                  {rec.guide_name ? <T size={10} color={c.cyan} style={{ marginTop: 2 }}>👥 With guide: {rec.guide_name}</T> : null}
+                </View>
+                <T weight="900" size={18} style={{ fontVariant: ['tabular-nums'] }}>
+                  {rec.value != null ? num(rec.value) : '–'}{rec.unit ? <T size={11} color={c.mute}> {rec.unit}</T> : null}
+                </T>
+              </View>
+            ))}
+            {res.filter((r) => !recs.find((rec) => rec.metric === r.metric)).map((r) => (
+              <View key={r.metric} style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 8, borderTopWidth: 1, borderColor: c.line }}>
+                <View style={{ flex: 1 }}>
+                  <T size={12} weight="600">{nice(r.metric)}</T>
+                  <T size={10} color={c.mute}>{r.results} result{r.results === 1 ? '' : 's'} · approved competition</T>
+                </View>
+                <T weight="900" size={18} style={{ fontVariant: ['tabular-nums'] }}>
+                  {r.best != null ? num(r.best) : '–'}{r.unit ? <T size={11} color={c.mute}> {r.unit}</T> : null}
+                </T>
+              </View>
+            ))}
+          </View>
+        );
+      })}
+      {classHistory.length > 0 && (
+        <View style={{ marginTop: 8 }}>
+          <T weight="700" size={12} style={{ marginBottom: 8 }}>Classification history</T>
+          {classHistory.map((h, i) => (
+            <View key={h.class_code + h.effective_from} style={{ flexDirection: 'row', gap: 10, marginBottom: 8 }}>
+              <View style={{ width: 36, height: 36, borderRadius: 18, backgroundColor: i === 0 ? c.pinkSoft : c.violetSoft, borderWidth: 1.5, borderColor: i === 0 ? c.pink : c.violet, alignItems: 'center', justifyContent: 'center' }}>
+                <T size={10} weight="800" color={i === 0 ? c.pink : c.ink}>{h.class_code}</T>
+              </View>
+              <View style={{ flex: 1 }}>
+                <T size={12} weight="700">{h.class_code} — {h.status ? h.status.charAt(0).toUpperCase() + h.status.slice(1) : ''}</T>
+                <T size={11} color={c.mute}>{h.effective_from}{h.superseded_at ? ` → ${h.superseded_at}` : ' · Current'}</T>
+                {h.authority_name ? <T size={10} color={c.mute}>{h.authority_name}{h.rulebook_version ? ` v${h.rulebook_version}` : ''}</T> : null}
+              </View>
+            </View>
+          ))}
+          <View style={{ backgroundColor: c.violetSoft, borderRadius: 8, padding: 8, marginTop: 4 }}>
+            <T size={10} color={c.mute}>Past competition results use the class effective at competition date. No reclassification rewrites old results.</T>
+          </View>
+        </View>
+      )}
+    </Card>
+  );
+}
 
 /** The athlete CV: who they are, where they play, what they have done (season by season), approved results and awards. */
 export function PassportCard({ data, own = false }) {
@@ -158,6 +265,8 @@ export function PassportCard({ data, own = false }) {
         </Card>
       ) : null}
 
+      <ParaPassportSection data={data} />
+
       <PortfolioJourney journey={data.journey} />
 
       <RecruitmentSections data={data} />
@@ -208,7 +317,7 @@ export function MyPassport() {
                 <T weight="700">{l.label || 'Passport link'}</T>
                 <T size={12} color={c.mute}>{l.status === 'active' ? `Expires ${day(l.expires_at)}` : l.status === 'expired' ? `Expired ${day(l.expires_at)}` : `Turned off ${day(l.revoked_at)}`} · opened {l.view_count} time{l.view_count === 1 ? '' : 's'}</T>
                 <T size={12} color={c.mute}>For: {l.recipient_name ?? 'anyone with the link'}</T>
-                <T size={12} color={c.mute}>Shows: {SECTIONS.filter(([k]) => l[k]).map(([, , short]) => short).join(', ') || 'profile only'}</T>
+                <T size={12} color={c.mute}>Shows: {[...SECTIONS, ...PARA_SECTIONS].filter(([k]) => l[k]).map(([, , short]) => short).join(', ') || 'profile only'}</T>
               </View>
               <Tag label={l.status} color={l.status === 'active' ? c.mint : c.violetSoft} />
             </View>
@@ -227,7 +336,7 @@ export function MyPassport() {
 
       <H2 style={{ marginTop: 26 }}>What people will see</H2>
       <View style={{ marginTop: 10 }}>{prev.error ? <ErrorBox error={prev.error} onRetry={prev.reload} /> : !prev.data ? <Loading /> : <PassportCard data={prev.data} own />}</View>
-      <T size={12} color={c.mute} style={{ marginTop: 14 }}>Never shown: email, phone, date of birth, address, private notes or health data. Each link can hide match history, results, awards or certificates.</T>
+      <T size={12} color={c.mute} style={{ marginTop: 14 }}>Never shown: email, phone, date of birth, address, private notes, health data, medical or functional details. Para classification codes and guide name are off by default on each link — the athlete opts in per link.</T>
 
       {form ? (
         <FormSheet visible onClose={() => setForm(false)} title="New passport link" submitLabel="Create link"
@@ -237,19 +346,26 @@ export function MyPassport() {
             { key: 'recipient_id', label: 'Only this person may open it', type: 'entity', noun: 'person', optional: true, hint: 'Leave empty to let anyone with the link open it.' },
             { key: 'expires_in_days', label: 'Stops working after', type: 'chips', options: EXPIRY },
             ...SECTIONS.map(([key, label]) => ({ key, label: `Show ${label[0].toLowerCase()}${label.slice(1)}`, type: 'switch', ...(key === 'show_development' ? { show: (v) => !!v.show_journey } : {}) })),
+            ...PARA_SECTIONS.map(([key, label]) => ({ key, label: `Show ${label[0].toLowerCase()}${label.slice(1)} (para)`, type: 'switch' })),
+            { key: 'para_evidence_filter', label: 'Para evidence standard', type: 'chips', options: PARA_EVIDENCE_OPTIONS, show: (v) => !!(v.show_para_class || v.show_para_guide || v.show_para_class_history) },
           ]}
-          onSubmit={async (v) => { const l = await api.post('/me/passport-links', { label: v.label || undefined, recipient_id: v.recipient_id || undefined, expires_in_days: Number(v.expires_in_days), ...Object.fromEntries(SECTIONS.map(([k]) => [k, !!v[k]])) }); setFresh(l); await links.reload(); return 'Link created'; }} />
+          onSubmit={async (v) => {
+            const l = await api.post('/me/passport-links', { label: v.label || undefined, recipient_id: v.recipient_id || undefined, expires_in_days: Number(v.expires_in_days), ...Object.fromEntries(SECTIONS.map(([k]) => [k, !!v[k]])), ...Object.fromEntries(PARA_SECTIONS.map(([k]) => [k, !!v[k]])), para_evidence_filter: v.para_evidence_filter ?? 'all' });
+            setFresh(l); await links.reload(); return 'Link created';
+          }} />
       ) : null}
       {edit ? (
         <FormSheet visible onClose={() => setEdit(null)} title="Change this link" submitLabel="Save changes"
-          initial={{ label: edit.label ?? '', ...Object.fromEntries(SECTIONS.map(([k]) => [k, !!edit[k]])) }}
+          initial={{ label: edit.label ?? '', ...Object.fromEntries([...SECTIONS, ...PARA_SECTIONS].map(([k]) => [k, !!edit[k]])), para_evidence_filter: edit.para_evidence_filter ?? 'all' }}
           fields={[
             { key: 'label', label: 'Who is it for', optional: true },
             { key: 'extend', label: 'Extend from today by', type: 'chips', options: [{ value: 0, label: 'Keep as is' }, ...EXPIRY], default: 0 },
             ...SECTIONS.map(([key, label]) => ({ key, label: `Show ${label[0].toLowerCase()}${label.slice(1)}`, type: 'switch', ...(key === 'show_development' ? { show: (v) => !!v.show_journey } : {}) })),
+            ...PARA_SECTIONS.map(([key, label]) => ({ key, label: `Show ${label[0].toLowerCase()}${label.slice(1)} (para)`, type: 'switch' })),
+            { key: 'para_evidence_filter', label: 'Para evidence standard', type: 'chips', options: PARA_EVIDENCE_OPTIONS, show: (v) => !!(v.show_para_class || v.show_para_guide || v.show_para_class_history) },
           ]}
           onSubmit={async (v) => {
-            try { await api.patch(`/me/passport-links/${edit.id}`, { version: edit.version, label: v.label || null, ...(Number(v.extend) ? { expires_in_days: Number(v.extend) } : {}), ...Object.fromEntries(SECTIONS.map(([k]) => [k, !!v[k]])) }); }
+            try { await api.patch(`/me/passport-links/${edit.id}`, { version: edit.version, label: v.label || null, ...(Number(v.extend) ? { expires_in_days: Number(v.extend) } : {}), ...Object.fromEntries([...SECTIONS, ...PARA_SECTIONS].map(([k]) => [k, !!v[k]])), para_evidence_filter: v.para_evidence_filter ?? 'all' }); }
             catch (e) { await links.reload(); throw e; }
             await links.reload(); return 'Link updated';
           }} />

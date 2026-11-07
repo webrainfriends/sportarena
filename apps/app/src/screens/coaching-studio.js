@@ -21,6 +21,8 @@ import { AthleteBenchmarks } from './player-insights';
 import { SharedByPlayers } from './player-goals';
 import { t, tEnum } from '../i18n';
 import { VideoPlayer } from '../video-player';
+import { SessionGuidePanel, ParaAdaptationEditor, AccessibleMediaEditor, ParaTemplateToggle } from './coaching-para';
+import { useSports } from '../sportpicker';
 
 const GOAL_CATEGORIES = ['technical', 'tactical', 'physical', 'mental_performance', 'teamwork', 'match_objective', 'custom'];
 const GOAL_STATUS = ['planned', 'active', 'achieved', 'paused', 'stopped'];
@@ -39,6 +41,21 @@ const Chips = ({ wide, children }) => (wide ? <View style={{ flexDirection: 'row
 /** Two columns on a tablet or desktop, one on a phone; each child is one column. */
 const Cols = ({ wide, children }) => <View style={{ flexDirection: wide ? 'row' : 'column', gap: 16, alignItems: 'flex-start' }}>{children.map((ch, n) => <View key={n} style={{ flex: 1, width: '100%', minWidth: 0 }}>{ch}</View>)}</View>;
 const Status = ({ s }) => <Tag label={label(s)} color={s === 'completed' || s === 'present' ? c.lime : c.violetSoft} />;
+
+function SharedParaPathwaysList({ athlete_id, push }) {
+  const d = useLoad(() => api.get(`/coaching/para-pathway/${athlete_id}`), [athlete_id]);
+  if (d.error || !d.data) return null;
+  const pp = d.data;
+  return (
+    <Section title={t('pp.coach.shared')} color={c.violet}>
+      <Row
+        title={`${pp.sport} · ${t(`pp.stage.${pp.current_stage}`)}`}
+        sub={`${t('pp.metrics.milestones')}: ${pp.milestone_count ?? 0} · ${t('pp.metrics.done')}: ${pp.done_count ?? 0}`}
+        onPress={() => push('SharedParaPathway', { athlete_id })}
+      />
+    </Section>
+  );
+}
 
 export function PerformanceStudio() {
   const { push } = useNav();
@@ -185,6 +202,7 @@ export function CoachSession(props) {
         <Btn small title={t('nav.tab.More')} color={c.paper} ink={c.ink} onPress={() => setMore('menu')} />
         {!done ? <Btn small title={t('cs.voice_note')} color={c.paper} ink={c.ink} onPress={() => setVoice(true)} /> : null}
         {!done ? <Btn small title={t('cs.draft_plan_ai')} color={c.paper} ink={c.ink} onPress={() => push('CoachCopilot', { task: 'plan_session', session_record_id: s.id })} /> : <Btn small title={t('cs.draft_summary_ai')} color={c.paper} ink={c.ink} onPress={() => push('CoachCopilot', { task: 'summarise_session', session_record_id: s.id })} />}
+        {s.sport?.is_para && blocks.length ? <Btn small title={t('copar.accessible_view_btn')} color={c.paper} ink={c.ink} onPress={() => push('AccessibleSession', { id: s.id })} accessibilityLabel={t('copar.accessible_view_btn')} /> : null}
         {!done || s.team_summary || s.private_summary ? null : <Btn small title={t('cs.add_review')} onPress={() => setFinishing(true)} />}
       </View>
 
@@ -228,6 +246,8 @@ export function CoachSession(props) {
           );
         })}
       </Section>
+
+      {s.sport?.is_para ? <SessionGuidePanel sessionId={s.id} wide={wide} /> : null}
 
       <Section title={t('cs.notes_from')} action={done ? undefined : t('cs.team_note')} onAction={() => setNote({ team_id: s.team_id })}>
         {!w.observations.length ? <T size={13} color={c.mute}>{t('cs.nothing_noted')}</T> : w.observations.map((o) => (
@@ -448,6 +468,7 @@ export function CoachGoals({ athlete_id, team_id, name, programme_id }) {
         </>
       </Cols>
       {athlete_id ? <SharedByPlayers athlete_id={athlete_id} /> : null}
+      {athlete_id ? <SharedParaPathwaysList athlete_id={athlete_id} push={push} /> : null}
       <FormSheet visible={form === 'goal'} onClose={() => setForm(null)} title={t('cs.new_goal')} submitLabel={t('cs.create_goal')}
         fields={[
           { key: 'title', label: t('cs.goal_label') },
@@ -936,7 +957,9 @@ const SKILL_TAGS = ['passing', 'receiving', 'shooting', 'defending', 'footwork',
 export function CoachDrills() {
   const { toast } = useSession();
   const { tablet: wide } = useLayout();
-  const [flt, setFlt] = useState({ q: '', sport: '', tag: '' });
+  const sports = useSports();
+  const paraSlugSet = new Set((sports.data ?? []).filter((s) => s.is_para).map((s) => s.slug));
+  const [flt, setFlt] = useState({ q: '', sport: '', tag: '', para: false });
   const qs = Object.entries({ scope: 'block', q: flt.q.trim(), sport: flt.sport, tag: flt.tag }).filter(([, v]) => v).map(([k, v]) => `${k}=${encodeURIComponent(v)}`).join('&');
   const list = useLoad(() => api.get(`/coach/templates?${qs}&limit=60`), [qs]);
   const all = useLoad(() => api.get('/coach/templates?scope=block&limit=100'), []); // what filters can offer
@@ -944,6 +967,7 @@ export function CoachDrills() {
   const [form, setForm] = useState(false), [open, setOpen] = useState(null);
   const sportOpts = [{ value: '', label: t('cs.all_sports') }, ...[...new Map((all.data ?? []).filter((x) => x.sport_slug).map((x) => [x.sport_slug, x.sport_name ?? x.sport_slug])).entries()].map(([value, name]) => ({ value, label: label(name.replace(/-/g, ' ')) }))];
   const tagOpts = [...new Set((all.data ?? []).flatMap((x) => x.blocks.flatMap((b) => b.tags ?? [])).map((x) => x.toLowerCase()))].sort();
+  const displayList = flt.para && paraSlugSet.size ? (list.data ?? []).filter((x) => x.sport_slug && paraSlugSet.has(x.sport_slug)) : (list.data ?? []);
   const teams = coach.data?.teams ?? [];
   const share = async (tpl, v) => {
     await api.post(`/coaching/templates/${tpl.id}/share`, { id: tpl.id, with: v.with, team_id: v.with === 'team' ? v.team_id : undefined });
@@ -956,18 +980,21 @@ export function CoachDrills() {
       <View style={{ marginTop: 10, gap: 10 }}>
         <Btn small title={t('cs.new_drill')} onPress={() => setForm(true)} accessibilityLabel={t('cs.create_drill_a11y')} style={{ alignSelf: 'flex-start' }} />
         <Field label={t('cs.search_drills')} value={flt.q} onChangeText={(q) => setFlt({ ...flt, q })} placeholder={t('cs.drill_search_ph')} />
-        <MenuField label={t('cs.sport')} value={flt.sport} onChange={(sport) => setFlt({ ...flt, sport })} options={sportOpts} placeholder={t('cs.all_sports')} />
+        <MenuField label={t('cs.sport')} value={flt.sport} onChange={(sport) => setFlt({ ...flt, sport, para: false })} options={sportOpts} placeholder={t('cs.all_sports')} />
+        <Chips wide={wide}>
+          <Chip label={t('cs.para_drills_filter')} active={flt.para} onPress={() => setFlt({ ...flt, para: !flt.para, sport: '' })} accessibilityLabel={t('cs.para_drills_filter')} />
+        </Chips>
         {tagOpts.length ? (
           <Chips wide={wide}>
             <Chip label={t('cs.any_skill')} active={!flt.tag} onPress={() => setFlt({ ...flt, tag: '' })} />
             {tagOpts.map((tg) => <Chip key={tg} label={label(tg)} active={flt.tag === tg} onPress={() => setFlt({ ...flt, tag: flt.tag === tg ? '' : tg })} />)}
           </Chips>) : null}
       </View>
-      {list.loading && !list.data ? <Loading /> : list.error ? <ErrorBox error={list.error} onRetry={list.reload} /> : !list.data.length ? (
-        <Empty emoji="🧰" title={qs.replace('scope=block', '').replace(/^&|&$/g, '') ? t('cs.no_drill_match') : t('cs.drills_empty')} sub={t('cs.drills_empty_sub')} />
+      {list.loading && !list.data ? <Loading /> : list.error ? <ErrorBox error={list.error} onRetry={list.reload} /> : !displayList.length ? (
+        <Empty emoji="🧰" title={flt.para ? t('cs.no_para_drill_match') : qs.replace('scope=block', '').replace(/^&|&$/g, '') ? t('cs.no_drill_match') : t('cs.drills_empty')} sub={t('cs.drills_empty_sub')} />
       ) : (
         <View style={{ flexDirection: wide ? 'row' : 'column', flexWrap: 'wrap', gap: 10 }}>
-          {list.data.map((tpl) => {
+          {displayList.map((tpl) => {
             const b = tpl.blocks[0] ?? {};
             return (
               <View key={tpl.id} style={{ width: wide ? '48.8%' : '100%' }}>
@@ -1024,8 +1051,9 @@ function MoreSheet({ more, setMore, w, reload }) {
   const { toast } = useSession();
   const { push } = useNav();
   const s = w.session;
+  const [paraFilter, setParaFilter] = useState(false);
   const saved = useLoad(() => (more === 'saved' ? api.get('/coaching/groups') : Promise.resolve([])), [more === 'saved']);
-  const tpls = useLoad(() => (more === 'use' ? api.get('/coach/templates?scope=session') : Promise.resolve([])), [more === 'use']);
+  const tpls = useLoad(() => (more === 'use' ? api.get(paraFilter ? '/coaching/para-templates?scope=session' : '/coach/templates?scope=session') : Promise.resolve([])), [more === 'use', paraFilter]);
   const roster = useLoad(() => (more === 'help' && s.team_id ? api.get(`/coach/teams/${s.team_id}/roster`) : Promise.resolve(null)), [more === 'help']);
   const close = () => setMore(null);
   const players = w.participants.map((p) => ({ value: p.id, label: p.display_name }));
@@ -1055,8 +1083,12 @@ function MoreSheet({ more, setMore, w, reload }) {
       <FormSheet visible={more === 'template'} onClose={close} title={t('cs.save_template')} submitLabel={t('common.save')}
         fields={[{ key: 'title', label: t('cs.template_name') }]} onSubmit={call(async (v) => api.post('/coaching/templates', { title: v.title, session_record_id: s.id }), t('cs.template_saved'))} />
       <Sheet visible={more === 'use'} onClose={close} title={t('cs.use_template')}>
+        <HScroll style={{ marginBottom: 8 }}>
+          <Chip label={t('cs.all_templates')} active={!paraFilter} onPress={() => setParaFilter(false)} />
+          {s.sport?.is_para ? <ParaTemplateToggle value={paraFilter} onChange={setParaFilter} /> : null}
+        </HScroll>
         {tpls.loading ? <Loading /> : !tpls.data?.length ? <T size={13} color={c.mute}>{t('cs.no_templates')}</T> :
-          tpls.data.map((tpl) => <Row key={tpl.id} title={tpl.title} sub={t('cs.tpl_line', { n: tpl.blocks.length, shared: tpl.mine ? '' : ` · ${t('cs.shared_by', { name: tpl.shared_by })}` })} onPress={async () => { try { await api.post(`/coaching/sessions/${s.id}/apply-template`, { template_id: tpl.id }); close(); toast(t('cs.blocks_added')); reload(); } catch (e) { toast(e.message); } }} />)}
+          tpls.data.map((tpl) => <Row key={tpl.id} title={tpl.title} sub={`${paraFilter && tpl.para_template ? `${tpl.para_template.replace(/_/g, ' ')} · ` : ''}${t('cs.tpl_line', { n: tpl.blocks?.length ?? tpl.block_count ?? 0, shared: tpl.mine ? '' : ` · ${t('cs.shared_by', { name: tpl.shared_by })}` })}`} onPress={async () => { try { await api.post(`/coaching/sessions/${s.id}/apply-template`, { template_id: tpl.id }); close(); toast(t('cs.blocks_added')); reload(); } catch (e) { toast(e.message); } }} />)}
       </Sheet>
       <FormSheet visible={more === 'clone'} onClose={close} title={t('cs.clone_title')} submitLabel={t('cs.create')}
         fields={[{ key: 'title', label: t('cs.block_title') }, { key: 'date', label: t('cs.date'), type: 'date' }, { key: 'time', label: t('cs.start_time'), type: 'time' }]} initial={{ title: s.title }}

@@ -18,9 +18,12 @@
       }
     },
     "preview": {
-      "distribution": "internal",
       "android": {
-        "buildType": "apk"
+        "buildType": "apk",
+        "distribution": "internal"
+      },
+      "ios": {
+        "distribution": "store"
       },
       "env": {
         "EXPO_PUBLIC_API_URL": "https://gotmygame.com"
@@ -28,12 +31,23 @@
     },
     "production": {
       "autoIncrement": true,
+      "android": {
+        "distribution": "internal"
+      },
+      "ios": {
+        "distribution": "store"
+      },
       "env": {
         "EXPO_PUBLIC_API_URL": "https://gotmygame.com"
       }
     }
   },
   "submit": {
+    "preview": {
+      "ios": {
+        "ascAppId": "6822294278"
+      }
+    },
     "production": {
       "ios": {
         "ascAppId": "6822294278"
