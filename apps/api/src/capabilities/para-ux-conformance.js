@@ -47,8 +47,8 @@ async function requireAdminOrManager(c, user) {
 
 // ── 1. upsert_conformance_entry ───────────────────────────────────────────────
 cap({
-  name: 'upsert_conformance_entry', method: 'PUT',
-  path: '/para/conformance/:journey/:platform/:tech', tag: TAG,
+  name: 'upsert_conformance_entry', method: 'POST',
+  path: '/para/conformance/entry/:journey/:platform/:tech', tag: TAG,
   summary: 'Record or update a conformance test result for one journey × platform × assistive tech combination.',
   input: z.object({
     journey:      z.enum(JOURNEYS),
@@ -58,7 +58,7 @@ cap({
     evidence_ref: z.string().url('Must be a URL').optional(),
     notes:        z.string().max(2000).optional(),
   }),
-  async handler({ user, input: i }) {
+  async handler({ user }, i) {
     return tx(async (c) => {
       await requireAdminOrManager(c, user);
       checkSensitiveText(i.notes);
@@ -100,7 +100,7 @@ cap({
     tech:     z.enum(TECHS).optional(),
     status:   z.enum(STATUSES).optional(),
   }),
-  async handler({ user, input: i }) {
+  async handler({ user }, i) {
     return tx(async (c) => {
       await requireAdminOrManager(c, user);
       const wheres = [];
@@ -111,7 +111,7 @@ cap({
       if (i.status)   { params.push(i.status);   wheres.push(`e.status=$${params.length}`); }
       const where = wheres.length ? `WHERE ${wheres.join(' AND ')}` : '';
       const rows = await many(
-        `SELECT e.*, u.name AS tester_name
+        `SELECT e.*, u.display_name AS tester_name
          FROM para_conformance_entries e
          LEFT JOIN users u ON u.id=e.tested_by
          ${where} ORDER BY e.journey, e.platform, e.tech`,
@@ -176,7 +176,7 @@ cap({
     tech:         z.enum(TECHS),
     evidence_ref: z.string().url('Must be a URL'),
   }),
-  async handler({ user, input: i }) {
+  async handler({ user }, i) {
     return tx(async (c) => {
       await requireAdminOrManager(c, user);
       const row = (await c.query(
@@ -202,7 +202,7 @@ cap({
     journey:  z.enum(JOURNEYS).optional(),
     platform: z.enum(PLATFORMS).optional(),
   }),
-  async handler({ user, input: i }) {
+  async handler({ user }, i) {
     return tx(async (c) => {
       await requireAdminOrManager(c, user);
       const wheres = [];
@@ -213,7 +213,7 @@ cap({
       if (i.platform) { params.push(i.platform); wheres.push(`d.platform=$${params.length}`); }
       const where = wheres.length ? `WHERE ${wheres.join(' AND ')}` : '';
       const defects = await many(
-        `SELECT d.*, u.name AS resolver_name
+        `SELECT d.*, u.display_name AS resolver_name
          FROM para_conformance_defects d
          LEFT JOIN users u ON u.id=d.resolved_by
          ${where} ORDER BY
@@ -229,8 +229,8 @@ cap({
 
 // ── 6. upsert_conformance_defect ──────────────────────────────────────────────
 cap({
-  name: 'upsert_conformance_defect', method: 'PUT',
-  path: '/para/conformance/defects/:defect_id?', tag: TAG,
+  name: 'upsert_conformance_defect', method: 'POST',
+  path: '/para/conformance/defects', tag: TAG,
   summary: 'Create or update a para accessibility defect.',
   input: z.object({
     defect_id:          id.optional(),
@@ -244,7 +244,7 @@ cap({
     evidence_ref:       z.string().url().optional(),
     wcag_criterion:     z.string().max(20).optional(),
   }),
-  async handler({ user, input: i }) {
+  async handler({ user }, i) {
     return tx(async (c) => {
       await requireAdminOrManager(c, user);
       checkSensitiveText(i.description);
@@ -287,7 +287,7 @@ cap({
     status:          z.enum(['resolved','wont_fix']),
     resolution_note: z.string().min(10).max(2000),
   }),
-  async handler({ user, input: i }) {
+  async handler({ user }, i) {
     return tx(async (c) => {
       await requireAdminOrManager(c, user);
       checkSensitiveText(i.resolution_note);

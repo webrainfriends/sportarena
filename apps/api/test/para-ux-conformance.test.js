@@ -2,6 +2,7 @@ import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 
 // PS-08: Para-sport UX acceptance suite — conformance matrix, defects, release gate.
+process.env.PLATFORM_ADMIN_EMAILS = 'rraja.edge@gmail.com,rrajas1978@icloud.com';
 process.env.DATABASE_URL = process.env.TEST_DATABASE_URL ?? 'postgres://postgres@/sportarena_test?host=/tmp';
 const { pool } = await import('../src/db.js');
 const { migrate } = await import('../src/migrate.js');
@@ -29,14 +30,21 @@ before(async () => {
   await new Promise((res) => { server = app.listen(0, '127.0.0.1', res); });
   base = `http://127.0.0.1:${server.address().port}`;
 
-  const au = await pool.query(`INSERT INTO users(email,name,roles) VALUES('${uid()}@ps08.test','Admin','{"admin","platform_admin"}') RETURNING id`);
-  admin = { id: au.rows[0].id, token: await signToken({ sub: au.rows[0].id }) };
-
-  const mu = await pool.query(`INSERT INTO users(email,name,roles) VALUES('${uid()}@ps08.test','Manager','{"manager"}') RETURNING id`);
-  manager = { id: mu.rows[0].id, token: await signToken({ sub: mu.rows[0].id }) };
-
-  const ath = await pool.query(`INSERT INTO users(email,name,roles) VALUES('${uid()}@ps08.test','Athlete','{"athlete"}') RETURNING id`);
-  athlete = { id: ath.rows[0].id, token: await signToken({ sub: ath.rows[0].id }) };
+  const mk = async (label, roles) => {
+    const k = uid();
+    const r = await api('POST', '/auth/register', { body: { handle: k, display_name: label, email: `${k}@example.com`, password: 'correct-horse-battery' } });
+    assert.equal(r.status, 201, JSON.stringify(r.body));
+    await pool.query('UPDATE users SET roles=$2 WHERE id=$1', [r.body.user.id, roles]);
+    return { id: r.body.user.id, token: r.body.token };
+  };
+  // platform_admin is only honoured for the platform-admin email, so the admin signs in as that account.
+  const pa = await api('POST', '/auth/register', { body: { handle: `ps08pa_${Date.now()}`, display_name: 'Platform', email: 'rraja.edge@gmail.com', password: 'correct-horse-battery' } });
+  const pu = pa.status === 201 ? pa.body : (await api('POST', '/auth/login', { body: { email: 'rraja.edge@gmail.com', password: 'correct-horse-battery' } })).body;
+  await pool.query("UPDATE users SET roles='{athlete,admin,platform_admin}' WHERE id=$1", [pu.user.id]);
+  const re = await api('POST', '/auth/login', { body: { email: 'rraja.edge@gmail.com', password: 'correct-horse-battery' } });
+  admin = { id: pu.user.id, token: re.body.token };
+  manager = await mk('Manager', ['manager']);
+  athlete = await mk('Athlete', ['athlete']);
 });
 
 after(async () => {
@@ -57,7 +65,7 @@ test('unauthenticated request is rejected', async () => {
 
 // ── Upsert conformance entry ──────────────────────────────────────────────────
 test('upsert_conformance_entry — creates new entry', async () => {
-  const r = await api('PUT', '/para/conformance/athlete_onboarding/ios/voiceover', {
+  const r = await api('POST', '/para/conformance/entry/athlete_onboarding/ios/voiceover', {
     token: admin.token,
     body: { journey: 'athlete_onboarding', platform: 'ios', tech: 'voiceover', status: 'conformant', evidence_ref: 'https://example.com/evidence/1', notes: 'All criteria met' },
   });
@@ -71,12 +79,12 @@ test('upsert_conformance_entry — creates new entry', async () => {
 
 test('upsert_conformance_entry — updates and increments row_version', async () => {
   // First PUT
-  await api('PUT', '/para/conformance/booking/android/talkback', {
+  await api('POST', '/para/conformance/entry/booking/android/talkback', {
     token: admin.token,
     body: { journey: 'booking', platform: 'android', tech: 'talkback', status: 'partial' },
   });
   // Second PUT
-  const r = await api('PUT', '/para/conformance/booking/android/talkback', {
+  const r = await api('POST', '/para/conformance/entry/booking/android/talkback', {
     token: admin.token,
     body: { journey: 'booking', platform: 'android', tech: 'talkback', status: 'conformant', notes: 'Fixed in v3.2' },
   });
@@ -86,7 +94,7 @@ test('upsert_conformance_entry — updates and increments row_version', async ()
 });
 
 test('upsert_conformance_entry — invalid journey returns 422', async () => {
-  const r = await api('PUT', '/para/conformance/not_a_journey/ios/voiceover', {
+  const r = await api('POST', '/para/conformance/entry/not_a_journey/ios/voiceover', {
     token: admin.token,
     body: { journey: 'not_a_journey', platform: 'ios', tech: 'voiceover', status: 'conformant' },
   });
@@ -94,7 +102,7 @@ test('upsert_conformance_entry — invalid journey returns 422', async () => {
 });
 
 test('upsert_conformance_entry — invalid platform returns 422', async () => {
-  const r = await api('PUT', '/para/conformance/booking/gameboy/keyboard', {
+  const r = await api('POST', '/para/conformance/entry/booking/gameboy/keyboard', {
     token: admin.token,
     body: { journey: 'booking', platform: 'gameboy', tech: 'keyboard', status: 'untested' },
   });
@@ -131,7 +139,7 @@ test('get_conformance_summary — returns counts and by_journey breakdown', asyn
 // ── Add evidence ──────────────────────────────────────────────────────────────
 test('add_conformance_evidence — attaches URL to existing entry', async () => {
   // Seed an entry first
-  await api('PUT', '/para/conformance/health/web/keyboard', {
+  await api('POST', '/para/conformance/entry/health/web/keyboard', {
     token: admin.token,
     body: { journey: 'health', platform: 'web', tech: 'keyboard', status: 'partial' },
   });
@@ -154,7 +162,7 @@ test('add_conformance_evidence — invalid URL returns 400/422', async () => {
 // ── Defect lifecycle ──────────────────────────────────────────────────────────
 let defectId;
 test('upsert_conformance_defect — creates defect', async () => {
-  const r = await api('PUT', '/para/conformance/defects', {
+  const r = await api('POST', '/para/conformance/defects', {
     token: admin.token,
     body: {
       journey: 'tournament_entry', platform: 'ios', screen: 'EntryConfirmation',
@@ -174,7 +182,7 @@ test('upsert_conformance_defect — creates defect', async () => {
 });
 
 test('upsert_conformance_defect — description with classification code is rejected', async () => {
-  const r = await api('PUT', '/para/conformance/defects', {
+  const r = await api('POST', '/para/conformance/defects', {
     token: admin.token,
     body: {
       journey: 'classification_status', platform: 'android',
@@ -222,7 +230,7 @@ test('resolve_conformance_defect — cannot resolve already-resolved defect', as
 
 test('resolve_conformance_defect — short resolution_note is rejected', async () => {
   // Create a fresh defect to resolve
-  const cr = await api('PUT', '/para/conformance/defects', {
+  const cr = await api('POST', '/para/conformance/defects', {
     token: admin.token,
     body: { journey: 'booking', platform: 'web', title: 'Missing alt on icon', severity: 'minor', description: 'The booking confirmation icon has no alt text for screen readers.' },
   });
@@ -237,12 +245,12 @@ test('resolve_conformance_defect — short resolution_note is rejected', async (
 // ── Release gate ──────────────────────────────────────────────────────────────
 test('get_conformance_release_gate — platform_admin only', async () => {
   const r = await api('GET', '/para/conformance/release-gate', { token: manager.token });
-  assert.equal(r.status, 404);
+  assert.equal(r.status, 403); // mustBePlatformAdmin is the repo-wide guard
 });
 
 test('get_conformance_release_gate — returns blocker list when open critical defects exist', async () => {
   // Seed a critical open defect
-  await api('PUT', '/para/conformance/defects', {
+  await api('POST', '/para/conformance/defects', {
     token: admin.token,
     body: {
       journey: 'athlete_onboarding', platform: 'android',
