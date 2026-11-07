@@ -168,6 +168,21 @@ export const ACADEMY_STEPS = [
     modules: ['academy-sessions.js', 'academy-attendance.js', 'academy-ops-board.js', 'academy-desk.js'], sources: ['apps/app/src/screens/academy-ops.js'],
   },
   {
+    id: 'wearable_integration', title: 'Connect performance devices',
+    why: 'Elite academies like Nadal Academy, Real Madrid Academies and FC Barcelona track training load, HRV, sleep and GPS metrics daily. Connect your athletes\' wearables so coaches see readiness and load curves without paperwork, and each athlete controls exactly what is shared.',
+    steps: [
+      'Open Integration Hub (Organisation settings) and request access to the providers your athletes use (Oura, WHOOP, Garmin, Fitbit, Strava, Polar, Catapult OpenField). The platform team reviews and enables it.',
+      'Once approved, athletes open Health → Wearables, tap Connect a device, choose the provider and the metrics they allow (heart rate, HRV, sleep, steps, etc.), and paste their provider access token.',
+      'Athletes can narrow or pause what they share at any time. The access token is encrypted and never shown again.',
+      'Devices sync automatically; athletes can tap Sync now or retry after an error. The Data quality panel shows missing days, out-of-range readings and overdue syncs.',
+      'Athletes log session RPE (perceived intensity 1–10 × duration) to add subjective load alongside device data.',
+      'Coaches open Health → Shared wellness and see the Team wearables view: Metrics tab for latest readings, Load (ACWR) tab for the Acute:Chronic Workload Ratio of each athlete colour-coded by zone, and Session RPE tab for self-reported loads.',
+      'Each athlete sets their own alert thresholds (e.g. "tell me when my 3-day average resting heart rate is above 65 bpm"). Alerts are reminders, never medical findings.',
+    ],
+    target: { academy: 'ops' },
+    modules: ['wearables.js', 'wellness.js', 'wellness-sharing.js', 'integrations.js'], sources: ['apps/app/src/screens/wearables.js', 'apps/app/src/screens/wellness.js', 'apps/app/src/screens/wellness-sharing.js'],
+  },
+  {
     id: 'tax', title: 'Set up taxation',
     why: 'Know the tax collected and paid, with your own tax rules and tax details on invoices.',
     steps: ['Open Finance and choose the Tax tab (finance access is required).', 'Add your tax registration and tax rules.', 'Read collected, paid and net tax by period and rate.', 'Tax figures are informational, not tax advice.'],
@@ -363,7 +378,7 @@ export const NOT_IN_GUIDE = {
 };
 
 /** The directories/files the guard test watches for org/academy/venue/coach/tax capability modules. */
-export const WATCHED_MODULES = /^(academy-.*|org-.*|organisations|venue-coaches|gst|provider-tax|coach-classes|para-sport-funding|para-sport-sponsorship-outcomes|para-pathway|para-readiness|para-learn|para-staff-credentials|para-spectator-accessibility|boarding-.*)\.js$/;
+export const WATCHED_MODULES = /^(academy-.*|org-.*|organisations|venue-coaches|gst|provider-tax|coach-classes|para-sport-funding|para-sport-sponsorship-outcomes|para-pathway|para-readiness|para-learn|para-staff-credentials|para-spectator-accessibility|boarding-.*|wearables|wellness.*|integrations)\.js$/;
 
 export const SHOT_SIZES = { phone: { width: 390, height: 1100 }, desktop: { width: 1280, height: 900 } };
 export const shotFile = (stepId, size) => `${String(ACADEMY_STEPS.findIndex((s) => s.id === stepId) + 1).padStart(2, '0')}-${stepId}-${size}.png`;

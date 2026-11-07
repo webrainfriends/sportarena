@@ -11,8 +11,7 @@
         "simulator": true
       },
       "android": {
-        "buildType": "apk",
-        "projectId": "7ba48908-8676-4a0f-a7e1-34e523fd0d42"
+        "buildType": "apk"
       },
       "env": {
         "EXPO_PUBLIC_API_URL": "https://gotmygame.com"

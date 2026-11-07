@@ -14,6 +14,7 @@ import { PROVIDERS } from '../integrations/registry.js';
 import { METRICS, ADAPTERS } from '../wearables/normalise.js';
 import { storeReadings, syncConnection, evaluateAlerts, TOKEN_CTX } from '../wearables/sync.js';
 import { shareBlock, shareEvent, reasonText } from '../wellness-sharing.js';
+import { computeACWR, computeReadiness } from '../wearables/acwr.js';
 
 const TAG = 'Athlete health';
 const NOT_MEDICAL = 'Descriptive readings from the athlete\'s own devices. Not a diagnosis, medical advice or clearance to train or play; missing days are never estimated.';
@@ -408,5 +409,110 @@ cap({
         [user.id, activity_type === 'sleep' ? 'other' : activity_type, mins, started_at]);
     }
     return activity || { imported: false, reason: 'duplicate' };
+  },
+});
+
+// ---------- ACWR and readiness (#583 elite extensions) ----------
+
+cap({
+  name: 'get_my_acwr', method: 'GET', path: '/me/wearables/acwr', tag: TAG,
+  summary: 'Your own Acute:Chronic Workload Ratio from the last 35 days of training load (device sources + self-reported sRPE). ACWR = 7-day avg / 28-day avg. The zone (underload / optimal / caution / excessive) describes your load pattern; it is not a medical assessment.',
+  input: z.object({}),
+  async handler({ user }) {
+    const data = await computeACWR(user.id);
+    return { ...data, basis: NOT_MEDICAL };
+  },
+});
+
+cap({
+  name: 'get_my_readiness', method: 'GET', path: '/me/wearables/readiness', tag: TAG,
+  summary: 'A 0–100 training readiness indicator derived from HRV, sleep duration and resting heart rate over the last 7 days, with the direction (improving / stable / declining). Not a medical clearance or fitness-to-play verdict.',
+  input: z.object({}),
+  async handler({ user }) { return computeReadiness(user.id); },
+});
+
+cap({
+  name: 'get_team_acwr', method: 'GET', path: '/wearables/team/acwr', tag: TAG,
+  summary: 'Coach: ACWR zone and readiness summary for all athletes currently sharing wearables with you. Sorted by highest concern first. Only through a live wellness share; each view is logged.',
+  input: z.object({}),
+  async handler({ user }) {
+    return tx(async (c) => {
+      const shares = (await c.query("SELECT s.* FROM wellness_shares s WHERE s.recipient_id=$1 AND s.recipient_kind='coach' AND s.revoked_at IS NULL AND s.expires_at > now() AND 'wearables' = ANY(s.fields) ORDER BY s.created_at", [user.id])).rows;
+      if (!shares.length) return { athletes: [], unavailable: [], basis: NOT_MEDICAL };
+      const athletes = [], unavailable = [];
+      for (const s of shares) {
+        const block = await shareBlock(c, s);
+        const who = (await c.query('SELECT id, display_name, handle FROM users WHERE id=$1', [s.athlete_id])).rows[0];
+        if (block) { unavailable.push({ athlete: who, reason: reasonText(block) }); continue; }
+        const acwr = await computeACWR(s.athlete_id);
+        const readiness = await computeReadiness(s.athlete_id);
+        await shareEvent(c, s, user.id, 'viewed', { acwr: true });
+        await audit(c, user.id, 'read_acwr_shared', 'wellness_shares', s.id);
+        athletes.push({ athlete: who, ...acwr, readiness_score: readiness.score, readiness_direction: readiness.direction });
+      }
+      const zoneOrder = { excessive: 0, caution: 1, underload: 2, optimal: 3, no_data: 4 };
+      athletes.sort((a, b) => (zoneOrder[a.zone] ?? 4) - (zoneOrder[b.zone] ?? 4));
+      return { athletes, unavailable, basis: NOT_MEDICAL };
+    });
+  },
+});
+
+// ---------- sRPE (session RPE) (#583 elite extensions) ----------
+
+const rpeSchema = z.object({ rpe: z.number().int().min(1).max(10), duration_minutes: z.number().int().min(1).max(600), logged_on: z.string().date().optional(), sport: z.string().max(60).optional(), notes: z.string().max(500).optional() });
+
+cap({
+  name: 'log_session_rpe', method: 'POST', path: '/me/wearables/srpe', tag: TAG, status: 201,
+  summary: 'Self-report your perceived session intensity (Borg CR-10, 1–10) and duration in minutes. Session load = rpe × duration_minutes (arbitrary units, same scale as device training load). One entry per sport per day.',
+  input: rpeSchema,
+  async handler({ user }, i) {
+    const on = i.logged_on ?? new Date().toISOString().slice(0, 10);
+    const r = await one(
+      `INSERT INTO session_rpe_logs(user_id, logged_on, rpe, duration_minutes, sport, notes)
+       VALUES ($1,$2,$3,$4,$5,$6)
+       ON CONFLICT (user_id, logged_on, coalesce(sport,'')) DO UPDATE SET rpe=EXCLUDED.rpe, duration_minutes=EXCLUDED.duration_minutes, notes=EXCLUDED.notes, updated_at=now()
+       RETURNING id, logged_on::text AS logged_on, rpe, duration_minutes, sport, notes`,
+      [user.id, on, i.rpe, i.duration_minutes, i.sport ?? null, i.notes ?? null],
+    );
+    await evaluateAlerts(user.id);
+    return { ...r, session_load: r.rpe * r.duration_minutes };
+  },
+});
+
+cap({
+  name: 'list_session_rpe', method: 'GET', path: '/me/wearables/srpe', tag: TAG,
+  summary: 'Your own sRPE log for the last N days. Each entry shows the session load (rpe × duration_minutes) which feeds into your ACWR calculation.',
+  input: z.object({ days: z.coerce.number().int().min(1).max(90).default(28) }),
+  async handler({ user }, i) {
+    const rows = await many(
+      'SELECT id, logged_on::text AS logged_on, rpe, duration_minutes, sport, notes, (rpe * duration_minutes)::int AS session_load, created_at FROM session_rpe_logs WHERE user_id=$1 AND archived_at IS NULL AND logged_on > current_date - $2::int ORDER BY logged_on DESC',
+      [user.id, i.days],
+    );
+    return { items: rows, days: i.days };
+  },
+});
+
+cap({
+  name: 'get_team_srpe', method: 'GET', path: '/wearables/team/srpe', tag: TAG,
+  summary: 'Coach: sRPE logs for all athletes currently sharing wearables with you, for the last 14 days. Only through a live wellness share.',
+  input: z.object({ days: z.coerce.number().int().min(1).max(28).default(14) }),
+  async handler({ user }, i) {
+    return tx(async (c) => {
+      const shares = (await c.query("SELECT s.* FROM wellness_shares s WHERE s.recipient_id=$1 AND s.recipient_kind='coach' AND s.revoked_at IS NULL AND s.expires_at > now() AND 'wearables' = ANY(s.fields) ORDER BY s.created_at", [user.id])).rows;
+      const result = [];
+      for (const s of shares) {
+        const block = await shareBlock(c, s);
+        if (block) continue;
+        const who = (await c.query('SELECT id, display_name FROM users WHERE id=$1', [s.athlete_id])).rows[0];
+        const logs = (await c.query(
+          'SELECT logged_on::text AS logged_on, rpe, duration_minutes, sport, (rpe * duration_minutes)::int AS session_load FROM session_rpe_logs WHERE user_id=$1 AND archived_at IS NULL AND logged_on > current_date - $2::int ORDER BY logged_on DESC',
+          [s.athlete_id, i.days],
+        )).rows;
+        await shareEvent(c, s, user.id, 'viewed', { srpe: true });
+        await audit(c, user.id, 'read_srpe_shared', 'wellness_shares', s.id);
+        result.push({ athlete: who, logs });
+      }
+      return { athletes: result };
+    });
   },
 });

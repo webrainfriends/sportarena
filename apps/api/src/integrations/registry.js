@@ -92,9 +92,13 @@ const wearable = (name, extra = {}) => ({
   category: 'wearables', name, version: '1.0', auth: 'oauth', sandbox: false, athlete_scoped: true, capabilities: ['athlete_consent', 'daily_metrics', 'unit_normalisation'],
   scopes: WEAR_SCOPES, fields: z.object({ base_url: urlField.optional() }).strict(), secrets: [], async test() { return { ok: true, message: 'Each athlete connects their own account' }; }, ...extra,
 });
+const GPS_SCOPES = [{ key: 'wearables.metrics.read', label: 'Read GPS and performance data', description: 'Sprint distance, max speed, training load and position data as daily totals. Never medical diagnoses.' }];
 Object.assign(PROVIDERS, {
   oura: wearable('Oura'), whoop: wearable('WHOOP'), garmin: wearable('Garmin'), fitbit: wearable('Fitbit'), strava: wearable('Strava'),
   device_push: wearable('Apple Health / Health Connect (from the device app)', { auth: 'api_key', capabilities: ['athlete_consent', 'daily_metrics', 'unit_normalisation', 'device_push'] }),
+  // Elite-academy providers added in #583 elite extensions
+  polar: wearable('Polar (AccessLink v3)', { capabilities: ['athlete_consent', 'daily_metrics', 'unit_normalisation', 'sleep_quality', 'exercise_data'] }),
+  catapult_opf: wearable('Catapult OpenField (GPS)', { scopes: GPS_SCOPES, capabilities: ['athlete_consent', 'daily_metrics', 'unit_normalisation', 'gps_tracking', 'sprint_data'] }),
 });
 
 // Integrations that already have their own console. Listed so one catalogue shows everything; install is refused with a pointer, not duplicated.
