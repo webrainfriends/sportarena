@@ -15014,136 +15014,55 @@ export default {
   'rtp.coach_view_notice': 'පුහුණුකරුවන් ගලවාගැනීමේ තත්ත්වය සහ ලෝඩ් සීමාවන් පමණක් දකිති — සායනික තොරතුරු කිසිවිටෙකත් බෙදා නොගනී.', // machine-drafted
   'rtp.approval_valid_until': 'දක්වා වලංගුයි', // machine-drafted
   'rtp.mark_achieved': 'සාක්ෂාත් කළ බව සලකුණු කරන්න', // machine-drafted
-};
-  // machine-drafted — branded documents
-  'documents.hub.my_documents': 'My Documents', // machine-drafted
-  'documents.hub.templates': 'Templates', // machine-drafted
-  'documents.hub.brand_kits': 'Brand Kits', // machine-drafted
-  'documents.hub.generate': 'Generate Document', // machine-drafted
-  'documents.library.empty': 'No documents yet', // machine-drafted
-  'documents.library.generate_hint': 'Generate documents from events, invoices, plans and bookings', // machine-drafted
-  'documents.library.download': 'Download', // machine-drafted
-  'documents.library.share': 'Share', // machine-drafted
-  'documents.library.regenerate': 'Regenerate', // machine-drafted
-  'documents.library.versions': 'Versions', // machine-drafted
-  'documents.library.filter_all': 'All', // machine-drafted
-  'documents.library.filter_family': 'Family', // machine-drafted
-  'documents.library.filter_date': 'Date range', // machine-drafted
-  'documents.viewer.download': 'Download', // machine-drafted
-  'documents.viewer.share': 'Share', // machine-drafted
-  'documents.viewer.regenerate': 'Regenerate', // machine-drafted
-  'documents.viewer.create_link': 'Create share link', // machine-drafted
-  'documents.viewer.revoke': 'Revoke', // machine-drafted
-  'documents.viewer.active_shares': 'Active share links', // machine-drafted
-  'documents.viewer.no_shares': 'No active share links', // machine-drafted
-  'documents.viewer.pdf_preview': 'Preview PDF', // machine-drafted
-  'documents.viewer.metadata': 'Document details', // machine-drafted
-  'documents.viewer.checksum': 'Checksum', // machine-drafted
-  'documents.viewer.pages': 'Pages', // machine-drafted
-  'documents.viewer.template_version': 'Template version', // machine-drafted
-  'documents.viewer.brand_kit': 'Brand kit', // machine-drafted
-  'documents.share.expiry_24h': '24 hours', // machine-drafted
-  'documents.share.expiry_72h': '72 hours', // machine-drafted
-  'documents.share.expiry_7d': '7 days', // machine-drafted
-  'documents.share.expiry_30d': '30 days', // machine-drafted
-  'documents.share.created': 'Share link created', // machine-drafted
-  'documents.share.revoked': 'Link revoked', // machine-drafted
-  'documents.share.copy_link': 'Copy link', // machine-drafted
-  'documents.share.expires': 'Expires', // machine-drafted
-  'documents.generate.success': 'Document generated', // machine-drafted
-  'documents.generate.in_progress': 'Generating…', // machine-drafted
-  'documents.generate.error': 'Generation failed', // machine-drafted
-  'documents.generate.batch_success': 'Batch generation started', // machine-drafted
-  'documents.generate.sample_label': 'SAMPLE — preview only', // machine-drafted
-  'documents.templates.create': 'New template', // machine-drafted
-  'documents.templates.publish': 'Publish', // machine-drafted
-  'documents.templates.retire': 'Retire', // machine-drafted
-  'documents.templates.preview': 'Preview', // machine-drafted
-  'documents.templates.sample_label': 'SAMPLE', // machine-drafted
-  'documents.templates.block_header': 'Header', // machine-drafted
-  'documents.templates.block_title': 'Title', // machine-drafted
-  'documents.templates.block_parties': 'Parties', // machine-drafted
-  'documents.templates.block_lines': 'Line items', // machine-drafted
-  'documents.templates.block_totals': 'Totals', // machine-drafted
-  'documents.templates.block_text': 'Text', // machine-drafted
-  'documents.templates.block_footer': 'Footer', // machine-drafted
-  'documents.templates.block_activity_table': 'Activity table', // machine-drafted
-  'documents.templates.block_fixture_table': 'Fixture table', // machine-drafted
-  'documents.templates.block_booking_block': 'Booking block', // machine-drafted
-  'documents.templates.block_signature_block': 'Signature block', // machine-drafted
-  'documents.brand_kit.style': 'Style', // machine-drafted
-  'documents.brand_kit.stamp': 'Stamp image', // machine-drafted
-  'documents.brand_kit.signature': 'Signature image', // machine-drafted
-  'documents.brand_kit.tagline': 'Tagline', // machine-drafted
-  'documents.brand_kit.font_family': 'Font family', // machine-drafted
-  'documents.families.invoice': 'Invoice', // machine-drafted
-  'documents.families.coaching_report': 'Coaching report', // machine-drafted
-  'documents.families.season_report': 'Season report', // machine-drafted
-  'documents.families.sponsorship_agreement': 'Sponsorship agreement', // machine-drafted
-  'documents.families.enrolment_letter': 'Enrolment letter', // machine-drafted
-  'documents.families.federation_document': 'Federation document', // machine-drafted
-  'documents.families.academy_progress_report': 'Progress report', // machine-drafted
-  'documents.families.academy_management_review': 'Management review', // machine-drafted
-  'documents.families.academy_finance_pack': 'Finance pack', // machine-drafted
-  'documents.families.academy_term_report': 'Term report', // machine-drafted
-  'documents.families.academy_campus_quality': 'Campus quality', // machine-drafted
-  'documents.families.coaching_plan': 'Training plan', // machine-drafted
-  'documents.families.coach_agreement': 'Coaching agreement', // machine-drafted
-  'documents.families.referee_letter': 'Appointment letter', // machine-drafted
-  'documents.families.event_timetable': 'Event timetable', // machine-drafted
-  'documents.families.booking_confirmation': 'Booking confirmation', // machine-drafted
-  'documents.families.rehab_plan': 'Rehab plan', // machine-drafted
-  'documents.families.care_plan': 'Care plan', // machine-drafted
-  'documents.families.purchase_order': 'Purchase order', // machine-drafted
-  'documents.families.hire_agreement': 'Hire agreement', // machine-drafted
-  'documents.families.business_letter': 'Business letter', // machine-drafted
-  'account.lang_format_preview': 'ආකෘති පෙරදර්ශනය', // machine-drafted,
-  // Wearable hub elite extensions: ACWR, readiness, sRPE (#583) — machine-drafted, reviewed: false
-  'wr.team.tab.metrics': 'Metrics',
-  'wr.team.tab.acwr': 'Load (ACWR)',
-  'wr.team.tab.srpe': 'Session RPE',
-  'acwr.title': 'Training Load (ACWR)',
-  'acwr.acute': 'Acute (7d)',
-  'acwr.chronic': 'Chronic (28d)',
-  'acwr.days': '{n} days with data',
-  'acwr.basis': 'Descriptive readings from your devices. Not a diagnosis, medical advice or clearance to train or play.',
-  'acwr.zone.optimal': 'Optimal',
-  'acwr.zone.underload': 'Underload',
-  'acwr.zone.caution': 'Caution',
-  'acwr.zone.excessive': 'Excessive',
-  'acwr.zone.no_data': 'No data',
-  'acwr.desc.optimal': 'Load balance is in a good training range.',
-  'acwr.desc.underload': 'Training load is below your recent baseline.',
-  'acwr.desc.caution': 'Load is approaching a high level — monitor closely.',
-  'acwr.desc.excessive': 'Load is significantly higher than your recent baseline.',
-  'acwr.desc.no_data': 'Not enough data to calculate your ACWR yet.',
-  'acwr.team.empty': 'No ACWR data',
-  'acwr.team.empty_sub': 'Athletes need to connect a wearable device or log sessions.',
-  'readiness.title': 'Readiness',
-  'readiness.dir.improving': '\u2191 Improving',
-  'readiness.dir.stable': '\u2192 Stable',
-  'readiness.dir.declining': '\u2193 Declining',
-  'readiness.dir.no_data': 'No data',
-  'srpe.title': 'Session RPE Log',
-  'srpe.sub': 'Log your perceived effort after each training session (Borg CR-10).',
-  'srpe.add': 'Log session',
-  'srpe.rpe_label': 'Session effort (1-10)',
-  'srpe.duration': 'Duration (minutes)',
-  'srpe.sport': 'Sport or activity',
-  'srpe.notes': 'Notes',
-  'srpe.empty': 'No sessions logged yet.',
-  'srpe.saved': 'Session saved',
-  'srpe.pick_rpe': 'Please select an effort level.',
-  'srpe.rpe.1': 'Very easy',
-  'srpe.rpe.2': 'Easy',
-  'srpe.rpe.3': 'Moderate',
-  'srpe.rpe.4': 'Somewhat hard',
-  'srpe.rpe.5': 'Hard',
-  'srpe.rpe.6': 'Hard +',
-  'srpe.rpe.7': 'Very hard',
-  'srpe.rpe.8': 'Very hard +',
-  'srpe.rpe.9': 'Near maximum',
-  'srpe.rpe.10': 'Maximum',
-  'srpe.team.empty': 'No sRPE data',
-  'srpe.team.empty_sub': 'Athletes will log their sessions here.',
+  // earnings & seller-onboarding (machine-drafted, reviewed: false)
+  'earnings.title': 'Earnings',
+  'earnings.subtitle': 'What you have earned from paid sales. A customer paying is not the same as you being paid — the money reaches you in a payout.',
+  'earnings.gate_title': 'Complete your payout setup',
+  'earnings.gate_body': 'Some steps are incomplete. Payouts are paused until all steps are done.',
+  'earnings.gate_cta': 'Open payout setup',
+  'earnings.trend_label': '12-week trend',
+  'earnings.instant_pay': 'Pay me now',
+  'earnings.instant_requested': 'Instant payout requested',
+  'earnings.tax_title': 'Tax & Compliance',
+  'earnings.tax_subtitle': 'Download a tax summary for any date range.',
+  'earnings.tax_csv': 'Download CSV',
+  'earnings.tax_pdf': 'Download PDF',
+  'earnings.tax_select_range': 'Choose a date range first',
+  'seon.title': 'Payout Setup',
+  'seon.subtitle': 'Complete each step per currency to unlock payouts.',
+  'seon.no_currencies_title': 'No payout accounts yet',
+  'seon.no_currencies_body': 'Add a bank account to start receiving payouts.',
+  'seon.add_account': 'Add bank account',
+  'seon.payouts_enabled': 'Payouts enabled',
+  'seon.payouts_pending': 'Setup pending',
+  'seon.step_account_added': 'Bank account',
+  'seon.step_account_verified': 'Account verified',
+  'seon.step_terms': 'Provider terms',
+  'seon.step_config': 'Settlement config',
+  'seon.step_done': 'Done',
+  'seon.step_accepted': 'Accepted',
+  'seon.step_add_account': 'Add account',
+  'seon.step_pending_review': 'Under review',
+  'seon.step_accept_terms': 'Review & accept',
+  'seon.step_contact_support': 'Contact support',
+  'seon.review_terms': 'Review & accept terms',
+  'seon.terms_title': 'Provider Terms',
+  'seon.terms_body': 'By accepting these terms, you agree to the GotMyGame provider settlement agreement, including commission rates, payout schedules, refund policy, and dispute resolution procedures. You confirm your payout account details are accurate and that you are authorised to receive funds into it.',
+  'seon.terms_agree': 'I have read and agree to the provider terms',
+  'seon.terms_accept': 'Accept terms',
+  'seon.all_done': 'All currencies are set up. Payouts are enabled.',
+  'seon.instant_eligible': 'Instant payouts available',
+  'seon.need_help': 'Need help?',
+  'seon.help_body': 'Contact the platform team if any step is blocked or if your account is taking longer than expected to verify.',
+  'split.title': 'Revenue split',
+  'split.add_coach': 'Add coach',
+  'split.weight': 'Weight',
+  'split.save': 'Save splits',
+  'split.coach': 'Coach',
+  'split.total_weight': 'Total weight',
+  'split.reset': 'Reset to 100%',
+  'academy.coach_earnings_title': 'Coach earnings',
+  'academy.coach_earnings_period': 'Period',
+  'payout.blocker_terms_pending': 'Accept provider terms to enable payouts',
+  'payout.blocker_config_pending': 'Complete settlement configuration',
 };
