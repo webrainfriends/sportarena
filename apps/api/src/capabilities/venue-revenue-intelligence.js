@@ -7,7 +7,9 @@ import { z } from 'zod';
 import { cap } from '../registry.js';
 import { one, many, tx } from '../db.js';
 import { badRequest, forbidden, notFound } from '../errors.js';
-import { lockResource, mustManage } from '../booking/engine.js';
+import { mustFind } from '../helpers.js';
+import { mustManage } from '../booking/engine.js';
+import { lockResource } from '../booking/engine.js';
 import { addDays } from '../booking/time.js';
 
 const id = z.string().uuid();
