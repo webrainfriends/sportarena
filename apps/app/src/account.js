@@ -1,18 +1,19 @@
 import React, { useState } from 'react';
 import { Platform, Pressable, View } from 'react-native';
 import { useSession } from './session';
-import { Btn, Chip, Field, Sheet, T } from './ui';
+import { Btn, Chip, Sheet, T } from './ui';
+import { MenuField } from './menu-field';
 import { SwitchRow } from './federation-bits';
 import { api } from './api';
 import { useLoad } from './hooks';
 import { setTrackingConsent } from './track';
 import { Icon } from './icons';
 import { c, themeMode, THEME_KEY } from './theme';
-import { LOCALE_KEY, LOCALES, deviceZone, followsDevice, locale, localeLabel, asLocale, fmtDateTime, localeSearchText } from './locale';
+import { LOCALE_KEY, LOCALES, deviceZone, followsDevice, locale, localeLabel, fmtDateTime } from './locale';
 import { storage } from './storage';
 import { useNav } from './nav';
 import { useWorkspace } from './workspace';
-import { t, languageMeta } from './i18n';
+import { t, languageMeta, LANGUAGES, fmtDate, fmtNumber, fmtCurrency } from './i18n';
 import { CensusInfoSheet } from './census-info';
 
 // Theme and language are read when the app loads (screens bake the tokens in), so a change is stored and the app restarts.
@@ -24,16 +25,35 @@ const remember = async (key, value) => (value ? storage.set(key, value) : storag
 
 const THEMES = [['system', 'account.theme.system'], ['light', 'account.theme.light'], ['dark', 'account.theme.dark']];
 
+// Language options for the search-and-pick MenuField: native script name, review status badge, RTL indicator.
+const LANG_OPTIONS = LOCALES.map((tag) => {
+  const code = tag.split(/[-_]/)[0].toLowerCase();
+  const info = LANGUAGES.find((l) => l.code === code);
+  const badge = info?.reviewed ? '✓' : '⚠';
+  const rtlMark = info?.rtl ? ' ⇐' : '';
+  const label = info ? `${info.name}${rtlMark}` : localeLabel(tag);
+  const reviewer = info?.reviewMeta?.reviewer ? ` · ${info.reviewMeta.reviewer}` : '';
+  const reviewedAt = info?.reviewMeta?.reviewedAt ? ` · ${info.reviewMeta.reviewedAt}` : '';
+  const sub = info?.reviewed
+    ? `${badge} ${t('account.lang_reviewed')}${reviewer}${reviewedAt}`
+    : `${badge} ${t('account.lang_draft')}`;
+  return { value: tag, label, sub };
+});
+
+/** Formatting preview line for the active locale. */
+function LangFormatPreview({ tag }) {
+  try {
+    const preview = `${fmtNumber(1234.56, tag)} · ${fmtCurrency(12345, 'INR', tag)} · ${fmtDate(new Date(), tag)}`;
+    return <T size={11} color={c.mute} style={{ marginTop: 2 }}>{t('account.lang_format_preview')}: {preview}</T>;
+  } catch { return null; }
+}
+
 /** Appearance, language & region, and Log out — reachable from every screen via AccountButton. */
 export function AccountSheet({ visible, onClose }) {
   const { user, signOut } = useSession();
-  const [q, setQ] = useState('');
-  const [open, setOpen] = useState(false);
   const [census, setCensus] = useState(false);
   const pickTheme = async (m) => { if (m === themeMode) return; await remember(THEME_KEY, m === 'system' ? null : m); restart(); };
   const pickLocale = async (tag) => { if (tag === locale && !followsDevice) return; await remember(LOCALE_KEY, tag); restart(); };
-  const list = LOCALES.filter((t) => localeSearchText(t).includes(q.trim().toLowerCase())).slice(0, 40);
-  const typed = asLocale(q);
   const analytics = useLoad(() => (visible && user ? api.get('/analytics/consent').catch(() => null) : Promise.resolve(null)), [visible, user?.id]);
   const [analyticsOn, setAnalyticsOn] = useState(null);
   const consentOn = analyticsOn ?? analytics.data?.granted ?? false;
@@ -53,22 +73,20 @@ export function AccountSheet({ visible, onClose }) {
       </View>
       <View style={{ gap: 6 }}>
         <T weight="600" size={12} color={c.mute} style={{ letterSpacing: 0.4 }}>{t('account.language').toUpperCase()}</T>
-        <Pressable onPress={() => setOpen(!open)} style={{ borderWidth: 1, borderColor: c.line, borderRadius: 12, backgroundColor: c.paper, padding: 14 }}>
-          <T weight="600">{localeLabel(locale)}</T>
-          <T size={12} color={c.mute} style={{ marginTop: 2 }}>{followsDevice ? t('account.from_device') : t('account.your_choice')} · {deviceZone} · {`\u2068${fmtDateTime(new Date())}\u2069`}</T>
-        </Pressable>
-        {open ? (
-          <View style={{ gap: 8 }}>
-            <Field value={q} onChangeText={setQ} placeholder={t('account.search_language')} />
-            <View style={{ flexDirection: 'row', gap: 6, flexWrap: 'wrap' }}>
-              {typed && !list.includes(typed) ? <Chip key={typed} label={localeLabel(typed)} active={typed === locale && !followsDevice} onPress={() => pickLocale(typed)} /> : null}
-              {list.map((t) => <Chip key={t} label={localeLabel(t)} active={t === locale && !followsDevice} onPress={() => pickLocale(t)} />)}
-            </View>
-            {!list.length && !typed ? <T size={12} color={c.mute}>{t('account.no_match')}</T> : null}
-            {!followsDevice ? <Btn small title={t('account.use_device')} color={c.paper} ink={c.ink} onPress={() => pickLocale(null)} style={{ alignSelf: 'flex-start' }} /> : null}
-          </View>
-        ) : null}
-        <T size={12} color={c.mute}>{t('account.format_note')} {languageMeta.reviewed ? '' : t('account.review_note')}</T>
+        <View style={{ flexDirection: 'row', gap: 6 }}>
+          <Chip label={t('account.use_device')} active={followsDevice} onPress={() => pickLocale(null)} />
+        </View>
+        <MenuField
+          label={t('account.search_language')}
+          value={followsDevice ? null : locale}
+          onChange={pickLocale}
+          options={LANG_OPTIONS}
+          placeholder={t('account.search_language')}
+          title={t('account.language')}
+        />
+        <T size={12} color={c.mute}>{followsDevice ? t('account.from_device') : t('account.your_choice')} · {deviceZone} · {`⁨${fmtDateTime(new Date())}⁩`}</T>
+        <LangFormatPreview tag={locale} />
+        {!languageMeta.reviewed ? <T size={12} color={c.mute}>{t('account.review_note')}</T> : null}
       </View>
       {user && analytics.data ? (
         <View style={{ gap: 6 }}>
