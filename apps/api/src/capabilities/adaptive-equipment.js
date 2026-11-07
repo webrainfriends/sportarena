@@ -7,6 +7,7 @@ import { cap, id, page } from '../registry.js';
 import { one, many, tx } from '../db.js';
 import { badRequest, conflict, notFound } from '../errors.js';
 import { audit } from '../helpers.js';
+import { guardianLink } from '../youth.js';
 import { encrypt, decrypt } from '../crypto.js';
 
 // ─── vocabulary ──────────────────────────────────────────────────────────────
@@ -40,7 +41,7 @@ cap({
       service_types: SVC_TYPES,
       condition_values: CONDITION,
       severity_values: SEVERITY,
-      sports: await many('SELECT code, name FROM sport_catalogue ORDER BY name'),
+      sports: await many('SELECT slug AS code, name FROM sports ORDER BY name'),
       compatibility_notice: 'Equipment suitability must be verified by a qualified fitter before use. This platform does not provide clinical recommendations.',
     };
   },
@@ -63,7 +64,7 @@ cap({
     size_family: z.string().max(80).optional(),
     serial_number: z.string().max(120).optional(),
     purchase_date: z.string().optional(),
-    purchase_value_cents: z.number().int().nonneg().optional(),
+    purchase_value_cents: z.number().int().nonnegative().optional(),
     currency: z.string().length(3).default('GBP'),
     funding_agreement_id: z.string().uuid().optional(),
     notes: z.string().max(2000).optional(),
@@ -223,10 +224,7 @@ cap({
     if (asset.status !== 'available') throw conflict('asset_unavailable');
     const athlete_id = i.ward_id ?? user.id;
     if (i.ward_id && i.ward_id !== user.id) {
-      const guardianship = await one(
-        'SELECT id FROM guardianships WHERE guardian_id=$1 AND ward_id=$2 AND revoked_at IS NULL',
-        [user.id, i.ward_id],
-      );
+      const guardianship = await guardianLink(user.id, i.ward_id);
       if (!guardianship) throw badRequest('guardian_required');
     }
     return tx(async (c) => {
@@ -286,7 +284,7 @@ cap({
       [i.id, user.id, user.org_id ?? null],
     );
     if (!loan) throw notFound('loan');
-    await audit({ user, entity: 'adaptive_loan', entity_id: i.id, action: 'view_loan' });
+    await audit(null, user.id, 'view_loan', 'adaptive_loan', i.id);
     const incidents = await many(
       'SELECT id, severity, decision, charge_cents, decided_at, created_at FROM adaptive_loan_incidents WHERE loan_id=$1',
       [i.id],
@@ -374,10 +372,10 @@ cap({
     );
     if (!loan) throw notFound('loan');
     const description_enc = await encrypt(i.description);
-    await audit({ user, entity: 'adaptive_loan', entity_id: i.id, action: 'report_incident' });
+    await audit(null, user.id, 'report_incident', 'adaptive_loan', i.id);
     return tx(async (c) => {
       const [row] = await c(
-        'INSERT INTO adaptive_loan_incidents (loan_id,reported_by,severity,description_enc,photos_ok) VALUES ($1,$2,$3,$4,$5) RETURNING id',
+        'INSERT INTO adaptive_loan_incidents (loan_id,reported_by,severity,description_enc,photos_available) VALUES ($1,$2,$3,$4,$5) RETURNING id',
         [i.id, user.id, i.severity, description_enc, i.photos_ok],
       );
       return { id: row.id };
@@ -394,7 +392,7 @@ cap({
     id,
     incident_id: z.string().uuid(),
     decision: z.enum(['approved', 'rejected', 'waived']),
-    charge_cents: z.number().int().nonneg().optional(),
+    charge_cents: z.number().int().nonnegative().optional(),
   }),
   async handler({ user }, i) {
     const inc = await one('SELECT * FROM adaptive_loan_incidents WHERE id=$1 AND loan_id=$2', [i.incident_id, i.id]);
@@ -477,7 +475,7 @@ cap({
       `SELECT a.id, a.name, a.type, a.status, a.sport_codes,
               ea.id AS alloc_id, ea.start_dt, ea.end_dt,
               (SELECT performed_at FROM adaptive_service_records sr WHERE sr.asset_id=a.id ORDER BY performed_at DESC LIMIT 1) AS last_service,
-              (SELECT next_due FROM adaptive_service_records sr WHERE sr.asset_id=a.id ORDER BY performed_at DESC LIMIT 1) AS next_service_due
+              (SELECT next_due_date FROM adaptive_service_records sr WHERE sr.asset_id=a.id ORDER BY performed_at DESC LIMIT 1) AS next_service_due
        FROM adaptive_event_allocations ea
        JOIN adaptive_assets a ON a.id=ea.asset_id
        WHERE ea.event_id=$1 AND ea.cancelled_at IS NULL`,
@@ -562,7 +560,7 @@ cap({
       `SELECT f.*, a.name AS asset_name, p.display_name AS athlete_name
        FROM adaptive_fittings f
        JOIN adaptive_assets a ON a.id=f.asset_id
-       LEFT JOIN profiles p ON p.user_id=f.athlete_id
+       LEFT JOIN users p ON p.id=f.athlete_id
        WHERE ${filters.join(' AND ')}
        ORDER BY f.preferred_slot_start DESC LIMIT $${lp - 1} OFFSET $${lp}`,
       params,
@@ -612,7 +610,7 @@ cap({
     if (!fit) throw notFound('fitting');
     const outcome_notes_enc = i.outcome_notes ? await encrypt(i.outcome_notes) : null;
     const recommended_settings_enc = i.recommended_settings ? await encrypt(i.recommended_settings) : null;
-    await audit({ user, entity: 'adaptive_fitting', entity_id: i.id, action: 'record_outcome' });
+    await audit(null, user.id, 'record_outcome', 'adaptive_fitting', i.id);
     await tx(async (c) => {
       await c(
         'UPDATE adaptive_fittings SET outcome_notes_enc=$2, recommended_adjustments_enc=$3, status=\'completed\', row_version=row_version+1 WHERE id=$1',
@@ -723,7 +721,7 @@ cap({
   async handler({ user }, i) {
     const assets = await many(
       `SELECT a.id, a.name, a.type, a.sport_codes, a.status,
-              (SELECT next_due FROM adaptive_service_records sr WHERE sr.asset_id=a.id ORDER BY performed_at DESC NULLS LAST LIMIT 1) AS next_service_due,
+              (SELECT next_due_date FROM adaptive_service_records sr WHERE sr.asset_id=a.id ORDER BY performed_at DESC NULLS LAST LIMIT 1) AS next_service_due,
               (SELECT service_type FROM adaptive_service_records sr WHERE sr.asset_id=a.id ORDER BY performed_at DESC NULLS LAST LIMIT 1) AS last_service_type
        FROM adaptive_assets a
        WHERE a.venue_id=$1 AND a.status != 'retired'
@@ -751,13 +749,10 @@ cap({
   async handler({ user }, i) {
     const athlete_id = i.ward_id ?? user.id;
     if (i.ward_id && i.ward_id !== user.id) {
-      const g = await one(
-        'SELECT id FROM guardianships WHERE guardian_id=$1 AND ward_id=$2 AND revoked_at IS NULL',
-        [user.id, i.ward_id],
-      );
+      const g = await guardianLink(user.id, i.ward_id);
       if (!g) throw badRequest('guardian_required');
     }
-    await audit({ user, entity: 'adaptive_loans', entity_id: athlete_id, action: 'view_my_loans' });
+    await audit(null, user.id, 'view_my_loans', 'adaptive_loans', athlete_id);
     const items = await many(
       `SELECT l.*, a.name AS asset_name, a.type AS asset_type,
               (SELECT json_agg(json_build_object('id',ai.id,'severity',ai.severity,'decision',ai.decision,'created_at',ai.created_at))

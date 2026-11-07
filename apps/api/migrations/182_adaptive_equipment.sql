@@ -14,7 +14,7 @@ CREATE TABLE IF NOT EXISTS adaptive_assets (
   owner_id               uuid NOT NULL REFERENCES users,
   org_id                 uuid REFERENCES organisations,
   venue_id               uuid REFERENCES venues,
-  supplier_id            uuid REFERENCES supplier_profiles,
+  supplier_id            uuid REFERENCES supplier_entities,
   type                   text NOT NULL CHECK (type IN (
                            'wheelchair','handcycle','throwing_frame','standing_frame',
                            'communication_device','prosthetic_sports_limb','guide_runner_tether',
