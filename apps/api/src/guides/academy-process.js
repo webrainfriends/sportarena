@@ -403,6 +403,7 @@ id: 'wellbeing', title: 'Support student wellbeing and development',
 
 /** Org/academy API modules with no step of their own, and why. Anything not here and not in a step fails the guard test. */
 export const NOT_IN_GUIDE = {
+  'para-ux-conformance.js': 'PS-08 para-sport UX acceptance suite — platform-admin/QA-only conformance matrix, defects and release gate. Not an academy-onboarding step; documented in docs/para-ux-conformance.md.',
   'academy-curriculum.js': 'Curriculum, methodology and coaching-philosophy governance is set up by the academy after the first setup; it is described in docs/academy-curriculum.md, not in this onboarding guide.',
   'para-performance.js': 'Governed para-sport performance insights and coach review are activated per athlete after classification is confirmed; they extend the athlete hub and coaching module, not the initial academy onboarding sequence.',
   'para-mentoring.js': 'Para peer mentoring is an athlete-facing feature (athletes discover and connect with peer mentors directly), not an org-onboarding step. It is not part of setting up an academy.',
@@ -415,7 +416,7 @@ export const NOT_IN_GUIDE = {
 };
 
 /** The directories/files the guard test watches for org/academy/venue/coach/tax capability modules. */
-export const WATCHED_MODULES = /^(academy-.*|org-.*|organisations|venue-coaches|gst|provider-tax|coach-classes|para-sport-funding|para-sport-sponsorship-outcomes|para-pathway|para-readiness|para-learn|para-staff-credentials|para-spectator-accessibility|boarding-.*|wearables|wellness.*|integrations)\.js$/;
+export const WATCHED_MODULES = /^(academy-.*|org-.*|organisations|venue-coaches|gst|provider-tax|coach-classes|para-sport-funding|para-sport-sponsorship-outcomes|para-pathway|para-readiness|para-learn|para-staff-credentials|para-spectator-accessibility|para-ux-conformance|boarding-.*|wearables|wellness.*|integrations)\.js$/;
 
 export const SHOT_SIZES = { phone: { width: 390, height: 1100 }, desktop: { width: 1280, height: 900 } };
 export const shotFile = (stepId, size) => `${String(ACADEMY_STEPS.findIndex((s) => s.id === stepId) + 1).padStart(2, '0')}-${stepId}-${size}.png`;

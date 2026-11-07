@@ -415,3 +415,4 @@ import './academy-placement.js';
 import './event-control-tower.js';
 import './process-guides.js';
 import './platform-benchmarks.js';
+import './para-ux-conformance.js';

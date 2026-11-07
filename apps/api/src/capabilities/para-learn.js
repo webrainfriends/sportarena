@@ -492,6 +492,54 @@ cap({
   },
 });
 
+// ── 13a. set_learn_module_a11y ────────────────────────────────────────────────
+// PS-08: fills the caption/alt-text gap on learning modules (para-spectator-accessibility.js
+// covers media streams; this covers the learning content itself).
+cap({
+  name: 'set_learn_module_a11y', method: 'PATCH', path: '/para/learn/modules/:id/accessibility', tag: TAG,
+  summary: 'Set accessibility metadata (captions, audio description, transcript) on a para-learn module.',
+  input: z.object({
+    id:            id,
+    caption_ref:   z.string().url().optional(),
+    audio_desc_ref: z.string().url().optional(),
+    transcript_ref: z.string().url().optional(),
+  }),
+  handler: ({ user }, i) => tx(async (c) => {
+    await mustBePlatformAdmin(user);
+    const mod = (await c.query(
+      'SELECT m.id, v.path_id FROM para_learn_modules m JOIN para_learn_path_versions v ON v.id=m.version_id WHERE m.id=$1',
+      [i.id]
+    )).rows[0];
+    if (!mod) throw notFound('Module');
+    const row = (await c.query(
+      `UPDATE para_learn_modules
+       SET caption_ref=COALESCE($2, caption_ref),
+           audio_desc_ref=COALESCE($3, audio_desc_ref),
+           transcript_ref=COALESCE($4, transcript_ref),
+           a11y_reviewed_at=now(), a11y_reviewed_by=$5
+       WHERE id=$1 RETURNING id, caption_ref, audio_desc_ref, transcript_ref, a11y_reviewed_at`,
+      [i.id, i.caption_ref ?? null, i.audio_desc_ref ?? null, i.transcript_ref ?? null, user.id]
+    )).rows[0];
+    await audit(c, user.id, 'set_learn_module_a11y', 'para_learn_modules', i.id);
+    return row;
+  }),
+});
+
+// ── 13b. get_learn_module_a11y ────────────────────────────────────────────────
+cap({
+  name: 'get_learn_module_a11y', method: 'GET', path: '/para/learn/modules/:id/accessibility', tag: TAG, auth: 'public',
+  summary: 'Return accessibility metadata for a para-learn module (caption, transcript, audio description URLs).',
+  input: z.object({ id }),
+  handler: async (_, i) => {
+    const row = await one(
+      'SELECT id, caption_ref, audio_desc_ref, transcript_ref, a11y_reviewed_at FROM para_learn_modules WHERE id=$1',
+      [i.id]
+    );
+    if (!row) throw notFound('Module');
+    return row;
+  },
+});
+
 // ── 13. manage_para_learn_publisher ──────────────────────────────────────────
 cap({
   name: 'manage_para_learn_publisher', method: 'POST', path: '/para/learn/publishers', tag: TAG, auth: ['admin'],
