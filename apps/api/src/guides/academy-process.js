@@ -311,6 +311,25 @@ id: 'wellbeing', title: 'Support student wellbeing and development',
     modules: ['passport.js'],
     sources: ['apps/app/src/screens/passport.js'],
   },
+  {
+    id: 'boarding',
+    title: 'Set up residential boarding',
+    why: 'Elite residential academies (Nadal Academy, Real Madrid, Barcelona Academy) need full campus residence management: buildings, rooms, beds, occupancy, boarding applications with guardian consent, leave and visitor controls, supervisor duty rotas, curfew welfare checks, meal-plan dietary flags and boarding charges — all in one secure, role-gated module that is completely invisible to non-residential organisations.',
+    steps: [
+      'Open Academy, then Boarding, then Settings. Toggle Enable residential boarding — the module will now appear in the Academy sidebar for boarding coordinators and admin. All other roles and non-residential organisations see nothing.',
+      'Under Settings → Buildings, create each physical building in your campus. Set its gender policy (Male/Female/Mixed/Staff), age band, floor count and optionally link it to the campus org unit (Organisation → Campus). Then add rooms (number, floor, type: single/twin/triple/dorm) and beds (position labels) inside each building.',
+      'Configure curfew rules for each building (and optionally per age-band): set weekday and weekend curfew times, effective date range. The Curfew Desk shows live check-in/leave/overdue status for every resident, refreshed every 60 seconds.',
+      'Go to Boarding → Applications to manage the boarding pipeline. Applications are submitted by enrolled athletes or their verified guardians. Staff review in the Kanban board (Submitted → Under Review → Offered → Awaiting Acceptance → Allocated). Offering a place sets an expiry countdown. Allocation locks a specific bed (row-level concurrency prevents double-booking). The guardian or athlete then accepts the offer to confirm.',
+      'Manage overnight leave from Boarding → Leave. Athletes or guardians submit leave requests with a reason code, destination and return date. Youth residents require guardian approval before staff approval. Staff approve or deny from the leave queue. The Curfew Desk flags any resident who has not returned by their approved leave_to date.',
+      'Sign visitors in and out from the Boarding → Visitor Log. All visitor PII (name, phone, ID reference) is field-level encrypted. For youth residents, a guardian authorisation reference is required before sign-in.',
+      'Assign duty supervisors for each shift from Boarding → Duty. Staff acknowledge their assignment. During a shift, log welfare checks per occupant or per building. Safeguarding-flagged check notes are encrypted and restricted to Boarding Coordinator and Safeguarding Officer roles.',
+      'Report incidents (welfare, maintenance, safety, fire, medical liaison) from Boarding → Incidents. Safeguarding-flagged incidents return 404 to unpermitted roles — the existence of the record is never revealed. Assign, resolve and close incidents within the same screen.',
+      'Set dietary flags per resident from Boarding → Meal Plans. Guardians or athletes consent operational flags (halal, kosher, vegan, nut-free, gluten-free etc.). No medical or clinical data is ever stored here. The Meal Planner matrix shows the full flag grid per building; kitchen staff and boarding coordinators can export a kitchen sheet.',
+      'Review boarding charges from Boarding → Charges. Charges reference the canonical invoice system (Academy → Finance) — no separate ledger is created. Use boarding_charge_summary to see outstanding/paid/overdue totals across all residents.',
+    ],
+    modules: ['academy-boarding.js'],
+    sources: ['apps/app/src/screens/academy-boarding.js'],
+  },
 ];
 
 /** Org/academy API modules with no step of their own, and why. Anything not here and not in a step fails the guard test. */
@@ -323,7 +342,7 @@ export const NOT_IN_GUIDE = {
 };
 
 /** The directories/files the guard test watches for org/academy/venue/coach/tax capability modules. */
-export const WATCHED_MODULES = /^(academy-.*|org-.*|organisations|venue-coaches|gst|provider-tax|coach-classes|para-sport-funding|para-sport-sponsorship-outcomes|para-pathway|para-readiness|para-learn|para-staff-credentials|para-spectator-accessibility)\.js$/;
+export const WATCHED_MODULES = /^(academy-.*|org-.*|organisations|venue-coaches|gst|provider-tax|coach-classes|para-sport-funding|para-sport-sponsorship-outcomes|para-pathway|para-readiness|para-learn|para-staff-credentials|para-spectator-accessibility|boarding-.*)\.js$/;
 
 export const SHOT_SIZES = { phone: { width: 390, height: 1100 }, desktop: { width: 1280, height: 900 } };
 export const shotFile = (stepId, size) => `${String(ACADEMY_STEPS.findIndex((s) => s.id === stepId) + 1).padStart(2, '0')}-${stepId}-${size}.png`;
