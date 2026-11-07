@@ -147,6 +147,45 @@ function Child({ d, onConsents, onScopes }) {
   );
 }
 
+/** Family Coordination section: volunteer openings, carpool offers and live streams for children's teams (issue #915 §11). */
+function FamilyCoordination({ coord }) {
+  const { push } = useNav();
+  if (!coord) return null;
+  const { volunteer_openings = [], carpool_offers = [], streams_live_now = [] } = coord;
+  if (!volunteer_openings.length && !carpool_offers.length && !streams_live_now.length) return null;
+  return (
+    <Section title={tr('family.coord.title')} color={c.cyan}>
+      {streams_live_now.map((s) => (
+        <Card key={s.stream_id} pad={12} color={c.redSoft} accessibilityLabel={s.event_name}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+            <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: c.red }} />
+            <T weight="800" size={13} style={{ flex: 1 }}>{tr('family.coord.live_badge')} · {s.event_name}</T>
+            {s.child_playing ? <Tag label={tr('family.coord.child_playing')} color={c.pink} /> : null}
+          </View>
+          <T size={12} color={c.mute}>{s.team_name}</T>
+          <Btn small title={tr('family.coord.watch')} color={c.red} style={{ marginTop: 8 }} onPress={() => push('StreamHub')} />
+        </Card>
+      ))}
+      {volunteer_openings.map((v) => (
+        <Card key={v.team_id} pad={12} color={c.limeSoft} accessibilityLabel={v.team_name}>
+          <T weight="800" size={13}>{tr('family.coord.volunteer_title', { team: v.team_name })}</T>
+          <T size={12} color={c.mute}>{tr('family.coord.volunteer_sub', { count: v.position_count })}</T>
+          <Btn small title={tr('family.coord.volunteer_cta')} color={c.lime} style={{ marginTop: 8 }}
+            onPress={() => push('TeamVolunteers', { teamId: v.team_id })} />
+        </Card>
+      ))}
+      {carpool_offers.map((co) => (
+        <Card key={co.event_id} pad={12} color={c.cyanSoft} accessibilityLabel={co.event_name}>
+          <T weight="800" size={13}>{tr('family.coord.carpool_title', { event: co.event_name })}</T>
+          <T size={12} color={c.mute}>{tr('family.coord.carpool_sub', { count: co.offer_count })}</T>
+          <Btn small title={tr('family.coord.carpool_cta')} color={c.cyan} style={{ marginTop: 8 }}
+            onPress={() => push('Carpool', { eventId: co.event_id })} />
+        </Card>
+      ))}
+    </Section>
+  );
+}
+
 /** Rendered by the Family screen for anyone who is a verified guardian. Renders nothing for people with no dependents. */
 export function FamilyDashboard({ onConsents }) {
   const { push } = useNav();
@@ -184,6 +223,7 @@ export function FamilyDashboard({ onConsents }) {
       <View style={{ flexDirection: 'row', gap: 8, flexWrap: 'wrap' }}>
         <Btn small title={`🔔 Notifications${d.unread_notifications ? ` (${d.unread_notifications})` : ''}`} color={c.paper} ink={c.ink} onPress={() => push('Inbox')} />
       </View>
+      <FamilyCoordination coord={d.coordination} />
       {L.tablet ? (
         <View style={{ flexDirection: 'row', gap: 16, alignItems: 'flex-start' }}>
           <View style={{ flex: 1, gap: 6 }}>{todo}</View>
