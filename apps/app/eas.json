@@ -11,7 +11,8 @@
         "simulator": true
       },
       "android": {
-        "buildType": "apk"
+        "buildType": "apk",
+        "projectId": "7ba48908-8676-4a0f-a7e1-34e523fd0d42"
       },
       "env": {
         "EXPO_PUBLIC_API_URL": "https://gotmygame.com"
@@ -20,7 +21,8 @@
     "preview": {
       "distribution": "internal",
       "android": {
-        "buildType": "apk"
+        "buildType": "apk",
+        "projectId": "7ba48908-8676-4a0f-a7e1-34e523fd0d42"
       },
       "env": {
         "EXPO_PUBLIC_API_URL": "https://gotmygame.com"
@@ -28,6 +30,9 @@
     },
     "production": {
       "autoIncrement": true,
+      "android": {
+        "projectId": "7ba48908-8676-4a0f-a7e1-34e523fd0d42"
+      },
       "env": {
         "EXPO_PUBLIC_API_URL": "https://gotmygame.com"
       }
