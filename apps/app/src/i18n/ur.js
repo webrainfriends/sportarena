@@ -14978,4 +14978,87 @@ export default {
   'account.lang_reviewed': 'مقامی زبان کا جائزہ لیا گیا', // machine-drafted
   'account.lang_draft': 'مشینی ترجمہ', // machine-drafted
   'account.lang_format_preview': 'فارمیٹ پیش نظارہ', // machine-drafted
+
+  // machine-drafted — branded documents
+  'documents.hub.my_documents': 'My Documents', // machine-drafted
+  'documents.hub.templates': 'Templates', // machine-drafted
+  'documents.hub.brand_kits': 'Brand Kits', // machine-drafted
+  'documents.hub.generate': 'Generate Document', // machine-drafted
+  'documents.library.empty': 'No documents yet', // machine-drafted
+  'documents.library.generate_hint': 'Generate documents from events, invoices, plans and bookings', // machine-drafted
+  'documents.library.download': 'Download', // machine-drafted
+  'documents.library.share': 'Share', // machine-drafted
+  'documents.library.regenerate': 'Regenerate', // machine-drafted
+  'documents.library.versions': 'Versions', // machine-drafted
+  'documents.library.filter_all': 'All', // machine-drafted
+  'documents.library.filter_family': 'Family', // machine-drafted
+  'documents.library.filter_date': 'Date range', // machine-drafted
+  'documents.viewer.download': 'Download', // machine-drafted
+  'documents.viewer.share': 'Share', // machine-drafted
+  'documents.viewer.regenerate': 'Regenerate', // machine-drafted
+  'documents.viewer.create_link': 'Create share link', // machine-drafted
+  'documents.viewer.revoke': 'Revoke', // machine-drafted
+  'documents.viewer.active_shares': 'Active share links', // machine-drafted
+  'documents.viewer.no_shares': 'No active share links', // machine-drafted
+  'documents.viewer.pdf_preview': 'Preview PDF', // machine-drafted
+  'documents.viewer.metadata': 'Document details', // machine-drafted
+  'documents.viewer.checksum': 'Checksum', // machine-drafted
+  'documents.viewer.pages': 'Pages', // machine-drafted
+  'documents.viewer.template_version': 'Template version', // machine-drafted
+  'documents.viewer.brand_kit': 'Brand kit', // machine-drafted
+  'documents.share.expiry_24h': '24 hours', // machine-drafted
+  'documents.share.expiry_72h': '72 hours', // machine-drafted
+  'documents.share.expiry_7d': '7 days', // machine-drafted
+  'documents.share.expiry_30d': '30 days', // machine-drafted
+  'documents.share.created': 'Share link created', // machine-drafted
+  'documents.share.revoked': 'Link revoked', // machine-drafted
+  'documents.share.copy_link': 'Copy link', // machine-drafted
+  'documents.share.expires': 'Expires', // machine-drafted
+  'documents.generate.success': 'Document generated', // machine-drafted
+  'documents.generate.in_progress': 'Generating…', // machine-drafted
+  'documents.generate.error': 'Generation failed', // machine-drafted
+  'documents.generate.batch_success': 'Batch generation started', // machine-drafted
+  'documents.generate.sample_label': 'SAMPLE — preview only', // machine-drafted
+  'documents.templates.create': 'New template', // machine-drafted
+  'documents.templates.publish': 'Publish', // machine-drafted
+  'documents.templates.retire': 'Retire', // machine-drafted
+  'documents.templates.preview': 'Preview', // machine-drafted
+  'documents.templates.sample_label': 'SAMPLE', // machine-drafted
+  'documents.templates.block_header': 'Header', // machine-drafted
+  'documents.templates.block_title': 'Title', // machine-drafted
+  'documents.templates.block_parties': 'Parties', // machine-drafted
+  'documents.templates.block_lines': 'Line items', // machine-drafted
+  'documents.templates.block_totals': 'Totals', // machine-drafted
+  'documents.templates.block_text': 'Text', // machine-drafted
+  'documents.templates.block_footer': 'Footer', // machine-drafted
+  'documents.templates.block_activity_table': 'Activity table', // machine-drafted
+  'documents.templates.block_fixture_table': 'Fixture table', // machine-drafted
+  'documents.templates.block_booking_block': 'Booking block', // machine-drafted
+  'documents.templates.block_signature_block': 'Signature block', // machine-drafted
+  'documents.brand_kit.style': 'Style', // machine-drafted
+  'documents.brand_kit.stamp': 'Stamp image', // machine-drafted
+  'documents.brand_kit.signature': 'Signature image', // machine-drafted
+  'documents.brand_kit.tagline': 'Tagline', // machine-drafted
+  'documents.brand_kit.font_family': 'Font family', // machine-drafted
+  'documents.families.invoice': 'Invoice', // machine-drafted
+  'documents.families.coaching_report': 'Coaching report', // machine-drafted
+  'documents.families.season_report': 'Season report', // machine-drafted
+  'documents.families.sponsorship_agreement': 'Sponsorship agreement', // machine-drafted
+  'documents.families.enrolment_letter': 'Enrolment letter', // machine-drafted
+  'documents.families.federation_document': 'Federation document', // machine-drafted
+  'documents.families.academy_progress_report': 'Progress report', // machine-drafted
+  'documents.families.academy_management_review': 'Management review', // machine-drafted
+  'documents.families.academy_finance_pack': 'Finance pack', // machine-drafted
+  'documents.families.academy_term_report': 'Term report', // machine-drafted
+  'documents.families.academy_campus_quality': 'Campus quality', // machine-drafted
+  'documents.families.coaching_plan': 'Training plan', // machine-drafted
+  'documents.families.coach_agreement': 'Coaching agreement', // machine-drafted
+  'documents.families.referee_letter': 'Appointment letter', // machine-drafted
+  'documents.families.event_timetable': 'Event timetable', // machine-drafted
+  'documents.families.booking_confirmation': 'Booking confirmation', // machine-drafted
+  'documents.families.rehab_plan': 'Rehab plan', // machine-drafted
+  'documents.families.care_plan': 'Care plan', // machine-drafted
+  'documents.families.purchase_order': 'Purchase order', // machine-drafted
+  'documents.families.hire_agreement': 'Hire agreement', // machine-drafted
+  'documents.families.business_letter': 'Business letter', // machine-drafted
 };
