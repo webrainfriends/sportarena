@@ -14779,7 +14779,6 @@ export default {
   'brd.settings.occupied': 'occupied',
   'brd.settings.noBuildings': 'No buildings yet',
   'brd.settings.addBuilding': 'Use the API or add buildings via the management interface.',
-};
   // Safeguarding cases (#784): machine-drafted, unreviewed; long hints fall back to English
   'sg.nav_cases': 'Kasus perlindungan',
   'sg.title': 'Kasus perlindungan',
