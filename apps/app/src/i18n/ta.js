@@ -14298,7 +14298,6 @@ export default {
   'paraStaffCred.academy.prompt': 'Ask to renew',
   'paraStaffCred.ack.button': 'Got it',
   'paraStaffCred.ack.done': 'Reminder acknowledged',
-};
   // PS-26 machine-drafted (reviewed: false)
   'para.spec.a11y.media_a11y_tab': 'Accessibility',
   'para.spec.a11y.banner_prefix': 'Accessibility services available:',

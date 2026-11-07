@@ -42,7 +42,7 @@ function CredCard({ cred, push, c, s }) {
         <View style={{ flex: 1 }}>
           <T style={s.credTitle} numberOfLines={2}>{cred.title}</T>
           <T style={s.credMeta}>{cred.track_title}</T>
-        </Row>
+        </View>
         <Chip style={{ backgroundColor: statusBg }}>
           <T style={{ color: statusFg, fontSize: 11, fontWeight: '600' }}>{statusLabel(cred.expiry_status)}</T>
         </Chip>
