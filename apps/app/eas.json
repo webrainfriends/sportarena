@@ -19,10 +19,13 @@
       }
     },
     "preview": {
-      "distribution": "internal",
       "android": {
         "buildType": "apk",
+        "distribution": "internal",
         "projectId": "7ba48908-8676-4a0f-a7e1-34e523fd0d42"
+      },
+      "ios": {
+        "distribution": "store"
       },
       "env": {
         "EXPO_PUBLIC_API_URL": "https://gotmygame.com"
@@ -31,7 +34,11 @@
     "production": {
       "autoIncrement": true,
       "android": {
+        "distribution": "internal",
         "projectId": "7ba48908-8676-4a0f-a7e1-34e523fd0d42"
+      },
+      "ios": {
+        "distribution": "store"
       },
       "env": {
         "EXPO_PUBLIC_API_URL": "https://gotmygame.com"
@@ -39,6 +46,12 @@
     }
   },
   "submit": {
+    "preview": {
+      "ios": {
+        "ascAppId": "6822294278",
+        "releaseStatus": "testflight"
+      }
+    },
     "production": {
       "ios": {
         "ascAppId": "6822294278"
