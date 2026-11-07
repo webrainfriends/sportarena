@@ -95,6 +95,23 @@ export const ACADEMY_STEPS = [
     sources: ['apps/app/src/screens/para-learn.js', 'apps/app/src/screens/pathways.js'],
   },
   {
+    id: 'para_staff_creds',
+    title: 'Para-sport staff credentials',
+    why: 'Verify that adaptive coaches, para referees, technical officials, guide/support workers and classifier candidates hold current, governed learning credentials before assigning them to para-sport programmes. Each credential is track-specific, issued by a federation or approved organisation, and carries a renewal cycle. Classifier-candidate credentials are explicitly learning credentials only — they do not grant classifier privilege, which stays with para-governance.',
+    steps: [
+      'Open More → Learn & Study sport → Adaptive sport → Para qualifications to browse published tracks by role (Adaptive Coach, Para Referee, Technical Official, Guide & Support, Classifier Candidate). Each track shows the issuing body, sport, renewal period and prerequisites.',
+      'On completing a track, ask the publishing federation or organisation admin to open Para staff credentials and issue a credential against that track under your name.',
+      'Your credential appears in your Certification Wallet (Para qualifications → My Credentials). It shows the status (Valid, Expiring Soon, Expired or Revoked), the issuing body, the credential code for verification, and the expiry date.',
+      'Share the credential code with any club or event operator who needs to verify your status. They open Para qualifications → Browse Tracks → Verify Credential and enter the code.',
+      'You receive an in-app reminder 60 days before a credential expires. Open Para qualifications → Renewal Due to see the countdown and find the renewal track.',
+      'Academy owners: open Academy → Staff to see a per-staff Para credentials strip. Expired or missing credentials are flagged so you can prompt the staff member to renew or enrol before the next programme cycle.',
+      'Federation admins: open Para qualifications → Federation view to see all credentials issued for your tracks, filter by role and sport, and run renewal campaigns.',
+    ],
+    target: { screen: 'AdaptiveLearn' },
+    modules: ['para-staff-credentials.js'],
+    sources: ['apps/app/src/screens/para-staff-cred.js', 'apps/app/src/screens/para-learn.js'],
+  },
+  {
     id: 'consented_accommodations',
     title: 'Athlete-consented accommodations and preferences',
     why: 'Athletes and guardians control exactly who sees their operational support needs, for which sessions and for how long. Staff see only what they need; the athlete sees every access in their history.',
@@ -306,7 +323,7 @@ export const NOT_IN_GUIDE = {
 };
 
 /** The directories/files the guard test watches for org/academy/venue/coach/tax capability modules. */
-export const WATCHED_MODULES = /^(academy-.*|org-.*|organisations|venue-coaches|gst|provider-tax|coach-classes|para-sport-funding|para-sport-sponsorship-outcomes|para-pathway|para-readiness|para-learn|para-spectator-accessibility)\.js$/;
+export const WATCHED_MODULES = /^(academy-.*|org-.*|organisations|venue-coaches|gst|provider-tax|coach-classes|para-sport-funding|para-sport-sponsorship-outcomes|para-pathway|para-readiness|para-learn|para-staff-credentials|para-spectator-accessibility)\.js$/;
 
 export const SHOT_SIZES = { phone: { width: 390, height: 1100 }, desktop: { width: 1280, height: 900 } };
 export const shotFile = (stepId, size) => `${String(ACADEMY_STEPS.findIndex((s) => s.id === stepId) + 1).padStart(2, '0')}-${stepId}-${size}.png`;
