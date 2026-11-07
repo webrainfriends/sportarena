@@ -9893,7 +9893,125 @@ export default {
   'cap.step_constraints': 'වැඩසටහනක් වර්ධනය කරන්න',
   'cap.step_review': 'කාර්ය මණ්ඩල සැලසුම',
   'pk.r_too_many': 'මුරපද වාක්‍ය කිහිප වතාවක් වැරදියි. නවතා භාරකරුට අමතන්න.',
-
+  // Revenue Intelligence (ri.*) — machine-drafted, reviewed: false
+  'ri.title': 'Revenue Intelligence',
+  'nav.title.VenueRevenueIntelligence': 'Revenue Intelligence',
+  'ri.sub': 'Demand, pricing and utilisation insights for this venue',
+  'ri.tab.demand': 'Demand',
+  'ri.tab.forecast': 'Forecast',
+  'ri.tab.pricing': 'Pricing',
+  'ri.tab.operations': 'Operations',
+  'ri.tab.experiments': 'Experiments',
+  'ri.tab.settings': 'Settings',
+  'ri.demand.title': 'Demand Heatmap',
+  'ri.demand.sub': 'Observed booking signals by day and hour',
+  'ri.demand.observed': 'Observed facts only — not a forecast',
+  'ri.demand.period': 'Last {n} days',
+  'ri.demand.bookings': 'Bookings',
+  'ri.demand.waitlist': 'Waitlist entries',
+  'ri.demand.alerts': 'Slot alerts',
+  'ri.demand.cancellations': 'Cancellations',
+  'ri.demand.empty': 'No booking signals found for this period',
+  'ri.demand.filter_resource': 'All courts',
+  'ri.forecast.title': 'Utilisation Forecast',
+  'ri.forecast.sub': 'Rolling mean + linear trend — not machine learning',
+  'ri.forecast.actual': 'Actual',
+  'ri.forecast.projected': 'Projected',
+  'ri.forecast.coverage': 'Data coverage: {n} days',
+  'ri.forecast.mae': 'Mean error: \u00b1{n}%',
+  'ri.forecast.insufficient': 'Need at least 28 days of booking history to forecast',
+  'ri.forecast.confidence.low': 'Low confidence — limited history',
+  'ri.forecast.confidence.medium': 'Medium confidence',
+  'ri.forecast.confidence.high': 'High confidence',
+  'ri.forecast.empty': 'No utilisation data yet',
+  'ri.pricing.title': 'Pricing Recommendations',
+  'ri.pricing.sub': 'Explainable, guardrail-bounded suggestions',
+  'ri.pricing.pending': 'Pending',
+  'ri.pricing.applied': 'Applied',
+  'ri.pricing.rejected': 'Rejected',
+  'ri.pricing.expired': 'Expired',
+  'ri.pricing.approve': 'Approve',
+  'ri.pricing.reject': 'Reject',
+  'ri.pricing.outcome': 'View outcome',
+  'ri.pricing.current_rate': 'Current',
+  'ri.pricing.suggested_rate': 'Suggested',
+  'ri.pricing.window': '{days} \u00b7 {start} \u2013 {end}',
+  'ri.pricing.reason': 'Why',
+  'ri.pricing.expected': 'Expected effect',
+  'ri.pricing.effect': '{metric}: {estimate} ({confidence} confidence)',
+  'ri.pricing.outcome_actual': 'Actual effect: {metric} changed by {value}',
+  'ri.pricing.refresh': 'Refresh recommendations',
+  'ri.pricing.empty': 'No recommendations yet — tap Refresh to generate',
+  'ri.pricing.trigger.low_demand': 'Low demand',
+  'ri.pricing.trigger.high_demand': 'High demand',
+  'ri.pricing.trigger.lead_time': 'Lead time',
+  'ri.pricing.trigger.last_minute': 'Last minute',
+  'ri.pricing.trigger.seasonal': 'Seasonal',
+  'ri.pricing.trigger.experiment': 'Experiment',
+  'ri.ops.title': 'Operational Recommendations',
+  'ri.ops.sub': 'Actions to improve utilisation',
+  'ri.ops.priority.high': 'High priority',
+  'ri.ops.priority.medium': 'Medium priority',
+  'ri.ops.priority.low': 'Low priority',
+  'ri.ops.act': 'Act',
+  'ri.ops.dismiss': 'Dismiss',
+  'ri.ops.acted': 'Acted on',
+  'ri.ops.kind.adjust_hours': 'Adjust hours',
+  'ri.ops.kind.repurpose_window': 'Repurpose window',
+  'ri.ops.kind.community_game': 'Community game',
+  'ri.ops.kind.promotion': 'Promotion',
+  'ri.ops.kind.waitlist_open': 'Open waitlist',
+  'ri.ops.kind.maintenance': 'Schedule maintenance',
+  'ri.ops.evidence': '{metric}: {observed} (threshold {threshold}, {period} days)',
+  'ri.ops.empty': 'No open recommendations',
+  'ri.exp.title': 'Pricing Experiments',
+  'ri.exp.sub': 'Controlled before-and-after tests',
+  'ri.exp.create': 'New experiment',
+  'ri.exp.status.draft': 'Draft',
+  'ri.exp.status.active': 'Active',
+  'ri.exp.status.completed': 'Completed',
+  'ri.exp.status.cancelled': 'Cancelled',
+  'ri.exp.activate': 'Activate',
+  'ri.exp.results': 'Results',
+  'ri.exp.control': 'Control',
+  'ri.exp.experiment': 'Experiment',
+  'ri.exp.metric': 'Primary metric',
+  'ri.exp.utilisation': 'Utilisation',
+  'ri.exp.revenue': 'Revenue',
+  'ri.exp.bookings': 'Bookings',
+  'ri.exp.caveat': 'Statistical significance not guaranteed with fewer than 30 bookings per arm',
+  'ri.exp.empty': 'No experiments yet',
+  'ri.exp.f_name': 'Experiment name',
+  'ri.exp.f_hypothesis': 'Hypothesis',
+  'ri.exp.f_control_rate': 'Control rate',
+  'ri.exp.f_experiment_rate': 'Experiment rate',
+  'ri.exp.f_start': 'Start date',
+  'ri.exp.f_end': 'End date',
+  'ri.exp.f_resources': 'Courts',
+  'ri.exp.f_metric': 'Primary metric',
+  'ri.settings.title': 'Dynamic Pricing Settings',
+  'ri.settings.sub': 'Guardrails and automation for this venue',
+  'ri.settings.mode': 'Pricing mode',
+  'ri.settings.mode.manual': 'Manual — you approve every change',
+  'ri.settings.mode.bounded_auto': 'Bounded auto — apply within guardrails automatically',
+  'ri.settings.min_price': 'Minimum price per hour',
+  'ri.settings.max_price': 'Maximum price per hour',
+  'ri.settings.max_change': 'Maximum single change',
+  'ri.settings.max_change_hint': 'Largest % the system may move a rate in one step (1\u201350%)',
+  'ri.settings.protected_plans': 'Protected membership plans',
+  'ri.settings.protected_plans_hint': 'Members on these plans are never affected by dynamic pricing',
+  'ri.settings.blackout': 'Blackout periods',
+  'ri.settings.blackout_hint': 'No automatic rate changes during these date ranges',
+  'ri.settings.objectives': 'Pricing objectives',
+  'ri.settings.obj.protect_peak': 'Protect peak revenue',
+  'ri.settings.obj.fill_offpeak': 'Fill off-peak slots',
+  'ri.settings.obj.reduce_noshow': 'Reduce no-shows',
+  'ri.settings.save': 'Save guardrails',
+  'ri.settings.saved': 'Guardrails saved',
+  'ri.settings.need_owner': 'Only venue owners can change pricing guardrails',
+  'ri.hub.title': 'Revenue Intelligence',
+  'ri.hub.sub': 'Demand \u00b7 Pricing \u00b7 Forecast \u00b7 Experiments',
+  'ri.hub.open': 'Open',
   // reviewed: false
   'cEdu.title': 'පුහුණුකරු අධ්‍යාපනය',
   'cEdu.season': 'වත්මන් සෘතුව',
@@ -15065,4 +15183,134 @@ export default {
   'academy.coach_earnings_period': 'Period',
   'payout.blocker_terms_pending': 'Accept provider terms to enable payouts',
   'payout.blocker_config_pending': 'Complete settlement configuration',
+  // machine-drafted — branded documents
+  'documents.hub.my_documents': 'My Documents', // machine-drafted
+  'documents.hub.templates': 'Templates', // machine-drafted
+  'documents.hub.brand_kits': 'Brand Kits', // machine-drafted
+  'documents.hub.generate': 'Generate Document', // machine-drafted
+  'documents.library.empty': 'No documents yet', // machine-drafted
+  'documents.library.generate_hint': 'Generate documents from events, invoices, plans and bookings', // machine-drafted
+  'documents.library.download': 'Download', // machine-drafted
+  'documents.library.share': 'Share', // machine-drafted
+  'documents.library.regenerate': 'Regenerate', // machine-drafted
+  'documents.library.versions': 'Versions', // machine-drafted
+  'documents.library.filter_all': 'All', // machine-drafted
+  'documents.library.filter_family': 'Family', // machine-drafted
+  'documents.library.filter_date': 'Date range', // machine-drafted
+  'documents.viewer.download': 'Download', // machine-drafted
+  'documents.viewer.share': 'Share', // machine-drafted
+  'documents.viewer.regenerate': 'Regenerate', // machine-drafted
+  'documents.viewer.create_link': 'Create share link', // machine-drafted
+  'documents.viewer.revoke': 'Revoke', // machine-drafted
+  'documents.viewer.active_shares': 'Active share links', // machine-drafted
+  'documents.viewer.no_shares': 'No active share links', // machine-drafted
+  'documents.viewer.pdf_preview': 'Preview PDF', // machine-drafted
+  'documents.viewer.metadata': 'Document details', // machine-drafted
+  'documents.viewer.checksum': 'Checksum', // machine-drafted
+  'documents.viewer.pages': 'Pages', // machine-drafted
+  'documents.viewer.template_version': 'Template version', // machine-drafted
+  'documents.viewer.brand_kit': 'Brand kit', // machine-drafted
+  'documents.share.expiry_24h': '24 hours', // machine-drafted
+  'documents.share.expiry_72h': '72 hours', // machine-drafted
+  'documents.share.expiry_7d': '7 days', // machine-drafted
+  'documents.share.expiry_30d': '30 days', // machine-drafted
+  'documents.share.created': 'Share link created', // machine-drafted
+  'documents.share.revoked': 'Link revoked', // machine-drafted
+  'documents.share.copy_link': 'Copy link', // machine-drafted
+  'documents.share.expires': 'Expires', // machine-drafted
+  'documents.generate.success': 'Document generated', // machine-drafted
+  'documents.generate.in_progress': 'Generating…', // machine-drafted
+  'documents.generate.error': 'Generation failed', // machine-drafted
+  'documents.generate.batch_success': 'Batch generation started', // machine-drafted
+  'documents.generate.sample_label': 'SAMPLE — preview only', // machine-drafted
+  'documents.templates.create': 'New template', // machine-drafted
+  'documents.templates.publish': 'Publish', // machine-drafted
+  'documents.templates.retire': 'Retire', // machine-drafted
+  'documents.templates.preview': 'Preview', // machine-drafted
+  'documents.templates.sample_label': 'SAMPLE', // machine-drafted
+  'documents.templates.block_header': 'Header', // machine-drafted
+  'documents.templates.block_title': 'Title', // machine-drafted
+  'documents.templates.block_parties': 'Parties', // machine-drafted
+  'documents.templates.block_lines': 'Line items', // machine-drafted
+  'documents.templates.block_totals': 'Totals', // machine-drafted
+  'documents.templates.block_text': 'Text', // machine-drafted
+  'documents.templates.block_footer': 'Footer', // machine-drafted
+  'documents.templates.block_activity_table': 'Activity table', // machine-drafted
+  'documents.templates.block_fixture_table': 'Fixture table', // machine-drafted
+  'documents.templates.block_booking_block': 'Booking block', // machine-drafted
+  'documents.templates.block_signature_block': 'Signature block', // machine-drafted
+  'documents.brand_kit.style': 'Style', // machine-drafted
+  'documents.brand_kit.stamp': 'Stamp image', // machine-drafted
+  'documents.brand_kit.signature': 'Signature image', // machine-drafted
+  'documents.brand_kit.tagline': 'Tagline', // machine-drafted
+  'documents.brand_kit.font_family': 'Font family', // machine-drafted
+  'documents.families.invoice': 'Invoice', // machine-drafted
+  'documents.families.coaching_report': 'Coaching report', // machine-drafted
+  'documents.families.season_report': 'Season report', // machine-drafted
+  'documents.families.sponsorship_agreement': 'Sponsorship agreement', // machine-drafted
+  'documents.families.enrolment_letter': 'Enrolment letter', // machine-drafted
+  'documents.families.federation_document': 'Federation document', // machine-drafted
+  'documents.families.academy_progress_report': 'Progress report', // machine-drafted
+  'documents.families.academy_management_review': 'Management review', // machine-drafted
+  'documents.families.academy_finance_pack': 'Finance pack', // machine-drafted
+  'documents.families.academy_term_report': 'Term report', // machine-drafted
+  'documents.families.academy_campus_quality': 'Campus quality', // machine-drafted
+  'documents.families.coaching_plan': 'Training plan', // machine-drafted
+  'documents.families.coach_agreement': 'Coaching agreement', // machine-drafted
+  'documents.families.referee_letter': 'Appointment letter', // machine-drafted
+  'documents.families.event_timetable': 'Event timetable', // machine-drafted
+  'documents.families.booking_confirmation': 'Booking confirmation', // machine-drafted
+  'documents.families.rehab_plan': 'Rehab plan', // machine-drafted
+  'documents.families.care_plan': 'Care plan', // machine-drafted
+  'documents.families.purchase_order': 'Purchase order', // machine-drafted
+  'documents.families.hire_agreement': 'Hire agreement', // machine-drafted
+  'documents.families.business_letter': 'Business letter', // machine-drafted
+  // Wearable hub elite extensions: ACWR, readiness, sRPE (#583) — machine-drafted, reviewed: false
+  'wr.team.tab.metrics': 'Metrics',
+  'wr.team.tab.acwr': 'Load (ACWR)',
+  'wr.team.tab.srpe': 'Session RPE',
+  'acwr.title': 'Training Load (ACWR)',
+  'acwr.acute': 'Acute (7d)',
+  'acwr.chronic': 'Chronic (28d)',
+  'acwr.days': '{n} days with data',
+  'acwr.basis': 'Descriptive readings from your devices. Not a diagnosis, medical advice or clearance to train or play.',
+  'acwr.zone.optimal': 'Optimal',
+  'acwr.zone.underload': 'Underload',
+  'acwr.zone.caution': 'Caution',
+  'acwr.zone.excessive': 'Excessive',
+  'acwr.zone.no_data': 'No data',
+  'acwr.desc.optimal': 'Load balance is in a good training range.',
+  'acwr.desc.underload': 'Training load is below your recent baseline.',
+  'acwr.desc.caution': 'Load is approaching a high level — monitor closely.',
+  'acwr.desc.excessive': 'Load is significantly higher than your recent baseline.',
+  'acwr.desc.no_data': 'Not enough data to calculate your ACWR yet.',
+  'acwr.team.empty': 'No ACWR data',
+  'acwr.team.empty_sub': 'Athletes need to connect a wearable device or log sessions.',
+  'readiness.title': 'Readiness',
+  'readiness.dir.improving': '\u2191 Improving',
+  'readiness.dir.stable': '\u2192 Stable',
+  'readiness.dir.declining': '\u2193 Declining',
+  'readiness.dir.no_data': 'No data',
+  'srpe.title': 'Session RPE Log',
+  'srpe.sub': 'Log your perceived effort after each training session (Borg CR-10).',
+  'srpe.add': 'Log session',
+  'srpe.rpe_label': 'Session effort (1-10)',
+  'srpe.duration': 'Duration (minutes)',
+  'srpe.sport': 'Sport or activity',
+  'srpe.notes': 'Notes',
+  'srpe.empty': 'No sessions logged yet.',
+  'srpe.saved': 'Session saved',
+  'srpe.pick_rpe': 'Please select an effort level.',
+  'srpe.rpe.1': 'Very easy',
+  'srpe.rpe.2': 'Easy',
+  'srpe.rpe.3': 'Moderate',
+  'srpe.rpe.4': 'Somewhat hard',
+  'srpe.rpe.5': 'Hard',
+  'srpe.rpe.6': 'Hard +',
+  'srpe.rpe.7': 'Very hard',
+  'srpe.rpe.8': 'Very hard +',
+  'srpe.rpe.9': 'Near maximum',
+  'srpe.rpe.10': 'Maximum',
+  'srpe.team.empty': 'No sRPE data',
+  'srpe.team.empty_sub': 'Athletes will log their sessions here.',
 };
