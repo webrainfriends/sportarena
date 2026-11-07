@@ -9,6 +9,7 @@ import { audit } from '../helpers.js';
 import { authority, need, mustBeActive } from '../federation.js';
 import { hist } from '../para.js';
 import { sha, STATE_SQL, LABEL } from '../para-catalogue.js';
+import { notify } from '../notify.js';
 
 const TAG = 'Para classification';
 
@@ -125,5 +126,28 @@ cap({
     await hist(c, 'version', v.id, null, 'deprecated', { from: 'published', to: 'retired', actor: user.id, detail: { reason: i.reason } });
     await audit(c, user.id, 'para.version_deprecate', 'para_class_version', v.id);
     return { id: v.id, status: 'retired', deprecated: true };
+  }),
+});
+
+cap({
+  name: 'request_para_sport_definition', method: 'POST', path: '/para/sport-definition-requests', tag: TAG, auth: 'user',
+  summary: 'Any signed-in user can request that a platform admin or academy onboard a published classification definition for a para sport that currently has none. Duplicate requests within 7 days by the same user for the same sport are silently de-duped. Notifies platform admins.',
+  input: z.object({ sport_id: z.string().trim().min(1).max(80), note: z.string().trim().max(500).optional() }),
+  handler: ({ user }, i) => tx(async (c) => {
+    const sport = await c.query('SELECT id, name FROM sports WHERE (slug=$1 OR id::text=$1) AND is_para', [i.sport_id]);
+    if (!sport.rowCount) throw notFound('Para sport');
+    const s = sport.rows[0];
+    const hasDefinition = (await c.query("SELECT 1 FROM para_class_versions WHERE sport_id=$1 AND status='published' LIMIT 1", [s.id])).rowCount > 0;
+    if (hasDefinition) throw badRequest('This sport already has a published classification definition');
+    // De-dup within 7 days
+    const recent = (await c.query("SELECT 1 FROM audit_log WHERE actor_id=$1 AND action='para.sport_definition_request' AND subject_type='sports' AND subject_id=$2 AND created_at > now()-interval'7 days' LIMIT 1", [user.id, s.id])).rowCount > 0;
+    if (!recent) {
+      await audit(c, user.id, 'para.sport_definition_request', 'sports', s.id, { note: i.note ?? null });
+      const admins = (await c.query("SELECT id FROM users WHERE 'platform_admin' = ANY(roles)")).rows;
+      for (const a of admins) {
+        await notify(c, a.id, { kind: 'para_sport_def_request', title: `Definition requested: ${s.name}`, body: `${user.display_name} requests a published classification definition for ${s.name}.${i.note ? ' Note: ' + i.note : ''}`, data: { sport_id: s.id, sport_slug: i.sport_id } });
+      }
+    }
+    return { requested: true, sport: s.name };
   }),
 });
