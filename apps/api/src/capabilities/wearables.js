@@ -470,7 +470,7 @@ cap({
     const r = await one(
       `INSERT INTO session_rpe_logs(user_id, logged_on, rpe, duration_minutes, sport, notes)
        VALUES ($1,$2,$3,$4,$5,$6)
-       ON CONFLICT (user_id, logged_on, coalesce(sport,'')) DO UPDATE SET rpe=EXCLUDED.rpe, duration_minutes=EXCLUDED.duration_minutes, notes=EXCLUDED.notes, updated_at=now()
+       ON CONFLICT (user_id, logged_on, coalesce(sport,'')) WHERE archived_at IS NULL DO UPDATE SET rpe=EXCLUDED.rpe, duration_minutes=EXCLUDED.duration_minutes, notes=EXCLUDED.notes, updated_at=now()
        RETURNING id, logged_on::text AS logged_on, rpe, duration_minutes, sport, notes`,
       [user.id, on, i.rpe, i.duration_minutes, i.sport ?? null, i.notes ?? null],
     );
