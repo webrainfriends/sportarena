@@ -4,9 +4,10 @@ import { api } from '../api';
 import { useLoad } from '../hooks';
 import { c } from '../theme';
 import { t } from '../i18n';
-import { T, Btn, Chip, Card, Row, Loading, Empty, Tag, Sheet } from '../ui';
+import { T, Btn, Chip, Card, Row, Loading, Empty, Tag, Sheet, Wrap } from '../ui';
 import { Initials, Kpi, Block } from './academy-ui';
 import { explain, LoadError } from '../access';
+import { FormSheet } from '../FormSheet';
 
 const uid = () => `tc-${Math.random().toString(36).slice(2)}-${Date.now()}`;
 
@@ -166,6 +167,120 @@ export function TransportBoardTab({ o, toast }) {
       )}
 
       <ContactSheet contact={contact} onClose={() => setContact(null)} />
+    </View>
+  );
+}
+
+// ── Para accessibility desk (PS-23) ──────────────────────────────────────────
+
+const SUIT_COLORS = { met: c.mint, partial: c.sun, gap: c.red, unknown: c.violetSoft };
+const SUIT_ICON = { met: '✓', partial: '⚠', gap: '✗', unknown: '—' };
+
+function VehicleSpecsSheet({ vehicle, visible, onClose, onSaved, toast }) {
+  if (!vehicle) return null;
+  return (
+    <FormSheet visible={visible} onClose={onClose} title="Update vehicle accessibility" submitLabel="Save specs"
+      notice="These specs are used to automatically check whether trip segments can accommodate declared access needs."
+      initial={{
+        wheelchair_spaces: String(vehicle.wheelchair_spaces ?? 0),
+        low_floor: vehicle.low_floor ?? false,
+        hoist: vehicle.hoist ?? false,
+        securement_points: String(vehicle.securement_points ?? 0),
+        hearing_loop: vehicle.hearing_loop ?? false,
+      }}
+      fields={[
+        { key: 'wheelchair_spaces', label: t('vehicleAccess.wheelchair_spaces'), type: 'number' },
+        { key: 'low_floor', label: t('vehicleAccess.low_floor'), type: 'switch' },
+        { key: 'hoist', label: t('vehicleAccess.hoist'), type: 'switch' },
+        { key: 'securement_points', label: t('vehicleAccess.securement_points'), type: 'number' },
+        { key: 'hearing_loop', label: t('vehicleAccess.hearing_loop'), type: 'switch' },
+      ]}
+      onSubmit={async (v) => {
+        await api.patch(`/vehicles/${vehicle.id}/access-specs`, {
+          wheelchair_spaces: Number(v.wheelchair_spaces), low_floor: !!v.low_floor,
+          hoist: !!v.hoist, securement_points: Number(v.securement_points), hearing_loop: !!v.hearing_loop,
+        });
+        onSaved?.();
+        return 'Vehicle specs saved';
+      }} />
+  );
+}
+
+function ParaFleetTab({ orgId }) {
+  const st = useLoad(() => api.get(`/organisations/${orgId}/academy/transport/vehicles`), [orgId]);
+  const [editing, setEditing] = useState(null);
+  const [editVisible, setEditVisible] = useState(false);
+  const { toast } = { toast: (m) => {} };
+  const vehicles = st.data ?? [];
+  return (
+    <View style={{ gap: 10 }}>
+      <T size={12.5} color={c.mute} style={{ marginBottom: 4 }}>
+        Fleet accessibility specs. Record wheelchair spaces, hoist, securement points and hearing loop for each vehicle. These feed the automatic suitability check on trip segments.
+      </T>
+      {!vehicles.length ? <Empty emoji="🚌" title="No vehicles found" sub="Add vehicles in Academy → Transport." /> : vehicles.map((v) => (
+        <Card key={v.id} pad={14}>
+          <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 8 }}>
+            <View style={{ flex: 1 }}>
+              <T weight="700" size={14}>{v.description ?? v.registration ?? v.id.slice(0, 8)}</T>
+              <T size={12} color={c.mute}>Capacity {v.capacity}</T>
+              <Wrap style={{ marginTop: 6, gap: 6 }}>
+                {v.wheelchair_spaces > 0 ? <Tag label={`♿ ×${v.wheelchair_spaces}`} color={c.mint} /> : <Tag label="No WAV" color={c.red} />}
+                {v.low_floor ? <Tag label="Low floor" color={c.cyanSoft} /> : null}
+                {v.hoist ? <Tag label="Hoist" color={c.cyanSoft} /> : null}
+                {v.securement_points > 0 ? <Tag label={`Securement ×${v.securement_points}`} color={c.mint} /> : null}
+                {v.hearing_loop ? <Tag label="Hearing loop" color={c.cyanSoft} /> : null}
+                {v.access_verified_at ? <Tag label={`✓ ${t('vehicleAccess.verified')}`} color={c.violetSoft} /> : <Tag label="Unverified" color={c.sunSoft} />}
+              </Wrap>
+            </View>
+            <Btn small title="Edit specs" onPress={() => { setEditing(v); setEditVisible(true); }} />
+          </View>
+        </Card>
+      ))}
+      <VehicleSpecsSheet vehicle={editing} visible={editVisible} onClose={() => { setEditVisible(false); setEditing(null); }} onSaved={st.reload} toast={toast} />
+    </View>
+  );
+}
+
+function ParaRouteTab({ orgId }) {
+  const st = useLoad(() => api.get(`/organisations/${orgId}/academy/transport`), [orgId]);
+  const [scheduleId, setScheduleId] = useState(null);
+  const board = useLoad(() => scheduleId ? api.get(`/academy/transport/schedules/${scheduleId}/board`) : Promise.resolve(null), [scheduleId]);
+  const ov = st.data;
+  const allSchedules = ov?.schedules ?? [];
+  const athletes = board.data?.athletes ?? [];
+  const wavAthletes = athletes.filter((a) => a.access_needs?.includes('wav'));
+  return (
+    <View style={{ gap: 10 }}>
+      <T size={12.5} color={c.mute} style={{ marginBottom: 4 }}>
+        Access needs vs. vehicle suitability per route/run. Athletes with declared WAV needs are highlighted. Trip managers can recheck suitability from the Trip → Access tab.
+      </T>
+      <Wrap gap={6}>
+        {allSchedules.map((s) => (
+          <Chip key={s.schedule_id} label={`${s.route_name} ${s.outbound_depart_time ?? ''}`} active={scheduleId === s.schedule_id} onPress={() => setScheduleId(s.schedule_id)} />
+        ))}
+      </Wrap>
+      {scheduleId && wavAthletes.length > 0 ? (
+        <Card color={c.sunSoft} pad={12}>
+          <T weight="700">♿ {wavAthletes.length} athlete{wavAthletes.length !== 1 ? 's' : ''} with WAV need on this run</T>
+          {wavAthletes.map((a) => (
+            <T key={a.athlete_id} size={13} style={{ marginTop: 2 }}>· {a.display_name}</T>
+          ))}
+        </Card>
+      ) : null}
+      {scheduleId && !athletes.length && !board.loading ? <Empty emoji="📋" title="No athletes on this run" /> : null}
+    </View>
+  );
+}
+
+export function ParaTransportTab({ o }) {
+  const [view, setView] = useState('fleet');
+  return (
+    <View style={{ gap: 10 }}>
+      <Wrap gap={6}>
+        <Chip label="Fleet specs" active={view === 'fleet'} onPress={() => setView('fleet')} />
+        <Chip label="Route needs" active={view === 'routes'} onPress={() => setView('routes')} />
+      </Wrap>
+      {view === 'fleet' ? <ParaFleetTab orgId={o.id} /> : <ParaRouteTab orgId={o.id} />}
     </View>
   );
 }

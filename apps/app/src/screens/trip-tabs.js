@@ -491,3 +491,138 @@ export function HistoryTab({ id }) {
     </View>
   );
 }
+
+// ---------------------------------------------------------------- access (PS-23)
+
+const SUIT_COLOR = { met: c.mint, partial: c.sun, gap: c.red, unknown: c.violetSoft };
+const SUIT_ICON = { met: '✓', partial: '⚠', gap: '✗', unknown: '—' };
+const NEED_LABEL_UI = {
+  wav: 'WAV', securement: 'Securement', guide_dog: 'Guide dog', hearing_loop: 'Hearing loop',
+  escort: 'Escort', manual_support: 'Manual support', medication_carry_on: 'Medication carry-on',
+  rooming_roll_in: 'Roll-in shower', rooming_hoist: 'Room hoist', rooming_ground_floor: 'Ground floor',
+};
+
+function AddNeedSheet({ visible, onClose, tripId, participantId, onDone }) {
+  const needOpts = Object.entries(NEED_LABEL_UI).map(([k, v]) => ({ value: k, label: v }));
+  return (
+    <FormSheet visible={visible} onClose={onClose} title="Add access need" submitLabel="Save need"
+      notice="Your note is encrypted and shown only to trip ops/managers — never to transport providers. Providers receive only the need type when you set scope to Provider."
+      fields={[
+        { key: 'need_type', label: 'Need type', type: 'chips', options: needOpts },
+        { key: 'scope', label: 'Share with provider', type: 'switch', default: false },
+        { key: 'note', label: 'Private note (optional — ops/manager eyes only)', type: 'text', optional: true, multiline: true },
+      ]}
+      onSubmit={async (v) => {
+        await api.post(`/trips/${tripId}/access/needs`, { participant_id: participantId || undefined, need_type: v.need_type, scope: v.scope ? 'provider_minimal' : 'ops_only', note: v.note || undefined });
+        onDone?.();
+        return 'Access need saved';
+      }} />
+  );
+}
+
+function NeedsMatrix({ participants, tripId, reload, canManage }) {
+  const [adding, setAdding] = useState(null);
+  if (!participants.length) return <Card pad={14}><T size={13} color={c.mute}>No access needs declared. Any party member can add their own. Managers can add on behalf of participants.</T></Card>;
+  return (
+    <View style={{ gap: 8 }}>
+      {participants.map((p) => (
+        <Card key={p.participant_id} pad={14} accessibilityLabel={`${p.display_name}, ${p.needs.length} access need${p.needs.length !== 1 ? 's' : ''}`}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+            <View style={{ flex: 1 }}><T weight="700">{p.display_name}</T><T size={12} color={c.mute}>{p.role}</T></View>
+            {canManage && <Btn small title="＋" onPress={() => setAdding(p.participant_id)} />}
+          </View>
+          <Wrap style={{ marginTop: 8, gap: 6 }}>
+            {p.needs.map((n) => (
+              <View key={n.id} style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                <Tag label={n.label ?? NEED_LABEL_UI[n.need_type] ?? n.need_type} color={n.scope === 'provider_minimal' ? c.cyanSoft : c.violetSoft} />
+                {n.scope === 'ops_only' ? <T size={10}>🔒</T> : <T size={10}>🔓</T>}
+              </View>
+            ))}
+          </Wrap>
+          {adding === p.participant_id && <AddNeedSheet visible tripId={tripId} participantId={p.participant_id} onClose={() => setAdding(null)} onDone={() => { setAdding(null); reload(); }} />}
+        </Card>
+      ))}
+    </View>
+  );
+}
+
+function SuitabilityTable({ suitability }) {
+  if (!suitability.length) return <Card pad={14}><T size={13} color={c.mute}>No suitability records yet. Recheck after assigning vehicles to segments.</T></Card>;
+  const bySegment = {};
+  for (const s of suitability) {
+    const k = s.segment_id;
+    if (!bySegment[k]) bySegment[k] = { origin: s.origin, destination: s.destination, mode: s.mode, depart_at: s.depart_at, checks: [] };
+    bySegment[k].checks.push(s);
+  }
+  return (
+    <View style={{ gap: 8 }}>
+      {Object.values(bySegment).map((seg, i) => (
+        <Card key={i} pad={14}>
+          <T weight="700" size={13.5}>{seg.origin} → {seg.destination}</T>
+          <T size={12} color={c.mute}>{seg.mode ? String(seg.mode).replace(/_/g, ' ') : ''}{seg.depart_at ? '  ·  ' + new Date(seg.depart_at).toLocaleString() : ''}</T>
+          <Wrap style={{ marginTop: 8, gap: 6 }}>
+            {seg.checks.map((s) => (
+              <Tag key={s.id ?? s.need_type} label={`${SUIT_ICON[s.state] ?? '—'} ${NEED_LABEL_UI[s.need_type] ?? s.need_type}`} color={SUIT_COLOR[s.state] ?? c.violetSoft} />
+            ))}
+          </Wrap>
+        </Card>
+      ))}
+    </View>
+  );
+}
+
+function AlertStrip({ alerts, tripId, manager, reload }) {
+  const { act } = useAct(reload);
+  if (!alerts.length) return null;
+  return (
+    <View style={{ gap: 6 }}>
+      {alerts.map((a) => (
+        <Card key={a.id} color={c.sunSoft} pad={12} accessibilityRole="alert">
+          <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 8 }}>
+            <T style={{ flex: 1 }}><T weight="700">{String(a.alert_type).replace(/_/g, ' ')}</T>{a.origin ? `  ·  ${a.origin} → ${a.destination}` : ''}</T>
+            {manager ? <Btn small title="Resolve" onPress={() => act(() => api.patch(`/trips/${tripId}/access/alerts/${a.id}/resolve`, {}), 'Alert resolved')} /> : null}
+          </View>
+        </Card>
+      ))}
+    </View>
+  );
+}
+
+export function AccessTab({ id, data, reload }) {
+  const { you } = data;
+  const st = useLoad(() => api.get(`/trips/${id}/access`), [id]);
+  const [addSelf, setAddSelf] = useState(false);
+  const reloadAll = async () => { await reload(); await st.reload(); };
+  return (
+    <View style={{ gap: 12 }}>
+      <Head
+        title="Access plan"
+        sub="Consented access needs for every party member. Notes and clinical detail are never shared with transport providers."
+        action={<Btn small title="＋ Add my need" onPress={() => setAddSelf(true)} />}
+      />
+      <Block state={st}>{(d) => (
+        <View style={{ gap: 14 }}>
+          <Wrap gap={10}>
+            <Card pad={12} style={{ minWidth: 90 }}><T size={11} color={c.mute}>With needs</T><T size={22} weight="800">{d.counts.with_needs}</T></Card>
+            <Card pad={12} style={{ minWidth: 90 }}><T size={11} color={c.mute}>Segs checked</T><T size={22} weight="800">{d.counts.segments_checked}</T></Card>
+            <Card pad={12} style={{ minWidth: 90 }}><T size={11} color={c.mute}>Open alerts</T><T size={22} weight="800" color={d.counts.open_alerts > 0 ? c.red : c.ink}>{d.counts.open_alerts}</T></Card>
+          </Wrap>
+          <AlertStrip alerts={d.alerts} tripId={id} manager={you.manager} reload={reloadAll} />
+          <Head title="Party needs" sub={null} />
+          <NeedsMatrix participants={d.participants} tripId={id} reload={reloadAll} canManage={you.manager || you.ops} />
+          {you.ops || you.manager ? (
+            <View style={{ gap: 8 }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                <T weight="700" size={15} style={{ flex: 1 }}>Segment suitability</T>
+                {you.manager ? <Btn small title="Recheck all" onPress={() => api.post(`/trips/${id}/access/suitability/recheck`, {}).then(reloadAll)} /> : null}
+              </View>
+              <SuitabilityTable suitability={d.suitability} />
+              <T size={11.5} color={c.mute}>✓ met  ⚠ partial  ✗ gap  — unknown  · 🔒 ops/manager only  · 🔓 provider-visible</T>
+            </View>
+          ) : null}
+        </View>
+      )}</Block>
+      <AddNeedSheet visible={addSelf} tripId={id} participantId={null} onClose={() => setAddSelf(false)} onDone={() => { setAddSelf(false); reloadAll(); }} />
+    </View>
+  );
+}

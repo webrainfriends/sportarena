@@ -37,6 +37,7 @@ import './trips-compliance.js';
 import './trips-ops.js';
 import './trips-money.js';
 import './trips-bookings.js';
+import './trips-access.js';
 import './travel-partners.js';
 import './appearances.js';
 import './team-chat.js';
