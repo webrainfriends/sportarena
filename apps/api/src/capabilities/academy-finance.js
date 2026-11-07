@@ -170,3 +170,33 @@ cap({
     return { filename: `academy-pnl-${from}-${to}.csv`, basis: r.basis, csv: [head, ...rows].map((row) => row.map(cell).join(',')).join('\n') };
   },
 });
+
+cap({
+  name: 'get_academy_coach_earnings', method: 'GET', path: '/organisations/:id/academy/coach-earnings', tag: 'Academy',
+  summary: 'Aggregate earnings of all coaches linked to this academy (owner/admin/finance): gross billed, commission, net payable per coach and currency for the period. Read-only view over the provider ledger — no money moves.',
+  input: z.object({ id, from: day.optional(), to: day.optional(), currency: cur.optional(), ...page }),
+  async handler({ user }, i) {
+    await orgFor(user, i.id, STAFF_MONEY);
+    await audit(null, user.id, 'read_academy_coach_earnings', 'organisations', i.id);
+    const from = i.from ?? daysAgo(90), to = i.to ?? today();
+    return many(
+      `SELECT u.id AS coach_id, u.display_name, u.avatar_url,
+              pl.currency,
+              COALESCE(SUM(CASE WHEN pl.kind='sale'       THEN pl.gross_cents  ELSE 0 END),0)::bigint AS gross_cents,
+              COALESCE(SUM(CASE WHEN pl.kind='commission' THEN -pl.amount_cents ELSE 0 END),0)::bigint AS commission_cents,
+              COALESCE(SUM(pl.amount_cents) FILTER (WHERE pl.kind NOT IN ('payout','payout_reversal')),0)::bigint AS net_cents,
+              COUNT(DISTINCT pl.payment_id)::int AS payment_count
+       FROM organisation_members om
+       JOIN users u ON u.id = om.user_id
+       JOIN provider_ledger pl ON pl.seller_id = u.id
+       WHERE om.organisation_id = $1
+         AND om.status = 'active'
+         AND pl.created_at::date BETWEEN $2::date AND $3::date
+         AND ($4::text IS NULL OR pl.currency = $4)
+         AND pl.kind IN ('sale','commission','refund','chargeback')
+       GROUP BY u.id, u.display_name, u.avatar_url, pl.currency
+       ORDER BY gross_cents DESC
+       LIMIT $5 OFFSET $6`,
+      [i.id, from, to, i.currency ?? null, i.limit, i.offset]);
+  },
+});

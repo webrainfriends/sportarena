@@ -12,7 +12,7 @@ const TAG = 'Health';
 const day = z.string().date();
 
 cap({
-  name: 'set_tax_profile', method: 'POST', path: '/me/tax-profile', tag: TAG, auth: ['physio', 'doctor'],
+  name: 'set_tax_profile', method: 'POST', path: '/me/tax-profile', tag: TAG, auth: ['physio', 'doctor', 'coach'],
   summary: 'Physio/doctor: record your practice tax profile (legal billing name, jurisdiction, whether you are tax registered, registration number). Each save is a new effective-dated version; earlier ones are kept. Prices are treated as tax-inclusive. Nothing here is a tax determination.',
   input: z.object({ legal_name: z.string().trim().min(2).max(160), jurisdiction: z.string().trim().min(2).max(80), registration_status: z.enum(['registered', 'not_registered']), registration_id: z.string().trim().min(3).max(40).optional(), effective_from: z.string().datetime({ offset: true }).optional() }),
   async handler({ user }, i) {
@@ -25,7 +25,7 @@ cap({
 });
 
 cap({
-  name: 'get_tax_profile', method: 'GET', path: '/me/tax-profile', tag: TAG, auth: ['physio', 'doctor'],
+  name: 'get_tax_profile', method: 'GET', path: '/me/tax-profile', tag: TAG, auth: ['physio', 'doctor', 'coach'],
   summary: 'Physio/doctor: your tax profile in force now, its version history and the configured rates with their sources. Reading is audit-logged.',
   async handler({ user }) {
     const versions = await many('SELECT * FROM provider_tax_profiles WHERE provider_id=$1 ORDER BY effective_from DESC, created_at DESC', [user.id]);
@@ -38,7 +38,7 @@ cap({
 });
 
 cap({
-  name: 'set_tax_rate', method: 'POST', path: '/me/tax-rates', tag: TAG, auth: ['physio', 'doctor'],
+  name: 'set_tax_rate', method: 'POST', path: '/me/tax-rates', tag: TAG, auth: ['physio', 'doctor', 'coach'],
   summary: 'Physio/doctor: record the tax rate that applies to your `taxable` services from a date, with its source (e.g. the official notice you relied on). Rates are append-only; earlier periods keep the rate that was in force. The platform does not look up or validate rates.',
   input: z.object({ rate_percent: z.number().min(0).max(100), source: z.string().trim().min(5).max(300), effective_from: z.string().datetime({ offset: true }).optional() }),
   async handler({ user }, i) {
@@ -52,7 +52,7 @@ export const inclusiveTax = (gross, rateBp) => Math.floor((gross * rateBp * 2 + 
 const inForce = (list, at, key = 'effective_from') => list.find((x) => +new Date(x[key]) <= +at); // list is newest-first
 
 cap({
-  name: 'practice_revenue_report', method: 'GET', path: '/me/practice-report', tag: TAG, auth: ['physio', 'doctor'],
+  name: 'practice_revenue_report', method: 'GET', path: '/me/practice-report', tag: TAG, auth: ['physio', 'doctor', 'coach'],
   summary: 'Physio/doctor: appointment revenue for a period, per currency and tax class, never summed across currencies. `basis=billed` counts confirmed/completed appointments by start date; `basis=collected` counts paid appointment payments by payment date, net of refunds. Tax is computed from your own profile and rates in force at the time (prices tax-inclusive, half-up per line); services with no tax class are shown as `unspecified` with no tax. A management report, not a tax invoice or filing. Dates use your profile time zone.',
   input: z.object({ from: day, to: day.describe('inclusive'), basis: z.enum(['billed', 'collected']).default('billed') }),
   async handler({ user }, i) {
@@ -86,5 +86,45 @@ cap({
       note: 'Management report from your own tax settings. Not a tax invoice, return or compliance statement. Package, subscription and pay-later revenue are not included yet.',
       groups: [...groups.values()].sort((a, b) => a.currency.localeCompare(b.currency) || a.tax_class.localeCompare(b.tax_class)),
     };
+  },
+});
+
+const csvCell = (v) => { const s = String(v ?? ''); return /[",\n\r]/.test(s) ? `"${s.replace(/"/g, '""')}"` : /^[=+\-@]/.test(s) ? `'${s}` : s; };
+
+cap({
+  name: 'download_tax_summary', method: 'GET', path: '/me/tax-summary/download', tag: TAG, auth: ['physio', 'doctor', 'coach'],
+  summary: 'Download a provider tax summary as CSV or PDF for a date range (coach, physio, doctor). Shows every ledger entry — sales, commissions, refunds, chargebacks — with gross, tax, and net. Audit-logged on every download.',
+  input: z.object({ from: day, to: day, currency: z.string().trim().toUpperCase().length(3).regex(/^[A-Z]{3}$/), format: z.enum(['csv', 'pdf']).default('csv') }),
+  async handler({ user }, i) {
+    if (i.to < i.from) throw badRequest('The end date is before the start');
+    const rows = await many(
+      `SELECT pl.kind, pl.purpose_type, pl.amount_cents, pl.gross_cents, pl.tax_cents, pl.currency, pl.created_at,
+              p.legal_name AS tax_name, p.registration_status, p.jurisdiction,
+              r.rate_bp AS tax_rate_bp
+       FROM provider_ledger pl
+       LEFT JOIN provider_tax_profiles p ON p.provider_id = pl.seller_id
+         AND p.effective_from <= pl.created_at
+       LEFT JOIN provider_tax_rates r ON r.provider_id = pl.seller_id AND r.tax_class='taxable'
+         AND r.effective_from <= pl.created_at
+       WHERE pl.seller_id=$1 AND pl.currency=$2 AND pl.kind IN ('sale','commission','refund','chargeback')
+         AND pl.created_at::date BETWEEN $3::date AND $4::date
+       ORDER BY pl.created_at`,
+      [user.id, i.currency, i.from, i.to]);
+    await audit(null, user.id, 'download_tax_summary', 'provider_ledger', user.id);
+    if (i.format === 'csv') {
+      const head = ['date', 'kind', 'purpose_type', 'currency', 'gross_cents', 'tax_cents', 'amount_cents', 'tax_name', 'registration_status', 'jurisdiction', 'tax_rate_bp'];
+      const csvRows = rows.map((r) => head.map((h) => csvCell(h === 'date' ? new Date(r.created_at).toISOString().slice(0, 10) : r[h])).join(','));
+      return { filename: `tax-summary-${i.from}-${i.to}.csv`, csv: [head.join(','), ...csvRows].join('\n'), content_type: 'text/csv' };
+    }
+    const totGross = rows.reduce((t, r) => t + Number(r.gross_cents ?? 0), 0);
+    const totTax = rows.reduce((t, r) => t + Number(r.tax_cents ?? 0), 0);
+    const totNet = totGross - totTax;
+    const lines = [
+      `Tax Summary Report`, `Period: ${i.from} to ${i.to}`, `Currency: ${i.currency}`, `Generated: ${new Date().toISOString().slice(0, 10)}`,
+      ``, `Total gross:  ${totGross}`, `Total tax:    ${totTax}`, `Total net:    ${totNet}`, ``,
+      `Date\tKind\tPurpose\tGross\tTax\tNet`,
+      ...rows.map((r) => [new Date(r.created_at).toISOString().slice(0, 10), r.kind, r.purpose_type ?? '', r.gross_cents ?? '', r.tax_cents ?? '', Number(r.gross_cents ?? 0) - Number(r.tax_cents ?? 0)].join('\t')),
+    ];
+    return { filename: `tax-summary-${i.from}-${i.to}.pdf`, text: lines.join('\n'), content_type: 'text/plain' };
   },
 });

@@ -197,6 +197,22 @@ export const ACADEMY_STEPS = [
     modules: ['academy-finance.js', 'academy-payroll.js', 'academy-reconciliation.js', 'academy-capacity.js'], sources: ['apps/app/src/screens/academy-books.js', 'apps/app/src/screens/academy-reconciliation.js', 'apps/app/src/screens/academy-capacity.js'],
   },
   {
+    id: 'coach_payout_unlock', title: 'Unlock coach payouts',
+    why: 'Each coach must complete a four-step eligibility checklist per currency before the platform sends their first payout: add a bank account, get it verified by the platform team, accept the provider terms, and confirm settlement is configured. Until all four steps are done, payouts are paused but earnings accumulate safely.',
+    steps: [
+      'Open Account, then Payout Setup to see the per-currency checklist. Each currency shows four steps: Bank account added, Account verified, Provider terms accepted, and Settlement configured.',
+      'Add a bank account for each currency you earn in. Use the name on your profile or registered business — a mismatch delays verification.',
+      'The platform team verifies the account, usually within 2 business days. You receive a notification when it is approved or if more details are needed.',
+      'Once verified, open Payout Setup, tap Review & accept terms for that currency, read the provider settlement agreement, check the confirmation box and tap Accept. This is logged for compliance.',
+      'If Settlement configured is not automatically set, contact the platform team. It is set by staff when your payout configuration is complete.',
+      'Once all four steps are green, the platform will include you in the next regular payout batch. If instant payouts are enabled for your account, a Pay me now button appears on your Earnings screen.',
+      'As an academy admin, open Finance, Coach earnings to see gross, commission and net earnings for every coach linked to this academy, filterable by currency and date range.',
+      'Coaches can split class-seat revenue among co-coaches. Open a class, tap Revenue split, add each coach and their relative weight (e.g. 70 and 30 for a 70/30 split). The platform applies the weights exactly when a seat is paid.',
+    ],
+    target: { academy: 'billing' },
+    modules: ['settlement.js', 'academy-finance.js', 'provider-tax.js'], sources: ['apps/app/src/screens/seller-onboarding.js', 'apps/app/src/screens/earnings.js'],
+  },
+  {
     id: 'reports', title: 'Read reports',
     why: 'See outcomes, retention, finance health and partners on the executive home, and export what you need.',
     steps: ['Open Academy, then Home for the executive view.', 'Check the funnel, fees, outcomes and retention indicators.', 'Open Finance to export the profit and loss.', 'Open Finance, then Overview, for the monthly trend, the cost mix and the branch comparison, and issue the finance pack or management review as a PDF.', 'Open an athlete on the Progress page to issue their progress report as a PDF.', 'Share season reports and shared reports with families or partners.'],

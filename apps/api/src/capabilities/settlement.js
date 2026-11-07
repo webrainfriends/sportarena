@@ -365,3 +365,128 @@ cap({
     });
   },
 });
+
+// ------------------------------------------------------------------ seller eligibility & onboarding
+
+cap({
+  name: 'get_seller_status', method: 'GET', path: '/me/seller-status', tag: TAG,
+  summary: 'Per-currency seller eligibility checklist: account added, account verified, terms accepted, settlement configured. Returns all_done flag per currency plus any payout blockers.',
+  input: z.object({}),
+  async handler({ user }) {
+    const accounts = await many("SELECT currency, status, terms_accepted_at, settlement_config_ok, instant_eligible, instant_fee_bp FROM payout_accounts WHERE owner_id=$1 AND superseded_at IS NULL ORDER BY currency", [user.id]);
+    const currencies = accounts.map((a) => ({
+      currency: a.currency,
+      account_added: true,
+      account_verified: a.status === 'verified',
+      terms_accepted: !!a.terms_accepted_at,
+      config_ok: a.settlement_config_ok,
+      instant_eligible: a.instant_eligible,
+      instant_fee_bp: a.instant_fee_bp,
+      all_done: a.status === 'verified' && !!a.terms_accepted_at && a.settlement_config_ok,
+    }));
+    return { currencies, any_pending: currencies.some((x) => !x.all_done) };
+  },
+});
+
+cap({
+  name: 'accept_seller_terms', method: 'POST', path: '/me/seller-terms', tag: TAG, status: 201,
+  summary: 'Accept the current provider terms for a currency. Idempotent if same version already accepted. Records IP hash and user-agent for compliance audit trail.',
+  input: z.object({ currency: cur, version: z.string().min(3).max(80) }),
+  handler: ({ user, req }, i) => tx(async (c) => {
+    const expected = config.settlement?.currentTermsVersion ?? 'seller-terms-v1.0';
+    if (i.version !== expected) throw badRequest(`Unknown terms version. Current version is ${expected}`);
+    const acct = (await c.query("SELECT id, terms_accepted_at, terms_version FROM payout_accounts WHERE owner_id=$1 AND currency=$2 AND superseded_at IS NULL", [user.id, i.currency])).rows[0];
+    if (!acct) throw notFound('Payout account for this currency');
+    if (acct.terms_accepted_at && acct.terms_version === i.version) return { accepted: true, already_accepted: true };
+    const { createHash } = await import('node:crypto');
+    const ipRaw = req?.ip ?? req?.headers?.['x-forwarded-for'] ?? '';
+    const ipHash = createHash('sha256').update(String(ipRaw)).digest('hex');
+    await c.query('UPDATE payout_accounts SET terms_accepted_at=now(), terms_version=$1 WHERE id=$2', [i.version, acct.id]);
+    await c.query('INSERT INTO seller_terms_log(owner_id,currency,version,ip_hash,user_agent) VALUES($1,$2,$3,$4,$5)',
+      [user.id, i.currency, i.version, ipHash, req?.headers?.['user-agent']?.slice(0, 500) ?? null]);
+    await audit(c, user.id, 'accept_seller_terms', 'payout_accounts', acct.id);
+    return { accepted: true, already_accepted: false };
+  }),
+});
+
+cap({
+  name: 'get_earnings_trend', method: 'GET', path: '/me/earnings/trend', tag: TAG,
+  summary: 'Weekly earnings trend for sparkline charts: up to 52 weeks of gross/net/refund buckets per currency. Weeks with no activity are absent.',
+  input: z.object({ currency: cur.optional(), weeks: z.coerce.number().int().min(1).max(52).default(12) }),
+  async handler({ user }, i) {
+    const rows = await many(
+      `SELECT currency, week_start, gross_cents, net_cents, refund_cents FROM provider_earnings_weekly
+       WHERE seller_id=$1 AND ($2::text IS NULL OR currency=$2) AND week_start >= current_date - ($3::int * 7)
+       ORDER BY currency, week_start`,
+      [user.id, i.currency ?? null, i.weeks]);
+    const byCurrency = {};
+    for (const r of rows) {
+      if (!byCurrency[r.currency]) byCurrency[r.currency] = [];
+      byCurrency[r.currency].push({ week_start: r.week_start, gross_cents: Number(r.gross_cents), net_cents: Number(r.net_cents), refund_cents: Number(r.refund_cents) });
+    }
+    return { trend: byCurrency };
+  },
+});
+
+cap({
+  name: 'set_class_earning_splits', method: 'POST', path: '/coach/classes/:id/earning-splits', tag: TAG, status: 201,
+  summary: 'Set per-coach revenue weights for a class. Existing splits are archived and replaced atomically. All listed coach IDs must be valid users. Weights need not sum to any specific value — they are relative.',
+  input: z.object({
+    id,
+    splits: z.array(z.object({ coach_id: z.string().uuid(), weight: z.number().int().min(1).max(1000) })).min(1).max(10),
+  }),
+  handler: ({ user }, i) => tx(async (c) => {
+    const cls = (await c.query('SELECT * FROM coach_classes WHERE id=$1', [i.id])).rows[0];
+    if (!cls) throw notFound('Class');
+    if (cls.coach_id !== user.id) throw forbidden('Only the class owner can set earning splits');
+    await c.query('UPDATE coach_class_earning_splits SET archived_at=now() WHERE class_id=$1 AND archived_at IS NULL', [i.id]);
+    for (const s of i.splits) {
+      await c.query('INSERT INTO coach_class_earning_splits(class_id,coach_id,weight,created_by) VALUES($1,$2,$3,$4)', [i.id, s.coach_id, s.weight, user.id]);
+    }
+    await audit(c, user.id, 'set_class_earning_splits', 'coach_class_earning_splits', i.id);
+    return { splits: i.splits, class_id: i.id };
+  }),
+});
+
+cap({
+  name: 'get_class_earning_splits', method: 'GET', path: '/coach/classes/:id/earning-splits', tag: TAG,
+  summary: 'Current earning splits for a class. Returns active rows only. Accessible to the class owner and platform admins.',
+  input: z.object({ id }),
+  async handler({ user }, i) {
+    const cls = (await one('SELECT * FROM coach_classes WHERE id=$1', [i.id]));
+    if (!cls) throw notFound('Class');
+    const isOwner = cls.coach_id === user.id;
+    const isAdmin = Array.isArray(user.roles) && (user.roles.includes('admin') || user.roles.includes('platform_admin'));
+    if (!isOwner && !isAdmin) throw forbidden('Access denied');
+    const splits = await many('SELECT s.id, s.coach_id, s.weight, s.created_at, u.display_name, u.avatar_url FROM coach_class_earning_splits s JOIN users u ON u.id=s.coach_id WHERE s.class_id=$1 AND s.archived_at IS NULL ORDER BY s.weight DESC', [i.id]);
+    return { splits, class_id: i.id };
+  },
+});
+
+cap({
+  name: 'request_instant_payout', method: 'POST', path: '/me/instant-payout', tag: TAG, status: 202,
+  summary: 'Request an instant payout of available balance. Eligibility is checked server-side: verified account with instant_eligible flag, available balance above minimum, no payout already in progress. Deduped via idempotency_key.',
+  input: z.object({ currency: cur, amount_cents: z.number().int().min(1).optional(), idempotency_key: z.string().min(8).max(80) }),
+  handler: ({ user }, i) => tx(async (c) => {
+    const prior = (await c.query("SELECT * FROM provider_payouts WHERE idempotency_key=$1", [i.idempotency_key])).rows[0];
+    if (prior) return prior;
+    const acct = (await c.query("SELECT * FROM payout_accounts WHERE owner_id=$1 AND currency=$2 AND superseded_at IS NULL AND status='verified'", [user.id, i.currency])).rows[0];
+    if (!acct) throw badRequest('No verified payout account for this currency');
+    if (!acct.instant_eligible) throw badRequest('Instant payouts are not enabled for this account');
+    const bals = await balances(user.id, { c });
+    const bal = bals.find((b) => b.currency === i.currency);
+    if (!bal || bal.available_cents < 1) throw badRequest('No available balance for instant payout');
+    const minCents = config.settlement?.minPayoutCents ?? 100;
+    const amount = i.amount_cents ?? bal.available_cents;
+    if (amount < minCents) throw badRequest(`Minimum payout is ${minCents} minor units`);
+    if (amount > bal.available_cents) throw badRequest('Requested amount exceeds available balance');
+    const inFlight = (await c.query("SELECT 1 FROM provider_payouts WHERE seller_id=$1 AND currency=$2 AND status='processing'", [user.id, i.currency])).rows[0];
+    if (inFlight) throw conflict('A payout is already in progress for this currency');
+    const payout = (await c.query(
+      "INSERT INTO provider_payouts(seller_id,currency,amount_cents,status,method,idempotency_key) VALUES($1,$2,$3,'processing','instant',$4) RETURNING *",
+      [user.id, i.currency, amount, i.idempotency_key])).rows[0];
+    await postPayout(c, { sellerId: user.id, currency: i.currency, payoutId: payout.id, amount });
+    await audit(c, user.id, 'request_instant_payout', 'provider_payouts', payout.id);
+    return payout;
+  }),
+});

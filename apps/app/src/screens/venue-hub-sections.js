@@ -374,6 +374,38 @@ export function Opportunities({ d, go }) {
   );
 }
 
+export function RevenueIntelligenceCard({ d, go }) {
+  const ri = d.revenue_intel ?? {};
+  const pendingRecs = ri.pending_pricing_recs ?? 0;
+  const utilisationPct = ri.utilisation_pct != null ? `${ri.utilisation_pct}%` : '—';
+  const topDemandDay = ri.peak_day ?? '—';
+  return (
+    <View style={{ gap: 8 }}>
+      <View style={{ flexDirection: 'row', gap: 8, flexWrap: 'wrap' }}>
+        <Card pad={10} style={{ flex: 1, minWidth: 100 }} accessibilityLabel={`${t('ri.forecast.title')}: ${utilisationPct}`}>
+          <T size={11} color={c.mute}>{t('ri.forecast.title')}</T>
+          <T size={22} weight="700" color={c.pink}>{utilisationPct}</T>
+        </Card>
+        <Card pad={10} style={{ flex: 1, minWidth: 100 }} accessibilityLabel={`${t('ri.pricing.pending')}: ${pendingRecs}`}>
+          <T size={11} color={c.mute}>{t('ri.pricing.pending')}</T>
+          <T size={22} weight="700" color={pendingRecs > 0 ? c.violetSoft : c.mute}>{pendingRecs}</T>
+        </Card>
+        <Card pad={10} style={{ flex: 1, minWidth: 100 }} accessibilityLabel={`${t('ri.demand.title')}: ${topDemandDay}`}>
+          <T size={11} color={c.mute}>{t('ri.demand.title')}</T>
+          <T size={22} weight="700" color={c.mint}>{topDemandDay}</T>
+        </Card>
+      </View>
+      <Btn
+        small
+        title={t('ri.hub.open')}
+        color={c.paper}
+        accessibilityLabel={t('ri.hub.open')}
+        onPress={() => go({ route: 'VenueRevenueIntelligence', params: { venueId: d.venue?.id } })}
+      />
+    </View>
+  );
+}
+
 /** Adaptive equipment summary for the venue hub: availability strip + quick CTA. */
 export function AdaptiveEquipmentSection({ venueId, go }) {
   const { data, loading } = useLoad(() => api.get(`/venues/${venueId}/adaptive-equipment/readiness`), [venueId]);
