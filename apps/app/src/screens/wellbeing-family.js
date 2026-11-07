@@ -1,6 +1,7 @@
 // Wellbeing & development for the athlete and their guardians (#795): what they have chosen to share (revocable at any moment), who the mentor is,
 // when the check-ins are and what is open, goals waiting for their agreement, tracks, specialist suggestions waiting for a yes or a no, and the
 // log of everything done on the record, including each time a member of staff opened it. A young person acts through a verified guardian.
+import { SafeCommunication } from './academy-safeguarding';
 import React, { useState } from 'react';
 import { Switch, View } from 'react-native';
 import { t } from '../i18n';
@@ -41,6 +42,7 @@ function AcademyCard({ a, athlete, acting, toast, reload }) {
   return (
     <View style={{ gap: 12 }}>
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}><T weight="800" size={17}>{a.organisation.name}</T>{a.consent ? <Tag label={t('wb.f_choices_n', { n: on.length })} color={c.limeSoft} /> : <Tag label={t('wb.f_no_choices')} color={c.sun} />}</View>
+      <SafeCommunication o={a.organisation} athleteId={athlete.id} toast={toast} />
       {(waitingGoals.length || waitingRefs.length) && acting ? (
         <Card color={c.sunSoft}><T weight="800">{t('wb.f_attention')}</T><T size={13}>{t('wb.f_attention_sub', { n: waitingGoals.length + waitingRefs.length })}</T></Card>
       ) : null}

@@ -268,6 +268,7 @@ import './academy-sessions.js';
 import './academy-staff.js';
 import './academy-attendance.js';
 import './academy-pickup.js';
+import './academy-safeguarding.js';
 import './academy-transport.js';
 import './academy-accreditation.js';
 import './academy-international.js';
