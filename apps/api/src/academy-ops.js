@@ -8,6 +8,7 @@ import { badgesFor } from './verification.js';
 import { commitmentBusy } from './coach-commitments.js';
 import { toLocal } from './booking/time.js';
 import { academicClashes } from './academics.js';
+import { suitabilityIssue } from './safeguarding.js';
 
 export const PERMS = ['schedule', 'attendance', 'roster', 'timesheets', 'payroll', 'safeguarding', 'suppliers', 'curriculum', 'academics', 'academics_detail', 'kit', 'kit_admin', 'wellbeing'];
 /** Subject-level academic records are never implied by seniority: owners and admins manage the academic side, but only an explicit grant reads grades (#783). */
@@ -86,6 +87,8 @@ const overlap = (aS, aE, bS, bE) => new Date(aS) < new Date(bE) && new Date(bS) 
 /** Why a person cannot take this slot: other sessions, hires, commitments, approved leave and standing availability. */
 export async function staffIssues(c, orgId, userId, start, end, { excludeSessionId = null, tz = 'UTC' } = {}) {
   const out = [];
+  const fit = await suitabilityIssue(c, orgId, userId);   // #784: revoked or lapsed safeguarding eligibility blocks every new assignment
+  if (fit) out.push(fit);
   const sess = (await c.query(
     `SELECT s.id, s.title, s.starts_at, s.ends_at FROM academy_session_staff st JOIN academy_sessions s ON s.id=st.session_id
       WHERE st.user_id=$1 AND st.status IN ('assigned','confirmed') AND s.status IN ('draft','published') AND s.id IS DISTINCT FROM $4 AND s.starts_at < $3 AND s.ends_at > $2`, [userId, start, end, excludeSessionId])).rows;

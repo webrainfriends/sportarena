@@ -30,6 +30,7 @@ import { syncMembershipGrants } from './access-layer.js';
 import { sweepTickets } from './ticketing.js';
 import { expireAcademyOffers, expireAcademyPromotions, remindTrials, remindIntlDeadlines, runAcademyJobs } from './academy-sweeps.js';
 import { sweepPickups } from './pickup-sweeps.js';
+import { sweepSafeguardingCases } from './safeguarding.js';
 import { expireAcademyContent } from './academy-content.js';
 import { sweepKit } from './kit-sweeps.js';
 import { runAcademicSweeps } from './capabilities/academy-academics.js';
@@ -102,6 +103,7 @@ export const STEPS = [
   ['academy_intl_deadlines', 'academy_intl_reminders_sent', remindIntlDeadlines, 0],
   ['academy_jobs', 'academy_jobs', runAcademyJobs, null],
   ['academy_pickup_safety', 'academy_pickup_safety_events', sweepPickups, 0],
+  ['academy_sg_cases', 'academy_sg_cases_escalated', () => tx((c) => sweepSafeguardingCases(c)), 0],
   ['academy_content_licences', 'academy_content_licence_events', async () => (await expireAcademyContent()).expired, 0],
   ['academy_kit', 'academy_kit_reminders', sweepKit, 0],
   ['billing_schedules', 'billing_periods_raised', raiseScheduledCharges, 0],
