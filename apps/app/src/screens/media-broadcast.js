@@ -16,7 +16,7 @@ import { AssetsPanel, RightsLog } from './media-assets';
 import { ClipsPanel } from './clips';
 import { t } from '../i18n';
 
-const SUBS = [['rights', '🧾 Rights'], ['production', '🎬 Production'], ['streams', '📺 Streams'], ['media', '🎞️ Media'], ['highlights', `✨ ${t('clips.tab')}`], ['data', '📡 Data & reports']];
+const SUBS = [['rights', '🧾 Rights'], ['production', '🎬 Production'], ['streams', '📺 Streams'], ['media', '🎞️ Media'], ['highlights', `✨ ${t('clips.tab')}`], ['data', '📡 Data & reports'], ['accessibility', `♿ ${t('para.spec.a11y.media_a11y_tab')}`]];
 
 export function BroadcastTab({ id, e, isOrg, games }) {
   const [sub, setSub] = useState('rights');
@@ -30,6 +30,7 @@ export function BroadcastTab({ id, e, isOrg, games }) {
       {sub === 'media' ? <><AssetsPanel id={id} isOrg games={games} partners={[]} /><RightsLog id={id} /></> : null}
       {sub === 'highlights' ? <ClipsPanel id={id} games={games} /> : null}
       {sub === 'data' ? <DataPanel id={id} /> : null}
+      {sub === 'accessibility' ? <AccessibilityPanel id={id} games={games} /> : null}
     </>
   );
 }
@@ -166,4 +167,156 @@ function Report({ name, data }) {
     return !data.groups.length ? <AEmpty emoji="🎞️" title="Nothing published yet" /> : <ACard pad={14} style={{ gap: 12 }}>{data.groups.map((g) => <Bar key={`${g.right}${g.state}`} label={`${rightLabel(g.right)} · ${nice(g.state)}`} n={g.count} max={data.groups[0].count} />)}</ACard>;
   }
   return !data.length ? <AEmpty emoji="✅" title="Nothing held back" sub="No asset is embargoed, expired, withdrawn, taken down or blocked." /> : data.map((a) => <ARow key={a.id} title={a.title} sub={`${rightLabel(a.right_kind)}${a.embargo_until ? ` · embargo to ${fmtDT(a.embargo_until)}` : ''}${a.expires_at ? ` · expires ${fmtDT(a.expires_at)}` : ''}${a.status_reason ? ` · ${a.status_reason}` : ''}`} right={<StateTag state={a.state} />} />);
+}
+
+const A11Y_STATUS_LABELS = { unknown: '❓', partial: '🟡', verified: '✅', not_available: '⛔' };
+const A11Y_STATUS_OPTS = ['unknown', 'partial', 'verified', 'not_available'];
+
+function A11yStatusPicker({ value, onChange }) {
+  return (
+    <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+      {A11Y_STATUS_OPTS.map((s) => (
+        <AChip key={s} label={`${A11Y_STATUS_LABELS[s]} ${t(`para.spec.a11y.status_${s}`)}`} active={value === s} onPress={() => onChange(s)} />
+      ))}
+    </View>
+  );
+}
+
+function AccessibilityPanel({ id, games }) {
+  const { toast } = useSession();
+  const [selGame, setSelGame] = useState(null);
+  const fixtureId = selGame ?? (games?.[0]?.id ?? null);
+
+  const settings = useLoad(() => fixtureId ? api.get(`/public/fixtures/${fixtureId}/accessibility-settings`) : Promise.resolve(null), [fixtureId]);
+  const assets   = useLoad(() => api.get(`/events/${id}/accessible-media`, { limit: 50 }), [id]);
+  const streams  = useLoad(() => api.get(`/events/${id}/accessible-streams`), [id]);
+
+  const [captionUrl,  setCaptionUrl]  = useState('');
+  const [audioUrl,    setAudioUrl]    = useState('');
+  const [pbpEnabled,  setPbpEnabled]  = useState(true);
+  const [capStatus,   setCapStatus]   = useState('unknown');
+  const [audioStatus, setAudioStatus] = useState('unknown');
+  const [txStatus,    setTxStatus]    = useState('unknown');
+  const [saving,      setSaving]      = useState(false);
+
+  React.useEffect(() => {
+    if (!settings.data) return;
+    const s = settings.data;
+    setCaptionUrl(s.caption_provider_url ?? '');
+    setAudioUrl(s.audio_desc_provider_url ?? '');
+    setPbpEnabled(s.play_by_play_enabled ?? true);
+    setCapStatus(s.caption_status ?? 'unknown');
+    setAudioStatus(s.audio_desc_status ?? 'unknown');
+    setTxStatus(s.transcript_status ?? 'unknown');
+  }, [settings.data]);
+
+  const saveSettings = async () => {
+    if (!fixtureId) return;
+    setSaving(true);
+    try {
+      await api.post(`/fixtures/${fixtureId}/accessibility-settings`, {
+        caption_provider_url:    captionUrl || null,
+        audio_desc_provider_url: audioUrl   || null,
+        play_by_play_enabled:    pbpEnabled,
+        caption_status:          capStatus,
+        audio_desc_status:       audioStatus,
+        transcript_status:       txStatus,
+      });
+      settings.reload();
+      toast(t('para.spec.a11y.settings_saved'));
+    } catch (x) {
+      toast(x.message);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const saveAssetA11y = async (assetId, patch) => {
+    try {
+      await api.patch(`/media/assets/${assetId}/accessibility`, patch);
+      assets.reload();
+      toast(t('para.spec.a11y.asset_saved'));
+    } catch (x) { toast(x.message); }
+  };
+
+  const saveStreamA11y = async (streamId, patch) => {
+    try {
+      await api.patch(`/media/streams/${streamId}/accessibility`, patch);
+      streams.reload();
+      toast(t('para.spec.a11y.stream_saved'));
+    } catch (x) { toast(x.message); }
+  };
+
+  return (
+    <>
+      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10 }}>
+        <AStat icon="♿" value={assets.data?.assets?.filter((a) => a.a11y_status === 'verified').length ?? 0} label={t('para.spec.a11y.stat_assets_verified')} />
+        <AStat icon="📺" value={streams.data?.streams?.filter((s) => s.a11y_status === 'verified').length ?? 0} label={t('para.spec.a11y.stat_streams_verified')} />
+        <AStat icon="📢" value={settings.data?.play_by_play_enabled ? 1 : 0} label={t('para.spec.a11y.stat_pbp')} />
+      </View>
+
+      {games && games.length > 1 ? (
+        <>
+          <ASection title={t('para.spec.a11y.select_fixture')} />
+          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+            {games.slice(0, 20).map((g) => (
+              <AChip key={g.id} label={g.label ?? fmtDT(g.scheduled_at)} active={fixtureId === g.id} onPress={() => setSelGame(g.id)} />
+            ))}
+          </View>
+        </>
+      ) : null}
+
+      <ASection title={t('para.spec.a11y.fixture_settings_title')} sub={t('para.spec.a11y.fixture_settings_sub')} />
+      {settings.error ? <ErrorBox error={settings.error} onRetry={settings.reload} /> : !fixtureId ? <AEmpty emoji="♿" title={t('para.spec.a11y.no_fixture')} /> : (
+        <ACard pad={14} style={{ gap: 12 }}>
+          <AT size={12} weight="900" color={A.mute}>{t('para.spec.a11y.caption_provider_url')}</AT>
+          <AT size={13}>{captionUrl || t('para.spec.a11y.not_set')}</AT>
+          <AT size={12} weight="900" color={A.mute}>{t('para.spec.a11y.caption_status_label')}</AT>
+          <A11yStatusPicker value={capStatus} onChange={setCapStatus} />
+          <AT size={12} weight="900" color={A.mute}>{t('para.spec.a11y.audio_desc_provider_url')}</AT>
+          <AT size={13}>{audioUrl || t('para.spec.a11y.not_set')}</AT>
+          <AT size={12} weight="900" color={A.mute}>{t('para.spec.a11y.audio_desc_status_label')}</AT>
+          <A11yStatusPicker value={audioStatus} onChange={setAudioStatus} />
+          <AT size={12} weight="900" color={A.mute}>{t('para.spec.a11y.transcript_status_label')}</AT>
+          <A11yStatusPicker value={txStatus} onChange={setTxStatus} />
+          <AChip label={pbpEnabled ? t('para.spec.a11y.pbp_on') : t('para.spec.a11y.pbp_off')} active={pbpEnabled} onPress={() => setPbpEnabled((v) => !v)} />
+          <ABtn title={saving ? t('para.spec.a11y.saving') : t('para.spec.a11y.save_settings')} tone="neon" onPress={saveSettings} style={{ alignSelf: 'flex-start' }} />
+        </ACard>
+      )}
+
+      <ASection title={t('para.spec.a11y.media_assets_title')} sub={t('para.spec.a11y.media_assets_sub')} />
+      {assets.error ? <ErrorBox error={assets.error} onRetry={assets.reload} /> : !assets.data ? <Loading /> : !assets.data.assets.length
+        ? <AEmpty emoji="🎞️" title={t('para.spec.a11y.no_assets')} />
+        : assets.data.assets.map((a) => (
+          <ACard key={a.id} pad={12} style={{ gap: 6 }}>
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8 }}>
+              <AT size={14} weight="800" style={{ flex: 1 }}>{a.title ?? a.kind}</AT>
+              <StateTag state={a.a11y_status} label={`${A11Y_STATUS_LABELS[a.a11y_status] ?? '❓'} ${t(`para.spec.a11y.status_${a.a11y_status}`)}`} />
+            </View>
+            {a.caption_ref ? <AT size={12} color={A.mute}>♿ {t('para.spec.a11y.caption_ref')}: {a.caption_ref}</AT> : null}
+            {a.audio_desc_ref ? <AT size={12} color={A.mute}>🔊 {t('para.spec.a11y.audio_desc_ref')}: {a.audio_desc_ref}</AT> : null}
+            {a.transcript_ref ? <AT size={12} color={A.mute}>📄 {t('para.spec.a11y.transcript_ref')}: {a.transcript_ref}</AT> : null}
+            {a.alt_text ? <AT size={12} color={A.mute}>🖼️ {t('para.spec.a11y.alt_text')}: {a.alt_text}</AT> : null}
+            <ABtn small title={t('para.spec.a11y.set_a11y')} tone="ghost" onPress={() =>
+              saveAssetA11y(a.id, { a11y_status: a.a11y_status === 'verified' ? 'partial' : 'verified' })} />
+          </ACard>
+        ))}
+
+      <ASection title={t('para.spec.a11y.streams_title')} sub={t('para.spec.a11y.streams_sub')} />
+      {streams.error ? <ErrorBox error={streams.error} onRetry={streams.reload} /> : !streams.data ? <Loading /> : !streams.data.streams.length
+        ? <AEmpty emoji="📺" title={t('para.spec.a11y.no_streams')} />
+        : streams.data.streams.map((s) => (
+          <ACard key={s.id} pad={12} style={{ gap: 6 }}>
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8 }}>
+              <AT size={14} weight="800" style={{ flex: 1 }}>{s.provider ?? t('para.spec.a11y.stream_label')}</AT>
+              <StateTag state={s.a11y_status} label={`${A11Y_STATUS_LABELS[s.a11y_status] ?? '❓'} ${t(`para.spec.a11y.status_${s.a11y_status}`)}`} />
+            </View>
+            {s.caption_ref ? <AT size={12} color={A.mute}>♿ {t('para.spec.a11y.caption_ref')}: {s.caption_ref}</AT> : null}
+            {s.audio_desc_ref ? <AT size={12} color={A.mute}>🔊 {t('para.spec.a11y.audio_desc_ref')}: {s.audio_desc_ref}</AT> : null}
+            <ABtn small title={t('para.spec.a11y.set_a11y')} tone="ghost" onPress={() =>
+              saveStreamA11y(s.id, { a11y_status: s.a11y_status === 'verified' ? 'partial' : 'verified' })} />
+          </ACard>
+        ))}
+    </>
+  );
 }

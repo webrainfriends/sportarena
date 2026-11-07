@@ -250,6 +250,22 @@ id: 'wellbeing', title: 'Support student wellbeing and development',
     modules: ['para-doctor-consult.js'], sources: ['apps/app/src/screens/doctor.js', 'apps/app/src/screens/health-file.js'],
   },
   {
+    id: 'para_spectator_a11y', title: 'Set up accessible spectator coverage for para events',
+    why: 'Para-sport events attract spectators with visual and hearing impairments. Organisers can configure caption provider URLs, audio description tracks, and text play-by-play to ensure everyone can follow the action without video. Classification-class-aware scoreboards keep results honest — the platform never implies that results across different para classes are directly comparable.',
+    steps: [
+      'Open the event console and go to Media → Accessibility (the ♿ tab). The stats strip shows how many assets and streams are verified accessible.',
+      'Select a fixture and set the Caption provider URL and Audio description provider URL (must start with https://). Set each status chip: Unknown, Partial, Verified or Not available. Only use Verified once you have confirmed the service works.',
+      'Toggle Play-by-play on. This enables the text feed that VoiceOver and TalkBack users hear in real time. Staff can post entries during the fixture from the fixture console.',
+      'Open the Media assets list. For each published asset, tap Edit accessibility and add the caption track URL (.vtt or similar), audio description track URL, transcript URL, and a short alt text for images and thumbnail frames.',
+      'Open the Streams list. For each active stream, add the caption track URL and audio description track URL and set the stream\'s accessibility status.',
+      'During the fixture, staff with organiser access can post text play-by-play entries from Media → Accessibility or from the fixture live console. Each entry can carry a para-class code (e.g. T44, T53) so spectators filtering by class see only relevant updates.',
+      'Spectators visit the public event page. The accessibility banner at the top of the Live Centre shows which services are active. Screen readers announce score changes via live regions. The class selector chip filters the scoreboard and play-by-play by classification class.',
+    ],
+    target: { event: 'media' },
+    modules: ['para-spectator-accessibility.js'],
+    sources: ['apps/app/src/screens/media-broadcast.js', 'apps/app/src/screens/live-centre-modules.js'],
+  },
+  {
     id: 'venue_plans', title: 'Set up passes, packages & memberships',
     why: 'Elite academies offer structured access products — memberships that give a percentage off every booking, subscriptions that renew automatically, prepaid session passes, and court-specific packages. Each is created in a 4–5 step wizard covering tier and identity, pricing and early-bird offers, access entitlements (days, times, priority booking window), perks (coaching hours, locker, physio, video analysis, nutrition, recovery, strength & conditioning), and a live-preview review before publishing. All products sell online in the venue currency and feed the Plans Revenue dashboard.',
     steps: [
@@ -274,7 +290,7 @@ export const NOT_IN_GUIDE = {
 };
 
 /** The directories/files the guard test watches for org/academy/venue/coach/tax capability modules. */
-export const WATCHED_MODULES = /^(academy-.*|org-.*|organisations|venue-coaches|gst|provider-tax|coach-classes|para-sport-funding|para-sport-sponsorship-outcomes|para-pathway|para-readiness|para-learn)\.js$/;
+export const WATCHED_MODULES = /^(academy-.*|org-.*|organisations|venue-coaches|gst|provider-tax|coach-classes|para-sport-funding|para-sport-sponsorship-outcomes|para-pathway|para-readiness|para-learn|para-spectator-accessibility)\.js$/;
 
 export const SHOT_SIZES = { phone: { width: 390, height: 1100 }, desktop: { width: 1280, height: 900 } };
 export const shotFile = (stepId, size) => `${String(ACADEMY_STEPS.findIndex((s) => s.id === stepId) + 1).padStart(2, '0')}-${stepId}-${size}.png`;
