@@ -13,8 +13,9 @@ import { localToIso } from '../vtime';
 import { useDo } from './console-utils';
 import { ChainTrace, DocButton, ExportsPanel, Kpi, Kv, Note, PerformanceRecord, Status, Tabs, Wrap, catLabel, collectScope, day, label, money, scopeFields, useCatalogue, when } from './svc-common';
 import { SportsMulti } from '../sportpicker';
+import { SupplierAssetCatalogue } from './adaptive-equipment';
 
-const TABS = [['overview', 'Overview'], ['offerings', 'Offerings'], ['quotes', 'Opportunities & quotes'], ['orders', 'Orders & jobs'], ['calendar', 'Calendar'], ['customers', 'Customers'], ['finance', 'Finance'], ['reports', 'Reports & documents'], ['team', 'Team & credentials']];
+const TABS = [['overview', 'Overview'], ['offerings', 'Offerings'], ['quotes', 'Opportunities & quotes'], ['orders', 'Orders & jobs'], ['calendar', 'Calendar'], ['customers', 'Customers'], ['finance', 'Finance'], ['reports', 'Reports & documents'], ['team', 'Team & credentials'], ['specialist_assets', 'Specialist assets']];
 const CURRENCIES = ['INR', 'USD', 'EUR', 'GBP', 'AED', 'SGD', 'AUD', 'KWD', 'BHD', 'OMR'];
 
 export function SupplierWorkspace() {
@@ -45,6 +46,7 @@ export function SupplierWorkspace() {
           {tab === 'finance' ? <Finance p={p} cat={cat} /> : null}
           {tab === 'reports' ? <Reports p={p} /> : null}
           {tab === 'team' ? <Team p={p} cat={cat} reload={profiles.reload} /> : null}
+          {tab === 'specialist_assets' ? <SupplierAssetCatalogue supplierId={p.id} /> : null}
         </>
       )}
       <ProfileForm cat={cat} visible={create} onClose={() => setCreate(false)} onDone={() => { profiles.reload(); setCreate(false); }} />
