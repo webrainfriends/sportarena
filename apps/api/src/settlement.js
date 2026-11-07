@@ -53,7 +53,16 @@ async function providerTax(c, sellerId, taxClass, gross, at) {
 export async function sharesFor(c, p) {
   const one1 = async (sql) => (await c.query(sql, [p.purpose_id])).rows[0];
   if (p.purpose_type === 'coach_hire') { const h = await one1('SELECT coach_id FROM coach_hires WHERE id=$1'); return h ? [{ sellerId: h.coach_id, amount: Number(p.amount_cents) }] : []; }
-  if (p.purpose_type === 'coach_class_seat') { const k = await one1('SELECT k.coach_id FROM coach_class_seats z JOIN coach_classes k ON k.id=z.class_id WHERE z.id=$1'); return k ? [{ sellerId: k.coach_id, amount: Number(p.amount_cents) }] : []; }
+  if (p.purpose_type === 'coach_class_seat') {
+    const k = await one1('SELECT k.id AS class_id, k.coach_id FROM coach_class_seats z JOIN coach_classes k ON k.id=z.class_id WHERE z.id=$1');
+    if (!k) return [];
+    const splits = (await c.query('SELECT coach_id, weight FROM coach_class_earning_splits WHERE class_id=$1 AND archived_at IS NULL ORDER BY coach_id', [k.class_id])).rows;
+    if (splits.length) {
+      const amounts = allocate(Number(p.amount_cents), splits.map((s) => s.weight));
+      return splits.map((s, n) => ({ sellerId: s.coach_id, amount: amounts[n] }));
+    }
+    return [{ sellerId: k.coach_id, amount: Number(p.amount_cents) }];
+  }
   if (p.purpose_type === 'coach_subscription_period') { const h = await one1('SELECT coach_id FROM user_plans WHERE id=$1'); return h ? [{ sellerId: h.coach_id, amount: Number(p.amount_cents) }] : []; }
   if (p.purpose_type === 'coach_package') { const h = await one1('SELECT coach_id FROM coach_package_purchases WHERE id=$1'); return h ? [{ sellerId: h.coach_id, amount: Number(p.amount_cents) }] : []; }
   if (p.purpose_type === 'appointment') { const a = await one1('SELECT provider_id, tax_class FROM appointments WHERE id=$1'); return a ? [{ sellerId: a.provider_id, amount: Number(p.amount_cents), taxClass: a.tax_class }] : []; }
@@ -108,6 +117,7 @@ export async function recordSale(c, payment) {
     const fee = Math.round((s.amount * bp) / 10000);
     if (fee > 0) await post(c, { ...base, kind: 'commission', amount: -fee, bp, key: `commission:${payment.id}:${s.sellerId}` });
   }
+  await updateEarningsTrend(c, shares, payment.currency, false);
   return { recorded: true, class: klass };
 }
 
@@ -179,6 +189,25 @@ export async function postChargeback(c, { exceptionId, paymentId, amount }) {
   return total;
 }
 
+async function updateEarningsTrend(c, shares, currency, isRefund = false) {
+  try {
+    const ws = new Date(); ws.setUTCHours(0, 0, 0, 0);
+    ws.setUTCDate(ws.getUTCDate() - ws.getUTCDay());
+    const wk = ws.toISOString().slice(0, 10);
+    for (const s of shares) {
+      await c.query(
+        `INSERT INTO provider_earnings_weekly(seller_id,currency,week_start,gross_cents,net_cents,refund_cents,updated_at)
+         VALUES($1,$2,$3,$4,$5,$6,now())
+         ON CONFLICT(seller_id,currency,week_start) DO UPDATE SET
+           gross_cents  = provider_earnings_weekly.gross_cents  + $4,
+           net_cents    = provider_earnings_weekly.net_cents    + $5,
+           refund_cents = provider_earnings_weekly.refund_cents + $6,
+           updated_at   = now()`,
+        [s.sellerId, currency, wk, isRefund ? 0 : s.amount, isRefund ? 0 : s.amount, isRefund ? s.amount : 0]);
+    }
+  } catch {}
+}
+
 export const postPayout = (c, { sellerId, currency, payoutId, amount }) => post(c, { sellerId, currency, kind: 'payout', amount: -amount, payoutId, key: `payout:${payoutId}`, memo: 'Payout started' });
 export const postPayoutReversal = (c, { sellerId, currency, payoutId, amount }) => post(c, { sellerId, currency, kind: 'payout_reversal', amount, payoutId, key: `payout_reversal:${payoutId}`, memo: 'Payout failed — returned to balance' });
 
@@ -237,6 +266,9 @@ export async function payoutBlockers(sellerId, currency, bal) {
   if (!s.payoutsEnabled) out.push({ code: 'payouts_off', message: 'Payouts have not been switched on by the platform yet. Your earnings stay safely in your balance.' });
   if (bal && bal.held_cents > 0) out.push({ code: 'held', message: 'Part of your balance is on hold while a payment is reviewed.' });
   if (bal && bal.available_cents < s.minPayoutCents) out.push({ code: 'nothing_available', message: bal.in_hold_period_cents > 0 ? 'Recent sales become payable after the hold period.' : 'There is nothing available to pay out yet.' });
+  const fullAcct = await one("SELECT terms_accepted_at, settlement_config_ok FROM payout_accounts WHERE owner_id=$1 AND currency=$2 AND superseded_at IS NULL AND status='verified'", [sellerId, currency]);
+  if (fullAcct && !fullAcct.terms_accepted_at) out.push({ code: 'terms_pending', message: 'Accept the provider terms to enable payouts.' });
+  if (fullAcct && !fullAcct.settlement_config_ok) out.push({ code: 'config_pending', message: 'Complete settlement configuration to enable payouts.' });
   return out;
 }
 

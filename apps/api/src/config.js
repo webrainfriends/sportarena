@@ -126,6 +126,7 @@ export const config = {
     payoutsEnabled: String(env.SETTLEMENT_PAYOUTS ?? 'off').toLowerCase() === 'on',                            // live payouts stay off until the operator has checked the configuration
     currencies: (env.SETTLEMENT_CURRENCIES?.trim() || env.PAYMENT_CURRENCY?.trim() || 'INR').split(',').map((x) => x.trim().toUpperCase()).filter(Boolean),
     minPayoutCents: Math.max(1, Number.parseInt(env.SETTLEMENT_MIN_PAYOUT_CENTS ?? '1', 10) || 1),
+    currentTermsVersion: env.SELLER_TERMS_VERSION ?? 'seller-terms-v1.0',
   },
   payments: {
     currency: (env.PAYMENT_CURRENCY?.trim() || 'INR').toUpperCase(), // '' (an unset deploy variable) must mean the default, not an empty currency
