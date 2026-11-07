@@ -9,16 +9,16 @@ import { useLayout } from '../layout';
 import { useLoad } from '../hooks';
 import { api } from '../api';
 import { t } from '../i18n';
-import { theme } from '../theme';
+import { c as col } from '../theme';
 import { Text, Badge, Spinner, Empty, Card, Chip, Row, Spacer, Button, TextInput, Select, DatePicker, TimePicker, Sheet, Banner, Divider } from '../ui';
 import { ModuleNav } from './academy-ui';
 
-// ── Helpers ───────────────────────────────────────────────────────────────────
-const BED_COLOR = { available: theme.colors.success, occupied: theme.colors.primary, maintenance: theme.colors.warning, reserved: theme.colors.info, decommissioned: theme.colors.muted };
-const APP_STATUS_COLOR = { submitted: theme.colors.info, under_review: theme.colors.warning, offered: theme.colors.primary, waitlisted: theme.colors.muted, declined: theme.colors.danger, awaiting_acceptance: theme.colors.warning, allocated: theme.colors.success, withdrawn: theme.colors.muted, vacated: theme.colors.muted };
-const LEAVE_STATUS_COLOR = { pending: theme.colors.warning, guardian_approved: theme.colors.info, staff_approved: theme.colors.success, active: theme.colors.success, overdue: theme.colors.danger, returned: theme.colors.muted, denied: theme.colors.danger, cancelled: theme.colors.muted };
-const CURFEW_STATUS_COLOR = { checked_in: theme.colors.success, on_leave: theme.colors.info, overdue: theme.colors.danger };
-const SEVERITY_COLOR = { low: theme.colors.success, medium: theme.colors.warning, high: theme.colors.danger, critical: theme.colors.danger };
+// ── Helpers ─────────────────────────────────────────────────────────────────────────────────
+const BED_COLOR = { available: col.lime, occupied: col.pink, maintenance: col.sun, reserved: col.cyan, decommissioned: col.mute };
+const APP_STATUS_COLOR = { submitted: col.cyan, under_review: col.sun, offered: col.pink, waitlisted: col.mute, declined: col.red, awaiting_acceptance: col.sun, allocated: col.lime, withdrawn: col.mute, vacated: col.mute };
+const LEAVE_STATUS_COLOR = { pending: col.sun, guardian_approved: col.cyan, staff_approved: col.lime, active: col.lime, overdue: col.red, returned: col.mute, denied: col.red, cancelled: col.mute };
+const CURFEW_STATUS_COLOR = { checked_in: col.lime, on_leave: col.cyan, overdue: col.red };
+const SEVERITY_COLOR = { low: col.lime, medium: col.sun, high: col.red, critical: col.red };
 const DIETARY_ICON = { halal: '☪️', kosher: '✡️', vegetarian: '🥗', vegan: '🌱', nut_free: '🥜', gluten_free: '🌾', dairy_free: '🥛', egg_free: '🥚', shellfish_free: '🦐', low_sugar: '🍬', other: '⚠️' };
 
 function StatusDot({ color, size = 10 }) {
@@ -50,11 +50,11 @@ export function OccupancyGrid({ o, toast }) {
           <Row>
             <Text style={{ fontWeight: '700', fontSize: 16 }}>{b.name}</Text>
             <Spacer />
-            <Badge label={`${b.occupied_beds}/${b.bed_count} ${t('brd.grid.occupied')}`} color={b.occupied_beds === b.bed_count ? theme.colors.danger : theme.colors.success} />
+            <Badge label={`${b.occupied_beds}/${b.bed_count} ${t('brd.grid.occupied')}`} color={b.occupied_beds === b.bed_count ? col.red : col.lime} />
           </Row>
           {b.rooms.map((r) => (
             <View key={r.id} style={{ gap: 8 }}>
-              <Text style={{ fontSize: 13, color: theme.colors.muted }}>
+              <Text style={{ fontSize: 13, color: col.mute }}>
                 {t('brd.grid.floor', { n: r.floor })} · {t('brd.grid.room')} {r.number} · {r.room_type}
               </Text>
               <Row wrap style={{ gap: 8 }}>
@@ -68,7 +68,7 @@ export function OccupancyGrid({ o, toast }) {
                   >
                     <Text style={{ color: '#fff', fontSize: 12, fontWeight: '600' }}>{bed.position}</Text>
                     {bed.occupant_name ? <Text style={{ color: '#fff', fontSize: 11 }} numberOfLines={1}>{bed.occupant_name}</Text> : null}
-                    {bed.leave_status ? <StatusDot color={LEAVE_STATUS_COLOR[bed.leave_status] ?? theme.colors.muted} /> : null}
+                    {bed.leave_status ? <StatusDot color={LEAVE_STATUS_COLOR[bed.leave_status] ?? col.mute} /> : null}
                   </TouchableOpacity>
                 ))}
               </Row>
@@ -79,7 +79,7 @@ export function OccupancyGrid({ o, toast }) {
       {/* Occupant detail sheet */}
       {selectedOccupant ? (
         <Sheet title={selectedOccupant.occupant_name ?? t('brd.grid.occupant')} onClose={() => setSelectedOccupant(null)}>
-          <Row><Text style={{ color: theme.colors.muted }}>{t('brd.grid.since')}</Text><Text>{selectedOccupant.occ_from}</Text></Row>
+          <Row><Text style={{ color: col.mute }}>{t('brd.grid.since')}</Text><Text>{selectedOccupant.occ_from}</Text></Row>
           {selectedOccupant.leave_status ? <Row><StatusDot color={LEAVE_STATUS_COLOR[selectedOccupant.leave_status]} /><Text>{selectedOccupant.leave_status}</Text></Row> : null}
         </Sheet>
       ) : null}
@@ -120,15 +120,15 @@ export function ApplicationsBoard({ o, toast }) {
           <TouchableOpacity key={a.id} onPress={() => setOpenApp(a)} accessible accessibilityLabel={`${a.athlete_name} — ${a.status}`}>
             <Card style={{ gap: 4 }}>
               <Row><Text style={{ fontWeight: '600' }}>{a.athlete_name ?? t('brd.apps.restricted')}</Text><Spacer /><Chip label={a.status} color={APP_STATUS_COLOR[a.status]} /></Row>
-              <Text style={{ fontSize: 12, color: theme.colors.muted }}>{a.created_at?.slice(0,10)}</Text>
-              {a.offer_expires_at ? <Text style={{ fontSize: 12, color: theme.colors.warning }}>{t('brd.apps.expires', { d: a.offer_expires_at.slice(0,10) })}</Text> : null}
+              <Text style={{ fontSize: 12, color: col.mute }}>{a.created_at?.slice(0,10)}</Text>
+              {a.offer_expires_at ? <Text style={{ fontSize: 12, color: col.sun }}>{t('brd.apps.expires', { d: a.offer_expires_at.slice(0,10) })}</Text> : null}
             </Card>
           </TouchableOpacity>
         ))}
         {openApp ? (
           <Sheet title={openApp.athlete_name ?? t('brd.apps.application')} onClose={() => setOpenApp(null)}>
-            <Row><Text style={{ color: theme.colors.muted }}>{t('brd.apps.status')}</Text><Chip label={openApp.status} color={APP_STATUS_COLOR[openApp.status]} /></Row>
-            <Row><Text style={{ color: theme.colors.muted }}>{t('brd.apps.priority')}</Text><Text>{openApp.priority}</Text></Row>
+            <Row><Text style={{ color: col.mute }}>{t('brd.apps.status')}</Text><Chip label={openApp.status} color={APP_STATUS_COLOR[openApp.status]} /></Row>
+            <Row><Text style={{ color: col.mute }}>{t('brd.apps.priority')}</Text><Text>{openApp.priority}</Text></Row>
             {openApp.status === 'submitted' || openApp.status === 'under_review' || openApp.status === 'waitlisted' ? (
               <View style={{ gap: 8, marginTop: 12 }}>
                 <TextInput label={t('brd.apps.reviewNote')} value={reviewNote} onChangeText={setReviewNote} multiline numberOfLines={3} />
@@ -162,8 +162,8 @@ export function ApplicationsBoard({ o, toast }) {
               <TouchableOpacity key={a.id} onPress={() => setOpenApp(a)} accessible accessibilityLabel={`${a.athlete_name}, ${stage}`}>
                 <Card style={{ gap: 4 }}>
                   <Text style={{ fontWeight: '600', fontSize: 13 }} numberOfLines={2}>{a.athlete_name ?? t('brd.apps.restricted')}</Text>
-                  <Text style={{ fontSize: 11, color: theme.colors.muted }}>{a.created_at?.slice(0,10)}</Text>
-                  {a.offer_expires_at ? <Text style={{ fontSize: 11, color: theme.colors.warning }}>⏱ {a.offer_expires_at.slice(0,10)}</Text> : null}
+                  <Text style={{ fontSize: 11, color: col.mute }}>{a.created_at?.slice(0,10)}</Text>
+                  {a.offer_expires_at ? <Text style={{ fontSize: 11, color: col.sun }}>⏱ {a.offer_expires_at.slice(0,10)}</Text> : null}
                 </Card>
               </TouchableOpacity>
             ))}
@@ -172,7 +172,7 @@ export function ApplicationsBoard({ o, toast }) {
       })}
       {openApp ? (
         <Sheet title={openApp.athlete_name ?? t('brd.apps.application')} onClose={() => setOpenApp(null)}>
-          <Row><Text style={{ color: theme.colors.muted }}>{t('brd.apps.status')}</Text><Chip label={openApp.status} color={APP_STATUS_COLOR[openApp.status]} /></Row>
+          <Row><Text style={{ color: col.mute }}>{t('brd.apps.status')}</Text><Chip label={openApp.status} color={APP_STATUS_COLOR[openApp.status]} /></Row>
           {openApp.status === 'submitted' || openApp.status === 'under_review' || openApp.status === 'waitlisted' ? (
             <View style={{ gap: 8, marginTop: 12 }}>
               <TextInput label={t('brd.apps.reviewNote')} value={reviewNote} onChangeText={setReviewNote} multiline numberOfLines={3} />
@@ -219,19 +219,19 @@ export function CurfewDesk({ o, toast }) {
       {/* Summary strip */}
       <Row style={{ gap: 12 }}>
         <Card style={{ flex: 1, alignItems: 'center' }}>
-          <Text style={{ fontSize: 22, fontWeight: '700', color: theme.colors.success }}>{summary.checked_in ?? 0}</Text>
+          <Text style={{ fontSize: 22, fontWeight: '700', color: col.lime }}>{summary.checked_in ?? 0}</Text>
           <Text style={{ fontSize: 12 }}>{t('brd.curfew.checkedIn')}</Text>
         </Card>
         <Card style={{ flex: 1, alignItems: 'center' }}>
-          <Text style={{ fontSize: 22, fontWeight: '700', color: theme.colors.info }}>{summary.on_leave ?? 0}</Text>
+          <Text style={{ fontSize: 22, fontWeight: '700', color: col.cyan }}>{summary.on_leave ?? 0}</Text>
           <Text style={{ fontSize: 12 }}>{t('brd.curfew.onLeave')}</Text>
         </Card>
         <Card style={{ flex: 1, alignItems: 'center' }}>
-          <Text style={{ fontSize: 22, fontWeight: '700', color: theme.colors.danger }}>{summary.overdue ?? 0}</Text>
+          <Text style={{ fontSize: 22, fontWeight: '700', color: col.red }}>{summary.overdue ?? 0}</Text>
           <Text style={{ fontSize: 12 }}>{t('brd.curfew.overdue')}</Text>
         </Card>
       </Row>
-      <Text style={{ fontSize: 12, color: theme.colors.muted, textAlign: 'right' }}>
+      <Text style={{ fontSize: 12, color: col.mute, textAlign: 'right' }}>
         {t('brd.curfew.asOf', { time: snap?.as_of ? new Date(snap.as_of).toLocaleTimeString() : '—' })}
       </Text>
       {/* Resident rows */}
@@ -240,9 +240,9 @@ export function CurfewDesk({ o, toast }) {
           <StatusDot color={CURFEW_STATUS_COLOR[r.status]} size={12} />
           <View style={{ flex: 1 }}>
             <Text style={{ fontWeight: '600' }}>{r.resident_name}</Text>
-            <Text style={{ fontSize: 12, color: theme.colors.muted }}>{r.building_name} · {t('brd.grid.room')} {r.room_number}</Text>
-            {r.status === 'on_leave' && r.leave_to ? <Text style={{ fontSize: 12, color: theme.colors.info }}>{t('brd.curfew.returnsBy', { d: r.leave_to.slice(0,10) })}</Text> : null}
-            {r.curfew_time ? <Text style={{ fontSize: 12, color: theme.colors.muted }}>{t('brd.curfew.curfewAt', { time: r.curfew_time })}</Text> : null}
+            <Text style={{ fontSize: 12, color: col.mute }}>{r.building_name} · {t('brd.grid.room')} {r.room_number}</Text>
+            {r.status === 'on_leave' && r.leave_to ? <Text style={{ fontSize: 12, color: col.cyan }}>{t('brd.curfew.returnsBy', { d: r.leave_to.slice(0,10) })}</Text> : null}
+            {r.curfew_time ? <Text style={{ fontSize: 12, color: col.mute }}>{t('brd.curfew.curfewAt', { time: r.curfew_time })}</Text> : null}
           </View>
           {r.status === 'overdue' || r.status === 'on_leave' ? (
             <Button label={t('brd.curfew.markReturned')} size="sm" onPress={() => setReturning(r)} color={r.status === 'overdue' ? 'danger' : 'secondary'} />
@@ -289,10 +289,10 @@ export function DutyBoard({ o, toast }) {
     <ScrollView contentContainerStyle={{ padding: 16, gap: 16 }}>
       <Text style={{ fontWeight: '700', fontSize: 16 }}>{t('brd.duty.today', { date: today })}</Text>
       {hasGap ? (
-        <Banner icon="⚠️" color={theme.colors.danger} message={t('brd.duty.noShifts')} />
+        <Banner icon="⚠️" color={col.red} message={t('brd.duty.noShifts')} />
       ) : null}
       {shifts.map((s) => (
-        <Card key={s.id} style={{ gap: 6, borderLeftWidth: 3, borderLeftColor: s.acknowledged_at ? theme.colors.success : theme.colors.warning }}>
+        <Card key={s.id} style={{ gap: 6, borderLeftWidth: 3, borderLeftColor: s.acknowledged_at ? col.lime : col.sun }}>
           <Row>
             <Text style={{ fontWeight: '600' }}>{s.staff_name}</Text>
             <Spacer />
@@ -303,7 +303,7 @@ export function DutyBoard({ o, toast }) {
             {!s.acknowledged_at ? (
               <Button label={t('brd.duty.acknowledge')} size="sm" onPress={() => acknowledge(s.id)} color="primary" />
             ) : (
-              <Chip label={`✓ ${t('brd.duty.ackAt', { time: s.acknowledged_at.slice(11,16) })}`} color={theme.colors.success} />
+              <Chip label={`✓ ${t('brd.duty.ackAt', { time: s.acknowledged_at.slice(11,16) })}`} color={col.lime} />
             )}
             <Button label={t('brd.duty.logWelfare')} size="sm" onPress={() => setLogSheet(s)} color="secondary" />
           </Row>
@@ -313,15 +313,15 @@ export function DutyBoard({ o, toast }) {
       <Text style={{ fontWeight: '700' }}>{t('brd.duty.welfareLog')}</Text>
       {checks.map((c) => (
         <Row key={c.id} style={{ gap: 8 }}>
-          <StatusDot color={c.status === 'concern' || c.status === 'absent' ? theme.colors.danger : theme.colors.success} />
+          <StatusDot color={c.status === 'concern' || c.status === 'absent' ? col.red : col.lime} />
           <View style={{ flex: 1 }}>
             <Text style={{ fontSize: 13 }}>{c.reporter_name} · {c.checked_at?.slice(11,16)}</Text>
-            <Text style={{ fontSize: 12, color: theme.colors.muted }}>{c.resident_name ?? t('brd.duty.building')} — {c.status}</Text>
+            <Text style={{ fontSize: 12, color: col.mute }}>{c.resident_name ?? t('brd.duty.building')} — {c.status}</Text>
             {c.note ? <Text style={{ fontSize: 12, fontStyle: 'italic' }}>{c.note}</Text> : null}
           </View>
         </Row>
       ))}
-      {!checks.length ? <Text style={{ color: theme.colors.muted, fontSize: 13 }}>{t('brd.duty.noChecks')}</Text> : null}
+      {!checks.length ? <Text style={{ color: col.mute, fontSize: 13 }}>{t('brd.duty.noChecks')}</Text> : null}
       {logSheet ? (
         <Sheet title={t('brd.duty.logWelfareFor', { name: logSheet.staff_name })} onClose={() => setLogSheet(null)}>
           <Select label={t('brd.duty.status')} value={logStatus} onChange={setLogStatus} options={['all_present','present','absent','concern','late_return','room_empty'].map((v) => ({ value: v, label: t(`brd.duty.welfareStatus.${v}`) }))} />
@@ -364,7 +364,7 @@ export function IncidentDesk({ o, toast }) {
       {all.map((i) => (
         <Card key={i.id} style={{ gap: 4, borderLeftWidth: 3, borderLeftColor: SEVERITY_COLOR[i.severity] }}>
           {i.restricted ? (
-            <Row><Text>🔒</Text><Text style={{ color: theme.colors.muted, fontSize: 13 }}>{t('brd.incidents.restricted')}</Text></Row>
+            <Row><Text>🔒</Text><Text style={{ color: col.mute, fontSize: 13 }}>{t('brd.incidents.restricted')}</Text></Row>
           ) : (
             <>
               <Row>
@@ -373,8 +373,8 @@ export function IncidentDesk({ o, toast }) {
                 <Chip label={i.status} />
               </Row>
               <Text style={{ fontSize: 13 }}>{i.description ?? t('brd.incidents.encrypted')}</Text>
-              <Text style={{ fontSize: 12, color: theme.colors.muted }}>{i.reporter_name} · {i.created_at?.slice(0,10)}</Text>
-              {i.building_name ? <Text style={{ fontSize: 12, color: theme.colors.muted }}>{i.building_name}</Text> : null}
+              <Text style={{ fontSize: 12, color: col.mute }}>{i.reporter_name} · {i.created_at?.slice(0,10)}</Text>
+              {i.building_name ? <Text style={{ fontSize: 12, color: col.mute }}>{i.building_name}</Text> : null}
             </>
           )}
         </Card>
@@ -408,7 +408,7 @@ export function MealPlanner({ o, toast }) {
       <Row>
         <Text style={{ fontWeight: '700', fontSize: 16 }}>{t('brd.meals.title')}</Text>
         <Spacer />
-        {rows.length ? <Badge label={String(rows.length)} color={theme.colors.warning} /> : null}
+        {rows.length ? <Badge label={String(rows.length)} color={col.sun} /> : null}
       </Row>
       {!Object.keys(grouped).length ? (
         <Empty emoji="🍽️" title={t('brd.meals.empty')} subtitle={t('brd.meals.emptySub')} />
@@ -418,16 +418,16 @@ export function MealPlanner({ o, toast }) {
           <Row>
             <Text style={{ fontWeight: '600' }}>{r.name}</Text>
             <Spacer />
-            <Text style={{ fontSize: 12, color: theme.colors.muted }}>{r.building} · {t('brd.grid.room')} {r.room}</Text>
+            <Text style={{ fontSize: 12, color: col.mute }}>{r.building} · {t('brd.grid.room')} {r.room}</Text>
           </Row>
           <Row wrap style={{ gap: 6 }}>
             {r.flags.map((f) => (
-              <Chip key={f} label={`${DIETARY_ICON[f] ?? '⚠️'} ${t(`brd.meals.flag.${f}`)}`} color={theme.colors.info} />
+              <Chip key={f} label={`${DIETARY_ICON[f] ?? '⚠️'} ${t(`brd.meals.flag.${f}`)}`} color={col.cyan} />
             ))}
           </Row>
         </Card>
       ))}
-      <Text style={{ fontSize: 12, color: theme.colors.muted, marginTop: 8 }}>{t('brd.meals.flagNote')}</Text>
+      <Text style={{ fontSize: 12, color: col.mute, marginTop: 8 }}>{t('brd.meals.flagNote')}</Text>
     </ScrollView>
   );
 }
@@ -450,10 +450,10 @@ export function BoardingCharges({ o, toast }) {
           <Card key={`${s.currency}-${s.status}`} style={{ flex: 1, alignItems: 'center', minWidth: 100 }}>
             <Text style={{ fontWeight: '700', fontSize: 18 }}>{(s.total_minor / 100).toFixed(2)}</Text>
             <Text style={{ fontSize: 11 }}>{s.currency} · {s.status}</Text>
-            <Badge label={String(s.charge_count)} color={s.status === 'overdue' ? theme.colors.danger : theme.colors.muted} />
+            <Badge label={String(s.charge_count)} color={s.status === 'overdue' ? col.red : col.mute} />
           </Card>
         ))}
-        {!sumRows.length ? <Text style={{ color: theme.colors.muted }}>{t('brd.charges.empty')}</Text> : null}
+        {!sumRows.length ? <Text style={{ color: col.mute }}>{t('brd.charges.empty')}</Text> : null}
       </Row>
       {/* Individual charges */}
       {rows.map((c) => (
@@ -461,14 +461,14 @@ export function BoardingCharges({ o, toast }) {
           <Row>
             <Text style={{ fontWeight: '600' }}>{c.resident_name}</Text>
             <Spacer />
-            <Chip label={c.status} color={c.status === 'overdue' ? theme.colors.danger : c.status === 'paid' ? theme.colors.success : theme.colors.muted} />
+            <Chip label={c.status} color={c.status === 'overdue' ? col.red : c.status === 'paid' ? col.lime : col.mute} />
           </Row>
           <Row>
             <Text style={{ fontSize: 13 }}>{c.charge_type} · {c.period_from} → {c.period_to}</Text>
             <Spacer />
             <Text style={{ fontWeight: '600' }}>{(c.amount_minor / 100).toFixed(2)} {c.currency}</Text>
           </Row>
-          {c.description ? <Text style={{ fontSize: 12, color: theme.colors.muted }}>{c.description}</Text> : null}
+          {c.description ? <Text style={{ fontSize: 12, color: col.mute }}>{c.description}</Text> : null}
         </Card>
       ))}
     </ScrollView>
@@ -508,7 +508,7 @@ export function BoardingSettings({ o, toast }) {
         <Row style={{ justifyContent: 'space-between' }}>
           <View style={{ flex: 1 }}>
             <Text style={{ fontWeight: '600' }}>{t('brd.settings.enable')}</Text>
-            <Text style={{ fontSize: 13, color: theme.colors.muted }}>{t('brd.settings.enableDesc')}</Text>
+            <Text style={{ fontSize: 13, color: col.mute }}>{t('brd.settings.enableDesc')}</Text>
           </View>
           <Switch value={isEnabled} onValueChange={toggleEnabled} disabled={saving} accessibilityLabel={t('brd.settings.enable')} />
         </Row>
@@ -519,23 +519,23 @@ export function BoardingSettings({ o, toast }) {
           <Card style={{ gap: 8 }}>
             <Text style={{ fontWeight: '600' }}>{t('brd.settings.defaults')}</Text>
             <Row>
-              <Text style={{ color: theme.colors.muted, flex: 1 }}>{t('brd.settings.genderPolicy')}</Text>
+              <Text style={{ color: col.mute, flex: 1 }}>{t('brd.settings.genderPolicy')}</Text>
               <Chip label={c?.gender_policy ?? '—'} />
             </Row>
             <Row>
-              <Text style={{ color: theme.colors.muted, flex: 1 }}>{t('brd.settings.weekdayCurfew')}</Text>
+              <Text style={{ color: col.mute, flex: 1 }}>{t('brd.settings.weekdayCurfew')}</Text>
               <Text>{c?.default_weekday_curfew ?? '—'}</Text>
             </Row>
             <Row>
-              <Text style={{ color: theme.colors.muted, flex: 1 }}>{t('brd.settings.weekendCurfew')}</Text>
+              <Text style={{ color: col.mute, flex: 1 }}>{t('brd.settings.weekendCurfew')}</Text>
               <Text>{c?.default_weekend_curfew ?? '—'}</Text>
             </Row>
             <Row>
-              <Text style={{ color: theme.colors.muted, flex: 1 }}>{t('brd.settings.ageRange')}</Text>
+              <Text style={{ color: col.mute, flex: 1 }}>{t('brd.settings.ageRange')}</Text>
               <Text>{c?.age_min ?? 0}–{c?.age_max ?? 25}</Text>
             </Row>
             <Row>
-              <Text style={{ color: theme.colors.muted, flex: 1 }}>{t('brd.settings.maxLeaveHours')}</Text>
+              <Text style={{ color: col.mute, flex: 1 }}>{t('brd.settings.maxLeaveHours')}</Text>
               <Text>{c?.max_leave_hours ?? 72} h</Text>
             </Row>
           </Card>
@@ -547,9 +547,9 @@ export function BoardingSettings({ o, toast }) {
                 <Text style={{ fontWeight: '600' }}>{b.name}</Text>
                 <Spacer />
                 <Chip label={b.gender_policy} />
-                <Chip label={b.status ?? 'active'} color={b.status === 'active' ? theme.colors.success : theme.colors.muted} />
+                <Chip label={b.status ?? 'active'} color={b.status === 'active' ? col.lime : col.mute} />
               </Row>
-              <Text style={{ fontSize: 12, color: theme.colors.muted }}>{b.room_count} {t('brd.settings.rooms')} · {b.bed_count} {t('brd.settings.beds')} · {b.occupied_beds} {t('brd.settings.occupied')}</Text>
+              <Text style={{ fontSize: 12, color: col.mute }}>{b.room_count} {t('brd.settings.rooms')} · {b.bed_count} {t('brd.settings.beds')} · {b.occupied_beds} {t('brd.settings.occupied')}</Text>
             </Card>
           ))}
           {!bldgs.length ? <Empty emoji="🏢" title={t('brd.settings.noBuildings')} subtitle={t('brd.settings.addBuilding')} /> : null}
@@ -570,24 +570,24 @@ function DashboardStrip({ o }) {
     <Row style={{ gap: 10, flexWrap: 'wrap', marginBottom: 8 }}>
       <Card style={{ alignItems: 'center', paddingVertical: 8, paddingHorizontal: 14 }}>
         <Text style={{ fontWeight: '700', fontSize: 18 }}>{d.occupancy?.fill_pct ?? 0}%</Text>
-        <Text style={{ fontSize: 11, color: theme.colors.muted }}>{t('brd.dash.fill')}</Text>
+        <Text style={{ fontSize: 11, color: col.mute }}>{t('brd.dash.fill')}</Text>
       </Card>
       <Card style={{ alignItems: 'center', paddingVertical: 8, paddingHorizontal: 14 }}>
-        <Text style={{ fontWeight: '700', fontSize: 18, color: d.applications_pending > 0 ? theme.colors.warning : theme.colors.muted }}>{d.applications_pending}</Text>
-        <Text style={{ fontSize: 11, color: theme.colors.muted }}>{t('brd.dash.pending')}</Text>
+        <Text style={{ fontWeight: '700', fontSize: 18, color: d.applications_pending > 0 ? col.sun : col.mute }}>{d.applications_pending}</Text>
+        <Text style={{ fontSize: 11, color: col.mute }}>{t('brd.dash.pending')}</Text>
       </Card>
       <Card style={{ alignItems: 'center', paddingVertical: 8, paddingHorizontal: 14 }}>
-        <Text style={{ fontWeight: '700', fontSize: 18, color: d.curfew_overdue > 0 ? theme.colors.danger : theme.colors.success }}>{d.curfew_overdue}</Text>
-        <Text style={{ fontSize: 11, color: theme.colors.muted }}>{t('brd.dash.overdue')}</Text>
+        <Text style={{ fontWeight: '700', fontSize: 18, color: d.curfew_overdue > 0 ? col.red : col.lime }}>{d.curfew_overdue}</Text>
+        <Text style={{ fontSize: 11, color: col.mute }}>{t('brd.dash.overdue')}</Text>
       </Card>
       <Card style={{ alignItems: 'center', paddingVertical: 8, paddingHorizontal: 14 }}>
-        <Text style={{ fontWeight: '700', fontSize: 18, color: d.duty_today?.has_gap ? theme.colors.danger : theme.colors.success }}>{d.duty_today?.assigned ?? 0}</Text>
-        <Text style={{ fontSize: 11, color: theme.colors.muted }}>{t('brd.dash.dutyToday')}</Text>
+        <Text style={{ fontWeight: '700', fontSize: 18, color: d.duty_today?.has_gap ? col.red : col.lime }}>{d.duty_today?.assigned ?? 0}</Text>
+        <Text style={{ fontSize: 11, color: col.mute }}>{t('brd.dash.dutyToday')}</Text>
       </Card>
       {d.open_incidents > 0 ? (
         <Card style={{ alignItems: 'center', paddingVertical: 8, paddingHorizontal: 14 }}>
-          <Text style={{ fontWeight: '700', fontSize: 18, color: theme.colors.danger }}>{d.open_incidents}</Text>
-          <Text style={{ fontSize: 11, color: theme.colors.muted }}>{t('brd.dash.incidents')}</Text>
+          <Text style={{ fontWeight: '700', fontSize: 18, color: col.red }}>{d.open_incidents}</Text>
+          <Text style={{ fontSize: 11, color: col.mute }}>{t('brd.dash.incidents')}</Text>
         </Card>
       ) : null}
     </Row>
