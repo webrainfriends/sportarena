@@ -179,7 +179,7 @@ export async function publicMedia(eventId, { fixtureId = null, limit = 24 } = {}
     if (await assetState(a) !== 'live') continue;
     const link = a.source_kind === 'upload' ? (a.stored_file ? `/api/v1/media/assets/${a.id}/file` : null) : a.external_url;
     if (!link) continue;
-    out.push({ id: a.id, kind: a.kind, right_kind: a.right_kind, title: a.title, caption: a.caption, credit: a.credit, fixture_id: a.fixture_id, content_type: a.content_type, link });
+    out.push({ id: a.id, kind: a.kind, right_kind: a.right_kind, title: a.title, caption: a.caption, credit: a.credit, fixture_id: a.fixture_id, content_type: a.content_type, link, caption_ref: a.caption_ref ?? null, audio_desc_ref: a.audio_desc_ref ?? null, transcript_ref: a.transcript_ref ?? null, alt_text: a.alt_text ?? null, a11y_status: a.a11y_status ?? 'unknown' });
   }
   return out;
 }
@@ -216,7 +216,7 @@ export async function publicOfficials(ev, fixtureId) {
 
 export async function publicStreams(eventId, fixtureId) {
   return many(
-    `SELECT id, provider, state, playback_ref, archive_ref, scheduled_start, fixture_id FROM mr_streams
+    `SELECT id, provider, state, playback_ref, archive_ref, scheduled_start, fixture_id, caption_ref, audio_desc_ref, a11y_status FROM mr_streams
       WHERE event_id=$1 AND status='active' AND access_policy='public' AND (fixture_id IS NULL OR fixture_id=$2) ORDER BY (fixture_id IS NULL), scheduled_start NULLS LAST LIMIT 5`, [eventId, fixtureId]);
 }
 

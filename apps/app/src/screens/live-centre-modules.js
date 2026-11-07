@@ -36,6 +36,62 @@ export function ConnectionBanner({ offline, updatedAt, onRetry }) {
   );
 }
 
+/** Banner shown when the fixture has declared accessibility services (caption, audio description, play-by-play). */
+export function AccessibilityBanner({ settings }) {
+  if (!settings) return null;
+  const flags = [
+    settings.caption_status === 'verified' || settings.caption_status === 'partial' ? t('para.spec.a11y.caption_available') : null,
+    settings.audio_desc_status === 'verified' || settings.audio_desc_status === 'partial' ? t('para.spec.a11y.audio_desc_available') : null,
+    settings.play_by_play_enabled ? t('para.spec.a11y.pbp_available') : null,
+  ].filter(Boolean);
+  if (!flags.length) return null;
+  return (
+    <View accessibilityLiveRegion="polite" accessibilityRole="text" accessible
+      style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, padding: 10, borderRadius: 10, backgroundColor: A.pinkSoft, minHeight: 44 }}>
+      <AT size={12} weight="800" color={A.pink}>♿ {t('para.spec.a11y.banner_prefix')}</AT>
+      {flags.map((f) => <AChip key={f} label={f} />)}
+    </View>
+  );
+}
+
+/** Chip row to filter the scoreboard and play-by-play by para classification class. */
+export function ParaClassSelector({ classes, selected, onSelect }) {
+  if (!classes || !classes.length) return null;
+  const all = t('para.spec.a11y.all_classes');
+  return (
+    <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, minHeight: 44 }}>
+      <AChip label={all} active={!selected} onPress={() => onSelect(null)} />
+      {classes.map((c) => (
+        <AChip key={c} label={c} active={selected === c} onPress={() => onSelect(c)} />
+      ))}
+    </View>
+  );
+}
+
+/** Text play-by-play feed, screen-reader friendly. Live region so VoiceOver/TalkBack announces new entries. */
+export function PlayByPlayModule({ entries, loading }) {
+  if (!entries && !loading) return null;
+  const kindIcon = { update: '🔄', result: '🏆', record: '📋', alert: '⚠️', info: 'ℹ️' };
+  return (
+    <ACard accessibilityLiveRegion="polite">
+      <ASection title={t('para.spec.a11y.pbp_title')} />
+      {!entries || !entries.length
+        ? <AEmpty emoji="📢" title={t('para.spec.a11y.pbp_empty')} sub={t('para.spec.a11y.pbp_empty_sub')} />
+        : entries.map((e) => (
+            <View key={e.id} accessible
+              accessibilityLabel={`${e.para_class_code ? `${e.para_class_code}: ` : ''}${e.entry_text}`}
+              style={{ flexDirection: 'row', gap: 10, minHeight: 44, alignItems: 'flex-start', paddingVertical: 4 }}>
+              <AT size={16} style={{ width: 24 }}>{kindIcon[e.entry_kind] ?? '📢'}</AT>
+              <View style={{ flex: 1 }}>
+                {e.para_class_code ? <AT size={11} weight="800" color={A.mute} style={{ marginBottom: 2 }}>{e.para_class_code}</AT> : null}
+                <AT size={14} weight="600">{e.entry_text}</AT>
+              </View>
+            </View>
+          ))}
+    </ACard>
+  );
+}
+
 const Block = ({ title, children, width }) => (
   <View style={{ flexGrow: 1, flexBasis: width >= 900 ? '48%' : '100%', minWidth: 0, gap: 8 }}>
     <ASection title={title} />
@@ -44,7 +100,7 @@ const Block = ({ title, children, width }) => (
 );
 
 /** Every module the organiser enabled and the data supports. Missing data is an empty state, never a placeholder. */
-export default function LiveModules({ centre, fixture }) {
+export default function LiveModules({ centre, fixture, accessibility, playByPlay }) {
   const { width } = useWindowDimensions();
   if (!centre) return null;
   const { lineups, substitutions, discipline, stats, standings_impact: impact, highlights } = centre;
@@ -145,8 +201,21 @@ export default function LiveModules({ centre, fixture }) {
     );
   }
 
+  if (playByPlay) {
+    cards.push(
+      <Block key="pbp" title={t('para.spec.a11y.pbp_title')} width={width}>
+        <PlayByPlayModule entries={playByPlay} />
+      </Block>,
+    );
+  }
+
   if (!cards.length) return null;
-  return <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 16 }}>{cards}</View>;
+  return (
+    <View style={{ gap: 12 }}>
+      {accessibility ? <AccessibilityBanner settings={accessibility} /> : null}
+      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 16 }}>{cards}</View>
+    </View>
+  );
 }
 
 /** Staff-only operations card (organiser and accepted match officials): read from the same game through GET /fixtures/:id/live, which only returns `ops` to them. */
