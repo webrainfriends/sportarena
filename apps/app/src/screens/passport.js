@@ -93,8 +93,8 @@ function ParaPassportSection({ data }) {
         {privacy?.show_para_class === false && <Tag label="Class codes hidden" color={c.violetSoft} />}
       </View>
       <T size={12} color={c.mute} style={{ marginBottom: 10 }}>Class-specific records and personal bests. Class codes shown only on links where the athlete enabled them.</T>
-      <View style={{ backgroundColor: c.pinkSoft, borderRadius: 10, padding: 10, marginBottom: 12 }}>
-        <T size={11} color={c.pink}>🔒 Medical, functional and clinical details are never included in this section or in any export.</T>
+      <View style={{ backgroundColor: c.violetSoft, borderRadius: 10, padding: 10, marginBottom: 12 }}>
+        <T size={11} color={c.mute}>🔒 Medical, functional and clinical details are never included in this section or in any export.</T>
       </View>
       {allClasses.map((sportClass) => {
         const recs = byClass.get(sportClass) ?? [];
@@ -106,13 +106,13 @@ function ParaPassportSection({ data }) {
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 8 }}>
               <T weight="800" size={13}>{sport}</T>
               {sportClass && sportClass !== 'unknown' && (
-                <View style={{ backgroundColor: c.violetSoft, borderRadius: 8, paddingHorizontal: 10, paddingVertical: 3, borderWidth: 1, borderColor: c.pink }}>
-                  <T size={12} weight="800" color={c.pink}>{sportClass}</T>
+                <View style={{ backgroundColor: c.violetSoft, borderRadius: 8, paddingHorizontal: 10, paddingVertical: 3, borderWidth: 1, borderColor: c.line }}>
+                  <T size={12} weight="800" color={c.ink}>{sportClass}</T>
                 </View>
               )}
             </View>
             {recs.map((rec) => (
-              <View key={rec.metric + rec.record_type} style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 8, borderTopWidth: 1, borderColor: c.violetSoft }}>
+              <View key={rec.metric + rec.record_type} style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 8, borderTopWidth: 1, borderColor: c.line }}>
                 <View style={{ flex: 1 }}>
                   <T size={12} weight="600">{rec.metric}</T>
                   <T size={10} color={c.mute} style={{ marginTop: 2 }}>
@@ -127,7 +127,7 @@ function ParaPassportSection({ data }) {
               </View>
             ))}
             {res.filter((r) => !recs.find((rec) => rec.metric === r.metric)).map((r) => (
-              <View key={r.metric} style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 8, borderTopWidth: 1, borderColor: c.violetSoft }}>
+              <View key={r.metric} style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 8, borderTopWidth: 1, borderColor: c.line }}>
                 <View style={{ flex: 1 }}>
                   <T size={12} weight="600">{nice(r.metric)}</T>
                   <T size={10} color={c.mute}>{r.results} result{r.results === 1 ? '' : 's'} · approved competition</T>
@@ -146,7 +146,7 @@ function ParaPassportSection({ data }) {
           {classHistory.map((h, i) => (
             <View key={h.class_code + h.effective_from} style={{ flexDirection: 'row', gap: 10, marginBottom: 8 }}>
               <View style={{ width: 36, height: 36, borderRadius: 18, backgroundColor: i === 0 ? c.pinkSoft : c.violetSoft, borderWidth: 1.5, borderColor: i === 0 ? c.pink : c.violet, alignItems: 'center', justifyContent: 'center' }}>
-                <T size={10} weight="800" color={i === 0 ? c.pink : c.mute}>{h.class_code}</T>
+                <T size={10} weight="800" color={i === 0 ? c.pink : c.ink}>{h.class_code}</T>
               </View>
               <View style={{ flex: 1 }}>
                 <T size={12} weight="700">{h.class_code} — {h.status ? h.status.charAt(0).toUpperCase() + h.status.slice(1) : ''}</T>
