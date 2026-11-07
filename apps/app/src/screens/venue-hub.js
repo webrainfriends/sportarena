@@ -17,6 +17,7 @@ import { t } from '../i18n';
 import { locale } from '../locale';
 import { SetupWizard } from './venue-setup';
 import { venueFormProps } from './venue-register';
+import { AiManager, AttentionList, AssetsAndStaff, BookingsAndEvents, Block, Compliance, Customer, Demand, FacilityTimeline, KpiRow, Opportunities, Procurement, RevenueIntelligenceCard, RevenueOccupancy, insightText } from './venue-hub-sections';
 import { AiManager, AttentionList, AssetsAndStaff, BookingsAndEvents, Block, Compliance, Customer, Demand, FacilityTimeline, KpiRow, Opportunities, Procurement, RevenueOccupancy, AdaptiveEquipmentSection, insightText } from './venue-hub-sections';
 
 const STEPS = () => [t('vh.step.venue'), t('vh.step.courts'), t('vh.step.prices'), t('vh.step.timetable'), t('vh.step.seating'), t('vh.step.finish')];
@@ -122,6 +123,7 @@ function Dashboard({ venues, venueId, setVenueId, setup }) {
       <Block title={t('vh.sec.facilities')}><FacilityTimeline d={d} go={go} /></Block>
       <Block title={t('vh.sec.bookings')}><BookingsAndEvents d={d} go={go} /></Block>
       <Block title={t('vh.sec.revenue')}><RevenueOccupancy d={d} go={go} /></Block>
+      <Block title={t('ri.hub.title')} action={t('ri.hub.open')} onAction={() => go('VenueRevenueIntelligence', { venueId: d.venue?.id })}><RevenueIntelligenceCard d={d} go={go} /></Block>
       <Block title={t('vh.sec.opportunities')}><Opportunities d={d} go={go} /></Block>
       <Block title={t('vh.sec.demand')}><Demand d={d} go={go} /></Block>
       <Block title={t('vh.sec.procurement')} action={t('vh.find.tender')} onAction={() => push('TenderZone')}><Procurement d={d} go={go} /></Block>
