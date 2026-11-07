@@ -48,7 +48,7 @@ before(async () => {
   base = `http://localhost:${server.address().port}`;
   const l = must(await api('POST', '/auth/login', { body: { email: 'platform-owner@example.com', password: 'owner-test-pass' } }));
   platform = { ...l.user, token: l.token };
-  orgOwner = await signup(['venue_owner']);
+  orgOwner = await signup(['venue_manager']);
   // Create an organisation for the import
   const org = must(await api('POST', '/organisations', { token: orgOwner.token, body: { name: 'Test Sports Org', kind: 'club' } }), 201);
   orgId = org.id;

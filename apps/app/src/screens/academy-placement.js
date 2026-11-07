@@ -138,7 +138,7 @@ function EvidenceList({ items, onUpdate, toast }) {
           <View style={{ flex: 1, gap: 2 }}>
             <T weight="700" size={13}>{item.label}</T>
             {item.note ? <T size={11} color={c.mute}>{item.note}</T> : null}
-            <T size={11} color={item.status === 'pending' && item.required ? c.orange : c.mute}>{STAGE_LABEL[item.kind] ?? item.kind} · {item.status}</T>
+            <T size={11} color={item.status === 'pending' && item.required ? c.orange : c.mute}>{EV_KINDS.find((k) => k.value === item.kind)?.label ?? item.kind} · {item.status}</T>
           </View>
           {item.status === 'pending' && onUpdate ? (
             <Btn small title={t('pl.ev.request')}
@@ -265,8 +265,9 @@ function SharingConsentSheet({ visible, opp, athleteId, onClose, onDone, toast }
 }
 
 // ── Opportunity detail panel ──────────────────────────────────────────────────
-function OppDetail({ oppId, orgId, isStaff, toast, onBack }) {
-  const d = useLoad(() => isStaff ? api.get(`/academy/placement/${oppId}`) : api.get(`/me/placement/${oppId}`), [oppId, isStaff]);
+function OppDetail({ oppId, orgId, isStaff, toast, onBack, athleteId }) {
+  // A guardian opens a ward's opportunity by naming the athlete; the server re-checks the live guardian link on every call.
+  const d = useLoad(() => isStaff ? api.get(`/academy/placement/${oppId}`) : api.get(`/me/placement/${oppId}`, athleteId ? { athlete_id: athleteId } : {}), [oppId, isStaff, athleteId]);
   const [shareSheet, setShareSheet] = useState(false);
 
   if (!d.data) return d.error ? <ErrorBox error={d.error} onRetry={d.reload} /> : <Loading />;
@@ -320,7 +321,7 @@ function OppDetail({ oppId, orgId, isStaff, toast, onBack }) {
               <Btn small title={t('pl.sh.revoke')} color={c.redSoft} ink={c.red}
                 onPress={async () => {
                   try {
-                    await api.post(`/me/placement/shares/${liveShare.id}/revoke`);
+                    await api.post(`/me/placement/shares/${liveShare.id}/revoke`, athleteId ? { athlete_id: athleteId } : {});
                     toast(t('pl.sh.revoked'));
                     d.reload();
                   } catch (e) { toast(explain(e)); }
@@ -341,7 +342,7 @@ function OppDetail({ oppId, orgId, isStaff, toast, onBack }) {
         </Card>
       ) : null}
 
-      <SharingConsentSheet visible={shareSheet} opp={opp} onClose={() => setShareSheet(false)}
+      <SharingConsentSheet visible={shareSheet} opp={opp} athleteId={athleteId} onClose={() => setShareSheet(false)}
         onDone={() => { setShareSheet(false); d.reload(); }} toast={toast} />
     </ScrollView>
   );

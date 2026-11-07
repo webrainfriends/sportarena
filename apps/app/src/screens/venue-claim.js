@@ -3,12 +3,13 @@
 // surfaced to platform staff; personal documents are uploaded as encrypted blobs; audit trail is
 // permanent and never deleted.
 import React, { useState } from 'react';
-import { ActivityIndicator, Alert, FlatList, Platform, Pressable, Share, TouchableOpacity, View } from 'react-native';
-import * as DocumentPicker from 'expo-document-picker';
+import { Alert, Platform, Pressable, View } from 'react-native';
 import { api } from '../api';
 import { useLoad } from '../hooks';
 import { useSession } from '../session';
-import { Btn, Card, Empty, ErrorBox, GradCard, H1, H2, Loading, Row, Screen, Section, Seg, T, Tag } from '../ui';
+import { useNav } from '../nav';
+import { pickEvidence } from '../evidence';
+import { Btn, Card, Empty, ErrorBox, Field, GradCard, H1, H2, Loading, Row, Screen, Section, T, Tag } from '../ui';
 import { c, grad, r } from '../theme';
 import { t } from '../i18n';
 
@@ -18,8 +19,16 @@ const daysAgo = (iso) => {
   return Math.floor((Date.now() - new Date(iso).getTime()) / 86400000);
 };
 const STATUS_COLOR = {
-  submitted: c.sun, under_review: c.sun, approved: c.lime, rejected: c.red,
+  submitted: c.sun, under_review: c.sun, additional_docs_requested: c.sun, approved: c.lime, rejected: c.red,
   withdrawn: c.violetSoft, disputed: c.orange,
+};
+// the API status is additional_docs_requested; the language packs call it docs_requested
+const statusLabel = (status) => t(`vclaim.status_${status === 'additional_docs_requested' ? 'docs_requested' : status}`);
+
+/** Confirm on every platform: Alert.alert has no buttons on the web, so the browser's own confirm is used there. */
+const confirmAsk = (title, body, yes, no, onYes) => {
+  if (Platform.OS === 'web') { if (typeof window !== 'undefined' && window.confirm(`${title}\n\n${body}`)) onYes(); return; }
+  Alert.alert(title, body, [{ text: no, style: 'cancel' }, { text: yes, style: 'destructive', onPress: onYes }]);
 };
 
 const DOC_KINDS = [
@@ -32,24 +41,25 @@ const DOC_KINDS = [
 const ROLES = [
   { key: 'owner', emoji: '🏢', label: 'vclaim.role_owner', sub: 'vclaim.role_owner_sub' },
   { key: 'manager', emoji: '📋', label: 'vclaim.role_manager', sub: 'vclaim.role_manager_sub' },
-  { key: 'authorised_agent', emoji: '🤝', label: 'vclaim.role_agent', sub: 'vclaim.role_agent_sub' },
+  { key: 'authorized_agent', emoji: '🤝', label: 'vclaim.role_agent', sub: 'vclaim.role_agent_sub' },
 ];
 
 const TIMELINE_STEPS = [
   'vclaim.step_submitted', 'vclaim.step_docs_verified', 'vclaim.step_identity',
   'vclaim.step_decision', 'vclaim.step_activated',
 ];
-const STEP_STATUS_INDEX = { submitted: 0, under_review: 2, approved: 4, rejected: 3 };
+const STEP_STATUS_INDEX = { submitted: 0, additional_docs_requested: 1, under_review: 2, disputed: 2, approved: 4, rejected: 3 };
 
 // ------------------------------------------------------------------ VenueClaimBadge
 /** Shown on the venue detail screen when venue.claim_status !== 'claimed'. */
-export function VenueClaimBadge({ venue, navigation }) {
+export function VenueClaimBadge({ venue }) {
+  const nav = useNav();
   if (!venue || venue.claim_status === 'claimed') return null;
   return (
     <Pressable
       accessibilityRole="button"
       accessibilityLabel={t('vclaim.badge_a11y')}
-      onPress={() => navigation.navigate('ClaimSubmit', { venueId: venue.id, venueName: venue.name })}
+      onPress={() => nav.push('VenueClaimSubmit', { venueId: venue.id, venueName: venue.name })}
       style={({ pressed }) => ({ opacity: pressed ? 0.8 : 1 })}
     >
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: c.sunSoft, borderRadius: r.card, padding: 14, marginVertical: 8, borderWidth: 1, borderColor: c.sun }}>
@@ -65,8 +75,8 @@ export function VenueClaimBadge({ venue, navigation }) {
 }
 
 // ------------------------------------------------------------------ ClaimSubmitScreen
-export function ClaimSubmitScreen({ route, navigation }) {
-  const { venueId, venueName } = route.params ?? {};
+export function ClaimSubmitScreen({ venueId, venueName }) {
+  const nav = useNav();
   const { toast } = useSession();
   const [step, setStep] = useState(1);
   const [role, setRole] = useState(null);
@@ -76,31 +86,24 @@ export function ClaimSubmitScreen({ route, navigation }) {
 
   const pickDoc = async (kind) => {
     try {
-      const res = await DocumentPicker.getDocumentAsync({ type: ['application/pdf', 'image/*'], copyToCacheDirectory: true });
-      if (!res.canceled && res.assets?.[0]) {
-        setDocs((prev) => ({ ...prev, [kind]: res.assets[0] }));
-      }
-    } catch {
-      toast(t('vclaim.doc_pick_error'));
-    }
-  };
-
-  const uploadDocs = async (claimId) => {
-    for (const [kind, file] of Object.entries(docs)) {
-      const form = new FormData();
-      form.append('kind', kind);
-      form.append('file', { uri: file.uri, name: file.name, type: file.mimeType ?? 'application/octet-stream' });
-      await api.post(`/claims/${claimId}/documents`, form, { headers: { 'Content-Type': 'multipart/form-data' } });
+      const file = await pickEvidence('files', { documents: true }); // { file_name, data (base64), type } or null
+      if (file) setDocs((prev) => ({ ...prev, [kind]: { ...file, name: file.file_name } }));
+    } catch (e) {
+      toast(e.message || t('vclaim.doc_pick_error'));
     }
   };
 
   const submit = async () => {
     setSubmitting(true);
     try {
-      const { claim } = await api.post(`/venues/${venueId}/claim`, { role, statement });
-      await uploadDocs(claim.id);
-      toast(t('vclaim.submitted_toast'));
-      navigation.replace('ClaimStatus', { claimId: claim.id });
+      const claim = await api.post(`/venues/${venueId}/claim`, { role, statement });
+      // the claim exists now: a document that fails to upload can be added again from its status page
+      let failed = 0;
+      for (const [kind, file] of Object.entries(docs)) {
+        try { await api.post(`/claims/${claim.id}/documents`, { kind, data: file.data, file_name: file.name, mime_type: file.type }); } catch { failed += 1; }
+      }
+      toast(failed ? t('vclaim.doc_pick_error') : t('vclaim.submitted_toast'));
+      nav.replace('VenueClaimStatus', { claimId: claim.id });
     } catch (e) {
       toast(t('vclaim.submit_error', { msg: e.message }));
     } finally {
@@ -111,7 +114,7 @@ export function ClaimSubmitScreen({ route, navigation }) {
   const docCount = Object.keys(docs).length;
   const canNext1 = !!role;
   const canNext2 = docCount >= 2;
-  const canNext3 = statement.trim().length >= 10;
+  const canNext3 = statement.trim().length >= 10; // the API accepts shorter, the screen asks for a real sentence
 
   return (
     <Screen onRefresh={undefined}>
@@ -188,23 +191,7 @@ export function ClaimSubmitScreen({ route, navigation }) {
           <H2>{t('vclaim.step3_title')}</H2>
           <T color={c.mute} size={13}>{t('vclaim.step3_sub')}</T>
           <Card>
-            <T size={12} weight="600" color={c.mute} style={{ letterSpacing: 0.4, marginBottom: 6 }}>{t('vclaim.statement_label').toUpperCase()}</T>
-            <View style={{ borderRadius: r.input, borderWidth: 1.5, borderColor: c.line, backgroundColor: c.violetSoft, padding: 12, minHeight: 120 }}>
-              <View
-                // On web, use a textarea; on native, a TextInput
-                // We use TextInput from ui.js Field logic replicated here for multiline
-              >
-                {Platform.OS === 'web'
-                  ? (() => {
-                      const { TextInput } = require('react-native');
-                      return <TextInput multiline value={statement} onChangeText={setStatement} placeholder={t('vclaim.statement_placeholder')} placeholderTextColor={c.mute} style={{ minHeight: 100, textAlignVertical: 'top', color: c.ink, fontSize: 14 }} />;
-                    })()
-                  : (() => {
-                      const { TextInput } = require('react-native');
-                      return <TextInput multiline value={statement} onChangeText={setStatement} placeholder={t('vclaim.statement_placeholder')} placeholderTextColor={c.mute} style={{ minHeight: 100, textAlignVertical: 'top', color: c.ink, fontSize: 14 }} />;
-                    })()}
-              </View>
-            </View>
+            <Field label={t('vclaim.statement_label')} value={statement} onChangeText={setStatement} multiline minHeight={120} maxLength={2000} placeholder={t('vclaim.statement_placeholder')} accessibilityLabel={t('vclaim.statement_label')} />
             <T size={11} color={c.mute} style={{ marginTop: 6 }}>{statement.length} / 2000</T>
           </Card>
           <View style={{ flexDirection: 'row', gap: 10 }}>
@@ -250,32 +237,57 @@ export function ClaimSubmitScreen({ route, navigation }) {
 }
 
 // ------------------------------------------------------------------ ClaimStatusScreen
-export function ClaimStatusScreen({ route, navigation }) {
-  const { claimId } = route.params ?? {};
+export function ClaimStatusScreen({ claimId }) {
+  const nav = useNav();
   const { toast } = useSession();
   const r2 = useLoad(() => api.get(`/claims/${claimId}`), [claimId]);
-  const claim = r2.data?.claim;
+  const claim = r2.data;
   const [withdrawing, setWithdrawing] = useState(false);
+  const [grounds, setGrounds] = useState('');
+  const [disputing, setDisputing] = useState(false);
+  const [uploading, setUploading] = useState(null);
 
-  const withdraw = () => {
-    Alert.alert(t('vclaim.withdraw_confirm_title'), t('vclaim.withdraw_confirm_body'), [
-      { text: t('vclaim.cancel'), style: 'cancel' },
-      {
-        text: t('vclaim.withdraw'), style: 'destructive',
-        onPress: async () => {
-          setWithdrawing(true);
-          try {
-            await api.delete(`/claims/${claimId}`);
-            toast(t('vclaim.withdrawn_toast'));
-            navigation.goBack();
-          } catch (e) {
-            toast(e.message);
-          } finally {
-            setWithdrawing(false);
-          }
-        },
-      },
-    ]);
+  const withdraw = () => confirmAsk(t('vclaim.withdraw_confirm_title'), t('vclaim.withdraw_confirm_body'), t('vclaim.withdraw'), t('vclaim.cancel'), async () => {
+    setWithdrawing(true);
+    try {
+      await api.delete(`/claims/${claimId}`);
+      toast(t('vclaim.withdrawn_toast'));
+      nav.back();
+    } catch (e) {
+      toast(e.message);
+    } finally {
+      setWithdrawing(false);
+    }
+  });
+
+  const dispute = async () => {
+    if (grounds.trim().length < 10) { toast(t('vclaim.dispute_too_short')); return; }
+    setDisputing(true);
+    try {
+      await api.post(`/claims/${claimId}/dispute`, { dispute_reason: grounds.trim() });
+      toast(t('vclaim.dispute_submitted'));
+      setGrounds('');
+      r2.reload();
+    } catch (e) {
+      toast(e.message);
+    } finally {
+      setDisputing(false);
+    }
+  };
+
+  const addDoc = async (kind) => {
+    setUploading(kind);
+    try {
+      const file = await pickEvidence('files', { documents: true });
+      if (file) {
+        await api.post(`/claims/${claimId}/documents`, { kind, data: file.data, file_name: file.file_name, mime_type: file.type });
+        r2.reload();
+      }
+    } catch (e) {
+      toast(e.message || t('vclaim.doc_pick_error'));
+    } finally {
+      setUploading(null);
+    }
   };
 
   const stepIndex = claim ? (STEP_STATUS_INDEX[claim.status] ?? 0) : 0;
@@ -292,16 +304,16 @@ export function ClaimStatusScreen({ route, navigation }) {
         <T size={22} weight="800" color="#fff" style={{ marginTop: 4 }}>{claim.venue_name}</T>
         <T size={13} color="rgba(255,255,255,0.75)" style={{ marginTop: 2 }}>{t('vclaim.submitted_on', { date: String(claim.submitted_at).slice(0, 10) })}</T>
         <View style={{ marginTop: 10 }}>
-          <Tag label={t(`vclaim.status_${claim.status}`)} color={STATUS_COLOR[claim.status] ?? c.violetSoft} />
+          <Tag label={statusLabel(claim.status)} color={STATUS_COLOR[claim.status] ?? c.violetSoft} />
         </View>
       </GradCard>
 
       {/* Metric strip */}
       <View style={{ flexDirection: 'row', gap: 8, marginBottom: 16 }}>
         {[
-          { label: t('vclaim.metric_docs'), value: String(claim.document_count ?? 0) },
+          { label: t('vclaim.metric_docs'), value: String(claim.document_count ?? claim.documents?.length ?? 0) },
           { label: t('vclaim.metric_days'), value: String(daysAgo(claim.submitted_at)) },
-          { label: t('vclaim.metric_status'), value: t(`vclaim.status_${claim.status}`) },
+          { label: t('vclaim.metric_status'), value: statusLabel(claim.status) },
         ].map((m) => (
           <View key={m.label} style={{ flex: 1, backgroundColor: c.paper, borderRadius: 14, padding: 12, borderWidth: 1, borderColor: c.line, alignItems: 'center' }}>
             <T size={18} weight="800">{m.value}</T>
@@ -324,7 +336,7 @@ export function ClaimStatusScreen({ route, navigation }) {
                 </View>
                 <View style={{ flex: 1 }}>
                   <T size={13} weight={active ? '700' : '500'} color={done ? c.lime : active ? c.sun : c.mute}>{t(step)}</T>
-                  {active && claim.reviewer_note ? <T size={12} color={c.mute} style={{ marginTop: 2 }}>{claim.reviewer_note}</T> : null}
+                  {active && claim.decision_note && claim.status !== 'rejected' ? <T size={12} color={c.mute} style={{ marginTop: 2 }}>{claim.decision_note}</T> : null}
                 </View>
                 {done ? <T size={14} color={c.lime}>✓</T> : null}
               </View>
@@ -347,83 +359,54 @@ export function ClaimStatusScreen({ route, navigation }) {
             <T weight="700" size={15} color={c.lime}>{t('vclaim.approved_title')}</T>
             <T size={13} color={c.mute} style={{ marginTop: 4 }}>{t('vclaim.approved_sub')}</T>
           </View>
-          <Btn title={t('vclaim.manage_venue')} onPress={() => navigation.navigate('VenueWorkspace')} color={c.lime} accessibilityLabel={t('vclaim.manage_venue')} />
+          <Btn title={t('vclaim.manage_venue')} onPress={() => nav.push('VenueWorkspace')} color={c.lime} accessibilityLabel={t('vclaim.manage_venue')} />
         </View>
       ) : null}
 
-      {/* Rejected: dispute */}
+      {/* Rejected: reason, then one dispute */}
       {claim.status === 'rejected' ? (
         <View style={{ marginTop: 16, gap: 10 }}>
           <View style={{ backgroundColor: c.redSoft, borderRadius: r.card, borderLeftWidth: 3, borderLeftColor: c.red, padding: 14 }}>
             <T weight="700" size={14} color={c.red}>{t('vclaim.rejected_title')}</T>
-            <T size={12} color={c.mute} style={{ marginTop: 4 }}>{claim.decision_reason ?? t('vclaim.rejected_no_reason')}</T>
+            <T size={12} color={c.mute} style={{ marginTop: 4 }}>{claim.decision_note ?? t('vclaim.rejected_no_reason')}</T>
           </View>
-          <Btn title={t('vclaim.dispute')} color={c.orange} onPress={() => navigation.navigate('ClaimDispute', { claimId })} accessibilityLabel={t('vclaim.dispute')} />
+          {!claim.dispute_at ? (
+            <>
+              <Field label={t('vclaim.dispute_grounds_label')} value={grounds} onChangeText={setGrounds} multiline minHeight={100} maxLength={2000} placeholder={t('vclaim.dispute_placeholder')} accessibilityLabel={t('vclaim.dispute_grounds_label')} />
+              <Btn title={t('vclaim.dispute_submit')} loading={disputing} color={c.orange} onPress={dispute} accessibilityLabel={t('vclaim.dispute_submit')} />
+            </>
+          ) : null}
         </View>
       ) : null}
 
-      {/* Actions */}
+      {/* Active claim: more documents, or withdraw */}
       {!['approved', 'rejected', 'withdrawn'].includes(claim.status) ? (
-        <View style={{ flexDirection: 'row', gap: 10, marginTop: 16 }}>
-          <Btn small title={t('vclaim.add_docs')} color={c.paper} ink={c.ink} onPress={() => navigation.navigate('ClaimSubmit', { venueId: claim.venue_id, venueName: claim.venue_name })} style={{ flex: 1 }} accessibilityLabel={t('vclaim.add_docs')} />
-          <Btn small title={t('vclaim.withdraw')} loading={withdrawing} color={c.redSoft} ink={c.red} onPress={withdraw} style={{ flex: 1 }} accessibilityLabel={t('vclaim.withdraw')} />
+        <View style={{ gap: 10, marginTop: 16 }}>
+          <T weight="700" size={13}>{t('vclaim.add_docs')}</T>
+          {DOC_KINDS.map((dk) => (
+            <View key={dk.key} style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+              <T size={20}>{dk.emoji}</T>
+              <T size={13} style={{ flex: 1 }}>{t(dk.label)}</T>
+              <Btn small title={t('vclaim.doc_upload')} color={c.paper} ink={c.ink} loading={uploading === dk.key} onPress={() => addDoc(dk.key)} accessibilityLabel={`${t('vclaim.doc_upload')} ${t(dk.label)}`} />
+            </View>
+          ))}
+          <Btn small title={t('vclaim.withdraw')} loading={withdrawing} color={c.redSoft} ink={c.red} onPress={withdraw} accessibilityLabel={t('vclaim.withdraw')} />
         </View>
       ) : null}
-    </Screen>
-  );
-}
-
-// ------------------------------------------------------------------ DisputeScreen (inline)
-export function ClaimDisputeScreen({ route, navigation }) {
-  const { claimId } = route.params ?? {};
-  const { toast } = useSession();
-  const [grounds, setGrounds] = useState('');
-  const [submitting, setSubmitting] = useState(false);
-
-  const submit = async () => {
-    if (grounds.trim().length < 20) { toast(t('vclaim.dispute_too_short')); return; }
-    setSubmitting(true);
-    try {
-      await api.post(`/claims/${claimId}/dispute`, { grounds });
-      toast(t('vclaim.dispute_submitted'));
-      navigation.goBack();
-    } catch (e) {
-      toast(e.message);
-    } finally {
-      setSubmitting(false);
-    }
-  };
-
-  return (
-    <Screen>
-      <H1 style={{ marginBottom: 8 }}>{t('vclaim.dispute_title')}</H1>
-      <T color={c.mute} size={13}>{t('vclaim.dispute_sub')}</T>
-      <Card style={{ marginTop: 16 }}>
-        <T size={12} weight="600" color={c.mute} style={{ letterSpacing: 0.4, marginBottom: 8 }}>{t('vclaim.dispute_grounds_label').toUpperCase()}</T>
-        {(() => {
-          const { TextInput } = require('react-native');
-          return (
-            <TextInput multiline value={grounds} onChangeText={setGrounds} placeholder={t('vclaim.dispute_placeholder')} placeholderTextColor={c.mute}
-              style={{ borderRadius: r.input, borderWidth: 1.5, borderColor: c.line, backgroundColor: c.violetSoft, padding: 12, minHeight: 120, textAlignVertical: 'top', color: c.ink, fontSize: 14 }} />
-          );
-        })()}
-      </Card>
-      <View style={{ marginTop: 16 }}>
-        <Btn title={t('vclaim.dispute_submit')} loading={submitting} onPress={submit} accessibilityLabel={t('vclaim.dispute_submit')} />
-      </View>
     </Screen>
   );
 }
 
 // ------------------------------------------------------------------ MyClaimsScreen
-export function MyClaimsScreen({ navigation }) {
+export function MyClaimsScreen() {
+  const nav = useNav();
   const r2 = useLoad(() => api.get('/me/claims'), []);
-  const claims = r2.data?.claims ?? [];
+  const claims = r2.data?.items ?? [];
 
   const actionFor = (claim) => {
-    if (claim.status === 'rejected') return { label: t('vclaim.dispute'), screen: 'ClaimDispute', params: { claimId: claim.id } };
+    if (claim.status === 'rejected' && !claim.dispute_at) return { label: t('vclaim.dispute'), screen: 'VenueClaimStatus', params: { claimId: claim.id } };
     if (claim.status === 'approved') return { label: t('vclaim.manage_venue'), screen: 'VenueWorkspace', params: {} };
-    return { label: t('vclaim.view'), screen: 'ClaimStatus', params: { claimId: claim.id } };
+    return { label: t('vclaim.view'), screen: 'VenueClaimStatus', params: { claimId: claim.id } };
   };
 
   return (
@@ -444,8 +427,8 @@ export function MyClaimsScreen({ navigation }) {
                 sub={`${claim.claim_no} · ${String(claim.submitted_at).slice(0, 10)}`}
                 right={
                   <View style={{ gap: 6, alignItems: 'flex-end' }}>
-                    <Tag label={t(`vclaim.status_${claim.status}`)} color={STATUS_COLOR[claim.status] ?? c.violetSoft} />
-                    <Pressable onPress={() => navigation.navigate(action.screen, action.params)} accessibilityRole="button" accessibilityLabel={action.label}
+                    <Tag label={statusLabel(claim.status)} color={STATUS_COLOR[claim.status] ?? c.violetSoft} />
+                    <Pressable onPress={() => nav.push(action.screen, action.params)} accessibilityRole="button" accessibilityLabel={action.label}
                       style={{ backgroundColor: c.pinkSoft, borderRadius: 8, paddingHorizontal: 10, paddingVertical: 5, minHeight: 28 }}>
                       <T size={12} weight="700" color={c.pink}>{action.label}</T>
                     </Pressable>
@@ -459,3 +442,6 @@ export function MyClaimsScreen({ navigation }) {
     </Screen>
   );
 }
+
+// the names the app's router registers these pages under
+export { ClaimSubmitScreen as VenueClaimSubmit, ClaimStatusScreen as VenueClaimStatus, MyClaimsScreen as MyClaims };

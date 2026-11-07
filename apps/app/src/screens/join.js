@@ -128,7 +128,7 @@ export function TeamJoinLinks({ teamId }) {
   };
 
   const handleRevoke = async (linkId) => {
-    await api.delete(`/join-links/${linkId}`);
+    await api.del(`/join-links/${linkId}`);
     q.reload();
     toast(t('tjl.revoked_ok'));
   };
@@ -213,7 +213,7 @@ export function TeamJoinLinks({ teamId }) {
         initial={{ mode: 'open', role: 'player', max_uses: 50, unlimited: true, guardian_required: false, federation_auto_register: false }}
         fields={[
           { key: 'mode', label: 'Mode', type: 'menu', options: ['open','request','role_specific'].map(m => ({ value: m, label: t(MODE_LABELS[m]) })) },
-          { key: 'role', label: t('tjl.role'), type: 'menu', options: ['player','volunteer','coach','manager','physio'].map(r => ({ value: r, label: r })) },
+          { key: 'role', label: t('tjl.role'), type: 'menu', options: ['player','coach','manager','physio'].map(r => ({ value: r, label: r })) },
           { key: 'unlimited', label: t('tjl.unlimited'), type: 'switch' },
           { key: 'max_uses', label: t('tjl.max_uses'), type: 'number' },
           { key: 'expires_at', label: t('tjl.expiry'), type: 'datetime' },

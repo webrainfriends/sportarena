@@ -7,8 +7,7 @@ import { useLoad } from '../hooks';
 import { useSession } from '../session';
 import { useNav } from '../nav';
 import { useLayout } from '../layout';
-import { FormSheet } from '../FormSheet';
-import { Avatar, Btn, Card, Chip, Empty, ErrorBox, Field, H2, HScroll, Loading, Row, Screen, Section, T, Tag } from '../ui';
+import { Avatar, Btn, Card, Chip, Empty, ErrorBox, Field, H2, HScroll, Loading, Row, Screen, Section, Sheet, T, Tag } from '../ui';
 import { c, r } from '../theme';
 import { t } from '../i18n';
 
@@ -55,7 +54,7 @@ export function GuardianOnboarding({ onDone }) {
       setChildId(res.child.id);
       // save medical card
       if (form.emergency_contact_name) {
-        await api.put(`/me/managed-children/${res.child.id}/medical`, {
+        await api.patch(`/me/managed-children/${res.child.id}/medical`, {
           blood_type: form.blood_type, allergies: form.allergies,
           conditions: form.conditions || undefined,
           emergency_contact_name: form.emergency_contact_name,
@@ -64,7 +63,7 @@ export function GuardianOnboarding({ onDone }) {
       }
       // save kit sizes
       if (form.shirt_size) {
-        await api.put(`/me/managed-children/${res.child.id}/kit`, {
+        await api.patch(`/me/managed-children/${res.child.id}/kit`, {
           shirt_size: form.shirt_size, shorts_size: form.shorts_size || undefined,
           boot_size: form.boot_size || undefined,
         });
@@ -254,7 +253,7 @@ export function ManagedChildrenList({ onAddChild }) {
         {children.map(child => (
           <Card key={child.id} pad={14} style={{ width: L.tablet ? '45%' : '100%' }}
             accessibilityLabel={child.display_name}
-            onPress={() => push('ManagedChildProfile', { childId: child.id })}>
+            onPress={() => push('Family')}>
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
               <Avatar user={child} size={40} />
               <View style={{ flex: 1 }}>
@@ -286,9 +285,9 @@ export function ManagedChildrenList({ onAddChild }) {
         <Btn title={t('gob.bulk_invite.open')} color={c.paper} ink={c.pink} style={{ marginTop: 8 }}
           accessibilityLabel={t('gob.bulk_invite.open')} onPress={() => setInviteOpen(true)} />
       )}
-      <FormSheet visible={inviteOpen} onClose={() => setInviteOpen(false)}>
+      <Sheet visible={inviteOpen} onClose={() => setInviteOpen(false)}>
         <BulkCoGuardianSheet children={children} onClose={() => setInviteOpen(false)} />
-      </FormSheet>
+      </Sheet>
     </Section>
   );
 }

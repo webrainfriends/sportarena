@@ -40,7 +40,7 @@ before(async () => {
   base = `http://localhost:${server.address().port}`;
   const l = must(await api('POST', '/auth/login', { body: { email: 'platform-owner@example.com', password: 'owner-test-pass' } }));
   platform = { ...l.user, token: l.token };
-  venueOwner = await signup(['venue_owner']);
+  venueOwner = await signup(['venue_manager']);
 });
 after(async () => { server.close(); await pool.end(); });
 

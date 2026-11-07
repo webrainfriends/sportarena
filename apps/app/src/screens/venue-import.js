@@ -1,13 +1,16 @@
 // Venue bulk import wizard (#697): 5-step CSV/Excel import with column mapping, dry-run preview,
 // per-row conflict resolution and idempotent commit. Extends the existing migration framework on the
 // API side; the domain is 'venue' (not 'roster'). Nothing is overwritten without explicit confirmation.
-import React, { useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, FlatList, Platform, Pressable, Share, TouchableOpacity, View } from 'react-native';
-import * as DocumentPicker from 'expo-document-picker';
+import React, { useState } from 'react';
+import { ActivityIndicator, Platform, Pressable, View } from 'react-native';
 import { api } from '../api';
 import { useLoad } from '../hooks';
 import { useSession } from '../session';
-import { Btn, Card, Empty, ErrorBox, GradCard, H1, H2, Loading, Row, Screen, Section, Seg, T, Tag } from '../ui';
+import { useNav } from '../nav';
+import { saveText } from '../evidence';
+import { docMaxBytes, docMaxMb } from '../upload-limits';
+import { MenuField } from '../menu-field';
+import { Btn, Card, Empty, GradCard, H1, H2, Loading, Row, Screen, Seg, T, Tag } from '../ui';
 import { c, grad, r } from '../theme';
 import { t } from '../i18n';
 
@@ -27,26 +30,53 @@ const VENUE_FIELDS = [
 ];
 
 const STEP_LABELS = ['vimp.step_upload', 'vimp.step_map', 'vimp.step_dryrun', 'vimp.step_conflicts', 'vimp.step_confirm'];
-const ROW_STATUS_COLOR = { valid: c.lime, warning: c.sun, error: c.red, conflict: c.orange, skipped: c.violetSoft };
+const ROW_STATUS_COLOR = { valid: c.lime, warning: c.sun, rejected: c.red, conflict: c.orange, duplicate: c.violetSoft, skipped: c.violetSoft };
+// screen tab -> the API's check_status filter
+const TAB_FILTER = { errors: 'rejected', conflicts: 'conflict', valid: 'valid', warning: 'warning' };
 
 const exportCsvRows = async (rows, toast) => {
-  const header = 'row_no,venue_name,status,message\n';
-  const body = rows.map((rw) => `${rw.row_no},"${(rw.data?.name ?? '').replace(/"/g, '""')}",${rw.check_status},"${(rw.reasons?.map?.((x) => x.message).join('; ') ?? '').replace(/"/g, '""')}"`).join('\n');
-  const csv = header + body;
-  if (Platform.OS === 'web') {
-    const a = document.createElement('a');
-    a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv' }));
-    a.download = 'venue-import-errors.csv';
-    a.click();
-  } else {
-    await Share.share({ title: 'venue-import-errors.csv', message: csv });
-  }
-  toast(t('vimp.errors_exported'));
+  const cell = (v) => { let x = String(v ?? ''); if (/^[=+\-@\t\r]/.test(x)) x = `'${x}`; return `"${x.replace(/"/g, '""')}"`; }; // a spreadsheet must never run a cell as a formula
+  const csv = ['row_no,venue_name,status,message', ...rows.map((rw) => [rw.row_no, cell(rw.data?.name), rw.check_status, cell((rw.reasons ?? []).map((x) => x.message).join('; '))].join(','))].join('\n');
+  try { await saveText('venue-import-errors.csv', csv); toast(t('vimp.errors_exported')); } catch (e) { toast(e.message); }
 };
 
+/** Pick a CSV or Excel file: the browser's file dialog on web, the Files picker on iOS, iPadOS and Android. Resolves { name, data (base64) } or null. */
+async function chooseSheet() {
+  const limit = docMaxBytes();
+  const tooBig = () => new Error(`That file is over ${docMaxMb()} MB. Split it by region or facility type.`);
+  if (Platform.OS === 'web') {
+    return new Promise((resolve, reject) => {
+      const el = document.createElement('input');
+      el.type = 'file'; el.accept = '.csv,.tsv,.txt,.xlsx';
+      el.onchange = () => {
+        const f = el.files?.[0];
+        if (!f) return resolve(null);
+        if (f.size > limit) return reject(tooBig());
+        const fr = new FileReader();
+        fr.onload = () => resolve({ name: f.name, data: String(fr.result).split(',')[1] ?? '' });
+        fr.onerror = () => reject(new Error('That file could not be read'));
+        fr.readAsDataURL(f);
+      };
+      el.click();
+    });
+  }
+  const DocumentPicker = await import('expo-document-picker');
+  const res = await DocumentPicker.getDocumentAsync({ copyToCacheDirectory: true, multiple: false, type: ['text/csv', 'text/comma-separated-values', 'text/plain', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'] });
+  if (res.canceled || !res.assets?.[0]) return null;
+  const a = res.assets[0];
+  if ((a.size ?? 0) > limit) throw tooBig();
+  const { File } = await import('expo-file-system');
+  return { name: a.name, data: await new File(a.uri).base64() };
+}
+
 // ------------------------------------------------------------------ VenueImportScreen
-export default function VenueImportScreen({ navigation }) {
+export default function VenueImportScreen({ organisation_id }) {
+  const nav = useNav();
   const { toast } = useSession();
+  const orgs = useLoad(() => api.get('/organisations'), []);
+  const admin = (orgs.data ?? []).filter((o) => ['owner', 'admin'].includes(o.my_role) && o.my_status === 'active');
+  const [pickedOrg, setPickedOrg] = useState(null);
+  const orgId = organisation_id ?? pickedOrg ?? (admin.length === 1 ? admin[0].id : null);
   const [step, setStep] = useState(1);
   const [projectId, setProjectId] = useState(null);
   const [project, setProject] = useState(null);
@@ -54,50 +84,38 @@ export default function VenueImportScreen({ navigation }) {
   const [runTab, setRunTab] = useState('errors');
   const [rows, setRows] = useState([]);
   const [rowsLoading, setRowsLoading] = useState(false);
-  const [rowsCursor, setRowsCursor] = useState(null);
   const [summary, setSummary] = useState(null);
   const [checking, setChecking] = useState(false);
   const [running, setRunning] = useState(false);
   const [report, setReport] = useState(null);
-  const pollRef = useRef(null);
 
-  // Load project when projectId set
-  useEffect(() => {
-    if (!projectId) return;
-    api.get(`/venue-imports/${projectId}`).then((d) => {
-      setProject(d.project);
-      setMapping(d.project.mapping ?? {});
-    }).catch(() => {});
-  }, [projectId]);
-
-  const loadRows = async (statusFilter) => {
-    if (!projectId) return;
+  // the project (headers, proposed mapping, outcome counts) and the rows of one tab
+  const loadProject = async (pid = projectId) => {
+    const d = await api.get(`/venue-imports/${pid}`);
+    setProject(d);
+    setSummary(d.summary ?? null);
+    return d;
+  };
+  const loadRows = async (tab, pid = projectId) => {
+    if (!pid) return;
     setRowsLoading(true);
     try {
-      const qs = statusFilter && statusFilter !== 'all' ? `?status=${statusFilter}` : '';
-      const d = await api.get(`/venue-imports/${projectId}/rows${qs}`);
-      setRows(d.rows ?? []);
-      setSummary(d.summary ?? null);
-    } catch { /* show stale */ }
+      const filter = TAB_FILTER[tab];
+      const d = await api.get(`/venue-imports/${pid}/rows`, { ...(filter ? { check_status: filter } : {}), limit: 100 });
+      setRows(d.items ?? []);
+    } catch (e) { toast(e.message); }
     setRowsLoading(false);
   };
 
   const pickFile = async (fileType) => {
+    if (!orgId) { toast(t('vimp.upload_error', { msg: 'organisation' })); return; }
     try {
-      const types = fileType === 'excel'
-        ? ['application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', 'application/vnd.ms-excel']
-        : ['text/csv', 'text/plain'];
-      const res = await DocumentPicker.getDocumentAsync({ type: types, copyToCacheDirectory: true });
-      if (res.canceled || !res.assets?.[0]) return;
-      const file = res.assets[0];
-      const form = new FormData();
-      form.append('file', { uri: file.uri, name: file.name, type: file.mimeType ?? 'application/octet-stream' });
-      form.append('source', fileType === 'excel' ? 'excel' : 'csv');
-      form.append('domain', 'venue');
-      const d = await api.post('/venue-imports', form, { headers: { 'Content-Type': 'multipart/form-data' } });
-      setProjectId(d.project.id);
-      setProject(d.project);
-      setMapping(d.project.mapping ?? {});
+      const file = await chooseSheet();
+      if (!file) return;
+      const d = await api.post('/venue-imports', { organisation_id: orgId, source: fileType === 'excel' ? 'excel' : 'csv', file: file.data, encoding: 'base64', file_name: file.name });
+      setProjectId(d.id);
+      const full = await loadProject(d.id);
+      setMapping(full.analysis?.mapping ?? d.mapping ?? {});
       setStep(2);
     } catch (e) {
       toast(t('vimp.upload_error', { msg: e.message }));
@@ -106,15 +124,8 @@ export default function VenueImportScreen({ navigation }) {
 
   const downloadTemplate = async () => {
     try {
-      const d = await api.get('/venue-imports/template');
-      if (Platform.OS === 'web') {
-        const a = document.createElement('a');
-        a.href = URL.createObjectURL(new Blob([d.csv], { type: 'text/csv' }));
-        a.download = d.filename ?? 'venue-import-template.csv';
-        a.click();
-      } else {
-        await Share.share({ title: d.filename ?? 'venue-import-template.csv', message: d.csv });
-      }
+      const d = await api.get('/venue-imports/template', { source: 'excel' });
+      await saveText(d.filename ?? 'venue-import-template.csv', d.csv);
     } catch (e) {
       toast(e.message);
     }
@@ -123,8 +134,11 @@ export default function VenueImportScreen({ navigation }) {
   const runCheck = async () => {
     setChecking(true);
     try {
-      await api.post(`/venue-imports/${projectId}/check`, { mapping });
-      await api.patch(`/venue-imports/${projectId}`, { mapping });
+      const clean = Object.fromEntries(Object.entries(mapping).filter(([, h]) => !!h));
+      await api.patch(`/venue-imports/${projectId}/mapping`, { mapping: clean });
+      await api.post(`/venue-imports/${projectId}/check`);
+      await loadProject();
+      setRunTab('errors');
       await loadRows('errors');
       setStep(3);
     } catch (e) {
@@ -136,8 +150,9 @@ export default function VenueImportScreen({ navigation }) {
 
   const resolveConflict = async (rowId, resolution) => {
     try {
-      await api.patch(`/venue-imports/${projectId}/rows/${rowId}`, { resolution });
-      setRows((prev) => prev.map((rw) => rw.id === rowId ? { ...rw, resolution, check_status: resolution === 'skip' ? 'skipped' : rw.check_status } : rw));
+      await api.patch(`/venue-imports/${projectId}/rows/${rowId}`, { conflict_decision: resolution });
+      setRows((prev) => prev.map((rw) => (rw.id === rowId ? { ...rw, conflict_decision: resolution } : rw)));
+      await loadProject(); // the counts decide whether the import can be confirmed
     } catch (e) {
       toast(e.message);
     }
@@ -147,33 +162,23 @@ export default function VenueImportScreen({ navigation }) {
     setRunning(true);
     try {
       await api.post(`/venue-imports/${projectId}/approve`);
-      await api.post(`/venue-imports/${projectId}/run`);
-      pollRef.current = setInterval(async () => {
-        try {
-          const d = await api.get(`/venue-imports/${projectId}/report`);
-          if (d.project?.status === 'completed' || d.project?.status === 'failed') {
-            clearInterval(pollRef.current);
-            setReport(d);
-            setRunning(false);
-          }
-        } catch { /* keep polling */ }
-      }, 3000);
+      const result = await api.post(`/venue-imports/${projectId}/run`); // { created, updated, skipped, failed, pending_review, total }
+      const d = await api.get(`/venue-imports/${projectId}/report`);
+      setReport({ ...d, ...result });
     } catch (e) {
       toast(e.message);
+    } finally {
       setRunning(false);
     }
   };
 
-  useEffect(() => () => { if (pollRef.current) clearInterval(pollRef.current); }, []);
-
-  const headers = project?.options?.headers ?? [];
+  const headers = project?.headers ?? [];
   const headerOptions = [t('vimp.unmapped'), ...headers];
 
-  const conflictRows = rows.filter((rw) => rw.check_status === 'conflict' && !rw.resolution);
-  const errorRows = rows.filter((rw) => rw.check_status === 'error');
-  const hasErrors = errorRows.length > 0;
-  const hasConflicts = rows.filter((rw) => rw.check_status === 'conflict').length > 0;
-  const allConflictsResolved = conflictRows.length === 0;
+  const errorRows = rows.filter((rw) => rw.check_status === 'rejected');
+  const hasErrors = (summary?.rejected ?? 0) > 0;
+  const hasConflicts = (summary?.conflicts ?? 0) > 0;
+  const allConflictsResolved = (summary?.conflicts ?? 0) === (summary?.resolved ?? 0);
 
   return (
     <Screen onRefresh={undefined}>
@@ -197,6 +202,11 @@ export default function VenueImportScreen({ navigation }) {
             <T size={18} weight="800" color="#fff" style={{ marginTop: 6 }}>{t('vimp.upload_cta')}</T>
             <T size={12} color="rgba(255,255,255,0.75)" style={{ marginTop: 4 }}>{t('vimp.upload_limits')}</T>
           </GradCard>
+          {orgs.loading && !orgs.data ? <Loading /> : null}
+          {orgs.data && !admin.length ? <Empty emoji="🏢" title={t('vimp.title')} sub={t('vimp.subtitle')} /> : null}
+          {!organisation_id && admin.length > 1 ? (
+            <MenuField title={t('vimp.title')} value={orgId} onChange={setPickedOrg} options={admin.map((o) => ({ value: o.id, label: o.name, sub: o.city }))} />
+          ) : null}
           <View style={{ flexDirection: 'row', gap: 10 }}>
             <Btn title={t('vimp.choose_csv')} color={c.cyan} ink={c.ink} onPress={() => pickFile('csv')} style={{ flex: 1 }} accessibilityLabel={t('vimp.choose_csv')} />
             <Btn title={t('vimp.choose_excel')} color={c.violet} onPress={() => pickFile('excel')} style={{ flex: 1 }} accessibilityLabel={t('vimp.choose_excel')} />
@@ -218,9 +228,9 @@ export default function VenueImportScreen({ navigation }) {
               <T weight="700" size={14}>{project.file_name}</T>
               <Tag label={`${project.source_rows} ${t('vimp.rows')}`} color={c.cyan} />
             </View>
-            {project.analysis?.auto_detected_source ? (
+            {project.source && project.source !== 'csv' && project.source !== 'excel' ? (
               <View style={{ backgroundColor: c.limeSoft, borderRadius: 8, padding: 8, marginTop: 8 }}>
-                <T size={12} color={c.lime}>{t('vimp.auto_detected', { src: project.analysis.auto_detected_source })}</T>
+                <T size={12} color={c.lime}>{t('vimp.auto_detected', { src: project.source })}</T>
               </View>
             ) : null}
           </Card>
@@ -276,9 +286,9 @@ export default function VenueImportScreen({ navigation }) {
           {summary ? (
             <View style={{ flexDirection: 'row', gap: 8 }}>
               {[
-                { label: t('vimp.will_create'), value: summary.valid ?? 0, color: c.lime },
-                { label: t('vimp.conflicts'), value: summary.conflict ?? 0, color: c.orange },
-                { label: t('vimp.errors'), value: summary.error ?? 0, color: c.red },
+                { label: t('vimp.will_create'), value: (summary.valid ?? 0) + (summary.warning ?? 0), color: c.lime },
+                { label: t('vimp.conflicts'), value: summary.conflicts ?? 0, color: c.orange },
+                { label: t('vimp.errors'), value: summary.rejected ?? 0, color: c.red },
                 { label: t('vimp.warnings'), value: summary.warning ?? 0, color: c.sun },
               ].map((m) => (
                 <View key={m.label} style={{ flex: 1, backgroundColor: c.paper, borderRadius: 14, padding: 10, borderWidth: 1, borderColor: c.line, alignItems: 'center' }}>
@@ -322,11 +332,11 @@ export default function VenueImportScreen({ navigation }) {
               </View>
               <View style={{ flexDirection: 'row', gap: 10 }}>
                 <Btn small title={t('vimp.download_errors')} color={c.paper} ink={c.ink} onPress={() => exportCsvRows(errorRows, toast)} style={{ flex: 1 }} accessibilityLabel={t('vimp.download_errors')} />
-                <Btn small title={t('vimp.reupload')} color={c.pink} onPress={() => { setStep(1); setProjectId(null); setProject(null); }} style={{ flex: 1 }} accessibilityLabel={t('vimp.reupload')} />
+                <Btn small title={t('vimp.reupload')} color={c.pink} onPress={() => { setStep(1); setProjectId(null); setProject(null); setSummary(null); setRows([]); }} style={{ flex: 1 }} accessibilityLabel={t('vimp.reupload')} />
               </View>
             </View>
           ) : hasConflicts ? (
-            <Btn title={t('vimp.review_conflicts')} onPress={() => { loadRows('conflict'); setStep(4); }} accessibilityLabel={t('vimp.review_conflicts')} />
+            <Btn title={t('vimp.review_conflicts')} onPress={() => { loadRows('conflicts'); setStep(4); }} accessibilityLabel={t('vimp.review_conflicts')} />
           ) : (
             <Btn title={t('vimp.go_confirm')} color={c.lime} onPress={() => setStep(5)} accessibilityLabel={t('vimp.go_confirm')} />
           )}
@@ -355,16 +365,16 @@ export default function VenueImportScreen({ navigation }) {
                   { key: 'use_import', label: t('vimp.use_import'), color: c.sun },
                   { key: 'skip', label: t('vimp.skip'), color: c.paper },
                 ].map((opt) => (
-                  <Pressable key={opt.key} onPress={() => resolveConflict(row.id, opt.key)} accessibilityRole="radio" accessibilityState={{ checked: row.resolution === opt.key }}
-                    style={{ flex: 1, borderRadius: 10, borderWidth: row.resolution === opt.key ? 2 : 1, borderColor: row.resolution === opt.key ? opt.color : c.line, padding: 8, alignItems: 'center', backgroundColor: row.resolution === opt.key ? opt.color + '33' : c.paper, minHeight: 44 }}>
-                    <T size={12} weight="700" color={row.resolution === opt.key ? opt.color : c.mute}>{opt.label}</T>
+                  <Pressable key={opt.key} onPress={() => resolveConflict(row.id, opt.key)} accessibilityRole="radio" accessibilityState={{ checked: row.conflict_decision === opt.key }}
+                    style={{ flex: 1, borderRadius: 10, borderWidth: row.conflict_decision === opt.key ? 2 : 1, borderColor: row.conflict_decision === opt.key ? opt.color : c.line, padding: 8, alignItems: 'center', backgroundColor: row.conflict_decision === opt.key ? opt.color + '33' : c.paper, minHeight: 44 }}>
+                    <T size={12} weight="700" color={row.conflict_decision === opt.key ? opt.color : c.mute}>{opt.label}</T>
                   </Pressable>
                 ))}
               </View>
             </Card>
           ))}
           <View style={{ flexDirection: 'row', gap: 10 }}>
-            <Btn title={t('vimp.back')} color={c.paper} ink={c.ink} onPress={() => setStep(3)} style={{ flex: 1 }} accessibilityLabel={t('vimp.back')} />
+            <Btn title={t('vimp.back')} color={c.paper} ink={c.ink} onPress={() => { loadRows(runTab); setStep(3); }} style={{ flex: 1 }} accessibilityLabel={t('vimp.back')} />
             <Btn title={t('vimp.go_confirm')} disabled={!allConflictsResolved} onPress={() => setStep(5)} style={{ flex: 1 }} accessibilityLabel={t('vimp.go_confirm')} />
           </View>
         </View>
@@ -379,9 +389,9 @@ export default function VenueImportScreen({ navigation }) {
               {summary ? (
                 <GradCard colors={[c.lime, '#065F46']}>
                   <T size={12} color="rgba(255,255,255,0.75)">{t('vimp.ready_to_import')}</T>
-                  <T size={22} weight="800" color="#fff" style={{ marginTop: 6 }}>{t('vimp.venues_count', { n: summary.valid ?? 0 })}</T>
+                  <T size={22} weight="800" color="#fff" style={{ marginTop: 6 }}>{t('vimp.venues_count', { n: (summary.valid ?? 0) + (summary.warning ?? 0) })}</T>
                   <T size={13} color="rgba(255,255,255,0.75)" style={{ marginTop: 4 }}>
-                    {t('vimp.confirm_summary', { errors: summary.error ?? 0, skipped: summary.skipped ?? 0 })}
+                    {t('vimp.confirm_summary', { errors: summary.rejected ?? 0, skipped: summary.skipped ?? 0 })}
                   </T>
                 </GradCard>
               ) : null}
@@ -400,9 +410,9 @@ export default function VenueImportScreen({ navigation }) {
           ) : (
             /* Post-import report */
             <View style={{ gap: 12 }}>
-              <Card color={report.project?.status === 'completed' ? c.limeSoft : c.redSoft}>
-                <T weight="800" size={18} color={report.project?.status === 'completed' ? c.lime : c.red}>
-                  {report.project?.status === 'completed' ? t('vimp.import_complete') : t('vimp.import_failed')}
+              <Card color={report.project?.status === 'completed' && !report.failed ? c.limeSoft : c.redSoft}>
+                <T weight="800" size={18} color={report.project?.status === 'completed' && !report.failed ? c.lime : c.red}>
+                  {report.project?.status === 'completed' && !report.failed ? t('vimp.import_complete') : t('vimp.import_failed')}
                 </T>
               </Card>
               {report.created != null ? (
@@ -412,10 +422,10 @@ export default function VenueImportScreen({ navigation }) {
                   {report.failed > 0 ? <Row title={t('vimp.report_failed')} right={<T weight="800" color={c.red}>{String(report.failed)}</T>} /> : null}
                 </View>
               ) : null}
-              <Btn title={t('vimp.done')} onPress={() => navigation.navigate('VenueWorkspace')} accessibilityLabel={t('vimp.done')} />
+              <Btn title={t('vimp.done')} onPress={() => nav.back()} accessibilityLabel={t('vimp.done')} />
               {report.project?.status === 'completed' && daysFromNow(report.project?.completed_at) <= 2 ? (
                 <Btn title={t('vimp.rollback')} color={c.paper} ink={c.red} onPress={async () => {
-                  try { await api.post(`/venue-imports/${projectId}/rollback`); toast(t('vimp.rolled_back')); navigation.goBack(); } catch (e) { toast(e.message); }
+                  try { await api.post(`/venue-imports/${projectId}/rollback`); toast(t('vimp.rolled_back')); nav.back(); } catch (e) { toast(e.message); }
                 }} accessibilityLabel={t('vimp.rollback')} />
               ) : null}
             </View>
