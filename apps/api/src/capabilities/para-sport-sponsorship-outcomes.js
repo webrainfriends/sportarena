@@ -433,7 +433,7 @@ cap({
           body: decrypt(s.body_enc, 'para_story_sections.body'),
           sort_order: s.sort_order,
         })),
-        privacy_notice: 'This story was shared by the athlete with their explicit, versioned consent. It may not be used for any purpose beyond this programme's impact reporting.',
+        privacy_notice: 'This story was shared by the athlete with their explicit, versioned consent. It may not be used for any purpose beyond this programme\'s impact reporting.',
       };
     });
   },
@@ -461,8 +461,9 @@ cap({
 
       // Enrolled athletes (use sponsorship agreements for this programme)
       const { rows: enrolledRows } = await c.query(
-        `SELECT COUNT(DISTINCT a.athlete_id)::int AS cnt
+        `SELECT COUNT(DISTINCT ap.target_id)::int AS cnt
            FROM sponsorship_awards a
+           JOIN sponsorship_applications ap ON ap.id = a.application_id AND ap.target_type = 'athlete'
           WHERE a.program_id = $1 AND a.status = 'accepted'`,
         [i.programme_id],
       );
@@ -657,14 +658,14 @@ cap({
       // Exclusion manifest: count screened records per category
       const { rows: exRows } = await c.query(
         `SELECT
-           (SELECT COUNT(*)::int FROM para_cases pc JOIN sponsorships s ON s.recipient_entity_id = (SELECT entity_id FROM users WHERE id=pc.athlete_id) WHERE s.id = ANY($1)) AS classification_evidence_screened,
+           (SELECT COUNT(*)::int FROM para_cases pc JOIN sponsorships s ON s.target_type = 'athlete' AND s.target_id = pc.athlete_id WHERE s.id = ANY($1)) AS classification_evidence_screened,
            0 AS disability_diagnoses_screened,
            0 AS medical_files_screened,
            0 AS private_accessibility_requests_screened,
            0 AS youth_pii_unmasked_screened,
            0 AS protected_participants_screened,
            0 AS clinical_notes_screened`,
-        [i.sponsorship_ids], c,
+        [i.sponsorship_ids],
       );
       const ex = exRows[0] ?? {};
 
