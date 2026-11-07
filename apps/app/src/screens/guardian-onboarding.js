@@ -8,7 +8,7 @@ import { useSession } from '../session';
 import { useNav } from '../nav';
 import { useLayout } from '../layout';
 import { FormSheet } from '../FormSheet';
-import { Avatar, Btn, Card, Chip, Empty, ErrorBox, H2, HScroll, Loading, Row, Screen, Section, T, Tag } from '../ui';
+import { Avatar, Btn, Card, Chip, Empty, ErrorBox, Field, H2, HScroll, Loading, Row, Screen, Section, T, Tag } from '../ui';
 import { c, r } from '../theme';
 import { t } from '../i18n';
 
@@ -199,9 +199,49 @@ export function GuardianOnboarding({ onDone }) {
   );
 }
 
+function BulkCoGuardianSheet({ children, onClose }) {
+  const [handle, setHandle] = useState('');
+  const [selected, setSelected] = useState(children.map((c) => c.id));
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState(null);
+  const [done, setDone] = useState(null);
+  const toggleChild = (id) => setSelected((s) => s.includes(id) ? s.filter((x) => x !== id) : [...s, id]);
+  const submit = async () => {
+    if (!handle.trim() || !selected.length) return;
+    setBusy(true); setErr(null);
+    try {
+      const res = await api.post('/me/bulk-co-guardian-invite', { handle: handle.trim(), child_ids: selected });
+      setDone(res);
+    } catch (e) { setErr(e); } finally { setBusy(false); }
+  };
+  if (done) return (
+    <View style={{ gap: 12, padding: 16 }}>
+      <T weight="800" size={18}>{t('gob.bulk_invite.sent_title')}</T>
+      <T color={c.mute}>{t('gob.bulk_invite.sent_sub', { n: done.invited })}</T>
+      {done.already_linked > 0 && <T size={12} color={c.mute}>{t('gob.bulk_invite.already_linked', { n: done.already_linked })}</T>}
+      <Btn title={t('gob.bulk_invite.close')} color={c.pink} onPress={onClose} />
+    </View>
+  );
+  return (
+    <View style={{ gap: 14, padding: 16 }}>
+      <T weight="800" size={18}>{t('gob.bulk_invite.title')}</T>
+      <T color={c.mute}>{t('gob.bulk_invite.sub')}</T>
+      <Field label={t('gob.bulk_invite.handle_label')} value={handle} onChangeText={setHandle}
+        placeholder="@handle" autoCapitalize="none" returnKeyType="done" />
+      <T weight="700" style={{ marginBottom: -4 }}>{t('gob.bulk_invite.select_children')}</T>
+      {children.map((ch) => (
+        <Chip key={ch.id} label={ch.display_name} active={selected.includes(ch.id)} onPress={() => toggleChild(ch.id)} />
+      ))}
+      {err && <ErrorBox error={err} />}
+      <Btn title={busy ? t('gob.bulk_invite.sending') : t('gob.bulk_invite.cta')} color={c.pink} disabled={busy || !handle.trim() || !selected.length} onPress={submit} />
+    </View>
+  );
+}
+
 export function ManagedChildrenList({ onAddChild }) {
   const L = useLayout();
   const { push } = useNav();
+  const [inviteOpen, setInviteOpen] = useState(false);
   const q = useLoad(() => api.get('/me/managed-children'), []);
 
   if (q.loading && !q.data) return <Loading />;
@@ -242,6 +282,13 @@ export function ManagedChildrenList({ onAddChild }) {
           )}
         </Card>
       </View>
+      {children.length > 0 && (
+        <Btn title={t('gob.bulk_invite.open')} color={c.paper} ink={c.pink} style={{ marginTop: 8 }}
+          accessibilityLabel={t('gob.bulk_invite.open')} onPress={() => setInviteOpen(true)} />
+      )}
+      <FormSheet visible={inviteOpen} onClose={() => setInviteOpen(false)}>
+        <BulkCoGuardianSheet children={children} onClose={() => setInviteOpen(false)} />
+      </FormSheet>
     </Section>
   );
 }
