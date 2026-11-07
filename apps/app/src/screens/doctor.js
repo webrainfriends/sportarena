@@ -200,11 +200,13 @@ function ReferralInbox() {
 
 // ---------- Patient file ----------
 
-const SECTIONS = [{ value: 'encounters', label: 'Encounters', emoji: '📝' }, { value: 'context', label: 'Allergies & meds', emoji: '💊' }, { value: 'plans', label: 'Care plans', emoji: '🗂️' }, { value: 'results', label: 'Results', emoji: '🧪' }, { value: 'referrals', label: 'Referrals', emoji: '↗️' }, { value: 'clearance', label: 'Fit to play', emoji: '✅' }];
+const SECTIONS = [{ value: 'encounters', label: 'Encounters', emoji: '📝' }, { value: 'context', label: 'Allergies & meds', emoji: '💊' }, { value: 'plans', label: 'Care plans', emoji: '🗂️' }, { value: 'results', label: 'Results', emoji: '🧪' }, { value: 'referrals', label: 'Referrals', emoji: '↗️' }, { value: 'clearance', label: 'Fit to play', emoji: '✅' }, { value: 'episodes', label: 'Injuries', emoji: '🩺' }];
 
 function PatientFile({ athlete, onBack }) {
   const [sec, setSec] = useState(athlete.section ?? 'encounters');
-  const Body = { encounters: Encounters, context: Context, plans: Plans, results: Results, referrals: PatientReferrals, clearance: Clearance }[sec];
+  const { InjuryEpisodeEntry } = require('./injury-episode');
+  const episodes = (id) => <InjuryEpisodeEntry athleteId={id} athleteName={athlete.name} />;
+  const Body = { encounters: Encounters, context: Context, plans: Plans, results: Results, referrals: PatientReferrals, clearance: Clearance, episodes: ({ id }) => episodes(id) }[sec];
   return (
     <Screen>
       <Btn small title="‹ All patients" color={c.paper} ink={c.ink} onPress={onBack} style={{ alignSelf: 'flex-start' }} />

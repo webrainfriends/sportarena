@@ -14896,4 +14896,40 @@ export default {
   'account.lang_reviewed': 'مقامی زبان کا جائزہ لیا گیا', // machine-drafted
   'account.lang_draft': 'مشینی ترجمہ', // machine-drafted
   'account.lang_format_preview': 'فارمیٹ پیش نظارہ', // machine-drafted
+  // Injury episode & RTP
+  'inj.episode_title': 'چوٹ کا واقعہ', // machine-drafted
+  'inj.open_episode': 'واقعہ کھولیں', // machine-drafted
+  'inj.new_episode': 'نئی چوٹ کا واقعہ', // machine-drafted
+  'inj.episode_ref': 'واقعہ حوالہ', // machine-drafted
+  'inj.status.active': 'فعال', // machine-drafted
+  'inj.status.rehabilitation': 'بحالی', // machine-drafted
+  'inj.status.restricted_training': 'محدود تربیت', // machine-drafted
+  'inj.status.return_to_train': 'تربیت پر واپسی', // machine-drafted
+  'inj.status.return_to_play': 'کھیل پر واپسی', // machine-drafted
+  'inj.status.closed': 'بند', // machine-drafted
+  'inj.status.cancelled': 'منسوخ', // machine-drafted
+  'inj.body_region': 'جسم کا حصہ', // machine-drafted
+  'inj.mechanism': 'طریقہ کار', // machine-drafted
+  'inj.severity': 'شدت', // machine-drafted
+  'inj.expected_return': 'متوقع واپسی', // machine-drafted
+  'inj.actual_return': 'حقیقی واپسی', // machine-drafted
+  'inj.occurred_on': 'چوٹ کی تاریخ', // machine-drafted
+  'inj.is_recurrence': 'دوبارہ واقعہ', // machine-drafted
+  'inj.athlete_phase.recovery': 'صحت یابی', // machine-drafted
+  'inj.athlete_phase.rehab': 'بحالی', // machine-drafted
+  'inj.athlete_phase.limited_training': 'محدود تربیت', // machine-drafted
+  'inj.athlete_phase.back_to_training': 'تربیت پر واپس', // machine-drafted
+  'inj.athlete_phase.cleared_to_play': 'کھیلنے کی اجازت', // machine-drafted
+  'inj.coach_no_detail': 'طبی تفصیلات نجی ہیں۔ ٹیم کے طبی عملے کے ذریعے انتظام کیا جاتا ہے۔', // machine-drafted
+  'inj.coach_status': 'چوٹ کی حالت', // machine-drafted
+  'inj.impact_title': 'چھوٹے ہوئے سیشن اور میچ', // machine-drafted
+  'inj.impact_add': 'چھوٹے ہوئے سیشن ریکارڈ کریں', // machine-drafted
+  'rtp.protocol_title': 'کھیل پر واپسی کا پروٹوکول', // machine-drafted
+  'rtp.milestone_title': 'سنگ میل', // machine-drafted
+  'rtp.issue_rtt': 'تربیت پر واپسی کی اجازت دیں', // machine-drafted
+  'rtp.issue_rtp': 'کھیل پر واپسی کی اجازت دیں', // machine-drafted
+  'rtp.load_restrictions': 'بوجھ کی پابندیاں', // machine-drafted
+  'rtp.coach_view_notice': 'کوچز صرف منظوری کی حالت اور بوجھ کی پابندیاں دیکھتے ہیں — کوئی طبی تفصیل کبھی شیئر نہیں کی جاتی۔', // machine-drafted
+  'rtp.approval_valid_until': 'تک درست', // machine-drafted
+  'rtp.mark_achieved': 'حاصل کے طور پر نشان زد کریں', // machine-drafted
 };

@@ -14894,4 +14894,40 @@ export default {
   'account.lang_reviewed': 'മാതൃഭാഷ അവലോകനം ചെയ്തത്', // machine-drafted
   'account.lang_draft': 'മെഷീൻ ഡ്രാഫ്റ്റ്', // machine-drafted
   'account.lang_format_preview': 'ഫോർമാറ്റ് പ്രിവ്യൂ', // machine-drafted
+  // Injury episode & RTP
+  'inj.episode_title': 'പരിക്ക് എപ്പിസോഡ്', // machine-drafted
+  'inj.open_episode': 'എപ്പിസോഡ് തുറക്കുക', // machine-drafted
+  'inj.new_episode': 'പുതിയ പരിക്ക് എപ്പിസോഡ്', // machine-drafted
+  'inj.episode_ref': 'എപ്പിസോഡ് റഫറൻസ്', // machine-drafted
+  'inj.status.active': 'സജീവം', // machine-drafted
+  'inj.status.rehabilitation': 'പുനരധിവാസം', // machine-drafted
+  'inj.status.restricted_training': 'നിയന്ത്രിത പരിശീലനം', // machine-drafted
+  'inj.status.return_to_train': 'പരിശീലനത്തിലേക്ക് മടങ്ങൽ', // machine-drafted
+  'inj.status.return_to_play': 'കളിക്കുന്നതിലേക്ക് മടങ്ങൽ', // machine-drafted
+  'inj.status.closed': 'അടച്ചു', // machine-drafted
+  'inj.status.cancelled': 'റദ്ദാക്കി', // machine-drafted
+  'inj.body_region': 'ശരീര ഭാഗം', // machine-drafted
+  'inj.mechanism': 'സംവിധാനം', // machine-drafted
+  'inj.severity': 'തീവ്രത', // machine-drafted
+  'inj.expected_return': 'പ്രതീക്ഷിത തിരിച്ചുവരവ്', // machine-drafted
+  'inj.actual_return': 'യഥാർത്ഥ തിരിച്ചുവരവ്', // machine-drafted
+  'inj.occurred_on': 'പരിക്ക് തീയതി', // machine-drafted
+  'inj.is_recurrence': 'ആവർത്തനം', // machine-drafted
+  'inj.athlete_phase.recovery': 'സുഖം പ്രാപിക്കൽ', // machine-drafted
+  'inj.athlete_phase.rehab': 'പുനരധിവാസം', // machine-drafted
+  'inj.athlete_phase.limited_training': 'പരിമിത പരിശീലനം', // machine-drafted
+  'inj.athlete_phase.back_to_training': 'പരിശീലനത്തിലേക്ക് തിരിച്ച്', // machine-drafted
+  'inj.athlete_phase.cleared_to_play': 'കളിക്കാൻ അനുമതി', // machine-drafted
+  'inj.coach_no_detail': 'ക്ലിനിക്കൽ വിവരങ്ങൾ സ്വകാര്യമാണ്. ടീം മെഡിക്കൽ ജീവനക്കാർ നിയന്ത്രിക്കുന്നു.', // machine-drafted
+  'inj.coach_status': 'പരിക്ക് സ്ഥിതി', // machine-drafted
+  'inj.impact_title': 'നഷ്ടപ്പെട്ട സെഷനുകളും മത്സരങ്ങളും', // machine-drafted
+  'inj.impact_add': 'നഷ്ടപ്പെട്ട സെഷൻ രേഖപ്പെടുത്തുക', // machine-drafted
+  'rtp.protocol_title': 'കളിക്കുന്നതിലേക്ക് മടങ്ങൽ പ്രോട്ടോക്കോൾ', // machine-drafted
+  'rtp.milestone_title': 'നാഴികക്കല്ല്', // machine-drafted
+  'rtp.issue_rtt': 'പരിശീലനത്തിലേക്ക് മടങ്ങൽ അനുവദിക്കുക', // machine-drafted
+  'rtp.issue_rtp': 'കളിക്കുന്നതിലേക്ക് മടങ്ങൽ അനുവദിക്കുക', // machine-drafted
+  'rtp.load_restrictions': 'ലോഡ് നിയന്ത്രണങ്ങൾ', // machine-drafted
+  'rtp.coach_view_notice': 'കോച്ചുകൾ ക്ലിയറൻസ് സ്ഥിതി, ലോഡ് നിയന്ത്രണങ്ങൾ മാത്രം കാണുന്നു — ക്ലിനിക്കൽ വിവരങ്ങൾ ഒരിക്കലും പങ്കിടില്ല.', // machine-drafted
+  'rtp.approval_valid_until': 'വരെ സാധുത', // machine-drafted
+  'rtp.mark_achieved': 'നേടിയതായി അടയാളപ്പെടുത്തുക', // machine-drafted
 };

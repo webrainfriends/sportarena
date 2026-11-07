@@ -14894,4 +14894,40 @@ export default {
   'account.lang_reviewed': 'ಸ್ಥಳೀಯ ಭಾಷಾ ಪರಿಶೀಲಿಸಲಾಗಿದೆ', // machine-drafted
   'account.lang_draft': 'ಯಂತ್ರ ಅನುವಾದ', // machine-drafted
   'account.lang_format_preview': 'ಸ್ವರೂಪ ಪೂರ್ವಾವಲೋಕನ', // machine-drafted
+  // Injury episode & RTP
+  'inj.episode_title': 'ಗಾಯದ ಘಟನೆ', // machine-drafted
+  'inj.open_episode': 'ಘಟನೆ ತೆರೆಯಿರಿ', // machine-drafted
+  'inj.new_episode': 'ಹೊಸ ಗಾಯದ ಘಟನೆ', // machine-drafted
+  'inj.episode_ref': 'ಘಟನೆ ಉಲ್ಲೇಖ', // machine-drafted
+  'inj.status.active': 'ಸಕ್ರಿಯ', // machine-drafted
+  'inj.status.rehabilitation': 'ಪುನರ್ವಸತಿ', // machine-drafted
+  'inj.status.restricted_training': 'ನಿರ್ಬಂಧಿತ ತರಬೇತಿ', // machine-drafted
+  'inj.status.return_to_train': 'ತರಬೇತಿಗೆ ಮರಳಿ', // machine-drafted
+  'inj.status.return_to_play': 'ಆಟಕ್ಕೆ ಮರಳಿ', // machine-drafted
+  'inj.status.closed': 'ಮುಚ್ಚಲಾಗಿದೆ', // machine-drafted
+  'inj.status.cancelled': 'ರದ್ದುಪಡಿಸಲಾಗಿದೆ', // machine-drafted
+  'inj.body_region': 'ದೇಹದ ಪ್ರದೇಶ', // machine-drafted
+  'inj.mechanism': 'ಕಾರ್ಯವಿಧಾನ', // machine-drafted
+  'inj.severity': 'ತೀವ್ರತೆ', // machine-drafted
+  'inj.expected_return': 'ನಿರೀಕ್ಷಿತ ಮರಳುವಿಕೆ', // machine-drafted
+  'inj.actual_return': 'ನಿಜವಾದ ಮರಳುವಿಕೆ', // machine-drafted
+  'inj.occurred_on': 'ಗಾಯದ ದಿನಾಂಕ', // machine-drafted
+  'inj.is_recurrence': 'ಮರುಕಳಿಕೆ', // machine-drafted
+  'inj.athlete_phase.recovery': 'ಚೇತರಿಕೆ', // machine-drafted
+  'inj.athlete_phase.rehab': 'ಪುನರ್ವಸತಿ', // machine-drafted
+  'inj.athlete_phase.limited_training': 'ಸೀಮಿತ ತರಬೇತಿ', // machine-drafted
+  'inj.athlete_phase.back_to_training': 'ತರಬೇತಿಗೆ ಹಿಂತಿರುಗಿ', // machine-drafted
+  'inj.athlete_phase.cleared_to_play': 'ಆಟಕ್ಕೆ ಅನುಮತಿ', // machine-drafted
+  'inj.coach_no_detail': 'ವೈದ್ಯಕೀಯ ವಿವರಗಳು ಖಾಸಗಿ. ತಂಡದ ವೈದ್ಯಕೀಯ ಸಿಬ್ಬಂದಿ ನಿರ್ವಹಿಸುತ್ತಾರೆ.', // machine-drafted
+  'inj.coach_status': 'ಗಾಯದ ಸ್ಥಿತಿ', // machine-drafted
+  'inj.impact_title': 'ತಪ್ಪಿದ ಸೆಷನ್ ಮತ್ತು ಪಂದ್ಯಗಳು', // machine-drafted
+  'inj.impact_add': 'ತಪ್ಪಿದ ಸೆಷನ್ ದಾಖಲಿಸಿ', // machine-drafted
+  'rtp.protocol_title': 'ಆಟಕ್ಕೆ ಮರಳುವ ಪ್ರೋಟೋಕಾಲ್', // machine-drafted
+  'rtp.milestone_title': 'ಮೈಲ್‌ಸ್ಟೋನ್', // machine-drafted
+  'rtp.issue_rtt': 'ತರಬೇತಿಗೆ ಮರಳಲು ಅನುಮತಿ ನೀಡಿ', // machine-drafted
+  'rtp.issue_rtp': 'ಆಟಕ್ಕೆ ಮರಳಲು ಅನುಮತಿ ನೀಡಿ', // machine-drafted
+  'rtp.load_restrictions': 'ಲೋಡ್ ನಿರ್ಬಂಧಗಳು', // machine-drafted
+  'rtp.coach_view_notice': 'ಕೋಚ್‌ಗಳು ಕ್ಲಿಯರೆನ್ಸ್ ಸ್ಥಿತಿ ಮತ್ತು ಲೋಡ್ ನಿರ್ಬಂಧಗಳನ್ನು ಮಾತ್ರ ನೋಡುತ್ತಾರೆ — ಯಾವುದೇ ವೈದ್ಯಕೀಯ ವಿವರ ಹಂಚಿಕೊಳ್ಳಲಾಗುವುದಿಲ್ಲ.', // machine-drafted
+  'rtp.approval_valid_until': 'ವರೆಗೆ ಮಾನ್ಯ', // machine-drafted
+  'rtp.mark_achieved': 'ಸಾಧಿಸಲಾಗಿದೆ ಎಂದು ಗುರುತಿಸಿ', // machine-drafted
 };

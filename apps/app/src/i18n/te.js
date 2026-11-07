@@ -14894,4 +14894,40 @@ export default {
   'account.lang_reviewed': 'స్థానిక భాషా సమీక్షించబడింది', // machine-drafted
   'account.lang_draft': 'యంత్రం అనువాదం', // machine-drafted
   'account.lang_format_preview': 'ఆకృతి పూర్వచూపు', // machine-drafted
+  // Injury episode & RTP
+  'inj.episode_title': 'గాయపు ఘటన', // machine-drafted
+  'inj.open_episode': 'ఘటన తెరవండి', // machine-drafted
+  'inj.new_episode': 'కొత్త గాయపు ఘటన', // machine-drafted
+  'inj.episode_ref': 'ఘటన సూచన', // machine-drafted
+  'inj.status.active': 'చురుకు', // machine-drafted
+  'inj.status.rehabilitation': 'పునరావాసం', // machine-drafted
+  'inj.status.restricted_training': 'పరిమిత శిక్షణ', // machine-drafted
+  'inj.status.return_to_train': 'శిక్షణకు తిరిగి', // machine-drafted
+  'inj.status.return_to_play': 'ఆటకు తిరిగి', // machine-drafted
+  'inj.status.closed': 'మూసివేయబడింది', // machine-drafted
+  'inj.status.cancelled': 'రద్దు', // machine-drafted
+  'inj.body_region': 'శరీర ప్రాంతం', // machine-drafted
+  'inj.mechanism': 'కారణం', // machine-drafted
+  'inj.severity': 'తీవ్రత', // machine-drafted
+  'inj.expected_return': 'ఆశించిన తిరిగి రాక', // machine-drafted
+  'inj.actual_return': 'వాస్తవ తిరిగి రాక', // machine-drafted
+  'inj.occurred_on': 'గాయపు తేదీ', // machine-drafted
+  'inj.is_recurrence': 'పునరావృత్తి', // machine-drafted
+  'inj.athlete_phase.recovery': 'కోలుకోవడం', // machine-drafted
+  'inj.athlete_phase.rehab': 'పునరావాసం', // machine-drafted
+  'inj.athlete_phase.limited_training': 'పరిమిత శిక్షణ', // machine-drafted
+  'inj.athlete_phase.back_to_training': 'శిక్షణకు తిరిగి', // machine-drafted
+  'inj.athlete_phase.cleared_to_play': 'ఆడటానికి అనుమతి', // machine-drafted
+  'inj.coach_no_detail': 'వైద్య వివరాలు ప్రైవేట్. జట్టు వైద్య సిబ్బంది నిర్వహిస్తారు.', // machine-drafted
+  'inj.coach_status': 'గాయపు స్థితి', // machine-drafted
+  'inj.impact_title': 'తప్పిపోయిన సెషన్లు మరియు మ్యాచ్‌లు', // machine-drafted
+  'inj.impact_add': 'తప్పిపోయిన సెషన్ నమోదు చేయండి', // machine-drafted
+  'rtp.protocol_title': 'ఆటకు తిరిగి రావడానికి ప్రోటోకాల్', // machine-drafted
+  'rtp.milestone_title': 'మైల్‌స్టోన్', // machine-drafted
+  'rtp.issue_rtt': 'శిక్షణకు తిరిగి అనుమతి ఇవ్వండి', // machine-drafted
+  'rtp.issue_rtp': 'ఆటకు తిరిగి అనుమతి ఇవ్వండి', // machine-drafted
+  'rtp.load_restrictions': 'లోడ్ పరిమితులు', // machine-drafted
+  'rtp.coach_view_notice': 'కోచ్‌లు క్లియరెన్స్ స్థితి మరియు లోడ్ పరిమితులు మాత్రమే చూస్తారు — వైద్య వివరాలు ఎప్పుడూ పంచుకోబడవు.', // machine-drafted
+  'rtp.approval_valid_until': 'వరకు చెల్లుబడి', // machine-drafted
+  'rtp.mark_achieved': 'సాధించినట్లు గుర్తించండి', // machine-drafted
 };

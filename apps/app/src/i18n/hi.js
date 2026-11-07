@@ -14896,4 +14896,40 @@ export default {
   'account.lang_reviewed': 'मूल भाषी समीक्षित', // machine-drafted
   'account.lang_draft': 'मशीन अनुवादित', // machine-drafted
   'account.lang_format_preview': 'फ़ॉर्मेट पूर्वावलोकन', // machine-drafted
+  // Injury episode & RTP
+  'inj.episode_title': 'चोट का प्रकरण', // machine-drafted
+  'inj.open_episode': 'प्रकरण खोलें', // machine-drafted
+  'inj.new_episode': 'नया चोट प्रकरण', // machine-drafted
+  'inj.episode_ref': 'प्रकरण संदर्भ', // machine-drafted
+  'inj.status.active': 'सक्रिय', // machine-drafted
+  'inj.status.rehabilitation': 'पुनर्वास', // machine-drafted
+  'inj.status.restricted_training': 'प्रतिबंधित प्रशिक्षण', // machine-drafted
+  'inj.status.return_to_train': 'प्रशिक्षण पर वापसी', // machine-drafted
+  'inj.status.return_to_play': 'खेल पर वापसी', // machine-drafted
+  'inj.status.closed': 'बंद', // machine-drafted
+  'inj.status.cancelled': 'रद्द', // machine-drafted
+  'inj.body_region': 'शरीर का क्षेत्र', // machine-drafted
+  'inj.mechanism': 'तंत्र', // machine-drafted
+  'inj.severity': 'गंभीरता', // machine-drafted
+  'inj.expected_return': 'अपेक्षित वापसी', // machine-drafted
+  'inj.actual_return': 'वास्तविक वापसी', // machine-drafted
+  'inj.occurred_on': 'चोट की तारीख', // machine-drafted
+  'inj.is_recurrence': 'पुनरावृत्ति', // machine-drafted
+  'inj.athlete_phase.recovery': 'स्वास्थ्य लाभ', // machine-drafted
+  'inj.athlete_phase.rehab': 'पुनर्वास', // machine-drafted
+  'inj.athlete_phase.limited_training': 'सीमित प्रशिक्षण', // machine-drafted
+  'inj.athlete_phase.back_to_training': 'प्रशिक्षण पर वापस', // machine-drafted
+  'inj.athlete_phase.cleared_to_play': 'खेलने की अनुमति', // machine-drafted
+  'inj.coach_no_detail': 'नैदानिक विवरण निजी है। टीम के चिकित्सा कर्मचारियों द्वारा प्रबंधित।', // machine-drafted
+  'inj.coach_status': 'चोट की स्थिति', // machine-drafted
+  'inj.impact_title': 'अनुपस्थित सत्र और मैच', // machine-drafted
+  'inj.impact_add': 'अनुपस्थित सत्र दर्ज करें', // machine-drafted
+  'rtp.protocol_title': 'खेल पर वापसी प्रोटोकॉल', // machine-drafted
+  'rtp.milestone_title': 'मील का पत्थर', // machine-drafted
+  'rtp.issue_rtt': 'प्रशिक्षण पर वापसी जारी करें', // machine-drafted
+  'rtp.issue_rtp': 'खेल पर वापसी जारी करें', // machine-drafted
+  'rtp.load_restrictions': 'लोड प्रतिबंध', // machine-drafted
+  'rtp.coach_view_notice': 'कोच केवल निकासी स्थिति और लोड प्रतिबंध देख सकते हैं — कोई नैदानिक विवरण साझा नहीं किया जाता।', // machine-drafted
+  'rtp.approval_valid_until': 'तक वैध', // machine-drafted
+  'rtp.mark_achieved': 'प्राप्त के रूप में चिह्नित करें', // machine-drafted
 };

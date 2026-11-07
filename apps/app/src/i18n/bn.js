@@ -15022,4 +15022,40 @@ export default {
   'account.lang_reviewed': 'স্থানীয় ভাষা পর্যালোচিত', // machine-drafted
   'account.lang_draft': 'মেশিন অনুবাদিত', // machine-drafted
   'account.lang_format_preview': 'বিন্যাস পূর্বরূপ', // machine-drafted
+  // Injury episode & RTP
+  'inj.episode_title': 'আঘাতের ঘটনা', // machine-drafted
+  'inj.open_episode': 'ঘটনা খুলুন', // machine-drafted
+  'inj.new_episode': 'নতুন আঘাতের ঘটনা', // machine-drafted
+  'inj.episode_ref': 'ঘটনার রেফারেন্স', // machine-drafted
+  'inj.status.active': 'সক্রিয়', // machine-drafted
+  'inj.status.rehabilitation': 'পুনর্বাসন', // machine-drafted
+  'inj.status.restricted_training': 'সীমাবদ্ধ প্রশিক্ষণ', // machine-drafted
+  'inj.status.return_to_train': 'প্রশিক্ষণে ফিরুন', // machine-drafted
+  'inj.status.return_to_play': 'খেলায় ফিরুন', // machine-drafted
+  'inj.status.closed': 'বন্ধ', // machine-drafted
+  'inj.status.cancelled': 'বাতিল', // machine-drafted
+  'inj.body_region': 'শরীরের অংশ', // machine-drafted
+  'inj.mechanism': 'কারণ', // machine-drafted
+  'inj.severity': 'তীব্রতা', // machine-drafted
+  'inj.expected_return': 'প্রত্যাশিত প্রত্যাবর্তন', // machine-drafted
+  'inj.actual_return': 'প্রকৃত প্রত্যাবর্তন', // machine-drafted
+  'inj.occurred_on': 'আঘাতের তারিখ', // machine-drafted
+  'inj.is_recurrence': 'পুনরাবৃত্তি', // machine-drafted
+  'inj.athlete_phase.recovery': 'পুনরুদ্ধার', // machine-drafted
+  'inj.athlete_phase.rehab': 'পুনর্বাসন', // machine-drafted
+  'inj.athlete_phase.limited_training': 'সীমিত প্রশিক্ষণ', // machine-drafted
+  'inj.athlete_phase.back_to_training': 'প্রশিক্ষণে ফিরে', // machine-drafted
+  'inj.athlete_phase.cleared_to_play': 'খেলার অনুমতি', // machine-drafted
+  'inj.coach_no_detail': 'ক্লিনিকাল বিবরণ ব্যক্তিগত। দলের চিকিৎসা কর্মীরা পরিচালনা করেন।', // machine-drafted
+  'inj.coach_status': 'আঘাতের অবস্থা', // machine-drafted
+  'inj.impact_title': 'অনুপস্থিত সেশন ও ম্যাচ', // machine-drafted
+  'inj.impact_add': 'অনুপস্থিত সেশন রেকর্ড করুন', // machine-drafted
+  'rtp.protocol_title': 'খেলায় প্রত্যাবর্তন প্রোটোকল', // machine-drafted
+  'rtp.milestone_title': 'মাইলফলক', // machine-drafted
+  'rtp.issue_rtt': 'প্রশিক্ষণে ফিরতে অনুমতি দিন', // machine-drafted
+  'rtp.issue_rtp': 'খেলায় ফিরতে অনুমতি দিন', // machine-drafted
+  'rtp.load_restrictions': 'লোড সীমাবদ্ধতা', // machine-drafted
+  'rtp.coach_view_notice': 'কোচরা শুধুমাত্র ছাড়পত্রের অবস্থা এবং লোড সীমাবদ্ধতা দেখতে পান — কোনো ক্লিনিকাল বিবরণ ভাগ করা হয় না।', // machine-drafted
+  'rtp.approval_valid_until': 'বৈধ পর্যন্ত', // machine-drafted
+  'rtp.mark_achieved': 'অর্জিত হিসেবে চিহ্নিত করুন', // machine-drafted
 };
