@@ -18,6 +18,7 @@ import { locale } from '../locale';
 import { Bars, Block, Initials, Kpi } from './academy-ui';
 import { isOffline, newKey, flushQueue, dismissItem, queueHandover, useQueue } from '../pickup-queue';
 import { TransportBoardTab } from './academy-transport-board';
+import { SafeguardingDesk } from './academy-safeguarding';
 
 // ------------------------------------------------------------------------------------------------------------------ words
 const phaseInfo = () => ({
@@ -280,8 +281,9 @@ export function SafetyDesk({ o, role, toast }) {
       <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }} accessibilityRole="tablist">
         <Chip label={t('transport.pickupBoard')} active={mainTab === 'pickup'} onPress={() => setMainTab('pickup')} />
         <Chip label={t('transport.boardingBoard')} active={mainTab === 'transport'} onPress={() => setMainTab('transport')} />
+        <Chip label={t('sg.nav_cases')} active={mainTab === 'cases'} onPress={() => setMainTab('cases')} />
       </View>
-      {mainTab === 'transport' ? <TransportBoardTab o={o} toast={toast} /> : (
+      {mainTab === 'cases' ? <SafeguardingDesk o={o} role={role} toast={toast} /> : mainTab === 'transport' ? <TransportBoardTab o={o} toast={toast} /> : (
       <>{!ov.data && !ov.error ? <Loading /> : ov.error ? <LoadError error={ov.error} onRetry={ov.reload} /> : (() => {
       const d = ov.data, k = d.kpis;
       const anyLate = d.trend.some((x) => x.late_pickups > 0);
