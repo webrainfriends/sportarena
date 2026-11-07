@@ -400,8 +400,12 @@ export function RevenueIntelligenceCard({ d, go }) {
         title={t('ri.hub.open')}
         color={c.paper}
         accessibilityLabel={t('ri.hub.open')}
-        onPress={() => go('VenueRevenueIntelligence', { venueId: d.venue?.id })}
+        onPress={() => go({ route: 'VenueRevenueIntelligence', params: { venueId: d.venue?.id } })}
       />
+    </View>
+  );
+}
+
 /** Adaptive equipment summary for the venue hub: availability strip + quick CTA. */
 export function AdaptiveEquipmentSection({ venueId, go }) {
   const { data, loading } = useLoad(() => api.get(`/venues/${venueId}/adaptive-equipment/readiness`), [venueId]);

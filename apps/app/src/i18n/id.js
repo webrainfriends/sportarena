@@ -9895,6 +9895,7 @@ export default {
   'pk.r_too_many': 'Frasa sandi salah terlalu sering. Berhenti dan hubungi wali.',
   // Revenue Intelligence (ri.*) — machine-drafted, reviewed: false
   'ri.title': 'Intelijen Pendapatan',
+  'nav.title.VenueRevenueIntelligence': 'Intelijen Pendapatan',
   'ri.sub': 'Wawasan permintaan, harga, dan pemanfaatan untuk venue ini',
   'ri.tab.demand': 'Permintaan',
   'ri.tab.forecast': 'Prakiraan',
@@ -10010,7 +10011,7 @@ export default {
   'ri.settings.need_owner': 'Hanya pemilik venue yang dapat mengubah guardrail harga',
   'ri.hub.title': 'Intelijen Pendapatan',
   'ri.hub.sub': 'Permintaan \u00b7 Harga \u00b7 Prakiraan \u00b7 Eksperimen',
-  'ri.hub.open': 'Buka'
+  'ri.hub.open': 'Buka',
   // reviewed: false
   'cEdu.title': 'Pendidikan Pelatih',
   'cEdu.season': 'Musim Saat Ini',

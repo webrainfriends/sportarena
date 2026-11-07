@@ -9895,6 +9895,7 @@ export default {
   'pk.r_too_many': 'پاس فریز کئی بار غلط رہا۔ رک جائیں اور سرپرست کو کال کریں۔',
   // Revenue Intelligence (ri.*) — machine-drafted, reviewed: false
   'ri.title': 'Revenue Intelligence',
+  'nav.title.VenueRevenueIntelligence': 'Revenue Intelligence',
   'ri.sub': 'Demand, pricing and utilisation insights for this venue',
   'ri.tab.demand': 'Demand',
   'ri.tab.forecast': 'Forecast',
@@ -10010,7 +10011,7 @@ export default {
   'ri.settings.need_owner': 'Only venue owners can change pricing guardrails',
   'ri.hub.title': 'Revenue Intelligence',
   'ri.hub.sub': 'Demand \u00b7 Pricing \u00b7 Forecast \u00b7 Experiments',
-  'ri.hub.open': 'Open'
+  'ri.hub.open': 'Open',
   // reviewed: false
   'cEdu.title': 'کوچ تعلیم',
   'cEdu.season': 'موجودہ سیزن',
