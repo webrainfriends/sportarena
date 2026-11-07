@@ -90,6 +90,11 @@ export function Me() {
 
       <AddressBook toast={toast} />
 
+      <Section title={t('me.adaptiveLoans')} color={c.violet}>
+        <T size={13} color={c.mute}>{t('me.adaptiveLoans_sub')}</T>
+        <Btn small title={t('me.adaptiveLoans')} color={c.paper} ink={c.ink} onPress={() => push('MyAdaptiveLoans')} style={{ marginTop: 10 }} />
+      </Section>
+
       <SecuritySection />
       <TokensSection mcpUrl={MCP_URL} />
 

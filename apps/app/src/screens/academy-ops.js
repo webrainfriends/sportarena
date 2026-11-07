@@ -6,13 +6,16 @@ import { Platform, Pressable, ScrollView, View } from 'react-native';
 import { api } from '../api';
 import { useLoad } from '../hooks';
 import { useNav } from '../nav';
+import { t } from '../i18n';
 import { useLayout } from '../layout';
 import { explain, LoadError } from '../access';
-import { Btn, Card, Chip, Empty, Loading, Row, Seg, Sheet, T, Tag } from '../ui';
+import { Btn, Card, Chip, Empty, Field, Loading, Row, Seg, Sheet, T, Tag } from '../ui';
+import { DateRangeField } from '../pickers';
 import { FormSheet } from '../FormSheet';
 import { c } from '../theme';
 import { addDays, dateTimeIn, localToIso, moneyIn, timeIn, todayIn } from '../vtime';
 import { Block, Fact, Kpi } from './academy-ui';
+import { TransportTab } from './academy-transport';
 
 const uid = () => `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 10)}`;
 const LEVEL = { compliant: ['✓', 'Staffed'], warning: ['⚠', 'Needs attention'], blocked: ['⛔', 'Rule not met'] };
@@ -41,6 +44,7 @@ function SessionCard({ s, onAction, tz }) {
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
           <T weight="800" size={16} style={{ flex: 1 }}>{timeIn(s.starts_at, tz)} · {s.title}</T>
           <Tag label={PHASE[s.phase]} color={s.phase === 'current' ? c.lime : undefined} /><Tag label={`${icon} ${text}`} color={s.compliance.level === 'compliant' ? c.lime : s.compliance.level === 'blocked' ? c.orangeSoft : c.sunSoft} />
+          {s.readiness_level ? <Tag label={t(`incops.inclusion_${s.readiness_level}`)} color={s.readiness_level === 'ready' ? c.lime : s.readiness_level === 'attention' ? c.sunSoft : c.orangeSoft} accessibilityLabel={`Inclusion: ${s.readiness_level}`} /> : null}
           {s.status === 'draft' ? <Tag label="Draft" /> : null}
         </View>
         <T size={13} color={c.mute}>{s.cohort}{s.programme ? ` · ${s.programme}` : ''}{s.venue ? ` · 📍 ${s.venue.name}${s.venue.confirmed ? '' : ' (not confirmed)'}` : ' · no venue booked'}</T>
@@ -216,7 +220,7 @@ function StaffTab({ o, toast, admin, perms }) {
       {cover.data?.length ? <Block title={`Cover needed (${cover.data.length})`}>{cover.data.map((r) => <Row key={r.id} title={`${r.title}`} sub={`${dateTimeIn(r.starts_at, 'UTC')} · ${r.requester_name}${r.reason ? ` · ${r.reason}` : ''}`} right={<Btn small title="Find substitute" onPress={() => push('AcademySession', { id: r.session_id, tab: 'staff', find: true })} />} />)}</Block> : null}
       <Block title={`Staff (${staff.length})`} right={perms.includes('schedule') ? <Btn small title="＋ Roster a shift" color={c.paper} ink={c.ink} onPress={() => setShift(true)} /> : undefined}>
         {staff.map((p) => (
-          <Row key={p.user_id} title={`${p.display_name}${p.job_title ? ` · ${p.job_title}` : ''}`} sub={`${p.engagement_type ?? 'no engagement set'} · ${hrs(p.week_minutes)} this week${p.unconfirmed ? ` · ${p.unconfirmed} unconfirmed` : ''}${p.credential.coach_badge ? ` · ✓ coach credential${p.credential.coach_badge.expiring_soon ? ` (expires in ${p.credential.coach_badge.days_left} days)` : ''}` : ''}${p.credential.missing ? ' · ⚠ required credential missing' : ''}`}
+          <Row key={p.user_id} title={`${p.display_name}${p.job_title ? ` · ${p.job_title}` : ''}`} sub={`${p.engagement_type ?? 'no engagement set'} · ${hrs(p.week_minutes)} this week${p.unconfirmed ? ` · ${p.unconfirmed} unconfirmed` : ''}${p.credential.coach_badge ? ` · ✓ coach credential${p.credential.coach_badge.expiring_soon ? ` (expires in ${p.credential.coach_badge.days_left} days)` : ''}` : ''}${p.credential.missing ? ' · ⚠ required credential missing' : ''}${p.adaptive ? ` · ${t('adp.f_title')}: ${t(`adp.state_${p.adaptive.state}`)}` : ''}`}
             right={<View style={{ alignItems: 'flex-end', gap: 4 }}>{p.state && p.state !== 'active' ? <Tag label={p.state} color={c.orangeSoft} /> : null}<T size={11} color={c.mute}>{(p.permissions ?? []).map((x) => PERM_LABEL[x]).join(', ')}</T></View>}
             onPress={admin ? () => setEdit(p) : undefined} />
         ))}
@@ -306,6 +310,58 @@ function Terms({ o, toast }) {
   );
 }
 
+const CURRENCIES_COMMON = ['GBP', 'EUR', 'USD', 'AUD', 'INR', 'SGD', 'AED', 'LKR', 'IDR'];
+const PAY_STEPS = ['Period & Filters', 'Review & Confirm'];
+
+function NewPayrollWizard({ visible, onClose, o, onPreview, toast }) {
+  const [step, setStep] = useState(0);
+  const [busy, setBusy] = useState(false);
+  const [f, setF] = useState({ currency: 'GBP', from: undefined, to: undefined, notes: '' });
+  const set = (k, v) => setF((p) => ({ ...p, [k]: v }));
+  const can = [() => !!f.currency && !!f.from && !!f.to, () => true][step]();
+  const preview = async () => {
+    setBusy(true);
+    try {
+      const r = await api.post(`/organisations/${o.id}/academy/payroll`, { currency: f.currency, period_start: f.from, period_end: f.to, idempotency_key: uid() });
+      onPreview({ ...f, r, key: uid() }); onClose();
+    } catch (e) { toast(explain(e)); }
+    setBusy(false);
+  };
+  return (
+    <Sheet visible={visible} onClose={onClose} title="New Payroll Run">
+      <View style={{ flexDirection: 'row', gap: 6, marginBottom: 4 }}>
+        {PAY_STEPS.map((s, i) => (<View key={s} style={{ flex: 1, gap: 3 }}><View style={{ height: 4, borderRadius: 2, backgroundColor: i <= step ? c.pink : c.line }} /><T size={10} weight={i === step ? '800' : '500'} color={i === step ? c.ink : c.mute}>{s}</T></View>))}
+      </View>
+      {step === 0 ? (
+        <View style={{ gap: 14 }}>
+          <Card pad={12} color={c.sunSoft}><T size={12}>Each run covers exactly one currency and one pay period. It computes what the academy owes for all approved timesheets in that window; no money moves and no tax is deducted. Export it for your payroll or bank process.</T></Card>
+          <View style={{ gap: 6 }}><T size={12} weight="800" color={c.mute} style={{ letterSpacing: 0.5 }}>CURRENCY</T><View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>{CURRENCIES_COMMON.map((cur) => <Chip key={cur} label={cur} active={f.currency === cur} onPress={() => set('currency', cur)} />)}</View></View>
+          <DateRangeField label="Pay period" from={f.from} to={f.to} onChange={({ from, to }) => setF((p) => ({ ...p, from, to }))} hint="Start and end of the pay period — both dates inclusive." />
+          <Field label="Notes (optional)" value={f.notes} onChangeText={(x) => set('notes', x)} multiline placeholder="e.g. Includes overtime for competition week" />
+        </View>
+      ) : null}
+      {step === 1 ? (
+        <View style={{ gap: 14 }}>
+          <View style={{ borderWidth: 1, borderColor: c.line, borderRadius: 14, padding: 14, backgroundColor: c.paper, gap: 3 }}>
+            <T weight="800">Pay period: {f.from ?? '—'} → {f.to ?? '—'}</T>
+            <T size={12} color={c.mute}>Currency: {f.currency}</T>
+            <T size={12} color={c.mute}>Covers all staff with approved timesheets in this period and an active compensation term in {f.currency}.</T>
+          </View>
+          <Card pad={12} color={c.sunSoft}>
+            <T size={12} weight="800">What this run will NOT include</T>
+            <T size={12} color={c.mute} style={{ marginTop: 4 }}>{'• Timesheets not yet approved\n• Staff without a compensation term in ' + f.currency + '\n• Statutory deductions (tax, NI, pension)\n• Expense reimbursements'}</T>
+          </Card>
+          <T size={12} color={c.mute}>The next screen shows a full line-by-line preview. Nothing is saved until you confirm.</T>
+        </View>
+      ) : null}
+      <View style={{ flexDirection: 'row', gap: 8, marginTop: 4 }}>
+        {step > 0 ? <Btn title="Back" color={c.paper} ink={c.ink} onPress={() => setStep(step - 1)} style={{ flex: 1 }} /> : null}
+        {step < 1 ? <Btn title="Next" disabled={!can} onPress={() => setStep(step + 1)} style={{ flex: 2 }} /> : <Btn title="Preview payroll" loading={busy} onPress={preview} style={{ flex: 2 }} />}
+      </View>
+    </Sheet>
+  );
+}
+
 function Payroll({ o, toast }) {
   const d = useLoad(() => api.get(`/organisations/${o.id}/academy/payroll`), [o.id]);
   const [make, setMake] = useState(false), [prev, setPrev] = useState(null), [run, setRun] = useState(null), [csv, setCsv] = useState(null), [busy, setBusy] = useState(false);
@@ -317,8 +373,7 @@ function Payroll({ o, toast }) {
       <Btn small title="＋ New payroll run" onPress={() => setMake(true)} style={{ alignSelf: 'flex-start' }} />
       <Card pad={12} color={c.sunSoft}><T size={12}>A run is a statement of what the academy owes for approved work, per period and currency. It moves no money and does not calculate tax, pension or other statutory deductions: export it for your payroll or bank process.</T></Card>
       {!d.data ? <Loading /> : d.data.length ? d.data.map((r) => <Row key={r.id} title={`${String(r.period_start).slice(0, 10)} → ${String(r.period_end).slice(0, 10)} · ${r.currency}`} sub={`${r.people} people · ${r.status}`} right={<T weight="800">{moneyIn(r.total_minor, r.currency)}</T>} onPress={() => open(r.id)} />) : <Empty emoji="🧾" title="No payroll runs yet" sub="Approve timesheets and add compensation terms, then create a run." />}
-      <FormSheet visible={make} onClose={() => setMake(false)} title="New payroll run" submitLabel="Preview" fields={[{ key: 'currency', label: 'Currency (one per run)', type: 'currency' }, { key: 'from', label: 'Period', type: 'daterange', toKey: 'to' }]}
-        onSubmit={async (v) => { const r = await api.post(`/organisations/${o.id}/academy/payroll`, { currency: v.currency, period_start: v.from, period_end: v.to, idempotency_key: uid() }); setPrev({ ...v, r, key: uid() }); return 'Preview ready'; }} />
+      <NewPayrollWizard visible={make} onClose={() => setMake(false)} o={o} onPreview={(p) => setPrev(p)} toast={toast} />
       <Sheet visible={!!prev} onClose={() => setPrev(null)} title="Preview: nothing is saved yet">
         {prev ? (
           <View style={{ gap: 8 }}>
@@ -396,12 +451,13 @@ export function Operations({ o, role, toast }) {
     ...(has('schedule', 'attendance', 'roster') ? [['today', 'Today'], ['week', 'Week']] : []),
     ...(has('schedule', 'timesheets') ? [['staff', 'Staff & leave']] : []),
     ['pay', 'Time & pay'], ...(has('schedule') ? [['insights', 'Insights']] : []),
+    ...(admin || has('suppliers') ? [['transport', t('transport.title')]] : []),
   ];
   const cur = tabs.some(([k]) => k === tab) ? tab : tabs[0][0];
   return (
     <View style={{ gap: 12 }}>
       <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }} accessibilityRole="tablist">{tabs.map(([k, l]) => <Chip key={k} label={l} active={cur === k} onPress={() => setTab(k)} />)}<Btn small title="My academy week" color={c.paper} ink={c.ink} onPress={() => push('AcademyAgenda')} /></View>
-      {cur === 'today' ? <Today o={o} toast={toast} setTab={setTab} /> : cur === 'week' ? <Week o={o} toast={toast} perms={perms} cohorts={probe.data.cohorts ?? []} /> : cur === 'staff' ? <StaffTab o={o} toast={toast} admin={admin} perms={perms} /> : cur === 'pay' ? <Pay o={o} toast={toast} perms={perms} /> : <Insights o={o} />}
+      {cur === 'today' ? <Today o={o} toast={toast} setTab={setTab} /> : cur === 'week' ? <Week o={o} toast={toast} perms={perms} cohorts={probe.data.cohorts ?? []} /> : cur === 'staff' ? <StaffTab o={o} toast={toast} admin={admin} perms={perms} /> : cur === 'pay' ? <Pay o={o} toast={toast} perms={perms} /> : cur === 'transport' ? <TransportTab o={o} toast={toast} admin={admin} perms={perms} /> : <Insights o={o} />}
     </View>
   );
 }

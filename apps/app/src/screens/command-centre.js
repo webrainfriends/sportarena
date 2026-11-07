@@ -6,7 +6,7 @@ import { Pressable, View } from 'react-native';
 import { api } from '../api';
 import { useLoad } from '../hooks';
 import { useSession } from '../session';
-import { useNav } from '../nav';
+import { useNav, openLink } from '../nav';
 import { useLayout } from '../layout';
 import { Btn, Card, Chip, Empty, ErrorBox, Field, Loading, Row, Sheet, T, Tag } from '../ui';
 import { HScroll } from '../pickers';
@@ -21,7 +21,7 @@ export const SECTIONS = [['today', 'Today'], ['actions', 'Actions'], ['calendar'
 const ACCOUNT_ROLE = { athlete: 'athlete', coach: 'coach', official: 'referee', event_manager: 'organizer', doctor: 'doctor', physio: 'physio', sponsor: 'sponsor', supplier: 'supplier', venue_operator: 'venue_manager', agent: 'recruiter' };
 const PINNABLE = { team: 'team', event: 'event', venue: 'venue', org: 'org' };
 
-export { openLink } from '../nav';
+export { openLink };
 
 /** Which role and scope the person is working as. Lives above the section so it survives switching between sections. */
 export function useWorkspace() {

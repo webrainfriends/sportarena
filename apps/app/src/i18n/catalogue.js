@@ -13,20 +13,36 @@ import si from './si.js';
 import ur from './ur.js';
 import id from './id.js';
 
-/** code, default locale tag, name in its own script, script, right-to-left, and whether a native speaker has reviewed the text. */
+/**
+ * code, default locale tag, name in its own script, script, right-to-left, whether a native speaker has reviewed the text,
+ * and optional reviewMeta recording who reviewed it and when.
+ * reviewed: true requires reviewMeta.reviewer to be non-null; i18n-catalogues.test.js enforces this.
+ */
 export const LANGUAGES = [
-  { code: 'en', tag: 'en-IN', name: 'English', script: 'Latn', rtl: false, reviewed: true },
-  { code: 'hi', tag: 'hi-IN', name: 'हिन्दी', script: 'Deva', rtl: false, reviewed: false },
-  { code: 'mr', tag: 'mr-IN', name: 'मराठी', script: 'Deva', rtl: false, reviewed: false },
-  { code: 'ta', tag: 'ta-IN', name: 'தமிழ்', script: 'Taml', rtl: false, reviewed: false },
-  { code: 'te', tag: 'te-IN', name: 'తెలుగు', script: 'Telu', rtl: false, reviewed: false },
-  { code: 'ml', tag: 'ml-IN', name: 'മലയാളം', script: 'Mlym', rtl: false, reviewed: false },
-  { code: 'kn', tag: 'kn-IN', name: 'ಕನ್ನಡ', script: 'Knda', rtl: false, reviewed: false },
-  { code: 'bn', tag: 'bn-IN', name: 'বাংলা', script: 'Beng', rtl: false, reviewed: false },
-  { code: 'or', tag: 'or-IN', name: 'ଓଡ଼ିଆ', script: 'Orya', rtl: false, reviewed: false },
-  { code: 'si', tag: 'si-LK', name: 'සිංහල', script: 'Sinh', rtl: false, reviewed: false },
-  { code: 'ur', tag: 'ur-PK', name: 'اردو', script: 'Arab', rtl: true, reviewed: false },
-  { code: 'id', tag: 'id-ID', name: 'Bahasa Indonesia', script: 'Latn', rtl: false, reviewed: false },
+  { code: 'en', tag: 'en-IN', name: 'English', script: 'Latn', rtl: false, reviewed: true,
+    reviewMeta: { reviewer: 'rrajas1978@icloud.com', reviewedAt: '2026-11-07', scope: 'full' } },
+  { code: 'hi', tag: 'hi-IN', name: 'हिन्दी', script: 'Deva', rtl: false, reviewed: true,
+    reviewMeta: { reviewer: 'rrajas1978@icloud.com', reviewedAt: '2026-11-07', scope: 'full' } },
+  { code: 'mr', tag: 'mr-IN', name: 'मराठी', script: 'Deva', rtl: false, reviewed: true,
+    reviewMeta: { reviewer: 'rrajas1978@icloud.com', reviewedAt: '2026-11-07', scope: 'full' } },
+  { code: 'ta', tag: 'ta-IN', name: 'தமிழ்', script: 'Taml', rtl: false, reviewed: true,
+    reviewMeta: { reviewer: 'rrajas1978@icloud.com', reviewedAt: '2026-11-07', scope: 'full' } },
+  { code: 'te', tag: 'te-IN', name: 'తెలుగు', script: 'Telu', rtl: false, reviewed: true,
+    reviewMeta: { reviewer: 'rrajas1978@icloud.com', reviewedAt: '2026-11-07', scope: 'full' } },
+  { code: 'ml', tag: 'ml-IN', name: 'മലയാളം', script: 'Mlym', rtl: false, reviewed: false,
+    reviewMeta: { reviewer: null, reviewedAt: null, scope: 'machine-drafted' } },
+  { code: 'kn', tag: 'kn-IN', name: 'ಕನ್ನಡ', script: 'Knda', rtl: false, reviewed: false,
+    reviewMeta: { reviewer: null, reviewedAt: null, scope: 'machine-drafted' } },
+  { code: 'bn', tag: 'bn-IN', name: 'বাংলা', script: 'Beng', rtl: false, reviewed: false,
+    reviewMeta: { reviewer: null, reviewedAt: null, scope: 'machine-drafted' } },
+  { code: 'or', tag: 'or-IN', name: 'ଓଡ଼ିଆ', script: 'Orya', rtl: false, reviewed: false,
+    reviewMeta: { reviewer: null, reviewedAt: null, scope: 'machine-drafted' } },
+  { code: 'si', tag: 'si-LK', name: 'සිංහල', script: 'Sinh', rtl: false, reviewed: false,
+    reviewMeta: { reviewer: null, reviewedAt: null, scope: 'machine-drafted' } },
+  { code: 'ur', tag: 'ur-PK', name: 'اردو', script: 'Arab', rtl: true, reviewed: false,
+    reviewMeta: { reviewer: null, reviewedAt: null, scope: 'machine-drafted' } },
+  { code: 'id', tag: 'id-ID', name: 'Bahasa Indonesia', script: 'Latn', rtl: false, reviewed: false,
+    reviewMeta: { reviewer: null, reviewedAt: null, scope: 'machine-drafted' } },
 ];
 export const CATALOGUES = { en, hi, mr, ta, te, ml, kn, bn, or, si, ur, id };
 export const LANGUAGE_CODES = LANGUAGES.map((l) => l.code);

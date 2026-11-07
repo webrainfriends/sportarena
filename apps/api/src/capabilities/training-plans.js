@@ -56,7 +56,35 @@ async function checkSessions(c, planId, sessions) {
 cap({
   name: 'create_training_plan', method: 'POST', path: '/training-plans', tag: TAG, status: 201,
   summary: 'Coach drafts a training plan for an athlete they actively coach (confirmed hire, shared team, led cohort or accepted plan). Nothing reaches the athlete until proposed.',
-  input: z.object({ athlete_id: id, sport: z.string(), title: z.string().min(2).max(120), goal: z.string().max(1000).optional(), hire_id: id.optional(), content: content.optional() }),
+  input: z.object({
+    athlete_id: id,
+    sport: z.string(),
+    title: z.string().min(2).max(120),
+    goal: z.string().max(1000).optional(),
+    hire_id: id.optional(),
+    content: content.optional(),
+    metadata: z.object({
+      plan_type: z.enum(['training_block', 'annual_plan', 'development_plan', 'competition_plan', 'recovery_block', 'return_to_play', 'class_plan', 'nutrition_plan', 'mental_plan']).optional(),
+      phase_type: z.enum(['preparation', 'pre_competition', 'competition', 'transition', 'return_to_play']).optional(),
+      start_date: z.string().optional(),
+      end_date: z.string().optional(),
+      primary_goal: z.string().max(60).optional(),
+      focus_areas: z.array(z.string()).max(6).optional(),
+      adaptive_mode: z.boolean().optional(),
+      classification_id: z.string().optional(),
+      intensity_model: z.enum(['polarised', 'pyramidal', 'threshold', 'sweet_spot', 'custom']).optional(),
+      intensity_zones: z.array(z.number().min(0).max(100)).length(5).optional(),
+      weekly_load_sessions: z.number().int().min(1).max(20).optional(),
+      weekly_load_hours: z.number().min(0.5).max(40).optional(),
+      avg_rpe_target: z.number().min(1).max(10).optional(),
+      max_rpe: z.number().min(1).max(10).optional(),
+      hrv_protocol: z.boolean().optional(),
+      acwr_target_min: z.number().min(0.5).max(2).optional(),
+      acwr_target_max: z.number().min(0.5).max(2).optional(),
+      olympiad_year: z.number().int().optional(),
+      target_competition_id: id.optional(),
+    }).optional(),
+  }),
   async handler({ user }, i) {
     await requireRelationship(user, i.athlete_id);
     const sport = await sportBySlugOrId(i.sport);
@@ -67,8 +95,8 @@ cap({
     if (body.sessions.some((s) => Date.parse(s.starts_at) <= Date.now())) throw badRequest('Sessions must be in the future');
     checkBlocks(body.sessions, sport, body.phases);
     return tx(async (c) => {
-      const p = (await c.query('INSERT INTO training_plans(coach_id, athlete_id, sport_id, hire_id, title, goal) VALUES ($1,$2,$3,$4,$5,$6) RETURNING *', [user.id, i.athlete_id, sport.id, i.hire_id, i.title, i.goal])).rows[0];
-      await c.query('INSERT INTO training_plan_revisions(plan_id, rev, title, goal, content) VALUES ($1,1,$2,$3,$4)', [p.id, i.title, i.goal, JSON.stringify(body)]);
+      const p = (await c.query('INSERT INTO training_plans(coach_id, athlete_id, sport_id, hire_id, title, goal, metadata) VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING *', [user.id, i.athlete_id, sport.id, i.hire_id, i.title, i.goal, i.metadata ? JSON.stringify(i.metadata) : null])).rows[0];
+      await c.query('INSERT INTO training_plan_revisions(plan_id, rev, title, goal, content, metadata) VALUES ($1,1,$2,$3,$4,$5)', [p.id, i.title, i.goal, JSON.stringify(body), i.metadata ? JSON.stringify(i.metadata) : null]);
       return p;
     });
   },

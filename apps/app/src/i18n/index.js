@@ -14,6 +14,8 @@ export const t = (key, params) => translate(language, key, params);
 /** tEnum('left_early') -> the translated enum.left_early, or "Left early" when there is no key for it. */
 export const tEnum = (value) => translateEnum(language, value);
 
+export { fmtNumber, fmtCurrency, fmtDate, fmtPlural } from './format';
+
 // Right-to-left (Urdu): web gets dir/lang on <html>; native flips the layout and applies it on the next launch (the app reloads when the language changes).
 if (Platform.OS === 'web') {
   try { document.documentElement.lang = language; document.documentElement.dir = isRtl ? 'rtl' : 'ltr'; } catch { /* no DOM */ }

@@ -283,3 +283,130 @@ cap({
     });
   },
 });
+
+// ---- Connected devices (#327) —- athlete-scoped device management --------------------------
+// OAuth tokens are AES-256-GCM encrypted at rest. Data is NEVER hard-deleted: archived_at or status='unlinked'.
+
+cap({
+  name: 'list_connected_devices', method: 'GET', path: '/me/devices', tag: TAG,
+  summary: 'Your connected health platforms and wearables: provider, last-sync, battery where available, status.',
+  input: z.object({}),
+  async handler({ user }) {
+    return many(
+      `SELECT id, provider, display_name, last_sync_at, battery_pct, status, paused_at, created_at
+       FROM connected_devices WHERE user_id=$1 AND archived_at IS NULL ORDER BY created_at ASC`,
+      [user.id]);
+  },
+});
+
+cap({
+  name: 'connect_device', method: 'POST', path: '/me/devices', tag: TAG, status: 201,
+  summary: 'Connect a health platform or wearable device. OAuth token stored encrypted; re-connecting an existing provider updates its token.',
+  input: z.object({
+    provider: z.enum(['apple_health','google_fit','garmin','polar','whoop','fitbit','suunto']),
+    display_name: z.string().max(100).optional(),
+    oauth_token: z.string().max(4096).optional(),
+    oauth_token_expiry: z.string().datetime().optional(),
+  }),
+  async handler({ user }, { provider, display_name, oauth_token, oauth_token_expiry }) {
+    const token_enc = oauth_token ? encrypt(oauth_token, `device:token:${user.id}:${provider}`) : null;
+    const device = await one(
+      `INSERT INTO connected_devices (user_id, provider, display_name, token_enc, token_expiry, status)
+       VALUES ($1,$2,$3,$4,$5,'active')
+       ON CONFLICT (user_id, provider) DO UPDATE SET
+         display_name = COALESCE(EXCLUDED.display_name, connected_devices.display_name),
+         token_enc    = COALESCE(EXCLUDED.token_enc, connected_devices.token_enc),
+         token_expiry = COALESCE(EXCLUDED.token_expiry, connected_devices.token_expiry),
+         status       = 'active',
+         paused_at    = NULL,
+         archived_at  = NULL
+       RETURNING id, provider, display_name, status, created_at`,
+      [user.id, provider, display_name || provider, token_enc, oauth_token_expiry || null]);
+    await audit(null, user.id, 'device_connected', 'connected_devices', device.id);
+    return device;
+  },
+});
+
+cap({
+  name: 'disconnect_device', method: 'DELETE', path: '/me/devices/:id', tag: TAG,
+  summary: 'Revoke a device connection. Tokens are wiped; all historical data is kept (soft-delete via status=unlinked).',
+  input: z.object({ id }),
+  async handler({ user }, { id: devId }) {
+    const device = await one(
+      `UPDATE connected_devices SET status='unlinked', token_enc=NULL, archived_at=now()
+       WHERE id=$1 AND user_id=$2 AND archived_at IS NULL RETURNING id, provider`,
+      [devId, user.id]);
+    if (!device) throw notFound('Device');
+    await audit(null, user.id, 'device_disconnected', 'connected_devices', devId);
+    return { id: devId, disconnected: true };
+  },
+});
+
+cap({
+  name: 'pause_device_sync', method: 'PATCH', path: '/me/devices/:id', tag: TAG,
+  summary: 'Pause or resume sync for a connected device without revoking the token.',
+  input: z.object({ id, paused: z.boolean() }),
+  async handler({ user }, { id: devId, paused }) {
+    const device = await one(
+      `UPDATE connected_devices SET paused_at=$1, status=$2
+       WHERE id=$3 AND user_id=$4 AND archived_at IS NULL RETURNING id, status`,
+      [paused ? new Date() : null, paused ? 'paused' : 'active', devId, user.id]);
+    if (!device) throw notFound('Device');
+    return { id: devId, paused };
+  },
+});
+
+cap({
+  name: 'get_device_sync_history', method: 'GET', path: '/me/devices/:id/history', tag: TAG,
+  summary: 'Device detail + recent activities (default 7 days, up to 90).',
+  input: z.object({ id, days: z.coerce.number().int().min(1).max(90).default(7) }),
+  async handler({ user }, { id: devId, days }) {
+    const device = await one(
+      `SELECT id, provider, display_name, last_sync_at, battery_pct, status
+       FROM connected_devices WHERE id=$1 AND user_id=$2 AND archived_at IS NULL`,
+      [devId, user.id]);
+    if (!device) throw notFound('Device');
+    const activities = await many(
+      `SELECT id, activity_type, started_at, ended_at, metrics, source
+       FROM device_activities
+       WHERE device_id=$1 AND started_at >= now() - ($2 || ' days')::interval AND archived_at IS NULL
+       ORDER BY started_at DESC LIMIT 100`,
+      [devId, days]);
+    return { device, activities, days, basis: NOT_MEDICAL };
+  },
+});
+
+cap({
+  name: 'manual_activity_import', method: 'POST', path: '/me/activities/import', tag: TAG, status: 201,
+  summary: 'Manually import an activity. Creates a device_activity record and a matching session_load for ACWR.',
+  input: z.object({
+    activity_type: z.enum(['run','cycle','swim','strength','sleep','other']),
+    started_at: z.string().datetime(),
+    ended_at: z.string().datetime().optional(),
+    metrics: z.record(z.unknown()).optional(),
+    source_filename: z.string().max(255).optional(),
+  }),
+  async handler({ user }, { activity_type, started_at, ended_at, metrics, source_filename }) {
+    const device = await one(
+      `SELECT id FROM connected_devices WHERE user_id=$1 AND archived_at IS NULL ORDER BY created_at LIMIT 1`,
+      [user.id]);
+    if (!device) throw badRequest('connect a device first to enable activity import');
+    const src_id = source_filename || `manual_${user.id}_${Date.now()}`;
+    const activity = await one(
+      `INSERT INTO device_activities (device_id, user_id, activity_type, started_at, ended_at, metrics, source, source_id)
+       VALUES ($1,$2,$3,$4,$5,$6,'manual_import',$7)
+       ON CONFLICT (device_id, source_id) DO NOTHING
+       RETURNING id, activity_type, started_at`,
+      [device.id, user.id, activity_type, started_at, ended_at || null, JSON.stringify(metrics || {}), src_id]);
+    if (activity) {
+      const mins = ended_at
+        ? Math.max(1, Math.round((new Date(ended_at) - new Date(started_at)) / 60000))
+        : 60;
+      await query(
+        `INSERT INTO session_loads (user_id, kind, minutes, rpe, logged_at)
+         VALUES ($1,$2,$3,6,$4) ON CONFLICT DO NOTHING`,
+        [user.id, activity_type === 'sleep' ? 'other' : activity_type, mins, started_at]);
+    }
+    return activity || { imported: false, reason: 'duplicate' };
+  },
+});

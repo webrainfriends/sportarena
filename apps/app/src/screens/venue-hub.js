@@ -17,7 +17,7 @@ import { t } from '../i18n';
 import { locale } from '../locale';
 import { SetupWizard } from './venue-setup';
 import { venueFormProps } from './venue-register';
-import { AiManager, AttentionList, AssetsAndStaff, BookingsAndEvents, Block, Compliance, Customer, Demand, FacilityTimeline, KpiRow, Opportunities, Procurement, RevenueOccupancy, insightText } from './venue-hub-sections';
+import { AiManager, AttentionList, AssetsAndStaff, BookingsAndEvents, Block, Compliance, Customer, Demand, FacilityTimeline, KpiRow, Opportunities, Procurement, RevenueOccupancy, AdaptiveEquipmentSection, insightText } from './venue-hub-sections';
 
 const STEPS = () => [t('vh.step.venue'), t('vh.step.courts'), t('vh.step.prices'), t('vh.step.timetable'), t('vh.step.seating'), t('vh.step.finish')];
 
@@ -126,6 +126,7 @@ function Dashboard({ venues, venueId, setVenueId, setup }) {
       <Block title={t('vh.sec.demand')}><Demand d={d} go={go} /></Block>
       <Block title={t('vh.sec.procurement')} action={t('vh.find.tender')} onAction={() => push('TenderZone')}><Procurement d={d} go={go} /></Block>
       <Block title={t('vh.sec.upkeep')}><AssetsAndStaff d={d} go={go} /></Block>
+      <Block title={t('vh.sec.adaptiveEquip')} action={t('vh.sec.adaptiveEquip_cta')} onAction={() => push('AdaptiveEquipmentHub', { venueId: d.venue.id })}><AdaptiveEquipmentSection venueId={d.venue.id} go={go} /></Block>
       <Block title={t('vh.sec.customers')}><Customer d={d} go={go} /></Block>
       <Block title={t('vh.sec.compliance')}><Compliance d={d} go={go} /></Block>
       <Block title={t('vh.sec.find')}><FindCards venueId={d.venue.id} /></Block>

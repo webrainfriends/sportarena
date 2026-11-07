@@ -16,6 +16,7 @@ import { Billing } from './academy-money';
 import { Collections } from './collections';
 import { BranchFilter, ByBranch, CostSources, PackButton, sourceLabel } from './academy-closeout';
 import { FinanceOverview } from './academy-overview';
+import { CapacityScenarios } from './academy-capacity';
 import { ByCohort, ProvenanceStrip, Reconciliation } from './academy-reconciliation';
 
 const Panel = ({ children }) => <View style={{ backgroundColor: c.paper, borderRadius: 20, padding: 16, gap: 10, borderWidth: 1, borderColor: c.line }}>{children}</View>;
@@ -36,7 +37,7 @@ export function Finance({ o, role, archived, toast }) {
       {tab === 'collections' ? <Collections target={{ organisation_id: o.id }} archived={archived} /> : null}
       {tab === 'costs' ? <Costs o={o} archived={archived} toast={toast} /> : null}
       {tab === 'reconciliation' ? <Reconciliation o={o} archived={archived} toast={toast} /> : null}
-      {tab === 'forecast' ? <Forecast o={o} archived={archived} toast={toast} /> : null}
+      {tab === 'forecast' ? <Forecast o={o} role={role} archived={archived} toast={toast} /> : null}
     </View>
   );
 }
@@ -146,8 +147,8 @@ function Costs({ o, archived, toast }) {
   );
 }
 
-function Forecast({ o, archived, toast }) {
-  const list = useLoad(() => api.get(`/organisations/${o.id}/academy/scenarios`, { limit: 50 }), [o.id]);
+function Forecast({ o, role, archived, toast }) {
+  const list = useLoad(() => api.get(`/organisations/${o.id}/academy/scenarios`, { kind: 'commercial', limit: 50 }), [o.id]);
   const progs = useLoad(() => api.get(`/organisations/${o.id}/academy/programmes`, { limit: 100 }), [o.id]);
   const profile = useLoad(() => api.get(`/organisations/${o.id}/academy`), [o.id]);
   const cur = () => profile.data?.currency ?? 'GBP';
@@ -189,6 +190,7 @@ function Forecast({ o, archived, toast }) {
           await api.post(`/organisations/${o.id}/academy/scenarios`, { programme_id: v.programme_id, name: v.name, assumptions: a, idempotency_key: key });
           list.reload(); return 'Scenario saved. Nothing in your academy changed.';
         }} />
+      {role === 'owner' || role === 'admin' ? <CapacityScenarios o={o} archived={archived} /> : null}
     </Panel>
   );
 }

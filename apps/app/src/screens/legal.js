@@ -3,13 +3,14 @@
 // approval. Every action is a capability that exists over REST / OpenAPI / MCP; this screen adds no rules of its own.
 // Regulated steps are off per country until qualified local counsel approves that pack, and the screen says so instead of hiding it.
 import React, { useState } from 'react';
-import { View } from 'react-native';
+import { View, Switch } from 'react-native';
 import { api } from '../api';
 import { useLoad } from '../hooks';
 import { useSession } from '../session';
 import { useNav } from '../nav';
-import { Btn, Card, Chip, Empty, ErrorBox, H1, H2, Loading, Screen, Seg, Sheet, T, Tag } from '../ui';
+import { Btn, Card, Chip, Empty, ErrorBox, Field, H1, H2, Loading, Screen, Seg, Sheet, T, Tag } from '../ui';
 import { FormSheet } from '../FormSheet';
+import { DateField } from '../pickers';
 import { c, day, when } from '../theme';
 import { moneyIn } from '../vtime';
 
@@ -105,6 +106,86 @@ function FindCounsel({ packs, onStarted }) {
   );
 }
 
+const MATTER_TYPES = ['Contract review', 'Contract dispute', 'Disciplinary hearing', 'Employment / coaching contract', 'Image rights', 'Transfer dispute', 'IP / trademark', 'Privacy / data', 'Regulatory compliance', 'Other'];
+const MATTER_PRIORITIES = ['Routine', 'Elevated', 'Urgent — deadline approaching', 'Critical — immediate action needed'];
+const ADVISOR_PREFS = ['Assigned legal advisor', 'External counsel', 'Self-represented', 'Club solicitor', "Player's union"];
+
+function LegalMatterWizard({ visible, onClose, onSubmit }) {
+  const [step, setStep] = useState(0);
+  const [v, setV] = useState({ type: '', priority: 'Routine', confidential: false, consent_accurate: false });
+  const set = (k, val) => setV((p) => ({ ...p, [k]: val }));
+  const can = [v.type.length > 0, (v.summary ?? '').trim().length > 10, v.consent_accurate];
+  const steps = ['Matter Classification', 'Details & Context', 'Advisor & Submission'];
+  const bar = (
+    <View style={{ flexDirection: 'row', gap: 4, marginBottom: 16 }}>
+      {steps.map((s, i) => <View key={s} style={{ flex: 1, height: 4, borderRadius: 2, backgroundColor: i < step ? c.violet : i === step ? c.pink : c.p1 }} />)}
+    </View>
+  );
+  return (
+    <Sheet visible={visible} onClose={onClose} title="Open the matter">
+      {bar}
+      <T weight="900" size={16} style={{ marginBottom: 12 }}>{steps[step]}</T>
+      {step === 0 && (
+        <View style={{ gap: 14 }}>
+          <T size={13} color={c.mute}>What kind of legal matter is this?</T>
+          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+            {MATTER_TYPES.map((m) => <Chip key={m} label={m} active={v.type === m} onPress={() => set('type', m)} />)}
+          </View>
+          <T weight="800" size={13} color={c.mute} style={{ marginTop: 4 }}>Priority</T>
+          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+            {MATTER_PRIORITIES.map((p) => <Chip key={p} label={p} active={v.priority === p} onPress={() => set('priority', p)} />)}
+          </View>
+          <DateField label="Date matter arose" value={v.matter_date} onChange={(d) => set('matter_date', d)} optional />
+          <Field label="Opposing party" value={v.opposing_party ?? ''} onChangeText={(t) => set('opposing_party', t)} placeholder="Club, federation, employer, individual, or unknown" optional />
+        </View>
+      )}
+      {step === 1 && (
+        <View style={{ gap: 14 }}>
+          <Field label="Summary" value={v.summary ?? ''} onChangeText={(t) => set('summary', t)} multiline hint="Describe the matter — what happened, what is at stake, and what outcome you need." />
+          <Field label="Jurisdiction" value={v.jurisdiction ?? ''} onChangeText={(t) => set('jurisdiction', t)} placeholder="Country / governing body" optional />
+          <DateField label="Deadline" value={v.deadline} onChange={(d) => set('deadline', d)} optional hint="Response deadline, hearing date, or filing deadline" />
+          <Field label="Estimated value" value={v.estimated_value ?? ''} onChangeText={(t) => set('estimated_value', t)} placeholder="If financial: approximate amount in dispute" optional />
+          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 4 }}>
+            <View style={{ flex: 1 }}>
+              <T weight="800" size={14}>Mark as confidential</T>
+              <T size={12} color={c.mute}>Only assigned legal advisors and platform admins can see this case.</T>
+            </View>
+            <Switch value={v.confidential} onValueChange={(val) => set('confidential', val)} thumbColor={c.p5} trackColor={{ false: c.p1, true: c.pink }} />
+          </View>
+        </View>
+      )}
+      {step === 2 && (
+        <View style={{ gap: 14 }}>
+          <T weight="800" size={13} color={c.mute}>Preferred contact</T>
+          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+            {ADVISOR_PREFS.map((a) => <Chip key={a} label={a} active={v.advisor_pref === a} onPress={() => set('advisor_pref', a)} />)}
+          </View>
+          <Field label="Supporting documents" value={v.document_description ?? ''} onChangeText={(t) => set('document_description', t)} multiline optional hint="List documents you can provide: contracts, correspondence, evidence." />
+          <Card color={c.cyanSoft} pad={12}>
+            <T size={13} weight="700">Your matter is logged privately. An advisor will acknowledge within 2 working days.</T>
+          </Card>
+          <Card pad={12}>
+            <T weight="800">{v.type}</T>
+            <T size={12} color={c.mute}>{v.priority}{v.confidential ? ' · Confidential' : ''}</T>
+            {v.jurisdiction ? <T size={12} color={c.mute}>Jurisdiction: {v.jurisdiction}</T> : null}
+          </Card>
+          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+            <View style={{ flex: 1 }}>
+              <T weight="800" size={14}>I confirm the information provided is accurate and complete.</T>
+            </View>
+            <Switch value={v.consent_accurate} onValueChange={(val) => set('consent_accurate', val)} thumbColor={c.p5} trackColor={{ false: c.p1, true: c.pink }} />
+          </View>
+        </View>
+      )}
+      <View style={{ flexDirection: 'row', gap: 10, marginTop: 20 }}>
+        {step > 0 && <Btn title="Back" color={c.paper} ink={c.ink} onPress={() => setStep(step - 1)} style={{ flex: 1 }} />}
+        {step < 2 && <Btn title="Next" color={c.pink} disabled={!can[step]} onPress={() => setStep(step + 1)} style={{ flex: 1 }} />}
+        {step === 2 && <Btn title="Open matter" color={c.pink} disabled={!can[2]} onPress={() => { onSubmit(v); onClose(); }} style={{ flex: 1 }} />}
+      </View>
+    </Sheet>
+  );
+}
+
 // ------------------------------------------------------------------ Intake detail (client and lawyer)
 function IntakeSheet({ id, as, packs, onClose, onChanged }) {
   const res = useLoad(() => api.get(`/legal/intakes/${id}`), [id]);
@@ -152,9 +233,7 @@ function IntakeSheet({ id, as, packs, onClose, onChanged }) {
               { key: 'disbursements_cents', label: 'Disbursements', type: 'money', currency: () => curOf(packs, i.jurisdiction), optional: true },
               { key: 'scope', label: 'Scope', type: 'multiline' }, { key: 'exclusions', label: 'Not included', type: 'multiline', optional: true }, { key: 'expires', label: 'Valid until', type: 'date' }]}
             onSubmit={async (v) => { await api.post(`/legal/intakes/${i.id}/quotes`, { fee_model: v.fee_model, is_estimate: !!v.is_estimate, currency: curOf(packs, i.jurisdiction), amount_cents: v.amount_cents, tax_cents: v.tax_cents ?? 0, disbursements_cents: v.disbursements_cents ?? 0, scope: v.scope, exclusions: v.exclusions, expires_at: endOf(v.expires) }); res.reload(); onChanged?.(); return 'Quote sent'; }} />
-          <FormSheet visible={form === 'matter'} onClose={() => setForm(null)} title="Open the matter" submitLabel="Open matter"
-            fields={[{ key: 'title', label: 'Matter title' }]}
-            onSubmit={async (v) => { await api.post(`/legal/intakes/${i.id}/matter`, { title: v.title }); res.reload(); onChanged?.(); return 'Matter opened'; }} />
+          <LegalMatterWizard visible={form === 'matter'} onClose={() => setForm(null)} onSubmit={async (vals) => { await api.post(`/legal/intakes/${i.id}/matter`, { title: vals.type, matter_type: vals.type, priority: vals.priority, confidential: vals.confidential, summary: vals.summary, jurisdiction: vals.jurisdiction, deadline: vals.deadline, advisor_preference: vals.advisor_pref, document_description: vals.document_description }); res.reload(); onChanged?.(); }} />
         </View>
       ) : null}
     </Sheet>

@@ -15,6 +15,12 @@ export const query = (text, params) => pool.query(text, params);
 export const one = async (text, params) => (await pool.query(text, params)).rows[0] ?? null;
 export const many = async (text, params) => (await pool.query(text, params)).rows;
 
+/** Run `fn(client)` on a pooled client and always release it. (pg's `pool.connect(fn)` is the callback form: `fn` would get `(err, client, release)`, not a client.) */
+export async function withClient(fn) {
+  const client = await pool.connect();
+  try { return await fn(client); } finally { client.release(); }
+}
+
 export async function tx(fn) {
   const client = await pool.connect();
   const hooks = [];

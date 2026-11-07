@@ -6,11 +6,37 @@ import { fmtMin } from './time.js';
 const same = (a, b) => (a ?? null) === (b ?? null);
 export const dateKey = (d) => (d ? new Date(d).toISOString().slice(0, 10) : null);
 
-export const view = (w) => ({ id: w.id, resource_id: w.resource_id, category_id: w.category_id, weekdays: w.weekdays, start: fmtMin(w.start_min), end: fmtMin(w.end_min), valid_from: dateKey(w.valid_from), valid_to: dateKey(w.valid_to) });
+export const view = (w) => ({
+  id: w.id, resource_id: w.resource_id, category_id: w.category_id, weekdays: w.weekdays,
+  start: fmtMin(w.start_min), end: fmtMin(w.end_min), valid_from: dateKey(w.valid_from), valid_to: dateKey(w.valid_to),
+  booking_type: w.booking_type ?? null,
+  min_advance_booking_hours: w.min_advance_booking_hours ?? null,
+  max_advance_booking_days: w.max_advance_booking_days ?? null,
+  max_bookings_per_member: w.max_bookings_per_member ?? null,
+  buffer_min: w.buffer_min ?? null,
+  eligibility_who: w.eligibility_who ?? null,
+  membership_tiers: w.membership_tiers ?? [],
+  age_min: w.age_min ?? null, age_max: w.age_max ?? null,
+  cancellation_policy: w.cancellation_policy ?? null,
+  late_cancel_pct: w.late_cancel_pct ?? null,
+  para_accessible_surface: w.para_accessible_surface ?? false,
+  para_equipment_on_court: w.para_equipment_on_court ?? false,
+  para_lowered_net: w.para_lowered_net ?? false,
+  para_guide_slot: w.para_guide_slot ?? false,
+  para_priority: w.para_priority ?? null,
+});
 
 export const insertWindow = (c, v, w) => c.query(
-  'INSERT INTO schedule_windows(venue_id, resource_id, category_id, weekdays, start_min, end_min, valid_from, valid_to, batch_id) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)',
-  [v, w.resource_id, w.category_id ?? null, [...w.weekdays].sort(), w.start_min, w.end_min, w.valid_from ?? null, w.valid_to ?? null, w.batch_id ?? null]);
+  `INSERT INTO schedule_windows(
+     venue_id, resource_id, category_id, weekdays, start_min, end_min, valid_from, valid_to, batch_id,
+     booking_type, min_advance_booking_hours, max_advance_booking_days, max_bookings_per_member, buffer_min,
+     eligibility_who, membership_tiers, age_min, age_max, cancellation_policy, late_cancel_pct,
+     para_accessible_surface, para_equipment_on_court, para_lowered_net, para_guide_slot, para_priority
+   ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25)`,
+  [v, w.resource_id, w.category_id ?? null, [...w.weekdays].sort(), w.start_min, w.end_min, w.valid_from ?? null, w.valid_to ?? null, w.batch_id ?? null,
+   w.booking_type ?? null, w.min_advance_booking_hours ?? null, w.max_advance_booking_days ?? null, w.max_bookings_per_member ?? null, w.buffer_min ?? null,
+   w.eligibility_who ?? null, w.membership_tiers ?? [], w.age_min ?? null, w.age_max ?? null, w.cancellation_policy ?? null, w.late_cancel_pct ?? null,
+   w.para_accessible_surface ?? false, w.para_equipment_on_court ?? false, w.para_lowered_net ?? false, w.para_guide_slot ?? false, w.para_priority ?? null]);
 
 /** The venue's opening hours follow the timetable: the union of every window, per weekday. */
 export async function syncHours(c, venueId) {
@@ -38,7 +64,7 @@ export async function enableTimetable(c, venueId) {
 }
 
 /** Open (or close) `scope` courts for [start,end) on `days`, carving whatever was there in the same date scope. Returns what changed. */
-export async function carve(c, venueId, resourceId, { days, start, end, categoryId, closed, valid_from, valid_to, replace, batch }) {
+export async function carve(c, venueId, resourceId, { days, start, end, categoryId, closed, valid_from, valid_to, replace, batch, ...bookingRules }) {
   const { rows } = await c.query('SELECT * FROM schedule_windows WHERE venue_id=$1 AND removed_at IS NULL AND resource_id=$2 FOR UPDATE', [venueId, resourceId]);
   let removed = 0;
   for (const w of rows) {
@@ -54,7 +80,7 @@ export async function carve(c, venueId, resourceId, { days, start, end, category
     if (w.start_min < start) await insertWindow(c, venueId, { ...keep, weekdays: both, start_min: w.start_min, end_min: start });
     if (w.end_min > end) await insertWindow(c, venueId, { ...keep, weekdays: both, start_min: end, end_min: w.end_min });
   }
-  if (!closed) await insertWindow(c, venueId, { resource_id: resourceId, category_id: categoryId, weekdays: days, start_min: start, end_min: end, valid_from, valid_to, batch_id: batch });
+  if (!closed) await insertWindow(c, venueId, { resource_id: resourceId, category_id: categoryId, weekdays: days, start_min: start, end_min: end, valid_from, valid_to, batch_id: batch, ...bookingRules });
   return removed;
 }
 
