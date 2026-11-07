@@ -374,7 +374,7 @@ cap({
     id,
     decision: z.enum(['approved', 'rejected', 'modified']),
     metric_resolutions: z.record(z.string(), z.enum(['approved','rejected'])).optional().describe('Per-metric resolution: each metric_key → approved or rejected'),
-    annotation_tags: z.array(z.enum(ANNOTATION_TAGS as [string, ...string[]])).max(5).optional(),
+    annotation_tags: z.array(z.enum(ANNOTATION_TAGS)).max(5).optional(),
     annotation: z.string().max(2000).optional(),
     review_due_at: z.string().datetime({ offset: true }).optional(),
   }),

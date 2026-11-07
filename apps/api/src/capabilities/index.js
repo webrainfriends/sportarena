@@ -393,6 +393,16 @@ import './para-mentoring.js';
 import './para-pathway.js';
 import './para-sport-funding.js';
 import './para-learn.js';
+// Merged with screens in the app but never loaded, so their endpoints answered "Route not found".
+import './stream-hub.js';
+import './carpool.js';
+import './guardian-onboarding.js';
+import './team-volunteers.js';
+import './team-join-links.js';
+import './venue-claims.js';
+import './venue-import.js';
+import './settlement-schedules.js';
+import './academy-placement.js';
 import './event-control-tower.js';
 import './process-guides.js';
 import './platform-benchmarks.js';

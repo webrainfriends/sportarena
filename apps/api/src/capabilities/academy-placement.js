@@ -12,7 +12,8 @@ import { one, many, tx } from '../db.js';
 import { badRequest, conflict, forbidden, notFound } from '../errors.js';
 import { audit } from '../helpers.js';
 import { orgFor } from '../org-access.js';
-import { isYouth } from '../youth.js';
+import { isYouth, guardianLink, guardianCan, YOUTH_SQL } from '../youth.js';
+import { opsAccess } from '../academy-ops.js';
 import { youthGate } from '../pathway.js';
 import { encrypt, decrypt } from '../crypto.js';
 import { STAFF } from '../academy.js';
@@ -44,13 +45,18 @@ async function oppFor(oppId, user, { write = false, c = null } = {}) {
 async function advisorFor(user, orgId, { c = null } = {}) {
   const { role } = await orgFor(user, orgId, [...STAFF, 'coach', 'staff', 'finance'], { c: c ?? undefined });
   if (STAFF.includes(role)) return role;
-  const q = c ?? { query: (t, p) => one(t, p).then((r) => ({ rows: r ? [r] : [] })) };
-  const perm = (await q.query(
-    "SELECT 1 FROM organisation_members WHERE organisation_id=$1 AND user_id=$2 AND 'placement'=ANY(permissions) LIMIT 1",
-    [orgId, user.id]
-  )).rows[0];
-  if (!perm) throw forbidden('Placement advisor permission required');
+  // Non-owner staff need the 'placement' permission on their live staff engagement (read live, so revocation is immediate).
+  const access = await opsAccess(user, orgId, { c: c ?? undefined });
+  if (!access.has('placement')) throw forbidden('Placement advisor permission required');
   return role;
+}
+
+/** The live, verified guardian link for a child (and, for acts done on the child's behalf, the 'consent' scope). Never bypassed, not even for platform admins. */
+async function guardianFor(user, childId, { c = null, scope = null } = {}) {
+  const link = await guardianLink(user.id, childId, c ?? undefined);
+  if (!link) throw forbidden('Not a verified guardian of this athlete');
+  if (scope && !(await guardianCan(link, scope, null, c ?? undefined))) throw forbidden(`Your guardian authority for this athlete does not cover this (${scope})`);
+  return link;
 }
 
 /** Check athlete is in scope for this org (enrolled, applied or scouted). */
@@ -99,7 +105,9 @@ cap({
   async handler({ user }, i) {
     await advisorFor(user, i.id);
     const rows = await many(
-      `SELECT po.*, u.display_name AS athlete_name, u.handle AS athlete_handle
+      `SELECT po.*, u.display_name AS athlete_name, u.handle AS athlete_handle,
+              (SELECT count(*)::int FROM placement_evidence_items WHERE opportunity_id=po.id AND required) AS evidence_total,
+              (SELECT count(*)::int FROM placement_evidence_items WHERE opportunity_id=po.id AND required AND status IN ('uploaded','verified','waived')) AS evidence_done
        FROM placement_opportunities po
        JOIN users u ON u.id = po.athlete_id
        WHERE po.organisation_id = $1
@@ -164,7 +172,8 @@ cap({
        WHERE po.organisation_id = $1
          AND pis.guardian_approved_at IS NULL
          AND pis.revoked_at IS NULL
-         AND EXISTS (SELECT 1 FROM user_guardians ug WHERE ug.child_id = po.athlete_id AND ug.verified)`,
+         AND EXISTS (SELECT 1 FROM users u WHERE u.id = po.athlete_id AND ${YOUTH_SQL})
+         AND EXISTS (SELECT 1 FROM guardian_links ug WHERE ug.child_id = po.athlete_id AND ug.status='active' AND ug.revoked_at IS NULL AND (ug.expires_at IS NULL OR ug.expires_at > now()))`,
       [i.id]
     );
 
@@ -529,8 +538,7 @@ cap({
     // If athlete_id specified, must be a guardian
     let athleteId = user.id;
     if (i.athlete_id && i.athlete_id !== user.id) {
-      const link = await one('SELECT 1 FROM user_guardians WHERE guardian_id=$1 AND child_id=$2 AND verified', [user.id, i.athlete_id]);
-      if (!link) throw forbidden('Not a verified guardian of this athlete');
+      await guardianFor(user, i.athlete_id);
       athleteId = i.athlete_id;
     }
 
@@ -558,8 +566,7 @@ cap({
   async handler({ user }, i) {
     let athleteId = user.id;
     if (i.athlete_id && i.athlete_id !== user.id) {
-      const link = await one('SELECT 1 FROM user_guardians WHERE guardian_id=$1 AND child_id=$2 AND verified', [user.id, i.athlete_id]);
-      if (!link) throw forbidden('Not a verified guardian of this athlete');
+      await guardianFor(user, i.athlete_id);
       athleteId = i.athlete_id;
     }
 
@@ -600,8 +607,7 @@ cap({
     let guardianApprovedBy = null, guardianApprovedAt = null;
 
     if (i.athlete_id && i.athlete_id !== user.id) {
-      const link = (await c.query('SELECT 1 FROM user_guardians WHERE guardian_id=$1 AND child_id=$2 AND verified', [user.id, i.athlete_id])).rows[0];
-      if (!link) throw forbidden('Not a verified guardian of this athlete');
+      await guardianFor(user, i.athlete_id, { c, scope: 'consent' });
       athleteId = i.athlete_id;
       guardianApprovedBy = user.id;
       guardianApprovedAt = new Date().toISOString();
@@ -640,8 +646,7 @@ cap({
   summary: 'Guardian approves an institution share that the athlete created. Required for under-18 athletes before the institution can access the shared data.',
   input: z.object({ id, athlete_id: id }),
   handler: ({ user }, i) => tx(async (c) => {
-    const link = (await c.query('SELECT 1 FROM user_guardians WHERE guardian_id=$1 AND child_id=$2 AND verified', [user.id, i.athlete_id])).rows[0];
-    if (!link) throw forbidden('Not a verified guardian of this athlete');
+    await guardianFor(user, i.athlete_id, { c, scope: 'consent' });
 
     const share = (await c.query('SELECT * FROM placement_institution_shares WHERE id=$1 AND athlete_id=$2 AND revoked_at IS NULL FOR UPDATE', [i.id, i.athlete_id])).rows[0];
     if (!share) throw notFound('Share not found or already revoked');
@@ -665,8 +670,7 @@ cap({
   handler: ({ user }, i) => tx(async (c) => {
     let athleteId = user.id;
     if (i.athlete_id && i.athlete_id !== user.id) {
-      const link = (await c.query('SELECT 1 FROM user_guardians WHERE guardian_id=$1 AND child_id=$2 AND verified', [user.id, i.athlete_id])).rows[0];
-      if (!link) throw forbidden('Not a verified guardian of this athlete');
+      await guardianFor(user, i.athlete_id, { c });
       athleteId = i.athlete_id;
     }
     const share = (await c.query('SELECT * FROM placement_institution_shares WHERE id=$1 AND athlete_id=$2 AND revoked_at IS NULL FOR UPDATE', [i.id, athleteId])).rows[0];

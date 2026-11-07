@@ -43,7 +43,7 @@ after(async () => { server.close(); await pool.end(); });
 let owner1, owner2, venueId;
 
 test('setup: create a venue as an unclaimed listing', async () => {
-  owner1 = await signup(['venue_owner']);
+  owner1 = await signup(['venue_manager']);
   // Create venue through the API
   const v = must(await api('POST', '/venues', { token: platform.token, body: { name: 'Test Arena', city: 'Bangalore', country: 'India', timezone: 'Asia/Kolkata', sports: ['basketball'] } }), 201);
   venueId = v.id;
@@ -83,7 +83,7 @@ test('the claimant can upload documents to their claim', async () => {
 });
 
 test('a second claimant for the same venue creates a conflict and both are linked', async () => {
-  owner2 = await signup(['venue_owner']);
+  owner2 = await signup(['venue_manager']);
   const claim2 = must(await api('POST', `/venues/${venueId}/claim`, {
     token: owner2.token,
     body: { role: 'manager', statement: 'I manage this arena on behalf of the owner' },
@@ -100,7 +100,7 @@ test('a second claimant for the same venue creates a conflict and both are linke
 });
 
 test('a third concurrent claim for the same venue is rejected (safe limit)', async () => {
-  const user3 = await signup(['venue_owner']);
+  const user3 = await signup(['venue_manager']);
   const r = await api('POST', `/venues/${venueId}/claim`, {
     token: user3.token,
     body: { role: 'owner', statement: 'I am the third claimant' },
@@ -132,7 +132,7 @@ test('platform can review and approve one claim; the other is auto-rejected', as
 
 test('decision_note is required on approve and reject', async () => {
   const venue2 = must(await api('POST', '/venues', { token: platform.token, body: { name: 'Arena 2', city: 'Mumbai', country: 'India', timezone: 'Asia/Kolkata', sports: ['badminton'] } }), 201);
-  const user4 = await signup(['venue_owner']);
+  const user4 = await signup(['venue_manager']);
   const c = must(await api('POST', `/venues/${venue2.id}/claim`, { token: user4.token, body: { role: 'owner', statement: 'Owner' } }), 201);
 
   const r = await api('POST', `/admin/venue-claims/${c.id}/decide`, {
@@ -144,7 +144,7 @@ test('decision_note is required on approve and reject', async () => {
 
 test('a claimant can withdraw their claim before decision', async () => {
   const venue3 = must(await api('POST', '/venues', { token: platform.token, body: { name: 'Arena 3', city: 'Delhi', country: 'India', timezone: 'Asia/Kolkata', sports: ['tennis'] } }), 201);
-  const user5 = await signup(['venue_owner']);
+  const user5 = await signup(['venue_manager']);
   const c = must(await api('POST', `/venues/${venue3.id}/claim`, { token: user5.token, body: { role: 'owner', statement: 'Mine' } }), 201);
 
   must(await api('DELETE', `/claims/${c.id}`, { token: user5.token }));
@@ -190,7 +190,7 @@ test('already-claimed venue cannot be claimed again', async () => {
 
 test('idempotency: same user submitting the same claim twice is rejected', async () => {
   const venue4 = must(await api('POST', '/venues', { token: platform.token, body: { name: 'Arena 4', city: 'Chennai', country: 'India', timezone: 'Asia/Kolkata', sports: ['squash'] } }), 201);
-  const user6 = await signup(['venue_owner']);
+  const user6 = await signup(['venue_manager']);
   must(await api('POST', `/venues/${venue4.id}/claim`, { token: user6.token, body: { role: 'owner', statement: 'First' } }), 201);
   const r = await api('POST', `/venues/${venue4.id}/claim`, { token: user6.token, body: { role: 'owner', statement: 'Duplicate' } });
   assert.equal(r.status, 409, 'duplicate claim rejected');

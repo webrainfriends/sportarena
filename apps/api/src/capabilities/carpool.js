@@ -39,7 +39,7 @@ cap({
       [event_id, user.id, encrypt(departure_location), area_label, departure_time, seats_available,
        return_offered, return_time ?? null, vehicle_type ?? null, notes ? encrypt(notes) : null, recurring_rule ?? null]
     );
-    return { offer: { ...offer, departure_location_enc: undefined } };
+    return { offer: { ...offer, departure_location_enc: undefined, notes_enc: undefined } };
   },
 });
 
@@ -126,22 +126,20 @@ cap({
     if (booking.driver_id !== user.id) throw forbidden('Not your offer');
     if (booking.status !== 'requested') throw badRequest('Booking is not in requested status');
     await one('UPDATE carpool_bookings SET status=$1 WHERE id=$2 RETURNING id', [decision, bookingId]);
-    let pickup_full = null;
     if (decision === 'confirmed') {
       const filled = await one('SELECT COUNT(*) AS n FROM carpool_bookings WHERE offer_id=$1 AND status=\'confirmed\'', [booking.offer_id]);
       if (Number(filled.n) >= booking.seats_available) {
         await one('UPDATE carpool_offers SET status=\'full\' WHERE id=$1', [booking.offer_id]);
       }
-      // Share driver's departure_location with confirmed passenger (returned only, not stored)
-      pickup_full = decrypt(booking.departure_location_enc);
-      await audit(null, user.id, 'carpool_address_shared_on_confirm', 'carpool_bookings', bookingId);
+      // The driver's address is released to the passenger only through get_my_carpool_bookings (audit-logged there).
+      await audit(null, user.id, 'carpool_booking_confirmed', 'carpool_bookings', bookingId);
     }
     await notify(booking.passenger_id, {
       title: decision === 'confirmed' ? 'Carpool confirmed!' : 'Carpool request update',
       body: decision === 'confirmed' ? 'Your seat is confirmed. See the full pickup details in the app.' : 'Your carpool request was not taken forward.',
       data: { type: 'carpool_decision', booking_id: bookingId, decision },
     });
-    return { decision, departure_location: pickup_full };
+    return { decision };
   },
 });
 
@@ -253,7 +251,7 @@ cap({
   input: z.object({}),
   handler: async ({ user }) => {
     const offers = await many(
-      `SELECT o.*, e.name AS event_name, e.starts_at,
+      `SELECT o.*, e.name AS event_name, e.starts_on,
               COUNT(b.id) FILTER(WHERE b.status='confirmed') AS confirmed_count
        FROM carpool_offers o JOIN events e ON e.id=o.event_id
        LEFT JOIN carpool_bookings b ON b.offer_id=o.id
@@ -262,7 +260,7 @@ cap({
       [user.id]
     );
     const bookings = await many(
-      `SELECT b.*, o.area_label, o.departure_time, o.return_offered, o.vehicle_type,
+      `SELECT b.*, o.area_label, o.departure_time, o.return_offered, o.vehicle_type, o.departure_location_enc,
               u.display_name AS driver_name, u.avatar_url AS driver_avatar,
               e.name AS event_name
        FROM carpool_bookings b JOIN carpool_offers o ON o.id=b.offer_id
@@ -270,9 +268,18 @@ cap({
        WHERE b.passenger_id=$1 ORDER BY o.departure_time DESC`,
       [user.id]
     );
+    // Full pickup address of the driver is released only for a confirmed seat, and the decrypt is audit-logged.
+    for (const b of bookings.filter(x => x.status === 'confirmed' && x.departure_location_enc)) {
+      await audit(null, user.id, 'carpool_address_shared_on_confirm', 'carpool_bookings', b.id);
+    }
     return {
-      offers: offers.map(o => ({ ...o, departure_location_enc: undefined })),
-      bookings: bookings.map(b => ({ ...b, pickup_location_enc: undefined })),
+      offers: offers.map(o => ({ ...o, departure_location_enc: undefined, notes_enc: undefined })),
+      bookings: bookings.map(b => ({
+        ...b,
+        departure_location: b.status === 'confirmed' && b.departure_location_enc ? decrypt(b.departure_location_enc) : null,
+        departure_location_enc: undefined, pickup_location_enc: undefined,
+        driver_rating_note_enc: undefined, passenger_rating_note_enc: undefined,
+      })),
     };
   },
 });

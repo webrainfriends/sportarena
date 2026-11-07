@@ -6,11 +6,13 @@ import { FlatList, Platform, Share, TouchableOpacity, View } from 'react-native'
 import { api } from '../api';
 import { useLoad } from '../hooks';
 import { useSession } from '../session';
+import { useNav } from '../nav';
 import { Btn, Card, Empty, ErrorBox, H1, Loading, Row, Screen, Section, Seg, T, Tag } from '../ui';
 import { c, money } from '../theme';
 import { t } from '../i18n';
 
 const fmt = (iso) => iso ? new Date(iso).toLocaleDateString(undefined, { day: 'numeric', month: 'short' }) : '–';
+const rows = (d) => (Array.isArray(d) ? d : d?.items ?? []);
 const fmtMoney = (minor, currency) => minor != null ? money(minor, currency ?? 'INR') : '–';
 
 const TONE = {
@@ -50,12 +52,13 @@ function MetricStrip({ children }) {
 }
 
 // ─── Schedule Card ────────────────────────────────────────────────────────────
-function ScheduleCard({ item, onRunNow, onPauseToggle, navigation }) {
+function ScheduleCard({ item, onRunNow, onPauseToggle }) {
+  const { toast } = useSession();
   const [loading, setLoading] = useState(false);
   const run = async () => {
     setLoading(true);
     try { await api.post(`/admin/settlement-schedules/${item.id}/run`); onRunNow?.(); }
-    catch (e) { /* toast handled by global error boundary */ }
+    catch (e) { toast('' + e.message); }
     finally { setLoading(false); }
   };
   const cycleLabel = { weekly: t('sstl.cycle_weekly'), biweekly: t('sstl.cycle_biweekly'), monthly: t('sstl.cycle_monthly') }[item.cycle] ?? item.cycle;
@@ -88,10 +91,12 @@ function ScheduleCard({ item, onRunNow, onPauseToggle, navigation }) {
 
 // ─── Failed Payout Card ───────────────────────────────────────────────────────
 function FailedPayoutCard({ item, onAction }) {
+  const { toast } = useSession();
   const [loading, setLoading] = useState(false);
   const act = async (action) => {
     setLoading(true);
     try { await api.post(`/admin/failed-payouts/${item.id}/action`, { action }); onAction?.(); }
+    catch (e) { toast('' + e.message); }
     finally { setLoading(false); }
   };
   return (
@@ -129,27 +134,34 @@ function FailedPayoutCard({ item, onAction }) {
 }
 
 // ─── Main Dashboard ───────────────────────────────────────────────────────────
-export default function SettlementRunsScreen({ navigation }) {
-  const { user } = useSession();
+export default function SettlementRunsScreen() {
+  const { user, toast } = useSession();
+  const nav = useNav();
   const [tab, setTab] = useState(0);
   const schedulesR = useLoad(() => api.get('/admin/settlement-schedules'), []);
   const failedR = useLoad(() => api.get('/admin/failed-payouts'), []);
-  const historyR = useLoad(() => api.get('/admin/settlements', { status: 'approved,paid', per_page: '20' }), []);
+  // /settlements takes one status at a time: fetch approved and paid and merge, newest first.
+  const historyR = useLoad(async () => {
+    const [a, p] = await Promise.all(['approved', 'paid'].map((status) => api.get('/settlements', { status, limit: '20' })));
+    return [...rows(a), ...rows(p)].sort((x, y) => String(y.created_at).localeCompare(String(x.created_at))).slice(0, 20);
+  }, []);
 
   const refresh = useCallback(() => { schedulesR.reload(); failedR.reload(); historyR.reload(); }, [schedulesR, failedR, historyR]);
 
-  const schedules = schedulesR.data?.items ?? [];
-  const failed = failedR.data?.items ?? [];
-  const history = historyR.data?.items ?? [];
+  const schedules = rows(schedulesR.data);
+  const failed = rows(failedR.data);
+  const history = rows(historyR.data);
 
-  const thisWeekTotal = schedules.reduce((s, x) => s + (x.last_payout_cents ?? 0), 0);
+  // Never add different currencies together: the strip shows a total only when every schedule settles in one currency.
+  const currencies = [...new Set(schedules.filter((x) => x.last_payout_cents != null).map((x) => x.currency))];
+  const thisWeekTotal = currencies.length === 1 ? fmtMoney(schedules.reduce((s, x) => s + (x.last_payout_cents ?? 0), 0), currencies[0]) : '–';
   const pending = schedules.filter(s => !s.paused && new Date(s.next_run_at) <= new Date()).length;
 
   const TABS = [t('sstl.tab_scheduled'), t('sstl.tab_history'), t('sstl.tab_failed')];
 
   const pauseToggle = async (item) => {
     try { await api.patch(`/admin/settlement-schedules/${item.id}`, { paused: !item.paused }); refresh(); }
-    catch {}
+    catch (e) { toast('' + e.message); }
   };
 
   const renderContent = () => {
@@ -161,7 +173,7 @@ export default function SettlementRunsScreen({ navigation }) {
         <FlatList
           data={schedules}
           keyExtractor={i => i.id}
-          renderItem={({ item }) => <ScheduleCard item={item} onRunNow={refresh} onPauseToggle={pauseToggle} navigation={navigation} />}
+          renderItem={({ item }) => <ScheduleCard item={item} onRunNow={refresh} onPauseToggle={pauseToggle} />}
           contentContainerStyle={{ paddingBottom: 32, paddingTop: 8 }}
         />
       );
@@ -175,7 +187,7 @@ export default function SettlementRunsScreen({ navigation }) {
           data={history}
           keyExtractor={i => i.id}
           renderItem={({ item }) => (
-            <TouchableOpacity onPress={() => navigation.push('SettlementStatement', { settlementId: item.id })} style={{ marginHorizontal: 16, marginBottom: 10 }}>
+            <TouchableOpacity onPress={() => nav.push('SettlementStatement', { settlementId: item.id })} style={{ marginHorizontal: 16, marginBottom: 10 }}>
               <Card>
                 <Row>
                   <View style={{ flex: 1 }}>
@@ -183,7 +195,7 @@ export default function SettlementRunsScreen({ navigation }) {
                     <T style={{ fontSize: 12, color: c.mute }}>{fmt(item.period_start)} – {fmt(item.period_end)}</T>
                   </View>
                   <View style={{ alignItems: 'flex-end', gap: 4 }}>
-                    <T style={{ fontWeight: '800', fontSize: 16, color: c.ink }}>{fmtMoney(item.payout_cents, item.currency)}</T>
+                    <T style={{ fontWeight: '800', fontSize: 16, color: c.ink }}>{fmtMoney(item.net_payable_cents, item.currency)}</T>
                     <StatusChip status={item.status} label={item.status} />
                   </View>
                 </Row>
@@ -213,7 +225,7 @@ export default function SettlementRunsScreen({ navigation }) {
       <H1 style={{ paddingHorizontal: 16, paddingTop: 20, paddingBottom: 8 }}>{t('sstl.title')}</H1>
 
       <MetricStrip>
-        <MetricTile label={t('sstl.this_week')} value={fmtMoney(thisWeekTotal, 'INR')} />
+        <MetricTile label={t('sstl.this_week')} value={thisWeekTotal} />
         <MetricTile label={t('sstl.pending')} value={String(pending)} color={pending > 0 ? c.sun : c.ink} />
         <MetricTile label={t('sstl.failed')} value={String(failed.length)} color={failed.length > 0 ? c.red : c.ink} />
       </MetricStrip>
@@ -232,11 +244,9 @@ export default function SettlementRunsScreen({ navigation }) {
 }
 
 // ─── Settlement Statement ─────────────────────────────────────────────────────
-export function SettlementStatement({ route, navigation }) {
-  const { settlementId } = route.params ?? {};
-  const r = useLoad(() => api.get(`/admin/settlements/${settlementId}`), [settlementId]);
-  const linesR = useLoad(() => api.get(`/admin/settlements/${settlementId}/lines`, { per_page: '50' }), [settlementId]);
-  const { user } = useSession();
+export function SettlementStatement({ settlementId }) {
+  const r = useLoad(() => api.get(`/settlements/${settlementId}`), [settlementId]);
+  const { user, toast } = useSession();
   const [approving, setApproving] = useState(false);
   const [exporting, setExporting] = useState(false);
 
@@ -247,20 +257,26 @@ export function SettlementStatement({ route, navigation }) {
 
   const approve = async () => {
     setApproving(true);
-    try { await api.post(`/admin/settlements/${settlementId}/decide`, { action: 'approve' }); r.reload(); }
+    try { await api.post(`/admin/settlements/${settlementId}/decision`, { action: 'approve' }); r.reload(); }
+    catch (e) { toast('' + e.message); }
     finally { setApproving(false); }
   };
 
   const exportCsv = async () => {
     setExporting(true);
     try {
-      const x = await api.get(`/admin/settlements/${settlementId}`, { format: 'csv' });
+      const x = await api.get(`/settlements/${settlementId}`, { format: 'csv' });
       if (Platform.OS === 'web') {
         const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([x.csv], { type: 'text/csv' })); a.download = `settlement-${s.settlement_no}.csv`; a.click();
       } else await Share.share({ title: `settlement-${s.settlement_no}.csv`, message: x.csv });
-    } finally { setExporting(false); }
+    } catch (e) { toast('' + e.message); } finally { setExporting(false); }
   };
 
+  const lines = s.lines ?? [];
+  const credits = lines.filter((l) => l.kind === 'credit_note');
+  const refundCents = -credits.reduce((n, l) => n + (l.sales_cents ?? 0), 0);
+  // Reconciliation: the net must equal what the platform collected less commission, its tax, payment costs and reserve, plus released reserve and adjustments.
+  const varianceCents = s.net_payable_cents - (s.platform_collected_cents - s.commission_cents - s.commission_tax_cents - s.gateway_fee_cents - s.reserve_held_cents + s.reserve_released_cents + s.adjustments_cents);
   const linesBg = s.status === 'approved' || s.status === 'paid' ? '#065F46' : c.violet;
   const heroText = '#fff';
 
@@ -276,36 +292,36 @@ export function SettlementStatement({ route, navigation }) {
       {/* Hero */}
       <View style={{ background: `linear-gradient(135deg, ${linesBg}, #1a1d26)`, backgroundColor: linesBg, padding: 24 }}>
         <T style={{ color: heroText, fontSize: 11, opacity: 0.7, textTransform: 'uppercase', letterSpacing: 0.5 }}>{s.settlement_no}</T>
-        <T style={{ color: heroText, fontSize: 26, fontWeight: '800', marginTop: 4 }}>{fmtMoney(s.payout_cents, s.currency)}</T>
+        <T style={{ color: heroText, fontSize: 26, fontWeight: '800', marginTop: 4 }}>{fmtMoney(s.net_payable_cents, s.currency)}</T>
         <T style={{ color: heroText, fontSize: 13, opacity: 0.8, marginTop: 4 }}>{s.venue_name} · {fmt(s.period_start)}–{fmt(s.period_end)}</T>
         <StatusChip status={s.status} label={s.status} />
       </View>
 
       {/* Reconciliation */}
       <Section title={t('sstl.recon_title')} style={{ marginTop: 0 }}>
-        <ReconRow label={t('sstl.recon_gross', { n: s.invoice_count ?? '?' })} value={fmtMoney(s.sales_cents, s.currency)} />
-        {(s.refund_cents > 0) && <ReconRow label={t('sstl.recon_refunds', { n: s.refund_count ?? '?' })} value={`−${fmtMoney(s.refund_cents, s.currency)}`} negative />}
+        <ReconRow label={t('sstl.recon_gross', { n: s.invoices_count ?? '?' })} value={fmtMoney(s.sales_cents, s.currency)} />
+        {(refundCents > 0) && <ReconRow label={t('sstl.recon_refunds', { n: credits.length })} value={`−${fmtMoney(refundCents, s.currency)}`} negative />}
         <ReconRow label={t('sstl.recon_commission', { pct: ((s.commission_bp ?? 0) / 100).toFixed(0) })} value={`−${fmtMoney(s.commission_cents, s.currency)}`} negative />
         {(s.commission_tax_cents > 0) && <ReconRow label={t('sstl.recon_gst')} value={`−${fmtMoney(s.commission_tax_cents, s.currency)}`} negative />}
         {(s.gateway_fee_cents > 0) && <ReconRow label="Gateway fee" value={`−${fmtMoney(s.gateway_fee_cents, s.currency)}`} negative />}
-        <ReconRow label={t('sstl.recon_net')} value={fmtMoney(s.payout_cents, s.currency)} bold />
+        <ReconRow label={t('sstl.recon_net')} value={fmtMoney(s.net_payable_cents, s.currency)} bold />
         <Row style={{ paddingTop: 8 }}>
           <T style={{ color: c.mute, fontSize: 12, flex: 1 }}>{t('sstl.recon_variance')}</T>
-          <View style={{ backgroundColor: s.variance_cents === 0 ? c.limeSoft : c.redSoft, borderRadius: 999, paddingHorizontal: 10, paddingVertical: 3 }}>
-            <T style={{ fontSize: 12, fontWeight: '700', color: s.variance_cents === 0 ? c.lime : c.red }}>
-              {s.variance_cents === 0 ? t('sstl.recon_zero') : fmtMoney(Math.abs(s.variance_cents), s.currency)}
+          <View style={{ backgroundColor: varianceCents === 0 ? c.limeSoft : c.redSoft, borderRadius: 999, paddingHorizontal: 10, paddingVertical: 3 }}>
+            <T style={{ fontSize: 12, fontWeight: '700', color: varianceCents === 0 ? c.lime : c.red }}>
+              {varianceCents === 0 ? t('sstl.recon_zero') : fmtMoney(Math.abs(varianceCents), s.currency)}
             </T>
           </View>
         </Row>
       </Section>
 
       {/* Booking lines */}
-      <Section title={t('sstl.booking_lines', { n: s.invoice_count ?? '?' })}>
-        {linesR.loading ? <Loading /> : (linesR.data?.items ?? []).map(line => (
-          <Row key={line.id} style={{ paddingVertical: 8, borderBottomWidth: 1, borderColor: c.line }}>
-            <T style={{ color: c.mute, fontSize: 12, flex: 1 }}>{line.reference ?? line.id?.slice(0, 8)} · {fmt(line.issued_at)}</T>
+      <Section title={t('sstl.booking_lines', { n: s.invoices_count ?? '?' })}>
+        {lines.map((line, n) => (
+          <Row key={line.invoice_id ?? n} style={{ paddingVertical: 8, borderBottomWidth: 1, borderColor: c.line }}>
+            <T style={{ color: c.mute, fontSize: 12, flex: 1 }}>{line.description ?? line.invoice_id?.slice(0, 8) ?? '–'}</T>
             <T style={{ fontWeight: '700', color: line.kind === 'credit_note' ? c.red : c.lime, fontSize: 13 }}>
-              {line.kind === 'credit_note' ? '−' : ''}{fmtMoney(line.net_cents, s.currency)}
+              {line.kind === 'credit_note' ? '−' : ''}{fmtMoney(Math.abs(line.kind === 'adjustment' ? line.amount_cents : line.collected_cents), s.currency)}
             </T>
           </Row>
         ))}
