@@ -343,7 +343,7 @@ function MfaNotice({ info, onGo, onClose }) {
 // drawn inside each screen, and the floating tab bar sits above both (TabBar).
 const Stack = createNativeStackNavigator();
 const Tab = createBottomTabNavigator();
-const NAV_THEME = { ...DefaultTheme, colors: { ...DefaultTheme.colors, background: c.bg, card: c.bg, border: c.line, text: c.ink, primary: c.pink } };
+const NAV_THEME = { ...DefaultTheme, colors: { ...(DefaultTheme?.colors ?? {}), background: c.bg, card: c.bg, border: c.line, text: c.ink, primary: c.pink } };
 const tabOf = (r) => (r?.state ? r.state.routes[r.state.index]?.name : r?.params?.screen) ?? 'Home';
 
 /** A pushed page: the back bar on top and the page below it. */
