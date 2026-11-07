@@ -15013,7 +15013,6 @@ export default {
   'rtp.coach_view_notice': 'കോച്ചുകൾ ക്ലിയറൻസ് സ്ഥിതി, ലോഡ് നിയന്ത്രണങ്ങൾ മാത്രം കാണുന്നു — ക്ലിനിക്കൽ വിവരങ്ങൾ ഒരിക്കലും പങ്കിടില്ല.', // machine-drafted
   'rtp.approval_valid_until': 'വരെ സാധുത', // machine-drafted
   'rtp.mark_achieved': 'നേടിയതായി അടയാളപ്പെടുത്തുക', // machine-drafted
-};
   // machine-drafted — branded documents
   'documents.hub.my_documents': 'My Documents', // machine-drafted
   'documents.hub.templates': 'Templates', // machine-drafted
@@ -15096,7 +15095,6 @@ export default {
   'documents.families.purchase_order': 'Purchase order', // machine-drafted
   'documents.families.hire_agreement': 'Hire agreement', // machine-drafted
   'documents.families.business_letter': 'Business letter', // machine-drafted
-  'account.lang_format_preview': 'ഫോർമാറ്റ് പ്രിവ്യൂ', // machine-drafted,
   // Wearable hub elite extensions: ACWR, readiness, sRPE (#583) — machine-drafted, reviewed: false
   'wr.team.tab.metrics': 'Metrics',
   'wr.team.tab.acwr': 'Load (ACWR)',

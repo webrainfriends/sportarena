@@ -15014,7 +15014,6 @@ export default {
   'rtp.coach_view_notice': 'පුහුණුකරුවන් ගලවාගැනීමේ තත්ත්වය සහ ලෝඩ් සීමාවන් පමණක් දකිති — සායනික තොරතුරු කිසිවිටෙකත් බෙදා නොගනී.', // machine-drafted
   'rtp.approval_valid_until': 'දක්වා වලංගුයි', // machine-drafted
   'rtp.mark_achieved': 'සාක්ෂාත් කළ බව සලකුණු කරන්න', // machine-drafted
-};
   // machine-drafted — branded documents
   'documents.hub.my_documents': 'My Documents', // machine-drafted
   'documents.hub.templates': 'Templates', // machine-drafted
@@ -15097,7 +15096,6 @@ export default {
   'documents.families.purchase_order': 'Purchase order', // machine-drafted
   'documents.families.hire_agreement': 'Hire agreement', // machine-drafted
   'documents.families.business_letter': 'Business letter', // machine-drafted
-  'account.lang_format_preview': 'ආකෘති පෙරදර්ශනය', // machine-drafted,
   // Wearable hub elite extensions: ACWR, readiness, sRPE (#583) — machine-drafted, reviewed: false
   'wr.team.tab.metrics': 'Metrics',
   'wr.team.tab.acwr': 'Load (ACWR)',

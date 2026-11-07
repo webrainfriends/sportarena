@@ -15014,7 +15014,6 @@ export default {
   'rtp.coach_view_notice': 'Pelatih hanya melihat status izin dan pembatasan beban — tidak ada detail klinis yang dibagikan.', // machine-drafted
   'rtp.approval_valid_until': 'Berlaku Hingga', // machine-drafted
   'rtp.mark_achieved': 'Tandai Tercapai', // machine-drafted
-};
   // machine-drafted — branded documents
   'documents.hub.my_documents': 'My Documents', // machine-drafted
   'documents.hub.templates': 'Templates', // machine-drafted
@@ -15097,7 +15096,6 @@ export default {
   'documents.families.purchase_order': 'Purchase order', // machine-drafted
   'documents.families.hire_agreement': 'Hire agreement', // machine-drafted
   'documents.families.business_letter': 'Business letter', // machine-drafted
-  'account.lang_format_preview': 'Pratinjau Format', // machine-drafted,
   // Wearable hub elite extensions: ACWR, readiness, sRPE (#583) — machine-drafted, reviewed: false
   'wr.team.tab.metrics': 'Metrics',
   'wr.team.tab.acwr': 'Load (ACWR)',

@@ -15014,7 +15014,6 @@ export default {
   'rtp.coach_view_notice': 'কোচরা শুধুমাত্র ছাড়পত্রের অবস্থা এবং লোড সীমাবদ্ধতা দেখতে পান — কোনো ক্লিনিকাল বিবরণ ভাগ করা হয় না।', // machine-drafted
   'rtp.approval_valid_until': 'বৈধ পর্যন্ত', // machine-drafted
   'rtp.mark_achieved': 'অর্জিত হিসেবে চিহ্নিত করুন', // machine-drafted
-};
   // machine-drafted — branded documents
   'documents.hub.my_documents': 'My Documents', // machine-drafted
   'documents.hub.templates': 'Templates', // machine-drafted
@@ -15097,7 +15096,6 @@ export default {
   'documents.families.purchase_order': 'Purchase order', // machine-drafted
   'documents.families.hire_agreement': 'Hire agreement', // machine-drafted
   'documents.families.business_letter': 'Business letter', // machine-drafted
-  'account.lang_format_preview': 'বিন্যাস পূর্বরূপ', // machine-drafted,
   // Wearable hub elite extensions: ACWR, readiness, sRPE (#583) — machine-drafted, reviewed: false
   'wr.team.tab.metrics': 'Metrics',
   'wr.team.tab.acwr': 'Load (ACWR)',
