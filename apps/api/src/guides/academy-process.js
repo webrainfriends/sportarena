@@ -267,6 +267,7 @@ id: 'wellbeing', title: 'Support student wellbeing and development',
 /** Org/academy API modules with no step of their own, and why. Anything not here and not in a step fails the guard test. */
 export const NOT_IN_GUIDE = {
   'academy-curriculum.js': 'Curriculum, methodology and coaching-philosophy governance is set up by the academy after the first setup; it is described in docs/academy-curriculum.md, not in this onboarding guide.',
+  'para-performance.js': 'Governed para-sport performance insights and coach review are activated per athlete after classification is confirmed; they extend the athlete hub and coaching module, not the initial academy onboarding sequence.',
   'para-mentoring.js': 'Para peer mentoring is an athlete-facing feature (athletes discover and connect with peer mentors directly), not an org-onboarding step. It is not part of setting up an academy.',
   'platform-benchmarks.js': 'Platform Competitive Benchmarks is a platform-admin-only console (not an academy-onboarding step). It is documented in docs/platform-benchmarks.md.',
 };
