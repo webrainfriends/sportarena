@@ -15013,7 +15013,6 @@ export default {
   'rtp.coach_view_notice': 'కోచ్‌లు క్లియరెన్స్ స్థితి మరియు లోడ్ పరిమితులు మాత్రమే చూస్తారు — వైద్య వివరాలు ఎప్పుడూ పంచుకోబడవు.', // machine-drafted
   'rtp.approval_valid_until': 'వరకు చెల్లుబడి', // machine-drafted
   'rtp.mark_achieved': 'సాధించినట్లు గుర్తించండి', // machine-drafted
-};
   // machine-drafted — branded documents
   'documents.hub.my_documents': 'My Documents', // machine-drafted
   'documents.hub.templates': 'Templates', // machine-drafted
@@ -15096,7 +15095,6 @@ export default {
   'documents.families.purchase_order': 'Purchase order', // machine-drafted
   'documents.families.hire_agreement': 'Hire agreement', // machine-drafted
   'documents.families.business_letter': 'Business letter', // machine-drafted
-  'account.lang_format_preview': 'ఆకృతి పూర్వచూపు', // machine-drafted,
   // Wearable hub elite extensions: ACWR, readiness, sRPE (#583) — machine-drafted, reviewed: false
   'wr.team.tab.metrics': 'Metrics',
   'wr.team.tab.acwr': 'Load (ACWR)',
