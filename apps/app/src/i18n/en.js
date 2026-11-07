@@ -9926,6 +9926,7 @@ export default {
   'pk.r_too_many': 'Too many wrong passphrases. Stop and call the guardian.',
   // Revenue Intelligence (ri.*) — machine-drafted, reviewed: false
   'ri.title': 'Revenue Intelligence',
+  'nav.title.VenueRevenueIntelligence': 'Revenue Intelligence',
   'ri.sub': 'Demand, pricing and utilisation insights for this venue',
   'ri.tab.demand': 'Demand',
   'ri.tab.forecast': 'Forecast',

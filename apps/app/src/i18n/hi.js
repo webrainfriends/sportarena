@@ -9895,6 +9895,7 @@ export default {
   'pk.r_too_many': 'पासफ़्रेज़ कई बार गलत रहा। रुकें और अभिभावक को कॉल करें।',
   // Revenue Intelligence (ri.*) — machine-drafted, reviewed: false
   'ri.title': 'राजस्व इंटेलिजेंस',
+  'nav.title.VenueRevenueIntelligence': 'राजस्व इंटेलिजेंस',
   'ri.sub': 'इस स्थल के लिए माँग, मूल्य निर्धारण और उपयोगिता अंतर्दृष्टि',
   'ri.tab.demand': 'माँग',
   'ri.tab.forecast': 'पूर्वानुमान',
