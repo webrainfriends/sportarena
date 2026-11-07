@@ -302,6 +302,11 @@ cap({
   input: z.object({
     id, status: z.enum(['completed', 'skipped']).optional(), athlete_rpe: z.number().int().min(1).max(10).optional(),
     athlete_feedback: z.string().max(1000).optional(), coach_feedback: z.string().max(1000).optional(),
+    coach_effort_rating: z.number().int().min(1).max(10).optional(),
+    coach_technical_notes: z.string().max(1000).optional(),
+    coach_tactical_notes: z.string().max(1000).optional(),
+    coach_physical_notes: z.string().max(1000).optional(),
+    coach_next_focus: z.string().max(500).optional(),
     actuals: actualsIn.optional().describe('results per planned block, replacing the previous save'),
     expected_version: z.number().int().min(1).optional().describe('version of the session you loaded; required with actuals'),
   }),
@@ -309,11 +314,23 @@ cap({
     return tx(async (c) => {
       const s = (await c.query('SELECT s.*, p.coach_id, p.athlete_id, p.sport_id FROM training_sessions s JOIN training_plans p ON p.id=s.plan_id WHERE s.id=$1 FOR UPDATE OF s', [i.id])).rows[0];
       if (!s) throw notFound('Session');
-      if (i.coach_feedback !== undefined) {
+      const hasCoachFields = i.coach_feedback !== undefined || i.coach_effort_rating !== undefined ||
+        i.coach_technical_notes !== undefined || i.coach_tactical_notes !== undefined ||
+        i.coach_physical_notes !== undefined || i.coach_next_focus !== undefined;
+      if (hasCoachFields) {
         if (user.id !== s.coach_id) throw forbidden('Only the coach can add coach feedback');
         if (!['completed', 'skipped'].includes(s.status)) throw conflict('Feedback is added after the session');
         await requireRelationship(user, s.athlete_id);
-        return (await c.query('UPDATE training_sessions SET coach_feedback=$2 WHERE id=$1 RETURNING *', [s.id, i.coach_feedback])).rows[0];
+        const sets = [];
+        const vals = [s.id];
+        const push = (col, val) => { if (val !== undefined) { vals.push(val); sets.push(`${col}=$${vals.length}`); } };
+        push('coach_feedback', i.coach_feedback);
+        push('coach_effort_rating', i.coach_effort_rating);
+        push('coach_technical_notes', i.coach_technical_notes);
+        push('coach_tactical_notes', i.coach_tactical_notes);
+        push('coach_physical_notes', i.coach_physical_notes);
+        push('coach_next_focus', i.coach_next_focus);
+        return (await c.query(`UPDATE training_sessions SET ${sets.join(', ')} WHERE id=$1 RETURNING *`, vals)).rows[0];
       }
       if (user.id !== s.athlete_id) throw forbidden('Only the athlete can record the outcome');
       if (!i.status && i.actuals === undefined) throw badRequest('status or actuals is required');

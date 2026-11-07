@@ -5,6 +5,7 @@ import { Sheet, Btn, T, H2, Tag } from '../ui';
 import { MenuField } from '../menu-field';
 import { c, r } from '../theme';
 import { t } from '../i18n';
+import { useSports } from '../sportpicker';
 
 // ─── plan type taxonomy ──────────────────────────────────────────────────────
 const PLAN_TYPES = [
@@ -169,6 +170,8 @@ const skipIntensity = (pt) => ['development_plan', 'nutrition_plan', 'mental_pla
 
 export function PlanHubSheet({ visible, onClose, athlete, onCreated }) {
   const totalSteps = 5;
+  const allSports = useSports();
+  const sportOptions = (allSports.data ?? []).map((s) => ({ value: s.slug, label: s.name }));
   const [step, setStep] = useState(1);
   const [planType, setPlanType] = useState(null);
   const [sport, setSport] = useState(null);
@@ -343,7 +346,7 @@ export function PlanHubSheet({ visible, onClose, athlete, onCreated }) {
             label={t('ph.sport_label')}
             value={sport}
             onChange={setSport}
-            source="sports"
+            options={sportOptions}
             accessibilityLabel={t('ph.sport_label')}
           />
 

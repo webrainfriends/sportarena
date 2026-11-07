@@ -126,6 +126,15 @@ cap({
 });
 
 cap({
+  name: 'list_coach_passport_references', method: 'GET', path: '/coach/passport-references', tag: TAG, auth: ['coach'],
+  summary: 'References the coach has written for athletes they coach, ordered newest first.',
+  input: z.object({ ...page }),
+  handler: ({ user }, i) => many(`SELECT r.id, r.body, s.slug AS sport_slug, r.status, r.version, r.created_at, r.decided_at, r.user_id AS athlete_id, ua.display_name AS athlete_name, ua.handle AS athlete_handle
+    FROM passport_references r JOIN users ua ON ua.id=r.user_id LEFT JOIN sports s ON s.id=r.sport_id
+    WHERE r.coach_id=$1 AND r.removed_at IS NULL ORDER BY r.created_at DESC, r.id LIMIT $2 OFFSET $3`, [user.id, i.limit, i.offset]),
+});
+
+cap({
   name: 'decide_passport_reference', method: 'POST', path: '/me/passport-references/:id/decision', tag: TAG,
   summary: 'Approve (it can then be shared) or decline a coach reference written about you. Send the version you saw.',
   input: z.object({ id, version: z.number().int().min(1), decision: z.enum(['approved', 'declined']) }),
