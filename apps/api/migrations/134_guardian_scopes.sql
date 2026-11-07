@@ -1,7 +1,7 @@
 -- Finer guardian authority (issue #604). Additive and backwards-compatible: every existing link keeps full authority.
 -- A link's scopes say which kinds of action the guardian may take for the young person; an organisation may further restrict
 -- some scopes to the primary guardian within its own context. Nothing is deleted; a policy is retired, not removed.
-ALTER TABLE guardian_links ADD COLUMN IF NOT EXISTS scopes text[] NOT NULL DEFAULT '{pay,register,rsvp,travel_consent,consent,calendar}';
+ALTER TABLE guardian_links ADD COLUMN IF NOT EXISTS scopes text[] NOT NULL DEFAULT '{pay,register,rsvp,travel_consent,consent,calendar,social,pickup}';
 ALTER TABLE guardian_links ADD COLUMN IF NOT EXISTS scopes_updated_by uuid REFERENCES users;
 ALTER TABLE guardian_links ADD COLUMN IF NOT EXISTS scopes_updated_at timestamptz;
 
