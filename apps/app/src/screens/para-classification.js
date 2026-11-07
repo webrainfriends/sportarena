@@ -15,6 +15,8 @@ import { ParaEntries } from './para-competition';
 import { ParaDisciplines } from './para-disciplines';
 import { ParaRegional } from './para-regional';
 import { ParaSourceReviews } from './para-source-reviews';
+import { StateBadge } from './coach-adaptive';
+import { useNav } from '../nav';
 import { c } from '../theme';
 import { t } from '../i18n';
 import { locale } from '../locale';
@@ -167,6 +169,15 @@ function Steps({ current, total }) {
 // ------------------------------------------------------------------ Start-a-classification: 3-step elite flow
 function StartClassificationSheet({ visible, onClose, published, coverage, athleteId, onDone }) {
   const { toast } = useSession();
+  const [requesting, setRequesting] = useState(null); // sport_id being requested
+  const requestDefinition = async (sport) => {
+    setRequesting(sport.sport_id);
+    try {
+      await api.post('/para/sport-definition-requests', { sport_id: String(sport.sport_id) });
+      toast(t('para.request_sport_sent'));
+    } catch (e) { toast(e.message); }
+    finally { setRequesting(null); }
+  };
   const [step, setStep] = useState(0);
   const [sportSearch, setSportSearch] = useState('');
   const [selectedSportId, setSelectedSportId] = useState(null);
@@ -237,18 +248,29 @@ function StartClassificationSheet({ visible, onClose, published, coverage, athle
               const governed = s.versions.length > 0;
               const isSelected = selectedSportId === s.sport_id;
               return (
-                <Pressable key={s.sport_id} onPress={() => governed ? setSelectedSportId(s.sport_id) : null}
-                  accessibilityRole="button" accessibilityLabel={join(s.sport, governed ? t('para.sport_governed') : t('para.sport_not_yet'))}
-                  style={{ flexDirection: 'row', alignItems: 'center', gap: 14, padding: 14, borderRadius: 16, borderWidth: 1.5, borderColor: isSelected ? c.pink : c.line, backgroundColor: isSelected ? c.pinkSoft : c.paper, marginBottom: 8, opacity: governed ? 1 : 0.55 }}>
-                  <T size={28} style={{ width: 36, textAlign: 'center' }}>{s.emoji}</T>
-                  <View style={{ flex: 1 }}>
-                    <T size={15} weight="800">{s.sport}</T>
-                    <T size={12} color={c.mute} style={{ marginTop: 2 }}>
-                      {governed ? s.versions.map((v) => `${v.authority} · ${t('para.version', { n: v.version })}`).join(' · ') : t('para.start_sport_no_def')}
-                    </T>
-                  </View>
-                  <Tag label={governed ? t('para.sport_governed') : t('para.sport_not_yet')} color={governed ? c.limeSoft : c.orangeSoft} />
-                </Pressable>
+                <View key={s.sport_id} style={{ marginBottom: 8 }}>
+                  <Pressable onPress={() => governed ? setSelectedSportId(s.sport_id) : null}
+                    accessibilityRole="button" accessibilityLabel={join(s.sport, governed ? t('para.sport_governed') : t('para.sport_not_yet'))}
+                    style={{ flexDirection: 'row', alignItems: 'center', gap: 14, padding: 14, borderRadius: 16, borderWidth: 1.5, borderColor: isSelected ? c.pink : c.line, backgroundColor: isSelected ? c.pinkSoft : c.paper }}>
+                    <T size={28} style={{ width: 36, textAlign: 'center' }}>{s.emoji}</T>
+                    <View style={{ flex: 1 }}>
+                      <T size={15} weight="800">{s.sport}</T>
+                      <T size={12} color={c.mute} style={{ marginTop: 2 }}>
+                        {governed ? s.versions.map((v) => `${v.authority} · ${t('para.version', { n: v.version })}`).join(' · ') : t('para.start_sport_no_def')}
+                      </T>
+                    </View>
+                    <Tag label={governed ? t('para.sport_governed') : t('para.sport_not_yet')} color={governed ? c.limeSoft : c.orangeSoft} />
+                  </Pressable>
+                  {!governed ? (
+                    <View style={{ marginTop: 4, paddingHorizontal: 4 }}>
+                      <Btn small title={requesting === s.sport_id ? t('common.loading') : t('para.request_sport_btn')}
+                        disabled={requesting === s.sport_id}
+                        color={c.cyanSoft} ink={c.cyan}
+                        onPress={() => requestDefinition(s)}
+                        accessibilityLabel={t('para.request_sport_a11y', { sport: s.sport })} />
+                    </View>
+                  ) : null}
+                </View>
               );
             })}
           </ScrollView>
@@ -369,6 +391,72 @@ function StartClassificationSheet({ visible, onClose, published, coverage, athle
         </View>
       )}
     </Sheet>
+  );
+}
+
+// ------------------------------------------------------------------ coach para credentials
+// Shows adaptive coaching credential state, classifier credentials for para sports and para officiating status.
+function CoachParaCredentials({ desk }) {
+  const { toast } = useSession();
+  const { push } = useNav();
+  const adaptive = useLoad(() => api.get('/me/coach-adaptive').catch(() => null), []);
+  const a = adaptive.data;
+  const paraClassifiers = (desk.classifier ?? []).filter((k) => k.is_para || k.sport_slug?.startsWith('para') || k.discipline);
+  const hasAdaptive = !!a?.opted_in;
+  const credState = a?.expertise?.length
+    ? (a.expertise.some((e) => e.state === 'verified') ? 'verified' : 'self_declared')
+    : 'none';
+  return (
+    <View style={{ gap: 18 }}>
+      <Disclaimer />
+
+      {/* Adaptive coaching */}
+      <Block title={t('para.coach_cred_title')} right={
+        <Btn small title={t('para.coach_set_up_btn')} color={c.paper} ink={c.ink} onPress={() => push?.('CoachAdaptive')} accessibilityLabel={t('para.coach_set_up_btn')} />
+      }>
+        <T size={13} color={c.mute}>{t('para.coach_cred_sub')}</T>
+        {adaptive.loading && !a ? <Loading /> : adaptive.error ? <ErrorBox error={adaptive.error} onRetry={adaptive.reload} /> : (
+          <View style={{ gap: 10 }}>
+            {!a || !hasAdaptive ? (
+              <Empty emoji="🏅" title={t('para.coach_no_para_sports')} sub={t('para.coach_no_para_sub')} />
+            ) : (
+              a.expertise.map((e) => (
+                <Card key={e.id} pad={14} style={{ gap: 6 }} accessibilityLabel={[e.discipline, e.state].join(' · ')}>
+                  <View style={{ flexDirection: 'row', justifyContent: 'space-between', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+                    <T weight="800" size={14} style={{ flexShrink: 1 }}>{e.credential ?? t(`inc.tpl_${e.discipline}`)}</T>
+                    <StateBadge state={e.state} />
+                  </View>
+                  {e.authority ? <T size={12} color={c.mute}>{t('adp.issuer', { name: e.authority })}{e.valid_to ? ` · ${t('adp.valid_to', { date: e.valid_to })}` : ''}</T> : null}
+                </Card>
+              ))
+            )}
+            {hasAdaptive && a.expertise.length ? (
+              <T size={12} color={c.mute}>{t('adp.disclaimer')}</T>
+            ) : null}
+          </View>
+        )}
+      </Block>
+
+      {/* Para classifier credentials (if any) */}
+      {paraClassifiers.length ? (
+        <Block title={t('para.coach_officiating_title')}>
+          {paraClassifiers.map((k) => (
+            <Card key={k.id} pad={14} style={{ gap: 6 }} accessibilityLabel={[k.sport, k.grade, k.live ? t('para.live') : label('credstate', k.status)].join(' · ')}>
+              <View style={{ flexDirection: 'row', justifyContent: 'space-between', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+                <T weight="800" size={14}>{k.sport}{k.discipline ? ` · ${k.discipline}` : ''}</T>
+                <Tag label={k.live ? t('para.live') : label('credstate', k.status)} color={k.live ? c.limeSoft : c.orangeSoft} />
+              </View>
+              <T size={12} color={c.mute}>{k.issuing_body} · {k.grade}{k.class_codes?.length ? ` · ${k.class_codes.join(', ')}` : ''}</T>
+              <T size={12} color={c.mute}>{t('para.expires', { date: short(k.expires_on) })}</T>
+            </Card>
+          ))}
+        </Block>
+      ) : (
+        <Block title={t('para.coach_officiating_title')}>
+          <Empty emoji="🪪" title={t('para.coach_officiating_none')} sub={t('para.no_credential_sub')} />
+        </Block>
+      )}
+    </View>
   );
 }
 
@@ -718,8 +806,10 @@ export function ParaClassification() {
   if (!desk.data) return <Screen><Loading /></Screen>;
   const d = desk.data;
   const isPlatAdmin = desk.data ? (user?.roles?.includes('platform_admin') ?? false) : false;
+  const isCoach = user?.roles?.includes('coach') ?? false;
   const tabs = [
     ['me', t('para.tab_me')],
+    ...(isCoach ? [['coach_para', t('para.tab_coach')]] : []),
     ['disciplines', t('ps.tab')],
     ['regional', t('psr.title')],
     ...(d.classifier.length ? [['desk', t('para.tab_desk')]] : []),
@@ -731,7 +821,7 @@ export function ParaClassification() {
       <View style={{ gap: 14 }}>
         <T size={26} weight="800" accessibilityRole="header">{t('para.title')}</T>
         {tabs.length > 1 ? <Seg options={tabs.map(([v, l]) => ({ value: v, label: l }))} value={tab} onChange={setTab} /> : null}
-        {tab === 'me' ? <Mine athleteId={ward} wards={d.wards} onWard={setWard} /> : tab === 'disciplines' ? <ParaDisciplines /> : tab === 'regional' ? <ParaRegional /> : tab === 'desk' ? <Desk desk={d} /> : tab === 'authority' ? <Authority desk={d} /> : tab === 'source_reviews' ? <ParaSourceReviews /> : null}
+        {tab === 'me' ? <Mine athleteId={ward} wards={d.wards} onWard={setWard} /> : tab === 'coach_para' ? <CoachParaCredentials desk={d} /> : tab === 'disciplines' ? <ParaDisciplines /> : tab === 'regional' ? <ParaRegional /> : tab === 'desk' ? <Desk desk={d} /> : tab === 'authority' ? <Authority desk={d} /> : tab === 'source_reviews' ? <ParaSourceReviews /> : null}
       </View>
     </Screen>
   );
