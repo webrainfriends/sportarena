@@ -62,7 +62,7 @@ cap({
   input: z.object({
     venue_id: id,
     role: z.enum(ROLES).describe('owner | manager | authorized_agent'),
-    statement: z.string().min(10).max(2000).describe('The claimant's written statement of connection to the venue'),
+    statement: z.string().min(10).max(2000).describe('The claimant\'s written statement of connection to the venue'),
   }),
   async handler({ user }, i) {
     return tx(async (c) => {
@@ -146,7 +146,7 @@ cap({
 
 cap({
   name: 'list_my_claims', method: 'GET', path: '/me/claims', tag: TAG,
-  summary: 'The authenticated user's own venue claims with their documents and timeline events.',
+  summary: 'The authenticated user\'s own venue claims with their documents and timeline events.',
   input: z.object({ status: z.string().optional(), ...page }),
   async handler({ user }, i) {
     const rows = await many(
