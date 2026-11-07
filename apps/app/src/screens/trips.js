@@ -12,7 +12,7 @@ import { c } from '../theme';
 import { useLayout } from '../layout';
 import { CountryPicker } from '../country-picker';
 import { MapLinks, placeIn, placeOut, placeText } from '../place-picker';
-import { Block, DocsTab, GearTab, Grid, Head, HistoryTab, ItineraryTab, MoneyTab, PartyTab, ReportsTab, StayTab, Wrap, label, tone, useAct, useKey } from './trip-tabs';
+import { AccessTab, Block, DocsTab, GearTab, Grid, Head, HistoryTab, ItineraryTab, MoneyTab, PartyTab, ReportsTab, StayTab, Wrap, label, tone, useAct, useKey } from './trip-tabs';
 
 const deviceZone = () => { try { return Intl.DateTimeFormat().resolvedOptions().timeZone; } catch { return 'UTC'; } };
 const stamp = (iso, tz) => new Date(iso).toLocaleString(undefined, { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit', timeZone: tz });
@@ -147,7 +147,7 @@ export function Trip({ id }) {
   if (st.loading && !st.data) return <Screen><Loading /></Screen>;
   if (st.error) return <Screen><ErrorBox error={st.error} onRetry={st.reload} /></Screen>;
   const d = st.data, t = d.trip, you = d.you;
-  const tabs = [['board', '🧭 Board'], ['party', '👥 Party'], ['transport', '✈️ Transport'], ['stay', '🏨 Stay'], ['docs', '🛂 Documents'], ['gear', '🧰 Equipment'], ['money', '💵 Money'], ['reports', '📄 Reports'], ['history', '🕘 History']];
+  const tabs = [['board', '🧭 Board'], ['party', '👥 Party'], ['transport', '✈️ Transport'], ['stay', '🏨 Stay'], ['docs', '🛂 Documents'], ['gear', '🧰 Equipment'], ['money', '💵 Money'], ['reports', '📄 Reports'], ['history', '🕘 History'], ['access', '♿ Access']];
   const props = { id, data: d, reload: st.reload };
   const steps = you.manager ? (NEXT_STEPS[t.status] ?? []).filter(([to]) => !(to === 'confirmed' && !you.can_approve)) : [];
   return (
@@ -179,6 +179,7 @@ export function Trip({ id }) {
       {tab === 'money' && <MoneyTab {...props} />}
       {tab === 'reports' && <ReportsTab {...props} />}
       {tab === 'history' && <HistoryTab {...props} />}
+      {tab === 'access' && <AccessTab {...props} />}
       {you.manager ? <Notes id={id} d={d} reload={st.reload} /> : d.notes.length ? <Notes id={id} d={d} reload={st.reload} /> : null}
       <FormSheet visible={cancel} onClose={() => setCancel(false)} title="Cancel this trip" submitLabel="Cancel the trip" color={c.red} notice="Everything is kept and read-only. The whole travel party is told."
         fields={[{ key: 'note', label: 'Why is it cancelled', type: 'text' }]} onSubmit={async (v) => { await api.post(`/trips/${id}/status`, { to: 'cancelled', note: v.note }); await st.reload(); return 'Trip cancelled'; }} />
