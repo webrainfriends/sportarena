@@ -14977,7 +14977,43 @@ export default {
   'account.lang_reviewed': 'मूळ भाषक समीक्षित', // machine-drafted
   'account.lang_draft': 'मशीन अनुवादित', // machine-drafted
   'account.lang_format_preview': 'स्वरूप पूर्वावलोकन', // machine-drafted
-
+  // Injury episode & RTP
+  'inj.episode_title': 'दुखापतीचा प्रसंग', // machine-drafted
+  'inj.open_episode': 'प्रसंग उघडा', // machine-drafted
+  'inj.new_episode': 'नवीन दुखापत प्रसंग', // machine-drafted
+  'inj.episode_ref': 'प्रसंग संदर्भ', // machine-drafted
+  'inj.status.active': 'सक्रिय', // machine-drafted
+  'inj.status.rehabilitation': 'पुनर्वसन', // machine-drafted
+  'inj.status.restricted_training': 'मर्यादित प्रशिक्षण', // machine-drafted
+  'inj.status.return_to_train': 'प्रशिक्षणावर परत', // machine-drafted
+  'inj.status.return_to_play': 'खेळावर परत', // machine-drafted
+  'inj.status.closed': 'बंद', // machine-drafted
+  'inj.status.cancelled': 'रद्द', // machine-drafted
+  'inj.body_region': 'शरीराचा भाग', // machine-drafted
+  'inj.mechanism': 'कारण', // machine-drafted
+  'inj.severity': 'तीव्रता', // machine-drafted
+  'inj.expected_return': 'अपेक्षित परतावा', // machine-drafted
+  'inj.actual_return': 'वास्तविक परतावा', // machine-drafted
+  'inj.occurred_on': 'दुखापतीची तारीख', // machine-drafted
+  'inj.is_recurrence': 'पुनरावृत्ती', // machine-drafted
+  'inj.athlete_phase.recovery': 'पुनर्प्राप्ती', // machine-drafted
+  'inj.athlete_phase.rehab': 'पुनर्वसन', // machine-drafted
+  'inj.athlete_phase.limited_training': 'मर्यादित प्रशिक्षण', // machine-drafted
+  'inj.athlete_phase.back_to_training': 'प्रशिक्षणावर परत', // machine-drafted
+  'inj.athlete_phase.cleared_to_play': 'खेळण्यास परवानगी', // machine-drafted
+  'inj.coach_no_detail': 'वैद्यकीय तपशील खाजगी आहे. टीम मेडिकल स्टाफद्वारे व्यवस्थापित.', // machine-drafted
+  'inj.coach_status': 'दुखापतीची स्थिती', // machine-drafted
+  'inj.impact_title': 'चुकलेले सत्र आणि सामने', // machine-drafted
+  'inj.impact_add': 'चुकलेले सत्र नोंदवा', // machine-drafted
+  'rtp.protocol_title': 'खेळावर परत येण्याचा प्रोटोकॉल', // machine-drafted
+  'rtp.milestone_title': 'टप्पा', // machine-drafted
+  'rtp.issue_rtt': 'प्रशिक्षणावर परतण्यास परवानगी द्या', // machine-drafted
+  'rtp.issue_rtp': 'खेळावर परतण्यास परवानगी द्या', // machine-drafted
+  'rtp.load_restrictions': 'भार मर्यादा', // machine-drafted
+  'rtp.coach_view_notice': 'प्रशिक्षक केवळ मंजुरी स्थिती आणि भार मर्यादा पाहू शकतात — कोणताही वैद्यकीय तपशील कधीही शेअर केला जात नाही.', // machine-drafted
+  'rtp.approval_valid_until': 'पर्यंत वैध', // machine-drafted
+  'rtp.mark_achieved': 'साध्य झाले म्हणून चिन्हांकित करा', // machine-drafted
+};
   // machine-drafted — branded documents
   'documents.hub.my_documents': 'My Documents', // machine-drafted
   'documents.hub.templates': 'Templates', // machine-drafted

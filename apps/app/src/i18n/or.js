@@ -14978,7 +14978,43 @@ export default {
   'account.lang_reviewed': 'ମାତୃଭାଷା ସମୀକ୍ଷିତ', // machine-drafted
   'account.lang_draft': 'ମେସିନ ଅନୁବାଦ', // machine-drafted
   'account.lang_format_preview': 'ଫର୍ମ୍ୟାଟ ପ୍ରିଭ୍ୟୁ', // machine-drafted
-
+  // Injury episode & RTP
+  'inj.episode_title': 'ଆଘାତ ଘଟଣା', // machine-drafted
+  'inj.open_episode': 'ଘଟଣା ଖୋଲନ୍ତୁ', // machine-drafted
+  'inj.new_episode': 'ନୂତନ ଆଘାତ ଘଟଣା', // machine-drafted
+  'inj.episode_ref': 'ଘଟଣା ରେଫରେନ୍ସ', // machine-drafted
+  'inj.status.active': 'ସକ୍ରିୟ', // machine-drafted
+  'inj.status.rehabilitation': 'ପୁନର୍ବାସ', // machine-drafted
+  'inj.status.restricted_training': 'ସୀମିତ ତାଲିମ', // machine-drafted
+  'inj.status.return_to_train': 'ତାଲିମକୁ ଫେରନ୍ତୁ', // machine-drafted
+  'inj.status.return_to_play': 'ଖେଳକୁ ଫେରନ୍ତୁ', // machine-drafted
+  'inj.status.closed': 'ବନ୍ଦ', // machine-drafted
+  'inj.status.cancelled': 'ରଦ୍ଦ', // machine-drafted
+  'inj.body_region': 'ଶରୀରର ଅଂଶ', // machine-drafted
+  'inj.mechanism': 'ପ୍ରଣାଳୀ', // machine-drafted
+  'inj.severity': 'ଗୁରୁତ୍ୱ', // machine-drafted
+  'inj.expected_return': 'ଆଶା ଫେରିବା', // machine-drafted
+  'inj.actual_return': 'ବାସ୍ତବ ଫେରିବା', // machine-drafted
+  'inj.occurred_on': 'ଆଘାତ ତାରିଖ', // machine-drafted
+  'inj.is_recurrence': 'ପୁନରାବୃତ୍ତି', // machine-drafted
+  'inj.athlete_phase.recovery': 'ସୁସ୍ଥ ହେବା', // machine-drafted
+  'inj.athlete_phase.rehab': 'ପୁନର୍ବାସ', // machine-drafted
+  'inj.athlete_phase.limited_training': 'ସୀମିତ ତାଲିମ', // machine-drafted
+  'inj.athlete_phase.back_to_training': 'ତାଲିମକୁ ଫେରି', // machine-drafted
+  'inj.athlete_phase.cleared_to_play': 'ଖେଳିବାର ଅନୁମତି', // machine-drafted
+  'inj.coach_no_detail': 'ଚିକିତ୍ସା ବିବରଣ ଗୋପନୀୟ। ଦଳର ଚିକିତ୍ସା କର୍ମୀଙ୍କ ଦ୍ୱାରା ପରିଚାଳିତ।', // machine-drafted
+  'inj.coach_status': 'ଆଘାତ ସ୍ଥିତି', // machine-drafted
+  'inj.impact_title': 'ଅନୁପସ୍ଥିତ ସେସନ ଏବଂ ମ୍ୟାଚ', // machine-drafted
+  'inj.impact_add': 'ଅନୁପସ୍ଥିତ ସେସନ ଲିପିବଦ୍ଧ କରନ୍ତୁ', // machine-drafted
+  'rtp.protocol_title': 'ଖେଳକୁ ଫେରିବାର ପ୍ରୋଟୋକଲ', // machine-drafted
+  'rtp.milestone_title': 'ମାଇଲଷ୍ଟୋନ', // machine-drafted
+  'rtp.issue_rtt': 'ତାଲିମକୁ ଫେରିବାର ଅନୁମତି ଦିଅନ୍ତୁ', // machine-drafted
+  'rtp.issue_rtp': 'ଖେଳକୁ ଫେରିବାର ଅନୁମତି ଦିଅନ୍ତୁ', // machine-drafted
+  'rtp.load_restrictions': 'ଲୋଡ ସୀମାବଦ୍ଧତା', // machine-drafted
+  'rtp.coach_view_notice': 'କୋଚ୍ ଶୁଧୁ ଛାଡ ସ୍ଥିତି ଏବଂ ଲୋଡ ସୀମାବଦ୍ଧତା ଦେଖନ୍ତି — କୌଣସି ଚିକିତ୍ସା ବିବରଣ ବଣ୍ଟା ହୁଏ ନାହିଁ।', // machine-drafted
+  'rtp.approval_valid_until': 'ପର୍ଯ୍ୟନ୍ତ ବୈଧ', // machine-drafted
+  'rtp.mark_achieved': 'ହାସଲ ଭାବରେ ଚିହ୍ନ ଦିଅନ୍ତୁ', // machine-drafted
+};
   // machine-drafted — branded documents
   'documents.hub.my_documents': 'My Documents', // machine-drafted
   'documents.hub.templates': 'Templates', // machine-drafted

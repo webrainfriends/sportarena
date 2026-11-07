@@ -14978,7 +14978,43 @@ export default {
   'account.lang_reviewed': 'දේශීය භාෂා සමාලෝචනය', // machine-drafted
   'account.lang_draft': 'යන්ත්‍ර පරිවර්තිත', // machine-drafted
   'account.lang_format_preview': 'ආකෘති පෙරදර්ශනය', // machine-drafted
-
+  // Injury episode & RTP
+  'inj.episode_title': 'තුවාල සිදුවීම', // machine-drafted
+  'inj.open_episode': 'සිදුවීම විවෘත කරන්න', // machine-drafted
+  'inj.new_episode': 'නව තුවාල සිදුවීම', // machine-drafted
+  'inj.episode_ref': 'සිදුවීම් යොමුව', // machine-drafted
+  'inj.status.active': 'ක්‍රියාකාරී', // machine-drafted
+  'inj.status.rehabilitation': 'පුනරුත්ථාපනය', // machine-drafted
+  'inj.status.restricted_training': 'සීමිත පුහුණුව', // machine-drafted
+  'inj.status.return_to_train': 'පුහුණුවට ආපසු', // machine-drafted
+  'inj.status.return_to_play': 'ක්‍රීඩාවට ආපසු', // machine-drafted
+  'inj.status.closed': 'වසා ඇත', // machine-drafted
+  'inj.status.cancelled': 'අවලංගු', // machine-drafted
+  'inj.body_region': 'ශරීර කලාපය', // machine-drafted
+  'inj.mechanism': 'යාන්ත්‍රණය', // machine-drafted
+  'inj.severity': 'බරපතළකම', // machine-drafted
+  'inj.expected_return': 'අපේක්ෂිත ආපසු', // machine-drafted
+  'inj.actual_return': 'සත්‍ය ආපසු', // machine-drafted
+  'inj.occurred_on': 'තුවාල දිනය', // machine-drafted
+  'inj.is_recurrence': 'නැවත සිදුවීම', // machine-drafted
+  'inj.athlete_phase.recovery': 'සුවය', // machine-drafted
+  'inj.athlete_phase.rehab': 'පුනරුත්ථාපනය', // machine-drafted
+  'inj.athlete_phase.limited_training': 'සීමිත පුහුණුව', // machine-drafted
+  'inj.athlete_phase.back_to_training': 'පුහුණුවට ආපසු', // machine-drafted
+  'inj.athlete_phase.cleared_to_play': 'ක්‍රීඩා කිරීමට අනුමැතිය', // machine-drafted
+  'inj.coach_no_detail': 'සායනික තොරතුරු පෞද්ගලිකයි. කණ්ඩායම් වෛද්‍ය කාර්ය මණ්ඩලය විසින් කළමනාකරණය.', // machine-drafted
+  'inj.coach_status': 'තුවාල තත්ත්වය', // machine-drafted
+  'inj.impact_title': 'මඟ හැරුණු සැසි සහ තරඟ', // machine-drafted
+  'inj.impact_add': 'මඟ හැරුණු සැසිය සටහන් කරන්න', // machine-drafted
+  'rtp.protocol_title': 'ක්‍රීඩාවට ආපසු ප්‍රොටෝකෝලය', // machine-drafted
+  'rtp.milestone_title': 'සන්ධිස්ථානය', // machine-drafted
+  'rtp.issue_rtt': 'පුහුණුවට ආපසු අනුමතිය ලබා දෙන්න', // machine-drafted
+  'rtp.issue_rtp': 'ක්‍රීඩාවට ආපසු අනුමතිය ලබා දෙන්න', // machine-drafted
+  'rtp.load_restrictions': 'ලෝඩ් සීමාවන්', // machine-drafted
+  'rtp.coach_view_notice': 'පුහුණුකරුවන් ගලවාගැනීමේ තත්ත්වය සහ ලෝඩ් සීමාවන් පමණක් දකිති — සායනික තොරතුරු කිසිවිටෙකත් බෙදා නොගනී.', // machine-drafted
+  'rtp.approval_valid_until': 'දක්වා වලංගුයි', // machine-drafted
+  'rtp.mark_achieved': 'සාක්ෂාත් කළ බව සලකුණු කරන්න', // machine-drafted
+};
   // machine-drafted — branded documents
   'documents.hub.my_documents': 'My Documents', // machine-drafted
   'documents.hub.templates': 'Templates', // machine-drafted

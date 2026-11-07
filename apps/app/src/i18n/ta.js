@@ -14976,7 +14976,43 @@ export default {
   'account.lang_reviewed': 'தேசிய மொழி மதிப்பாய்வு', // machine-drafted
   'account.lang_draft': 'இயந்திர மொழிபெயர்ப்பு', // machine-drafted
   'account.lang_format_preview': 'வடிவ முன்னோட்டம்', // machine-drafted
-
+  // Injury episode & RTP
+  'inj.episode_title': 'காயம் நிகழ்வு', // machine-drafted
+  'inj.open_episode': 'நிகழ்வைத் திறக்கவும்', // machine-drafted
+  'inj.new_episode': 'புதிய காயம் நிகழ்வு', // machine-drafted
+  'inj.episode_ref': 'நிகழ்வு குறிப்பு', // machine-drafted
+  'inj.status.active': 'செயலில்', // machine-drafted
+  'inj.status.rehabilitation': 'மறுவாழ்வு', // machine-drafted
+  'inj.status.restricted_training': 'கட்டுப்படுத்தப்பட்ட பயிற்சி', // machine-drafted
+  'inj.status.return_to_train': 'பயிற்சிக்குத் திரும்பல்', // machine-drafted
+  'inj.status.return_to_play': 'விளையாட்டுக்குத் திரும்பல்', // machine-drafted
+  'inj.status.closed': 'மூடப்பட்டது', // machine-drafted
+  'inj.status.cancelled': 'ரத்து செய்யப்பட்டது', // machine-drafted
+  'inj.body_region': 'உடல் பகுதி', // machine-drafted
+  'inj.mechanism': 'காரணம்', // machine-drafted
+  'inj.severity': 'தீவிரம்', // machine-drafted
+  'inj.expected_return': 'எதிர்பார்க்கப்படும் திரும்பல்', // machine-drafted
+  'inj.actual_return': 'உண்மையான திரும்பல்', // machine-drafted
+  'inj.occurred_on': 'காயம் தேதி', // machine-drafted
+  'inj.is_recurrence': 'மீண்டும் நிகழ்வு', // machine-drafted
+  'inj.athlete_phase.recovery': 'குணமடைதல்', // machine-drafted
+  'inj.athlete_phase.rehab': 'மறுவாழ்வு', // machine-drafted
+  'inj.athlete_phase.limited_training': 'வரையறுக்கப்பட்ட பயிற்சி', // machine-drafted
+  'inj.athlete_phase.back_to_training': 'பயிற்சிக்குத் திரும்பி', // machine-drafted
+  'inj.athlete_phase.cleared_to_play': 'விளையாட அனுமதி', // machine-drafted
+  'inj.coach_no_detail': 'மருத்துவ விவரங்கள் தனிப்பட்டவை. குழு மருத்துவ பணியாளர்களால் நிர்வகிக்கப்படுகிறது.', // machine-drafted
+  'inj.coach_status': 'காயம் நிலை', // machine-drafted
+  'inj.impact_title': 'தவறிய அமர்வுகள் மற்றும் போட்டிகள்', // machine-drafted
+  'inj.impact_add': 'தவறிய அமர்வை பதிவு செய்யவும்', // machine-drafted
+  'rtp.protocol_title': 'விளையாட்டுக்குத் திரும்பும் நெறிமுறை', // machine-drafted
+  'rtp.milestone_title': 'மைல்கல்', // machine-drafted
+  'rtp.issue_rtt': 'பயிற்சிக்குத் திரும்ப அனுமதி வழங்கவும்', // machine-drafted
+  'rtp.issue_rtp': 'விளையாட்டுக்குத் திரும்ப அனுமதி வழங்கவும்', // machine-drafted
+  'rtp.load_restrictions': 'சுமை கட்டுப்பாடுகள்', // machine-drafted
+  'rtp.coach_view_notice': 'பயிற்சியாளர்கள் ஒப்புதல் நிலை மற்றும் சுமை கட்டுப்பாடுகளை மட்டுமே காண்கிறார்கள் — மருத்துவ விவரங்கள் பகிரப்படுவதில்லை.', // machine-drafted
+  'rtp.approval_valid_until': 'வரை செல்லுபடியாகும்', // machine-drafted
+  'rtp.mark_achieved': 'அடையப்பட்டதாக குறிக்கவும்', // machine-drafted
+};
   // machine-drafted — branded documents
   'documents.hub.my_documents': 'My Documents', // machine-drafted
   'documents.hub.templates': 'Templates', // machine-drafted

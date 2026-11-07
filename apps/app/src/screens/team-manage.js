@@ -10,6 +10,7 @@ import { FormSheet } from '../FormSheet';
 import { c, when, day } from '../theme';
 import { moneyIn } from '../vtime';
 import { SubjectPanel } from './insurance';
+import { TeamInjuryStatus } from './injury-episode';
 
 export const AVAIL = {
   available: ['✅', 'Available', c.mint], tentative: ['🤔', 'Maybe', c.sun], unavailable: ['⛔', 'Unavailable', c.orange], injured: ['🤕', 'Injured', c.pink],
@@ -77,6 +78,7 @@ export function RosterTab({ t, r, reload, toast }) {
   return (
     <>
       <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 8 }}>{counts.map(([k, n]) => <Tag key={k} label={`${AVAIL[k][0]} ${n} ${AVAIL[k][1].toLowerCase()}`} />)}</View>
+      {active.some((m) => m.availability === 'injured') ? <TeamInjuryStatus teamId={t.id} /> : null}
       <View style={{ flexDirection: 'row', gap: 8, marginTop: 8 }}>
         <View style={{ flex: 1 }}><Btn small title="Find players" onPress={() => setFind('player')} /></View>
         <View style={{ flex: 1 }}><Btn small title="Find a coach" color={c.violet} onPress={() => setFind('coach')} /></View>

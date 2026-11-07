@@ -14978,7 +14978,43 @@ export default {
   'account.lang_reviewed': 'Ditinjau Penutur Asli', // machine-drafted
   'account.lang_draft': 'Draf Mesin', // machine-drafted
   'account.lang_format_preview': 'Pratinjau Format', // machine-drafted
-
+  // Injury episode & RTP
+  'inj.episode_title': 'Episode Cedera', // machine-drafted
+  'inj.open_episode': 'Buka Episode', // machine-drafted
+  'inj.new_episode': 'Episode Cedera Baru', // machine-drafted
+  'inj.episode_ref': 'Referensi Episode', // machine-drafted
+  'inj.status.active': 'Aktif', // machine-drafted
+  'inj.status.rehabilitation': 'Rehabilitasi', // machine-drafted
+  'inj.status.restricted_training': 'Latihan Terbatas', // machine-drafted
+  'inj.status.return_to_train': 'Kembali Berlatih', // machine-drafted
+  'inj.status.return_to_play': 'Kembali Bermain', // machine-drafted
+  'inj.status.closed': 'Ditutup', // machine-drafted
+  'inj.status.cancelled': 'Dibatalkan', // machine-drafted
+  'inj.body_region': 'Bagian Tubuh', // machine-drafted
+  'inj.mechanism': 'Mekanisme', // machine-drafted
+  'inj.severity': 'Tingkat Keparahan', // machine-drafted
+  'inj.expected_return': 'Perkiraan Kembali', // machine-drafted
+  'inj.actual_return': 'Kembali Aktual', // machine-drafted
+  'inj.occurred_on': 'Tanggal Cedera', // machine-drafted
+  'inj.is_recurrence': 'Kekambuhan', // machine-drafted
+  'inj.athlete_phase.recovery': 'Pemulihan', // machine-drafted
+  'inj.athlete_phase.rehab': 'Rehabilitasi', // machine-drafted
+  'inj.athlete_phase.limited_training': 'Latihan Terbatas', // machine-drafted
+  'inj.athlete_phase.back_to_training': 'Kembali Berlatih', // machine-drafted
+  'inj.athlete_phase.cleared_to_play': 'Diizinkan Bermain', // machine-drafted
+  'inj.coach_no_detail': 'Detail klinis bersifat pribadi. Dikelola oleh staf medis tim.', // machine-drafted
+  'inj.coach_status': 'Status Cedera', // machine-drafted
+  'inj.impact_title': 'Sesi & Pertandingan yang Terlewat', // machine-drafted
+  'inj.impact_add': 'Catat Sesi yang Terlewat', // machine-drafted
+  'rtp.protocol_title': 'Protokol Kembali Bermain', // machine-drafted
+  'rtp.milestone_title': 'Tonggak', // machine-drafted
+  'rtp.issue_rtt': 'Keluarkan Izin Kembali Berlatih', // machine-drafted
+  'rtp.issue_rtp': 'Keluarkan Izin Kembali Bermain', // machine-drafted
+  'rtp.load_restrictions': 'Pembatasan Beban', // machine-drafted
+  'rtp.coach_view_notice': 'Pelatih hanya melihat status izin dan pembatasan beban — tidak ada detail klinis yang dibagikan.', // machine-drafted
+  'rtp.approval_valid_until': 'Berlaku Hingga', // machine-drafted
+  'rtp.mark_achieved': 'Tandai Tercapai', // machine-drafted
+};
   // machine-drafted — branded documents
   'documents.hub.my_documents': 'My Documents', // machine-drafted
   'documents.hub.templates': 'Templates', // machine-drafted

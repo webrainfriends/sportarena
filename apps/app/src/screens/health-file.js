@@ -7,6 +7,7 @@ import { useLoad } from '../hooks';
 import { Btn, Card, Empty, ErrorBox, H2, Loading, Seg, T, Tag } from '../ui';
 import { FormSheet } from '../FormSheet';
 import { ContextEntry, ContextState, PlanActions, ResultVersions, HistorySheet, ClearanceCard, useAct, valuesBody } from './doctor';
+import { MyInjuries } from './injury-episode';
 import { c, day } from '../theme';
 
 const NEUTRAL = c.violetSoft;
@@ -20,11 +21,11 @@ const PLAIN = { requested: 'Waiting for your result', received: 'Received — wa
 
 export function MyHealthFile() {
   const [sec, setSec] = useState('plans');
-  const Body = { plans: MyPlans, results: MyResults, context: MyContext, referrals: MyReferrals, fit: MyFit, support: MySupport }[sec];
+  const Body = { plans: MyPlans, results: MyResults, context: MyContext, referrals: MyReferrals, fit: MyFit, injuries: MyInjuries, support: MySupport }[sec];
   return (
     <View style={{ gap: 12 }}>
       <Card color={c.mintSoft} pad={12}><T weight="800">Your health file</T><T size={12} color={c.mute}>What your doctors have shared with you, and what you tell them. Doctors only see your file while you give them access — change that any time in Access.</T></Card>
-      <Seg options={[{ value: 'plans', label: 'Care plans', emoji: '🗂️' }, { value: 'results', label: 'Tests', emoji: '🧪' }, { value: 'context', label: 'Allergies & meds', emoji: '💊' }, { value: 'referrals', label: 'Referrals', emoji: '↗️' }, { value: 'fit', label: 'Fit to play', emoji: '✅' }, { value: 'support', label: 'Support', emoji: '♿' }]} value={sec} onChange={setSec} color={c.mint} />
+      <Seg options={[{ value: 'plans', label: 'Care plans', emoji: '🗂️' }, { value: 'results', label: 'Tests', emoji: '🧪' }, { value: 'context', label: 'Allergies & meds', emoji: '💊' }, { value: 'referrals', label: 'Referrals', emoji: '↗️' }, { value: 'fit', label: 'Fit to play', emoji: '✅' }, { value: 'injuries', label: 'Injuries', emoji: '🩺' }, { value: 'support', label: 'Support', emoji: '♿' }]} value={sec} onChange={setSec} color={c.mint} />
       <Body key={sec} />
     </View>
   );

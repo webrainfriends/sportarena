@@ -346,6 +346,22 @@ id: 'wellbeing', title: 'Support student wellbeing and development',
     sources: ['apps/app/src/screens/academy-boarding.js'],
   },
   {
+    id: 'injury_rtp',
+    title: 'Injury & Return-to-Play',
+    why: 'Elite academies (Nadal Academy, Real Madrid, FC Barcelona) have zero tolerance for premature return from injury. This module tracks every injury from first assessment through rehabilitation milestones to formal clinical clearance, ensuring no athlete trains or plays before sign-off — and giving coaches a safe, diagnosis-free view of availability and load restrictions.',
+    steps: [
+      'From the athlete\'s file in the Doctor or Physio workspace, tap the Injuries tab and then Open Episode. Enter the injury date, body region, type (strain, sprain, fracture, tendinopathy, concussion, etc.), mechanism (contact, non-contact, overuse) and severity. Flag if this is a recurrence and link the prior episode. Set an estimated return date if known — this is a clinical estimate, never a public guarantee.',
+      'Open the episode and go to the RTP Protocol tab. Define 4–6 staged milestones matching the injury severity: for example, for a hamstring strain — Stage 1 Symptom-free rest, Stage 2 Light aerobic, Stage 3 Strength & mobility, Stage 4 Sport-specific running, Stage 5 Full-contact training. Set pass criteria and target dates for each stage. Criteria are stored encrypted and never visible to coaches.',
+      'Link each clinical artefact (encounter note, treatment plan, scan result, outcome measure) to the episode using the Artefacts tab. This creates a complete, traceable record for every clinical decision — essential for medico-legal purposes and insurance.',
+      'As the athlete progresses, update each milestone status (In Progress → Achieved, with evidence). Overdue milestones trigger automatic alerts to the responsible clinician. Once restricted participation is clinically safe, issue a Return-to-Train approval from the RTP Protocol tab — this updates the athlete\'s team availability to Restricted and allows the coaching team to plan modified sessions.',
+      'When all milestones are achieved, issue the Return-to-Play approval. The platform automatically chains this to a clinical clearance record and updates the athlete\'s availability across every team they are registered with.',
+      'Control what coaches see from the Sharing tab. Share the episode with one or more teams, choosing whether to show the expected return date and load restrictions. Coaches see only the availability status, expected return range, and any load restrictions you explicitly share — the diagnosis, body region, mechanism, clinical notes and provider identity are never disclosed.',
+      'Record missed sessions and fixtures in the Impact tab. This builds a longitudinal load and availability record that informs future training planning and sports science reviews.',
+      'Close the episode with the actual return date once the athlete is back in full training. The episode remains permanently on record and is flagged as a prior episode if the same region is re-injured in future.',
+    ],
+    target: { screen: 'InjuryEpisodes' },
+    modules: ['injury-episodes.js', 'injury-rtp.js', 'injury-coach-view.js', 'injury-alerts.js'],
+    sources: ['apps/app/src/screens/injury-episode.js'],
     id: 'branded_documents',
     title: 'Issue branded documents',
     why: 'Generate professional branded PDFs — invoices, training plans, enrolment letters, event timetables and booking confirmations — directly from canonical records without leaving the platform.',
@@ -392,6 +408,10 @@ export const NOT_IN_GUIDE = {
   'para-mentoring.js': 'Para peer mentoring is an athlete-facing feature (athletes discover and connect with peer mentors directly), not an org-onboarding step. It is not part of setting up an academy.',
   'platform-benchmarks.js': 'Platform Competitive Benchmarks is a platform-admin-only console (not an academy-onboarding step). It is documented in docs/platform-benchmarks.md.',
   'para-passport-passport.js': 'Para-sport sections of the athlete passport are managed by the athlete in their own Sports Passport (Athlete → Sports Passport → Para ★ tab); they are not an academy-onboarding step.',
+  'injury-episodes.js': 'Covered by the injury_rtp onboarding step.',
+  'injury-rtp.js': 'Covered by the injury_rtp onboarding step.',
+  'injury-coach-view.js': 'Covered by the injury_rtp onboarding step.',
+  'injury-alerts.js': 'Covered by the injury_rtp onboarding step.',
 };
 
 /** The directories/files the guard test watches for org/academy/venue/coach/tax capability modules. */
