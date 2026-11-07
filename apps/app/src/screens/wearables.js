@@ -130,13 +130,117 @@ function Alerts({ cat, dash }) {
   );
 }
 
-/** The athlete's own connected devices, trends, data quality and alerts (own data only). */
+// ---------- Elite extensions: ACWR, Readiness, sRPE ----------
+
+const ZONE_COLOR = () => ({ optimal: c.lime, underload: c.cyan, caution: c.sun, excessive: c.red, no_data: c.mute });
+const DIR_SYMBOL = { improving: '↑', stable: '→', declining: '↓', no_data: '–' };
+
+/** ACWR zone pill with accessible label */
+function ZonePill({ zone }) {
+  const label = t(`acwr.zone.${zone}`);
+  return <Tag label={label} color={ZONE_COLOR()[zone] ?? c.mute} accessibilityLabel={`ACWR zone: ${label}`} />;
+}
+
+/** Athlete's own ACWR + readiness panel (inside WearablesPanel) */
+function LoadInsights() {
+  const acwr = useLoad(() => api.get('/me/wearables/acwr'), []);
+  const readiness = useLoad(() => api.get('/me/wearables/readiness'), []);
+  if (acwr.loading && !acwr.data) return <Loading />;
+  const a = acwr.data;
+  const r = readiness.data;
+  if (!a && !r) return null;
+  return (
+    <Card pad={14} style={{ gap: 10 }}>
+      <T weight="800">{t('acwr.title')}</T>
+      {a ? (
+        <View style={{ gap: 6 }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+            <T size={28} weight="800">{a.ratio ?? '–'}</T>
+            {a.zone !== 'no_data' ? <ZonePill zone={a.zone} /> : null}
+          </View>
+          <View style={{ flexDirection: 'row', gap: 16 }}>
+            <View accessible accessibilityLabel={`Acute load: ${a.acute ?? 'no data'} au`}>
+              <T size={11} color={c.mute}>{t('acwr.acute')}</T>
+              <T weight="700">{a.acute ?? '–'} <T size={11} color={c.mute}>au</T></T>
+            </View>
+            <View accessible accessibilityLabel={`Chronic load: ${a.chronic ?? 'no data'} au`}>
+              <T size={11} color={c.mute}>{t('acwr.chronic')}</T>
+              <T weight="700">{a.chronic ?? '–'} <T size={11} color={c.mute}>au</T></T>
+            </View>
+            {a.days_with_data !== undefined ? <View accessible accessibilityLabel={`${a.days_with_data} days with data`}><T size={11} color={c.mute}>{t('acwr.days', { n: a.days_with_data })}</T></View> : null}
+          </View>
+          <T size={11} color={c.mute}>{t(`acwr.desc.${a.zone}`)}</T>
+        </View>
+      ) : null}
+      {r?.score !== null && r?.score !== undefined ? (
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, borderTopWidth: 1, borderTopColor: c.line, paddingTop: 8 }}>
+          <View style={{ flex: 1 }}>
+            <T size={12} color={c.mute}>{t('readiness.title')}</T>
+            <T size={22} weight="800">{r.score} <T size={12} color={c.mute}>/100 {DIR_SYMBOL[r.direction] ?? ''}</T></T>
+            <T size={11} color={c.mute}>{t(`readiness.dir.${r.direction}`)}</T>
+          </View>
+          {(r.components ?? []).map((comp) => (
+            <View key={comp.key} style={{ alignItems: 'center', minWidth: 56 }} accessible accessibilityLabel={`${comp.label}: ${comp.value} ${comp.unit}`}>
+              <T size={18} weight="800">{comp.score}</T>
+              <T size={10} color={c.mute} style={{ textAlign: 'center' }}>{comp.label.split(' ')[0]}</T>
+              {comp.delta !== null ? <T size={10} color={comp.delta > 0 ? c.mint : c.red}>{comp.delta > 0 ? '+' : ''}{comp.delta}</T> : null}
+            </View>
+          ))}
+        </View>
+      ) : null}
+      <T size={11} color={c.mute}>{t('acwr.basis')}</T>
+    </Card>
+  );
+}
+
+/** sRPE entry and log panel */
+function SRPELog() {
+  const { toast } = useSession();
+  const logs = useLoad(() => api.get('/me/wearables/srpe', { days: 28 }), []);
+  const [form, setForm] = useState(false);
+  const RPE_OPTIONS = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map((v) => ({ value: v, label: `${v} – ${t(`srpe.rpe.${v}`)}` }));
+  return (
+    <Card pad={14} style={{ gap: 8 }}>
+      <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+        <T weight="800" style={{ flex: 1 }}>{t('srpe.title')}</T>
+        <Btn small title={t('srpe.add')} onPress={() => setForm(true)} accessibilityLabel={t('srpe.add')} />
+      </View>
+      <T size={12} color={c.mute}>{t('srpe.sub')}</T>
+      {(logs.data?.items ?? []).slice(0, 7).map((r) => (
+        <View key={r.id} style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }} accessible accessibilityLabel={`${r.logged_on} RPE ${r.rpe} × ${r.duration_minutes} min${r.sport ? ` ${r.sport}` : ''} = ${r.session_load} au`}>
+          <T size={12} color={c.mute} style={{ width: 86 }}>{r.logged_on}</T>
+          <T size={13} weight="700" style={{ width: 50 }}>RPE {r.rpe}</T>
+          <T size={12} color={c.mute} style={{ flex: 1 }}>{r.duration_minutes} min{r.sport ? ` · ${r.sport}` : ''}</T>
+          <T size={13} weight="700">{r.session_load} <T size={10} color={c.mute}>au</T></T>
+        </View>
+      ))}
+      {logs.data && !logs.data.items.length ? <T size={12} color={c.mute}>{t('srpe.empty')}</T> : null}
+      <FormSheet visible={form} onClose={() => setForm(false)} title={t('srpe.add')} submitLabel={t('common.save')}
+        fields={[
+          { key: 'rpe', label: t('srpe.rpe_label'), type: 'choice', options: RPE_OPTIONS },
+          { key: 'duration_minutes', label: t('srpe.duration'), type: 'stepper', min: 1, max: 600, default: 60 },
+          { key: 'sport', label: t('srpe.sport'), type: 'text', optional: true },
+          { key: 'notes', label: t('srpe.notes'), type: 'text', optional: true, multiline: true },
+        ]}
+        initial={{ duration_minutes: 60 }}
+        onSubmit={async (v) => {
+          if (!v.rpe) throw new Error(t('srpe.pick_rpe'));
+          await api.post('/me/wearables/srpe', { rpe: v.rpe, duration_minutes: v.duration_minutes, sport: v.sport || undefined, notes: v.notes || undefined });
+          await logs.reload();
+          return t('srpe.saved');
+        }}
+        onError={(e) => toast(e?.message ?? t('wr.error'))} />
+    </Card>
+  );
+}
+
+/** The athlete's own connected devices, trends, data quality, ACWR, readiness, sRPE and alerts (own data only). */
 export function WearablesPanel() {
   const conns = useLoad(() => api.get('/me/wearables'), []);
   const provs = useLoad(() => api.get('/me/wearables/providers'), []);
   const dash = useLoad(() => api.get('/me/wearables/dashboard'), []);
   const q = useLoad(() => api.get('/me/wearables/quality'), []);
-  const [form, setForm] = useState(null); // 'new' | connection
+  const [form, setForm] = useState(null);
   const all = async () => { await Promise.all([conns.reload(), dash.reload(), q.reload()]); };
   const cat = provs.data?.metrics ?? [];
   const orgs = provs.data?.organisations ?? [];
@@ -159,9 +263,11 @@ export function WearablesPanel() {
         <Btn small title={t('wr.add')} onPress={() => setForm('new')} accessibilityLabel={t('wr.add')} />
       </View>
       <Tiles dash={dash} />
+      <LoadInsights />
       {conns.error ? <ErrorBox error={conns.error} onRetry={conns.reload} /> : !conns.data ? <Loading /> : !conns.data.items.length ? <Empty emoji="⌚" title={t('wr.empty.title')} sub={t('wr.empty.sub')} /> :
         conns.data.items.map((cn) => <Connection key={cn.id} cn={cn} cat={cat} onChanged={all} onEdit={setForm} />)}
       <Trend cat={cat} have={have} />
+      <SRPELog />
       <Quality q={q} cat={cat} />
       <Alerts cat={cat} dash={dash} />
       <T size={11} color={c.mute}>{t('wr.disclaimer')}</T>
@@ -183,32 +289,104 @@ export function WearablesPanel() {
   );
 }
 
-/** Coach: athletes who currently share wearables with me (the API re-checks consent on every call). */
+/** Coach: athletes who currently share wearables with me — metric overview + ACWR zone grid + readiness summary. */
 export function TeamWearables() {
   const d = useLoad(() => api.get('/wearables/team'), []);
+  const acwrD = useLoad(() => api.get('/wearables/team/acwr'), []);
+  const srpeD = useLoad(() => api.get('/wearables/team/srpe'), []);
+  const [tab, setTab] = useState('metrics'); // 'metrics' | 'acwr' | 'srpe'
   const athletes = d.data?.athletes ?? [];
+  const acwrAthletes = acwrD.data?.athletes ?? [];
   if (d.loading && !d.data) return <Loading />;
   if (d.error) return <ErrorBox error={d.error} onRetry={d.reload} />;
-  if (!athletes.length && !(d.data?.unavailable ?? []).length) return null;
+  if (!athletes.length && !(d.data?.unavailable ?? []).length && !acwrAthletes.length) return null;
   return (
     <View style={{ gap: 8 }}>
       <T weight="800" size={16}>{t('wr.team.title')}</T>
       <T size={12} color={c.mute}>{t('wr.team.sub')}</T>
-      {athletes.map((a) => (
-        <Card key={a.share_id} pad={14} style={{ gap: 6 }}>
-          <T weight="800">{a.athlete.display_name}</T>
-          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
-            {a.metrics.map((m) => (
-              <View key={m.metric} style={{ flexBasis: 150, flexGrow: 1 }} accessible accessibilityLabel={`${m.label} ${m.latest ?? ''} ${m.unit}`}>
-                <T size={12} color={c.mute}>{m.label}</T>
-                <T weight="800">{fmt(m.latest, m.unit)} <T size={11} color={c.mute}>{m.unit}</T></T>
-                <T size={11} color={c.mute}>{m.change === null ? '' : t('wr.team.change', { v: `${m.change > 0 ? '+' : ''}${fmt(m.change, m.unit)}` })}{m.missing_days ? ` · ${t('wr.team.missing', { n: m.missing_days })}` : ''}</T>
+      {/* Tab switcher */}
+      <View style={{ flexDirection: 'row', gap: 6 }}>
+        {[['metrics', t('wr.team.tab.metrics')], ['acwr', t('wr.team.tab.acwr')], ['srpe', t('wr.team.tab.srpe')]].map(([key, label]) => (
+          <Btn key={key} small title={label} color={tab === key ? c.pink : c.paper} ink={tab === key ? c.on : c.ink} onPress={() => setTab(key)} accessibilityLabel={label} accessibilityState={{ selected: tab === key }} />
+        ))}
+      </View>
+
+      {tab === 'metrics' && (
+        <>
+          {athletes.map((a) => (
+            <Card key={a.share_id} pad={14} style={{ gap: 6 }}>
+              <T weight="800">{a.athlete.display_name}</T>
+              <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+                {a.metrics.map((m) => (
+                  <View key={m.metric} style={{ flexBasis: 150, flexGrow: 1 }} accessible accessibilityLabel={`${m.label} ${m.latest ?? ''} ${m.unit}`}>
+                    <T size={12} color={c.mute}>{m.label}</T>
+                    <T weight="800">{fmt(m.latest, m.unit)} <T size={11} color={c.mute}>{m.unit}</T></T>
+                    <T size={11} color={c.mute}>{m.change === null ? '' : t('wr.team.change', { v: `${m.change > 0 ? '+' : ''}${fmt(m.change, m.unit)}` })}{m.missing_days ? ` · ${t('wr.team.missing', { n: m.missing_days })}` : ''}</T>
+                  </View>
+                ))}
               </View>
-            ))}
-          </View>
-          {!a.metrics.length ? <T size={12} color={c.mute}>{t('wr.no_data')}</T> : null}
-        </Card>
-      ))}
+              {!a.metrics.length ? <T size={12} color={c.mute}>{t('wr.no_data')}</T> : null}
+            </Card>
+          ))}
+        </>
+      )}
+
+      {tab === 'acwr' && (
+        <View style={{ gap: 6 }}>
+          {/* Squad summary strip */}
+          {acwrAthletes.length > 0 ? (
+            <Card pad={12} style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 12 }}>
+              {['optimal', 'caution', 'excessive', 'underload'].map((z) => {
+                const n = acwrAthletes.filter((a) => a.zone === z).length;
+                return n > 0 ? (
+                  <View key={z} style={{ alignItems: 'center' }} accessible accessibilityLabel={`${n} athletes in ${t(`acwr.zone.${z}`)} zone`}>
+                    <T size={22} weight="800" color={ZONE_COLOR()[z]}>{n}</T>
+                    <T size={10} color={c.mute}>{t(`acwr.zone.${z}`)}</T>
+                  </View>
+                ) : null;
+              })}
+            </Card>
+          ) : null}
+          {acwrAthletes.map((a) => (
+            <Card key={a.athlete.id} pad={14} style={{ flexDirection: 'row', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+              <View style={{ flex: 1 }}>
+                <T weight="800">{a.athlete.display_name}</T>
+                {a.readiness_score !== null && a.readiness_score !== undefined ? (
+                  <T size={12} color={c.mute}>{t('readiness.title')}: {a.readiness_score}/100 {DIR_SYMBOL[a.readiness_direction] ?? ''}</T>
+                ) : null}
+              </View>
+              <View style={{ alignItems: 'flex-end', gap: 4 }}>
+                <T size={22} weight="800" color={ZONE_COLOR()[a.zone] ?? c.mute}>{a.ratio ?? '–'}</T>
+                <ZonePill zone={a.zone} />
+                <T size={11} color={c.mute}>{t('acwr.acute')}: {a.acute ?? '–'} · {t('acwr.chronic')}: {a.chronic ?? '–'}</T>
+              </View>
+            </Card>
+          ))}
+          {!acwrAthletes.length ? <Empty emoji="📊" title={t('acwr.team.empty')} sub={t('acwr.team.empty_sub')} /> : null}
+          <T size={11} color={c.mute}>{t('acwr.basis')}</T>
+        </View>
+      )}
+
+      {tab === 'srpe' && (
+        <View style={{ gap: 6 }}>
+          {(srpeD.data?.athletes ?? []).map((a) => (
+            <Card key={a.athlete.id} pad={14} style={{ gap: 6 }}>
+              <T weight="800">{a.athlete.display_name}</T>
+              {a.logs.slice(0, 5).map((r) => (
+                <View key={r.logged_on + (r.sport ?? '')} style={{ flexDirection: 'row', gap: 8 }}>
+                  <T size={12} color={c.mute} style={{ width: 86 }}>{r.logged_on}</T>
+                  <T size={12} weight="700" style={{ width: 48 }}>RPE {r.rpe}</T>
+                  <T size={12} color={c.mute} style={{ flex: 1 }}>{r.duration_minutes} min{r.sport ? ` · ${r.sport}` : ''}</T>
+                  <T size={12} weight="700">{r.session_load} <T size={10} color={c.mute}>au</T></T>
+                </View>
+              ))}
+              {!a.logs.length ? <T size={12} color={c.mute}>{t('srpe.empty')}</T> : null}
+            </Card>
+          ))}
+          {!(srpeD.data?.athletes ?? []).length ? <Empty emoji="🏋️" title={t('srpe.team.empty')} sub={t('srpe.team.empty_sub')} /> : null}
+        </View>
+      )}
+
       {(d.data?.unavailable ?? []).map((u) => <T key={u.athlete.id} size={12} color={c.mute}>{u.athlete.display_name}: {u.reason}</T>)}
       <T size={11} color={c.mute}>{t('wr.disclaimer')}</T>
     </View>

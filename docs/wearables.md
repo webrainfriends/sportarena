@@ -40,3 +40,60 @@ Tokens are AES-256-GCM encrypted (`athlete_connections.token`), stripped from lo
 - Sport coverage: metrics are sport-neutral daily summaries. There is no sport-specific scoring model, so no sport is natively modelled and none is left on a silent default.
 - Native iOS/Android were not run in this environment; the web build and its phone, tablet and desktop layouts were.
 - Non-English text is machine-drafted and stays `reviewed: false` until a native speaker signs it off.
+
+---
+
+## Elite extensions (#583 — Performance Integration Hub)
+
+### New capabilities
+
+| Capability | Endpoint | Description |
+|---|---|---|
+| `get_my_acwr` | `GET /me/wearables/acwr` | Athlete's own ACWR ratio, zone, 7-day acute load and 28-day chronic load. |
+| `get_my_readiness` | `GET /me/wearables/readiness` | Composite readiness score 0–100 derived from HRV, sleep and resting HR trends, with direction and component breakdown. |
+| `log_session_rpe` | `POST /me/wearables/srpe` | Log today's session RPE (Borg CR-10 1–10) × duration = session load in au. Upserts by (user, date, sport). |
+| `list_session_rpe` | `GET /me/wearables/srpe` | Athlete's own sRPE log (last 90 days). |
+| `get_team_acwr` | `GET /wearables/team/acwr` | Coach view: per-athlete ACWR ratio + zone + readiness, sorted by concern (excessive first). Gate: live wellness share with `wearables`. |
+| `get_team_srpe` | `GET /wearables/team/srpe` | Coach view: per-athlete sRPE logs through live share. |
+
+### ACWR (Acute:Chronic Workload Ratio)
+
+`src/wearables/acwr.js` implements the sport-science gold standard:
+
+- **Acute load** = 7-day average daily training load (device data + sRPE session loads combined).
+- **Chronic load** = 28-day rolling average.
+- **ACWR** = Acute / Chronic. Days with no data contribute 0 (not excluded).
+- **Zones**: `underload` (<0.8), `optimal` (0.8–1.3), `caution` (1.3–1.5), `excessive` (>1.5). Described as workload zones only — never as injury risk or fitness clearance.
+
+### Readiness Composite Score
+
+Derived from the last 14 days of device data:
+- HRV (40% weight, higher = better) + sleep duration (30%, higher = better) + inverse resting HR (30%, lower = better).
+- Each component normalised to 0–100 against its own 14-day range.
+- Weighted average → 0–100 score. Direction: 7-day trend vs prior 7 days.
+- **NOT_MEDICAL disclaimer** on every endpoint: "Descriptive readings from the athlete's own devices. Not a diagnosis, medical advice or clearance to train or play."
+
+### sRPE (Session RPE)
+
+Athletes self-report session effort using the Borg CR-10 scale (1–10). Session load = RPE × duration_minutes (au). Stored in `session_rpe_logs`; feeds into ACWR alongside device training_load. Soft-deleted via `archived_at`, never hard-deleted.
+
+### New canonical metrics (5)
+
+| Key | Unit | Description |
+|---|---|---|
+| `sleep_quality` | score | Sleep quality score 0–100 |
+| `spo2` | % | Blood oxygen (SpO₂) |
+| `vo2max` | ml/kg/min | VO₂max estimate |
+| `sprint_distance` | m | Sprint distance |
+| `max_speed` | km/h | Maximum speed |
+
+### New provider adapters (2)
+
+| Key | API | Metrics |
+|---|---|---|
+| `polar` | Polar AccessLink v3 | training_load, distance, active_energy, vo2max (exercise); sleep_quality, spo2 (nightly recharge) |
+| `catapult_opf` | Catapult OpenField | distance, sprint_distance, max_speed, training_load (GPS/accelerometer) |
+
+### Migration
+
+`187_wearable_hub_acwr.sql` adds `session_rpe_logs` (additive, soft-deletes via `archived_at`, no CASCADE). No existing columns or tables are changed.

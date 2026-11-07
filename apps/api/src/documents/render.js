@@ -670,6 +670,685 @@ export async function renderTrackingSheet({ sheet, layout, kit, logo, code, qr, 
   return { buffer: Buffer.concat(chunks), pages: range.count };
 }
 
+// ─── Shared helpers for new family renderers ───────────────────────────────────────────
+
+function drawLetterhead(doc, { f, accent, ink, kit, logo, left, width, label, layout, snapshot }) {
+  const top = doc.page.margins.top; let x = left;
+  if (layout?.style === 'modern') doc.rect(0, 0, doc.page.width, 10).fill(accent);
+  if (logo) { try { doc.image(logo, x, top, { fit: [130, 56] }); x += 140; } catch { throw new AppError(422, 'logo_unreadable', 'The brand logo could not be read. Upload it again as PNG or JPEG.'); } }
+  const displayName = kit?.display_name ?? snapshot?.organisation ?? '';
+  if (displayName) doc.font(f.bold).fontSize(14).fillColor(accent).text(displayName, x, top, { width: width - (x - left), lineBreak: false });
+  const sub = [kit?.legal_name ?? snapshot?.legal_name, kit?.address ?? snapshot?.address, [kit?.contact_email ?? snapshot?.contact_email, kit?.phone ?? snapshot?.contact_phone].filter(Boolean).join(' · '), kit?.website ?? snapshot?.website].filter(Boolean).join('\n');
+  if (sub) label(sub, x, doc.y + 2, width - (x - left), { size: 8 });
+  doc.y = Math.max(doc.y, top + (logo ? 60 : 0)) + 14;
+  doc.moveTo(left, doc.y).lineTo(left + width, doc.y).lineWidth(0.6).stroke(accent); doc.y += 12;
+}
+
+function drawSignatureBlock(doc, { f, ink, left, width, label, bottom, signers, accent }) {
+  const colW = (width - 24) / 2; let sy = doc.y;
+  if (sy + 60 > bottom()) { doc.addPage(); sy = doc.page.margins.top; }
+  doc.y += 6; label('SIGNATURES', left, doc.y, width, { bold: true, size: 9, color: accent }); doc.y += 14; sy = doc.y;
+  signers.forEach((p, k) => {
+    const cx = left + (k % 2) * (colW + 24); if (k % 2 === 0 && k > 0) { sy += 70; if (sy + 70 > bottom()) { doc.addPage(); sy = doc.page.margins.top; } }
+    doc.moveTo(cx, sy + 30).lineTo(cx + colW, sy + 30).lineWidth(0.5).stroke(ink);
+    label(p.name ?? '', cx, sy + 34, colW, { size: 9, bold: true, lineBreak: false });
+    label(`${p.role ?? ''} · Date: ____________`, cx, sy + 46, colW, { size: 8, lineBreak: false });
+  });
+  doc.y = sy + 70;
+}
+
+/**
+ * Coaching plan / training schedule PDF. The snapshot is a structured weekly plan from the coaching module.
+ * Layout: header, title (athlete, coach, period), activity_table (day/session/drill/duration/notes), text, footer.
+ * @returns {Promise<{ buffer: Buffer, pages: number }>}
+ */
+export async function renderCoachingPlan({ layout, kit, logo, snapshot, sample = false }) {
+  const f = fonts();
+  const strings = [kit?.display_name, kit?.legal_name, kit?.address, kit?.footer_text, snapshot?.title, snapshot?.athlete_name, snapshot?.coach_name, ...(snapshot?.weeks ?? []).flatMap((w) => w.sessions.flatMap((s) => [s.day, s.session_type, s.drill, s.notes])), ...(layout?.blocks ?? []).map((b) => b.text)];
+  assertGlyphs(strings, f);
+  const accent = hex(kit?.primary_color, '#8458B3'), ink = hex(kit?.secondary_color, '#494D5F');
+  const doc = new PDFDocument({ size: layout?.paper ?? 'A4', layout: layout?.orientation ?? 'portrait', margin: (layout?.margin_mm ?? 18) * MM, bufferPages: true, compress: true, info: { Title: snapshot?.title ?? 'Training plan', Author: kit?.display_name ?? snapshot?.coach_name ?? 'Sportarena', CreationDate: new Date(), Producer: 'Sportarena' } });
+  const chunks = []; doc.on('data', (c) => chunks.push(c));
+  const done = new Promise((res, rej) => { doc.on('end', res); doc.on('error', rej); });
+  const left = doc.page.margins.left, width = doc.page.width - left - doc.page.margins.right;
+  const bottom = () => doc.page.height - doc.page.margins.bottom - 24;
+  const label = (t, x, y, w, o = {}) => doc.font(o.bold ? f.bold : f.regular).fontSize(o.size ?? 9).fillColor(o.color ?? ink).text(t ?? '', x, y, { width: w, align: o.align ?? 'left', lineBreak: o.lineBreak ?? true });
+  const room = (h) => { if (doc.y + h > bottom()) doc.addPage(); };
+
+  if (sample) label('SAMPLE — preview with made-up data, not a real document', left, Math.max(4, doc.page.margins.top - 14), width, { bold: true, size: 8, color: '#B42318' });
+
+  for (const b of (layout?.blocks ?? [])) {
+    if (b.type === 'header') {
+      drawLetterhead(doc, { f, accent, ink, kit, logo, left, width, label, layout, snapshot });
+    } else if (b.type === 'title') {
+      room(50);
+      label(snapshot?.title ?? 'Training & Coaching Plan', left, doc.y, width, { bold: true, size: 18, color: accent });
+      label([snapshot?.athlete_name && `Athlete: ${snapshot.athlete_name}`, snapshot?.coach_name && `Coach: ${snapshot.coach_name}`, snapshot?.period && `Period: ${snapshot.period.from} to ${snapshot.period.to}`, snapshot?.sport && `Sport: ${snapshot.sport}`, snapshot?.phase && `Phase: ${snapshot.phase}`].filter(Boolean).join(' · '), left, doc.y + 2, width, { size: 9 });
+      doc.y += 14;
+      if (snapshot?.objectives) { label('OBJECTIVES', left, doc.y, width, { bold: true, size: 8, color: accent }); doc.y += 4; label(snapshot.objectives, left, doc.y, width, { size: 9 }); doc.y += 10; }
+    } else if (b.type === 'activity_table') {
+      const cols = [{ t: 'Day / Session', w: 0.18 }, { t: 'Session type', w: 0.14 }, { t: 'Drill / Activity', w: 0.30 }, { t: 'Duration', w: 0.09 }, { t: 'Intensity', w: 0.09 }, { t: 'Notes', w: 0.20 }];
+      const drawHead = () => {
+        room(20); const y = doc.y; doc.rect(left, y - 2, width, 16).fill(accent);
+        let cx = left; cols.forEach((c) => { label(c.t, cx + 3, y + 1, width * c.w - 6, { bold: true, size: 7, color: '#FFFFFF', lineBreak: false }); cx += width * c.w; });
+        doc.y = y + 16;
+      };
+      for (const week of (snapshot?.weeks ?? [])) {
+        room(30); label(`WEEK ${week.week_number}${week.theme ? ` — ${week.theme}` : ''}`, left, doc.y, width, { bold: true, size: 9, color: accent }); doc.y += 4;
+        drawHead();
+        for (const s of week.sessions) {
+          const cells = [s.day ?? '', s.session_type ?? '', s.drill ?? '', s.duration ? `${s.duration} min` : '', s.intensity ?? '', s.notes ?? ''];
+          doc.font(f.regular).fontSize(8);
+          const h = Math.max(14, ...cells.map((c, i) => doc.heightOfString(c || ' ', { width: width * cols[i].w - 6 }) + 4));
+          if (doc.y + h > bottom()) { doc.addPage(); drawHead(); }
+          let cx = left, y = doc.y;
+          cells.forEach((c, i) => { label(c, cx + 3, y + 3, width * cols[i].w - 6, { size: 8, lineBreak: true }); cx += width * cols[i].w; });
+          doc.y = y + h;
+          doc.moveTo(left, doc.y).lineTo(left + width, doc.y).lineWidth(0.3).stroke('#D3D1C7');
+        }
+        doc.y += 8;
+      }
+    } else if (b.type === 'text') {
+      room(30); label(b.text, left, doc.y, width, { size: TEXT_SIZE[b.size] ?? 9, align: b.align }); doc.y += 8;
+    }
+  }
+
+  const wantsFooter = (layout?.blocks ?? []).some((b) => b.type === 'footer');
+  const range = doc.bufferedPageRange();
+  for (let i = 0; i < range.count; i++) {
+    doc.switchToPage(range.start + i); const y = doc.page.height - doc.page.margins.bottom - 12; doc.page.margins.bottom = 0;
+    if (wantsFooter && kit?.footer_text) label(kit.footer_text, left, y, width - 130, { size: 8, lineBreak: false });
+    label(`${sample ? 'SAMPLE · ' : ''}${snapshot?.title ?? 'Training plan'} · Page ${i + 1} of ${range.count}`, left + width - 260, y, 260, { size: 8, align: 'right', lineBreak: false });
+  }
+  doc.end(); await done;
+  return { buffer: Buffer.concat(chunks), pages: range.count };
+}
+
+/**
+ * Coaching agreement PDF. Parties and engagement terms from the snapshot. Template adds branding, clauses, signature blocks.
+ * @returns {Promise<{ buffer: Buffer, pages: number }>}
+ */
+export async function renderCoachAgreement({ layout, kit, logo, snapshot, sample = false }) {
+  const f = fonts();
+  assertGlyphs([kit?.display_name, kit?.legal_name, kit?.address, kit?.footer_text, snapshot?.title, snapshot?.venue_name, snapshot?.coach_name, snapshot?.engagement_type, snapshot?.pay_model, snapshot?.body, ...(layout?.blocks ?? []).map((b) => b.text)], f);
+  const accent = hex(kit?.primary_color, '#8458B3'), ink = hex(kit?.secondary_color, '#494D5F');
+  const doc = new PDFDocument({ size: layout?.paper ?? 'A4', layout: layout?.orientation ?? 'portrait', margin: (layout?.margin_mm ?? 18) * MM, bufferPages: true, compress: true, info: { Title: snapshot?.title ?? 'Coaching agreement', Author: kit?.display_name ?? 'Sportarena', CreationDate: new Date(), Producer: 'Sportarena' } });
+  const chunks = []; doc.on('data', (c) => chunks.push(c));
+  const done = new Promise((res, rej) => { doc.on('end', res); doc.on('error', rej); });
+  const left = doc.page.margins.left, width = doc.page.width - left - doc.page.margins.right;
+  const bottom = () => doc.page.height - doc.page.margins.bottom - 24;
+  const label = (t, x, y, w, o = {}) => doc.font(o.bold ? f.bold : f.regular).fontSize(o.size ?? 9).fillColor(o.color ?? ink).text(t ?? '', x, y, { width: w, align: o.align ?? 'left', lineBreak: o.lineBreak ?? true });
+  const room = (h) => { if (doc.y + h > bottom()) doc.addPage(); };
+
+  if (sample) label('SAMPLE — template wording, not a real agreement', left, Math.max(4, doc.page.margins.top - 14), width, { bold: true, size: 8, color: '#B42318' });
+
+  for (const b of (layout?.blocks ?? [])) {
+    if (b.type === 'header') {
+      drawLetterhead(doc, { f, accent, ink, kit, logo, left, width, label, layout, snapshot: { organisation: snapshot?.venue_name } });
+    } else if (b.type === 'title') {
+      room(50);
+      label(snapshot?.title ?? 'Coaching Agreement', left, doc.y, width, { bold: true, size: 20, color: accent });
+      label(`${snapshot?.reference ? `Ref ${snapshot.reference} · ` : ''}${snapshot?.status ?? 'Draft'}`, left, doc.y + 2, width, { size: 9, bold: true, color: '#B42318' });
+      doc.y += 14;
+    } else if (b.type === 'parties') {
+      room(60); const y = doc.y, half = width / 2 - 8;
+      label('VENUE / EMPLOYER', left, y, half, { bold: true, size: 8, color: accent });
+      label([snapshot?.venue_name, snapshot?.venue_address].filter(Boolean).join('\n'), left, y + 12, half, { size: 10 });
+      const endL = doc.y;
+      label('COACH', left + half + 16, y, half, { bold: true, size: 8, color: accent });
+      label([snapshot?.coach_name, snapshot?.coach_sports?.join(', '), snapshot?.coach_email].filter(Boolean).join('\n'), left + half + 16, y + 12, half, { size: 10 });
+      doc.y = Math.max(endL, doc.y) + 14;
+      const terms = [['Engagement type', snapshot?.engagement_type], ['Sports', snapshot?.coach_sports?.join(', ')], ['Start date', snapshot?.start_date], ['End date', snapshot?.end_date], ['Notice period', snapshot?.notice_period], ['Pay model', snapshot?.pay_model], ['Pay rate', snapshot?.pay_rate], ['Review frequency', snapshot?.review_frequency]].filter(([, v]) => v);
+      if (terms.length) {
+        label('ENGAGEMENT TERMS', left, doc.y, width, { bold: true, size: 8, color: accent }); doc.y += 4;
+        for (const [k, v] of terms) {
+          room(16); const ty = doc.y;
+          label(k, left, ty, width * 0.3, { bold: true, size: 9 });
+          label(String(v), left + width * 0.32, ty, width * 0.68, { size: 9 });
+          doc.y = Math.max(doc.y, ty + 14) + 2;
+        }
+        doc.y += 8;
+      }
+    } else if (b.type === 'text') {
+      room(30);
+      if (b.text) { label(b.text, left, doc.y, width, { size: TEXT_SIZE[b.size] ?? 9, align: b.align }); doc.y += 8; }
+      if (snapshot?.body) {
+        for (const para of String(snapshot.body).split(/\n{2,}/)) {
+          const t = para.trim(); if (!t) continue; room(24); label(t, left, doc.y, width, { size: 9 }); doc.y += 8;
+        }
+      }
+    } else if (b.type === 'signature_block') {
+      drawSignatureBlock(doc, { f, ink, left, width, label, bottom, accent, signers: [{ name: snapshot?.venue_name ?? 'Venue / Employer', role: 'For the venue' }, { name: snapshot?.coach_name ?? 'Coach', role: 'Coach' }] });
+    }
+  }
+
+  const wantsFooter = (layout?.blocks ?? []).some((b) => b.type === 'footer');
+  const range = doc.bufferedPageRange();
+  for (let i = 0; i < range.count; i++) {
+    doc.switchToPage(range.start + i); const y = doc.page.height - doc.page.margins.bottom - 12; doc.page.margins.bottom = 0;
+    if (wantsFooter && kit?.footer_text) label(kit.footer_text, left, y, width - 130, { size: 8, lineBreak: false });
+    label(`${sample ? 'SAMPLE · ' : ''}${snapshot?.reference ?? 'Agreement'} · Page ${i + 1} of ${range.count}`, left + width - 260, y, 260, { size: 8, align: 'right', lineBreak: false });
+  }
+  doc.end(); await done;
+  return { buffer: Buffer.concat(chunks), pages: range.count };
+}
+
+/**
+ * Referee / official appointment letter. Engagement from the officiating module's snapshot.
+ * @returns {Promise<{ buffer: Buffer, pages: number }>}
+ */
+export async function renderRefereeAppointment({ layout, kit, logo, snapshot, sample = false }) {
+  const f = fonts();
+  assertGlyphs([kit?.display_name, kit?.legal_name, kit?.footer_text, snapshot?.title, snapshot?.official_name, snapshot?.event_name, snapshot?.role, snapshot?.body, ...(layout?.blocks ?? []).map((b) => b.text)], f);
+  const accent = hex(kit?.primary_color, '#8458B3'), ink = hex(kit?.secondary_color, '#494D5F');
+  const doc = new PDFDocument({ size: layout?.paper ?? 'A4', layout: layout?.orientation ?? 'portrait', margin: (layout?.margin_mm ?? 18) * MM, bufferPages: true, compress: true, info: { Title: snapshot?.title ?? 'Appointment letter', Author: kit?.display_name ?? 'Sportarena', CreationDate: new Date(), Producer: 'Sportarena' } });
+  const chunks = []; doc.on('data', (c) => chunks.push(c));
+  const done = new Promise((res, rej) => { doc.on('end', res); doc.on('error', rej); });
+  const left = doc.page.margins.left, width = doc.page.width - left - doc.page.margins.right;
+  const bottom = () => doc.page.height - doc.page.margins.bottom - 24;
+  const label = (t, x, y, w, o = {}) => doc.font(o.bold ? f.bold : f.regular).fontSize(o.size ?? 9).fillColor(o.color ?? ink).text(t ?? '', x, y, { width: w, align: o.align ?? 'left', lineBreak: o.lineBreak ?? true });
+  const room = (h) => { if (doc.y + h > bottom()) doc.addPage(); };
+
+  if (sample) label('SAMPLE — preview only', left, Math.max(4, doc.page.margins.top - 14), width, { bold: true, size: 8, color: '#B42318' });
+
+  for (const b of (layout?.blocks ?? [])) {
+    if (b.type === 'header') {
+      drawLetterhead(doc, { f, accent, ink, kit, logo, left, width, label, layout, snapshot });
+    } else if (b.type === 'title') {
+      room(50);
+      label(snapshot?.title ?? 'Appointment Letter', left, doc.y, width, { bold: true, size: 18, color: accent });
+      label([snapshot?.reference && `Ref ${snapshot.reference}`, snapshot?.issued_date && `Issued ${snapshot.issued_date}`].filter(Boolean).join(' · '), left, doc.y + 2, width, { size: 9 });
+      doc.y += 14;
+      const facts = [['Official', snapshot?.official_name], ['Role', snapshot?.role], ['Grade / level', snapshot?.grade], ['Event', snapshot?.event_name], ['Venue', snapshot?.venue], ['Date(s)', snapshot?.event_dates], ['Fee', snapshot?.fee], ['Transport', snapshot?.transport_arrangement]].filter(([, v]) => v);
+      for (const [k, v] of facts) { room(16); const y = doc.y; label(k, left, y, width * 0.28, { bold: true, size: 9 }); label(String(v), left + width * 0.3, y, width * 0.7, { size: 9 }); doc.y = Math.max(doc.y, y + 14) + 2; }
+      doc.y += 8;
+      if (snapshot?.body) {
+        for (const para of String(snapshot.body).split(/\n{2,}/)) {
+          const t = para.trim(); if (!t) continue; room(24); label(t, left, doc.y, width, { size: 10 }); doc.y += 8;
+        }
+      }
+    } else if (b.type === 'parties') {
+      room(60); const y = doc.y, half = width / 2 - 8;
+      label('ISSUED BY', left, y, half, { bold: true, size: 8, color: accent });
+      label([kit?.display_name ?? snapshot?.issuer, kit?.address].filter(Boolean).join('\n'), left, y + 12, half, { size: 10 });
+      const endL = doc.y;
+      label('OFFICIAL', left + half + 16, y, half, { bold: true, size: 8, color: accent });
+      label([snapshot?.official_name, snapshot?.official_grade].filter(Boolean).join('\n'), left + half + 16, y + 12, half, { size: 10 });
+      doc.y = Math.max(endL, doc.y) + 14;
+    } else if (b.type === 'text') {
+      room(30); if (b.text) { label(b.text, left, doc.y, width, { size: TEXT_SIZE[b.size] ?? 9, align: b.align }); doc.y += 8; }
+    } else if (b.type === 'signature_block') {
+      drawSignatureBlock(doc, { f, ink, left, width, label, bottom, accent, signers: [{ name: kit?.display_name ?? snapshot?.issuer ?? 'Issuer', role: 'For the federation / organisation' }, { name: snapshot?.official_name ?? 'Official', role: 'Official (acknowledgement)' }] });
+    }
+  }
+
+  const wantsFooter = (layout?.blocks ?? []).some((b) => b.type === 'footer');
+  const range = doc.bufferedPageRange();
+  for (let i = 0; i < range.count; i++) {
+    doc.switchToPage(range.start + i); const y = doc.page.height - doc.page.margins.bottom - 12; doc.page.margins.bottom = 0;
+    if (wantsFooter && kit?.footer_text) label(kit.footer_text, left, y, width - 130, { size: 8, lineBreak: false });
+    label(`${sample ? 'SAMPLE · ' : ''}${snapshot?.reference ?? 'Appointment'} · Page ${i + 1} of ${range.count}`, left + width - 260, y, 260, { size: 8, align: 'right', lineBreak: false });
+  }
+  doc.end(); await done;
+  return { buffer: Buffer.concat(chunks), pages: range.count };
+}
+
+/**
+ * Event programme / timetable PDF. The fixture_table block renders slots from the event schedule snapshot.
+ * @returns {Promise<{ buffer: Buffer, pages: number }>}
+ */
+export async function renderEventTimetable({ layout, kit, logo, snapshot, sample = false }) {
+  const f = fonts();
+  assertGlyphs([kit?.display_name, kit?.footer_text, snapshot?.event_name, snapshot?.venue, ...(snapshot?.slots ?? []).flatMap((s) => [s.time, s.court, s.home, s.away, s.sport, s.round, s.notes]), ...(layout?.blocks ?? []).map((b) => b.text)], f);
+  const accent = hex(kit?.primary_color, '#8458B3'), ink = hex(kit?.secondary_color, '#494D5F');
+  const isLandscape = layout?.orientation === 'landscape';
+  const doc = new PDFDocument({ size: layout?.paper ?? 'A4', layout: layout?.orientation ?? 'landscape', margin: (layout?.margin_mm ?? 15) * MM, bufferPages: true, compress: true, info: { Title: snapshot?.event_name ?? 'Event timetable', Author: kit?.display_name ?? 'Sportarena', CreationDate: new Date(), Producer: 'Sportarena' } });
+  const chunks = []; doc.on('data', (c) => chunks.push(c));
+  const done = new Promise((res, rej) => { doc.on('end', res); doc.on('error', rej); });
+  const left = doc.page.margins.left, width = doc.page.width - left - doc.page.margins.right;
+  const bottom = () => doc.page.height - doc.page.margins.bottom - 24;
+  const label = (t, x, y, w, o = {}) => doc.font(o.bold ? f.bold : f.regular).fontSize(o.size ?? 9).fillColor(o.color ?? ink).text(t ?? '', x, y, { width: w, align: o.align ?? 'left', lineBreak: o.lineBreak ?? true });
+  const room = (h) => { if (doc.y + h > bottom()) doc.addPage(); };
+
+  if (sample) label('SAMPLE — preview only', left, Math.max(4, doc.page.margins.top - 14), width, { bold: true, size: 8, color: '#B42318' });
+
+  for (const b of (layout?.blocks ?? [])) {
+    if (b.type === 'header') {
+      drawLetterhead(doc, { f, accent, ink, kit, logo, left, width, label, layout, snapshot: { organisation: snapshot?.organiser } });
+    } else if (b.type === 'title') {
+      room(50);
+      label(snapshot?.event_name ?? 'Event Programme', left, doc.y, width, { bold: true, size: 18, color: accent });
+      label([snapshot?.venue, snapshot?.event_date, snapshot?.event_city].filter(Boolean).join(' · '), left, doc.y + 2, width, { size: 10 });
+      if (snapshot?.description) { doc.y += 4; label(snapshot.description, left, doc.y, width, { size: 9 }); }
+      doc.y += 14;
+    } else if (b.type === 'fixture_table') {
+      const cols = isLandscape
+        ? [{ t: 'Time', w: 0.08 }, { t: 'Court / Field', w: 0.10 }, { t: 'Sport', w: 0.09 }, { t: 'Round', w: 0.09 }, { t: 'Home / Side A', w: 0.22 }, { t: 'Away / Side B', w: 0.22 }, { t: 'Official', w: 0.11 }, { t: 'Notes', w: 0.09 }]
+        : [{ t: 'Time', w: 0.10 }, { t: 'Court', w: 0.12 }, { t: 'Round', w: 0.10 }, { t: 'Home', w: 0.26 }, { t: 'Away', w: 0.26 }, { t: 'Notes', w: 0.16 }];
+      const drawHead = () => {
+        room(18); const y = doc.y; doc.rect(left, y - 2, width, 16).fill(accent);
+        let cx = left; cols.forEach((c) => { label(c.t, cx + 3, y + 1, width * c.w - 6, { bold: true, size: 7, color: '#FFFFFF', lineBreak: false }); cx += width * c.w; }); doc.y = y + 16;
+      };
+      const slots = snapshot?.slots ?? [];
+      let currentDay = null;
+      for (const s of slots) {
+        if (s.day && s.day !== currentDay) {
+          room(30); currentDay = s.day;
+          label(`DAY: ${s.day}`, left, doc.y, width, { bold: true, size: 10, color: accent }); doc.y += 4;
+          drawHead();
+        } else if (currentDay === null) { drawHead(); currentDay = ''; }
+        const cells = isLandscape
+          ? [s.time ?? '', s.court ?? '', s.sport ?? '', s.round ?? '', s.home ?? '', s.away ?? '', s.official ?? '', s.notes ?? '']
+          : [s.time ?? '', s.court ?? '', s.round ?? '', s.home ?? '', s.away ?? '', s.notes ?? ''];
+        if (doc.y + 14 > bottom()) { doc.addPage(); drawHead(); }
+        let cx = left; const y = doc.y;
+        cells.forEach((c, i) => { label(c, cx + 3, y + 3, width * cols[i].w - 6, { size: 8, lineBreak: false }); cx += width * cols[i].w; });
+        doc.y = y + 14;
+        doc.moveTo(left, doc.y).lineTo(left + width, doc.y).lineWidth(0.3).stroke('#D3D1C7');
+      }
+      doc.y += 8;
+    } else if (b.type === 'text') {
+      room(30); if (b.text) { label(b.text, left, doc.y, width, { size: TEXT_SIZE[b.size] ?? 9, align: b.align }); doc.y += 8; }
+    }
+  }
+
+  const wantsFooter = (layout?.blocks ?? []).some((b) => b.type === 'footer');
+  const range = doc.bufferedPageRange();
+  for (let i = 0; i < range.count; i++) {
+    doc.switchToPage(range.start + i); const y = doc.page.height - doc.page.margins.bottom - 12; doc.page.margins.bottom = 0;
+    if (wantsFooter && kit?.footer_text) label(kit.footer_text, left, y, width - 130, { size: 8, lineBreak: false });
+    label(`${sample ? 'SAMPLE · ' : ''}${snapshot?.event_name ?? 'Event timetable'} · Page ${i + 1} of ${range.count}`, left + width - 260, y, 260, { size: 8, align: 'right', lineBreak: false });
+  }
+  doc.end(); await done;
+  return { buffer: Buffer.concat(chunks), pages: range.count };
+}
+
+/**
+ * Booking confirmation PDF. The booking_block renders canonical booking fields (court, date, time, rate, parties).
+ * @returns {Promise<{ buffer: Buffer, pages: number }>}
+ */
+export async function renderBookingConfirmation({ layout, kit, logo, snapshot, sample = false }) {
+  const f = fonts();
+  assertGlyphs([kit?.display_name, kit?.footer_text, snapshot?.booking_ref, snapshot?.venue_name, snapshot?.court_name, snapshot?.customer_name, snapshot?.notes, ...(layout?.blocks ?? []).map((b) => b.text)], f);
+  const accent = hex(kit?.primary_color, '#8458B3'), ink = hex(kit?.secondary_color, '#494D5F');
+  const doc = new PDFDocument({ size: layout?.paper ?? 'A4', layout: layout?.orientation ?? 'portrait', margin: (layout?.margin_mm ?? 18) * MM, bufferPages: true, compress: true, info: { Title: `Booking ${snapshot?.booking_ref ?? ''}`, Author: kit?.display_name ?? snapshot?.venue_name ?? 'Sportarena', CreationDate: new Date(), Producer: 'Sportarena' } });
+  const chunks = []; doc.on('data', (c) => chunks.push(c));
+  const done = new Promise((res, rej) => { doc.on('end', res); doc.on('error', rej); });
+  const left = doc.page.margins.left, width = doc.page.width - left - doc.page.margins.right;
+  const bottom = () => doc.page.height - doc.page.margins.bottom - 24;
+  const label = (t, x, y, w, o = {}) => doc.font(o.bold ? f.bold : f.regular).fontSize(o.size ?? 9).fillColor(o.color ?? ink).text(t ?? '', x, y, { width: w, align: o.align ?? 'left', lineBreak: o.lineBreak ?? true });
+  const room = (h) => { if (doc.y + h > bottom()) doc.addPage(); };
+
+  if (sample) label('SAMPLE — not a real booking confirmation', left, Math.max(4, doc.page.margins.top - 14), width, { bold: true, size: 8, color: '#B42318' });
+
+  for (const b of (layout?.blocks ?? [])) {
+    if (b.type === 'header') {
+      drawLetterhead(doc, { f, accent, ink, kit, logo, left, width, label, layout, snapshot: { organisation: snapshot?.venue_name, address: snapshot?.venue_address } });
+    } else if (b.type === 'title') {
+      room(50);
+      label('BOOKING CONFIRMATION', left, doc.y, width, { bold: true, size: 18, color: accent });
+      label(`Ref: ${snapshot?.booking_ref ?? 'N/A'}`, left, doc.y + 2, width, { size: 11, bold: true });
+      doc.y += 14;
+    } else if (b.type === 'booking_block') {
+      const fields = [
+        ['Venue', snapshot?.venue_name], ['Court / facility', snapshot?.court_name], ['Sport', snapshot?.sport],
+        ['Date', snapshot?.date], ['Start time', snapshot?.start_time], ['End time', snapshot?.end_time],
+        ['Duration', snapshot?.duration_minutes ? `${snapshot.duration_minutes} minutes` : null],
+        ['Customer', snapshot?.customer_name], ['Contact', snapshot?.customer_email ?? snapshot?.customer_phone],
+        ['Booking type', snapshot?.booking_type], ['Status', snapshot?.status],
+        ['Rate', snapshot?.rate], ['Total', snapshot?.total], ['Payment status', snapshot?.payment_status],
+        ['Cancellation policy', snapshot?.cancellation_policy],
+      ].filter(([, v]) => v);
+      room(20 + fields.length * 18);
+      doc.rect(left, doc.y - 4, width, 18).fill('#F3F4F6'); label('BOOKING DETAILS', left + 6, doc.y, width - 12, { bold: true, size: 9, color: accent }); doc.y += 18;
+      for (const [k, v] of fields) {
+        room(16); const y = doc.y;
+        label(k, left, y, width * 0.3, { bold: true, size: 9 });
+        label(String(v), left + width * 0.32, y, width * 0.68, { size: 9 });
+        doc.y = Math.max(doc.y, y + 14) + 2;
+        doc.moveTo(left, doc.y - 1).lineTo(left + width, doc.y - 1).lineWidth(0.2).stroke('#E5E7EB');
+      }
+      doc.y += 8;
+      if (snapshot?.notes) { room(30); label('NOTES', left, doc.y, width, { bold: true, size: 8, color: accent }); doc.y += 4; label(snapshot.notes, left, doc.y, width, { size: 9 }); doc.y += 10; }
+    } else if (b.type === 'text') {
+      room(30); if (b.text) { label(b.text, left, doc.y, width, { size: TEXT_SIZE[b.size] ?? 9, align: b.align }); doc.y += 8; }
+    }
+  }
+
+  const wantsFooter = (layout?.blocks ?? []).some((b) => b.type === 'footer');
+  const range = doc.bufferedPageRange();
+  for (let i = 0; i < range.count; i++) {
+    doc.switchToPage(range.start + i); const y = doc.page.height - doc.page.margins.bottom - 12; doc.page.margins.bottom = 0;
+    if (wantsFooter && kit?.footer_text) label(kit.footer_text, left, y, width - 130, { size: 8, lineBreak: false });
+    label(`${sample ? 'SAMPLE · ' : ''}Booking ${snapshot?.booking_ref ?? ''} · Page ${i + 1} of ${range.count}`, left + width - 260, y, 260, { size: 8, align: 'right', lineBreak: false });
+  }
+  doc.end(); await done;
+  return { buffer: Buffer.concat(chunks), pages: range.count };
+}
+
+/**
+ * Rehabilitation / exercise plan PDF. Clinical-access gated; physio-role only.
+ * @returns {Promise<{ buffer: Buffer, pages: number }>}
+ */
+export async function renderRehabPlan({ layout, kit, logo, snapshot, sample = false }) {
+  const f = fonts();
+  assertGlyphs([kit?.display_name, kit?.footer_text, snapshot?.title, snapshot?.patient_name, snapshot?.physio_name, snapshot?.condition, snapshot?.notes, ...(snapshot?.phases ?? []).flatMap((p) => [p.phase_name, p.goals, ...p.exercises.flatMap((e) => [e.name, e.sets, e.reps, e.duration, e.notes])]), ...(layout?.blocks ?? []).map((b) => b.text)], f);
+  const accent = hex(kit?.primary_color, '#8458B3'), ink = hex(kit?.secondary_color, '#494D5F');
+  const doc = new PDFDocument({ size: layout?.paper ?? 'A4', layout: layout?.orientation ?? 'portrait', margin: (layout?.margin_mm ?? 18) * MM, bufferPages: true, compress: true, info: { Title: snapshot?.title ?? 'Rehabilitation plan', Author: kit?.display_name ?? snapshot?.physio_name ?? 'Sportarena', CreationDate: new Date(), Producer: 'Sportarena' } });
+  const chunks = []; doc.on('data', (c) => chunks.push(c));
+  const done = new Promise((res, rej) => { doc.on('end', res); doc.on('error', rej); });
+  const left = doc.page.margins.left, width = doc.page.width - left - doc.page.margins.right;
+  const bottom = () => doc.page.height - doc.page.margins.bottom - 24;
+  const label = (t, x, y, w, o = {}) => doc.font(o.bold ? f.bold : f.regular).fontSize(o.size ?? 9).fillColor(o.color ?? ink).text(t ?? '', x, y, { width: w, align: o.align ?? 'left', lineBreak: o.lineBreak ?? true });
+  const room = (h) => { if (doc.y + h > bottom()) doc.addPage(); };
+
+  if (sample) label('SAMPLE — preview only. Clinical supervision required.', left, Math.max(4, doc.page.margins.top - 14), width, { bold: true, size: 8, color: '#B42318' });
+
+  for (const b of (layout?.blocks ?? [])) {
+    if (b.type === 'header') {
+      drawLetterhead(doc, { f, accent, ink, kit, logo, left, width, label, layout, snapshot });
+    } else if (b.type === 'title') {
+      room(60);
+      label(snapshot?.title ?? 'Rehabilitation & Exercise Plan', left, doc.y, width, { bold: true, size: 18, color: accent });
+      label([snapshot?.patient_name && `Patient: ${snapshot.patient_name}`, snapshot?.physio_name && `Physiotherapist: ${snapshot.physio_name}`, snapshot?.issued_date && `Issued: ${snapshot.issued_date}`, snapshot?.review_date && `Review: ${snapshot.review_date}`].filter(Boolean).join(' · '), left, doc.y + 2, width, { size: 9 });
+      doc.y += 10;
+      if (snapshot?.condition) { label('Condition / Diagnosis', left, doc.y, width * 0.3, { bold: true, size: 9, color: accent }); label(snapshot.condition, left + width * 0.32, doc.y, width * 0.68, { size: 9 }); doc.y += 14; }
+      if (snapshot?.contraindications) { room(20); label('⚠ CONTRAINDICATIONS', left, doc.y, width, { bold: true, size: 9, color: '#B42318' }); doc.y += 4; label(snapshot.contraindications, left, doc.y, width, { size: 9, color: '#B42318' }); doc.y += 10; }
+      doc.y += 4;
+    } else if (b.type === 'activity_table') {
+      const cols = [{ t: 'Exercise / Activity', w: 0.28 }, { t: 'Sets', w: 0.08 }, { t: 'Reps / Duration', w: 0.14 }, { t: 'Load / Resistance', w: 0.14 }, { t: 'Rest', w: 0.08 }, { t: 'Frequency', w: 0.11 }, { t: 'Clinical notes', w: 0.17 }];
+      const drawHead = () => {
+        room(18); const y = doc.y; doc.rect(left, y - 2, width, 16).fill(accent);
+        let cx = left; cols.forEach((c) => { label(c.t, cx + 3, y + 1, width * c.w - 6, { bold: true, size: 7, color: '#FFFFFF', lineBreak: false }); cx += width * c.w; }); doc.y = y + 16;
+      };
+      for (const phase of (snapshot?.phases ?? [])) {
+        room(30); label(`PHASE: ${phase.phase_name}${phase.goals ? ` — ${phase.goals}` : ''}`, left, doc.y, width, { bold: true, size: 9, color: accent }); doc.y += 4;
+        if (phase.duration) { label(`Duration: ${phase.duration}`, left, doc.y, width, { size: 8, color: ink }); doc.y += 4; }
+        drawHead();
+        for (const e of (phase.exercises ?? [])) {
+          const cells = [e.name ?? '', String(e.sets ?? ''), e.reps ? String(e.reps) : e.duration ?? '', e.load ?? '', e.rest ?? '', e.frequency ?? '', e.notes ?? ''];
+          if (doc.y + 14 > bottom()) { doc.addPage(); drawHead(); }
+          let cx = left; const y = doc.y;
+          cells.forEach((c, i) => { label(c, cx + 3, y + 3, width * cols[i].w - 6, { size: 8 }); cx += width * cols[i].w; });
+          doc.y = Math.max(doc.y, y + 14);
+          doc.moveTo(left, doc.y).lineTo(left + width, doc.y).lineWidth(0.3).stroke('#D3D1C7');
+        }
+        doc.y += 8;
+      }
+    } else if (b.type === 'text') {
+      room(30); if (b.text) { label(b.text, left, doc.y, width, { size: TEXT_SIZE[b.size] ?? 9, align: b.align }); doc.y += 8; }
+    } else if (b.type === 'signature_block') {
+      if (snapshot?.notes) { room(30); label('CLINICAL NOTES', left, doc.y, width, { bold: true, size: 8, color: accent }); doc.y += 4; label(snapshot.notes, left, doc.y, width, { size: 9 }); doc.y += 10; }
+      drawSignatureBlock(doc, { f, ink, left, width, label, bottom, accent, signers: [{ name: snapshot?.physio_name ?? 'Physiotherapist', role: 'Physiotherapist (HCPC registered)' }, { name: snapshot?.patient_name ?? 'Patient', role: 'Patient (acknowledgement)' }] });
+    }
+  }
+
+  const wantsFooter = (layout?.blocks ?? []).some((b) => b.type === 'footer');
+  const range = doc.bufferedPageRange();
+  for (let i = 0; i < range.count; i++) {
+    doc.switchToPage(range.start + i); const y = doc.page.height - doc.page.margins.bottom - 12; doc.page.margins.bottom = 0;
+    if (wantsFooter && kit?.footer_text) label(kit.footer_text, left, y, width - 130, { size: 8, lineBreak: false });
+    label(`${sample ? 'SAMPLE · ' : ''}${snapshot?.title ?? 'Rehab plan'} · Page ${i + 1} of ${range.count}`, left + width - 260, y, 260, { size: 8, align: 'right', lineBreak: false });
+  }
+  doc.end(); await done;
+  return { buffer: Buffer.concat(chunks), pages: range.count };
+}
+
+/**
+ * Approved care plan PDF. Doctor-role only; clinical-access gated.
+ * @returns {Promise<{ buffer: Buffer, pages: number }>}
+ */
+export async function renderCarePlan({ layout, kit, logo, snapshot, sample = false }) {
+  const f = fonts();
+  assertGlyphs([kit?.display_name, kit?.footer_text, snapshot?.title, snapshot?.patient_name, snapshot?.doctor_name, snapshot?.diagnosis, snapshot?.body, ...(layout?.blocks ?? []).map((b) => b.text)], f);
+  const accent = hex(kit?.primary_color, '#8458B3'), ink = hex(kit?.secondary_color, '#494D5F');
+  const doc = new PDFDocument({ size: layout?.paper ?? 'A4', layout: layout?.orientation ?? 'portrait', margin: (layout?.margin_mm ?? 18) * MM, bufferPages: true, compress: true, info: { Title: snapshot?.title ?? 'Care plan', Author: kit?.display_name ?? snapshot?.doctor_name ?? 'Sportarena', CreationDate: new Date(), Producer: 'Sportarena' } });
+  const chunks = []; doc.on('data', (c) => chunks.push(c));
+  const done = new Promise((res, rej) => { doc.on('end', res); doc.on('error', rej); });
+  const left = doc.page.margins.left, width = doc.page.width - left - doc.page.margins.right;
+  const bottom = () => doc.page.height - doc.page.margins.bottom - 24;
+  const label = (t, x, y, w, o = {}) => doc.font(o.bold ? f.bold : f.regular).fontSize(o.size ?? 9).fillColor(o.color ?? ink).text(t ?? '', x, y, { width: w, align: o.align ?? 'left', lineBreak: o.lineBreak ?? true });
+  const room = (h) => { if (doc.y + h > bottom()) doc.addPage(); };
+
+  if (sample) label('SAMPLE — clinical preview only', left, Math.max(4, doc.page.margins.top - 14), width, { bold: true, size: 8, color: '#B42318' });
+
+  for (const b of (layout?.blocks ?? [])) {
+    if (b.type === 'header') {
+      drawLetterhead(doc, { f, accent, ink, kit, logo, left, width, label, layout, snapshot });
+    } else if (b.type === 'title') {
+      room(60);
+      label(snapshot?.title ?? 'Approved Care Plan', left, doc.y, width, { bold: true, size: 18, color: accent });
+      label([snapshot?.patient_name && `Patient: ${snapshot.patient_name}`, snapshot?.dob && `DOB: ${snapshot.dob}`, snapshot?.doctor_name && `Physician: ${snapshot.doctor_name}`, snapshot?.issued_date && `Issued: ${snapshot.issued_date}`, snapshot?.review_date && `Review: ${snapshot.review_date}`].filter(Boolean).join(' · '), left, doc.y + 2, width, { size: 9 });
+      doc.y += 14;
+      const clinical = [['Diagnosis / condition', snapshot?.diagnosis], ['ICD-10 / SNOMED', snapshot?.code], ['Allergies', snapshot?.allergies], ['Current medication', snapshot?.medication], ['Emergency contact', snapshot?.emergency_contact], ['Emergency phone', snapshot?.emergency_phone]].filter(([, v]) => v);
+      for (const [k, v] of clinical) { room(16); const y = doc.y; label(k, left, y, width * 0.28, { bold: true, size: 9 }); label(String(v), left + width * 0.3, y, width * 0.7, { size: 9 }); doc.y = Math.max(doc.y, y + 14) + 2; }
+      doc.y += 8;
+      if (snapshot?.body) {
+        for (const para of String(snapshot.body).split(/\n{2,}/)) {
+          const t = para.trim(); if (!t) continue;
+          const isHead = /^[A-Z][A-Z\s&]+$/.test(t) && t.length < 60;
+          room(isHead ? 30 : 20); label(t, left, doc.y, width, { size: isHead ? 9 : 10, bold: isHead, color: isHead ? accent : ink }); doc.y += isHead ? 6 : 8;
+        }
+      }
+    } else if (b.type === 'text') {
+      room(30); if (b.text) { label(b.text, left, doc.y, width, { size: TEXT_SIZE[b.size] ?? 9, align: b.align }); doc.y += 8; }
+    } else if (b.type === 'signature_block') {
+      drawSignatureBlock(doc, { f, ink, left, width, label, bottom, accent, signers: [{ name: snapshot?.doctor_name ?? 'Physician', role: 'Physician (GMC / medical authority)' }, { name: snapshot?.patient_name ?? 'Patient', role: 'Patient (informed consent)' }] });
+    }
+  }
+
+  const wantsFooter = (layout?.blocks ?? []).some((b) => b.type === 'footer');
+  const range = doc.bufferedPageRange();
+  for (let i = 0; i < range.count; i++) {
+    doc.switchToPage(range.start + i); const y = doc.page.height - doc.page.margins.bottom - 12; doc.page.margins.bottom = 0;
+    if (wantsFooter && kit?.footer_text) label(kit.footer_text, left, y, width - 130, { size: 8, lineBreak: false });
+    label(`${sample ? 'SAMPLE · ' : ''}${snapshot?.reference ?? 'Care plan'} · Page ${i + 1} of ${range.count}`, left + width - 260, y, 260, { size: 8, align: 'right', lineBreak: false });
+  }
+  doc.end(); await done;
+  return { buffer: Buffer.concat(chunks), pages: range.count };
+}
+
+/**
+ * Purchase order / delivery note PDF. Same structure as invoice but for supplier procurement.
+ * @returns {Promise<{ buffer: Buffer, pages: number }>}
+ */
+export async function renderPurchaseOrder({ layout, kit, logo, snapshot, sample = false }) {
+  const f = fonts();
+  assertGlyphs([kit?.display_name, kit?.footer_text, snapshot?.po_number, snapshot?.supplier_name, snapshot?.buyer_name, ...(snapshot?.lines ?? []).map((l) => l.description), ...(layout?.blocks ?? []).map((b) => b.text)], f);
+  const accent = hex(kit?.primary_color, '#8458B3'), ink = hex(kit?.secondary_color, '#494D5F');
+  const doc = new PDFDocument({ size: layout?.paper ?? 'A4', layout: layout?.orientation ?? 'portrait', margin: (layout?.margin_mm ?? 18) * MM, bufferPages: true, compress: true, info: { Title: `Purchase order ${snapshot?.po_number ?? ''}`, Author: kit?.display_name ?? snapshot?.buyer_name ?? 'Sportarena', CreationDate: new Date(), Producer: 'Sportarena' } });
+  const chunks = []; doc.on('data', (c) => chunks.push(c));
+  const done = new Promise((res, rej) => { doc.on('end', res); doc.on('error', rej); });
+  const left = doc.page.margins.left, width = doc.page.width - left - doc.page.margins.right;
+  const bottom = () => doc.page.height - doc.page.margins.bottom - 24;
+  const label = (t, x, y, w, o = {}) => doc.font(o.bold ? f.bold : f.regular).fontSize(o.size ?? 9).fillColor(o.color ?? ink).text(t ?? '', x, y, { width: w, align: o.align ?? 'left', lineBreak: o.lineBreak ?? true });
+  const room = (h) => { if (doc.y + h > bottom()) doc.addPage(); };
+
+  if (sample) label('SAMPLE — not a real purchase order', left, Math.max(4, doc.page.margins.top - 14), width, { bold: true, size: 8, color: '#B42318' });
+
+  for (const b of (layout?.blocks ?? [])) {
+    if (b.type === 'header') {
+      let x = left;
+      if (layout?.style === 'modern') doc.rect(0, 0, doc.page.width, 10).fill(accent);
+      if (logo) { try { doc.image(logo, x, doc.page.margins.top, { fit: [130, 56] }); x += 140; } catch { throw new AppError(422, 'logo_unreadable', 'Logo could not be read.'); } }
+      label(kit?.display_name ?? snapshot?.buyer_name ?? '', x, doc.page.margins.top, width - (x - left) - 150, { bold: true, size: 14, color: accent });
+      label(`PURCHASE ORDER\n${snapshot?.po_number ?? ''}`, left + width - 150, doc.page.margins.top, 150, { bold: true, size: 11, align: 'right', color: ink });
+      doc.y = Math.max(doc.y, doc.page.margins.top + (logo ? 60 : 0)) + 14;
+      doc.moveTo(left, doc.y).lineTo(left + width, doc.y).lineWidth(0.6).stroke(accent); doc.y += 12;
+    } else if (b.type === 'title') {
+      room(50); label(`PURCHASE ORDER ${snapshot?.po_number ?? ''}`, left, doc.y, width, { bold: true, size: 16, color: accent });
+      label(`Issued: ${snapshot?.issued_date ?? '—'} · Status: ${snapshot?.status ?? '—'}${snapshot?.delivery_date ? ` · Deliver by: ${snapshot.delivery_date}` : ''}`, left, doc.y + 2, width, { size: 9 }); doc.y += 10;
+    } else if (b.type === 'parties') {
+      room(60); const y = doc.y, half = width / 2 - 8;
+      label('ORDERED BY', left, y, half, { bold: true, size: 8, color: accent });
+      label([snapshot?.buyer_name, snapshot?.buyer_address, snapshot?.buyer_tax_id && `Tax ID: ${snapshot.buyer_tax_id}`].filter(Boolean).join('\n'), left, y + 12, half);
+      const endL = doc.y;
+      label('SUPPLIER', left + half + 16, y, half, { bold: true, size: 8, color: accent });
+      label([snapshot?.supplier_name, snapshot?.supplier_address, snapshot?.supplier_tax_id && `Tax ID: ${snapshot.supplier_tax_id}`].filter(Boolean).join('\n'), left + half + 16, y + 12, half);
+      doc.y = Math.max(endL, doc.y) + 14;
+    } else if (b.type === 'lines') {
+      const cols = [{ t: 'Item description', w: width - 230, a: 'left' }, { t: 'Qty', w: 50, a: 'right' }, { t: 'Unit', w: 40, a: 'left' }, { t: 'Unit price', w: 70, a: 'right' }, { t: 'Total', w: 70, a: 'right' }];
+      const head = () => { const y = doc.y; doc.rect(left, y - 2, width, 16).fill(accent); let cx = left; cols.forEach((c) => { label(c.t, cx + 3, y + 1, c.w - 6, { bold: true, size: 7.5, color: '#FFFFFF', lineBreak: false }); cx += c.w; }); doc.y = y + 16; };
+      head();
+      for (const l of (snapshot?.lines ?? [])) {
+        const cells = [l.description, String(l.quantity ?? ''), l.unit ?? '', l.unit_price ?? '', l.total ?? ''];
+        if (doc.y + 14 > bottom()) { doc.addPage(); head(); }
+        let cx = left, y = doc.y;
+        cells.forEach((c, i) => { label(c, cx + 3, y + 3, cols[i].w - 6, { size: 9, align: cols[i].a, lineBreak: false }); cx += cols[i].w; });
+        doc.y = y + 14; doc.moveTo(left, doc.y).lineTo(left + width, doc.y).lineWidth(0.3).stroke('#D3D1C7');
+      }
+      doc.y += 6;
+    } else if (b.type === 'totals') {
+      room(70); const tx = left + width - 220, w = 220;
+      const sum = (k, v, bold) => { const y = doc.y; label(k, tx, y, 120, { bold }); label(v ?? '', tx + 120, y, 100, { bold, align: 'right' }); doc.y = y + 14; };
+      if (snapshot?.subtotal) sum('Subtotal', snapshot.subtotal);
+      if (snapshot?.tax_name && snapshot?.tax_amount) sum(`${snapshot.tax_name}`, snapshot.tax_amount);
+      doc.moveTo(tx, doc.y).lineTo(tx + w, doc.y).lineWidth(0.6).stroke(accent); doc.y += 4;
+      if (snapshot?.total) sum('Total', snapshot.total, true);
+      if (snapshot?.delivery_terms) { doc.y += 6; label(`Delivery terms: ${snapshot.delivery_terms}`, left, doc.y, width, { size: 8 }); doc.y += 8; }
+    } else if (b.type === 'text') {
+      room(30); if (b.text) { label(b.text, left, doc.y, width, { size: TEXT_SIZE[b.size] ?? 9, align: b.align }); doc.y += 8; }
+    }
+  }
+
+  const wantsFooter = (layout?.blocks ?? []).some((b) => b.type === 'footer');
+  const range = doc.bufferedPageRange();
+  for (let i = 0; i < range.count; i++) {
+    doc.switchToPage(range.start + i); const y = doc.page.height - doc.page.margins.bottom - 12; doc.page.margins.bottom = 0;
+    if (wantsFooter && kit?.footer_text) label(kit.footer_text, left, y, width - 130, { size: 8, lineBreak: false });
+    label(`${sample ? 'SAMPLE · ' : ''}PO ${snapshot?.po_number ?? ''} · Page ${i + 1} of ${range.count}`, left + width - 260, y, 260, { size: 8, align: 'right', lineBreak: false });
+  }
+  doc.end(); await done;
+  return { buffer: Buffer.concat(chunks), pages: range.count };
+}
+
+/**
+ * Venue hire agreement PDF. Parties (hirer and venue), terms, signature blocks.
+ * @returns {Promise<{ buffer: Buffer, pages: number }>}
+ */
+export async function renderHireAgreement({ layout, kit, logo, snapshot, sample = false }) {
+  const f = fonts();
+  assertGlyphs([kit?.display_name, kit?.footer_text, snapshot?.title, snapshot?.venue_name, snapshot?.hirer_name, snapshot?.body, ...(layout?.blocks ?? []).map((b) => b.text)], f);
+  const accent = hex(kit?.primary_color, '#8458B3'), ink = hex(kit?.secondary_color, '#494D5F');
+  const doc = new PDFDocument({ size: layout?.paper ?? 'A4', layout: layout?.orientation ?? 'portrait', margin: (layout?.margin_mm ?? 18) * MM, bufferPages: true, compress: true, info: { Title: snapshot?.title ?? 'Venue hire agreement', Author: kit?.display_name ?? snapshot?.venue_name ?? 'Sportarena', CreationDate: new Date(), Producer: 'Sportarena' } });
+  const chunks = []; doc.on('data', (c) => chunks.push(c));
+  const done = new Promise((res, rej) => { doc.on('end', res); doc.on('error', rej); });
+  const left = doc.page.margins.left, width = doc.page.width - left - doc.page.margins.right;
+  const bottom = () => doc.page.height - doc.page.margins.bottom - 24;
+  const label = (t, x, y, w, o = {}) => doc.font(o.bold ? f.bold : f.regular).fontSize(o.size ?? 9).fillColor(o.color ?? ink).text(t ?? '', x, y, { width: w, align: o.align ?? 'left', lineBreak: o.lineBreak ?? true });
+  const room = (h) => { if (doc.y + h > bottom()) doc.addPage(); };
+
+  if (sample) label('SAMPLE — template wording, not a real agreement', left, Math.max(4, doc.page.margins.top - 14), width, { bold: true, size: 8, color: '#B42318' });
+
+  for (const b of (layout?.blocks ?? [])) {
+    if (b.type === 'header') {
+      drawLetterhead(doc, { f, accent, ink, kit, logo, left, width, label, layout, snapshot: { organisation: snapshot?.venue_name, address: snapshot?.venue_address } });
+    } else if (b.type === 'title') {
+      room(50);
+      label(snapshot?.title ?? 'Venue Hire Agreement', left, doc.y, width, { bold: true, size: 20, color: accent });
+      label(`${snapshot?.reference ? `Ref ${snapshot.reference} · ` : ''}${snapshot?.status ?? 'Draft'}${snapshot?.hire_date ? ` · Date: ${snapshot.hire_date}` : ''}`, left, doc.y + 2, width, { size: 9 });
+      doc.y += 14;
+    } else if (b.type === 'parties') {
+      room(80); const y = doc.y, half = width / 2 - 8;
+      label('VENUE', left, y, half, { bold: true, size: 8, color: accent });
+      label([snapshot?.venue_name, snapshot?.venue_address, snapshot?.venue_contact].filter(Boolean).join('\n'), left, y + 12, half, { size: 10 });
+      const endL = doc.y;
+      label('HIRER', left + half + 16, y, half, { bold: true, size: 8, color: accent });
+      label([snapshot?.hirer_name, snapshot?.hirer_address, snapshot?.hirer_contact, snapshot?.hirer_tax_id && `Tax ID: ${snapshot.hirer_tax_id}`].filter(Boolean).join('\n'), left + half + 16, y + 12, half, { size: 10 });
+      doc.y = Math.max(endL, doc.y) + 14;
+      const terms = [['Facility hired', snapshot?.facility], ['Purpose', snapshot?.purpose], ['Hire date(s)', snapshot?.hire_date], ['Start time', snapshot?.start_time], ['End time', snapshot?.end_time], ['Setup time', snapshot?.setup_time], ['Capacity', snapshot?.capacity], ['Hire fee', snapshot?.hire_fee], ['Deposit', snapshot?.deposit], ['Cancellation policy', snapshot?.cancellation_policy]].filter(([, v]) => v);
+      if (terms.length) {
+        label('HIRE DETAILS', left, doc.y, width, { bold: true, size: 8, color: accent }); doc.y += 4;
+        for (const [k, v] of terms) { room(16); const ty = doc.y; label(k, left, ty, width * 0.3, { bold: true, size: 9 }); label(String(v), left + width * 0.32, ty, width * 0.68, { size: 9 }); doc.y = Math.max(doc.y, ty + 14) + 2; }
+        doc.y += 8;
+      }
+    } else if (b.type === 'text') {
+      room(30);
+      if (b.text) { label(b.text, left, doc.y, width, { size: TEXT_SIZE[b.size] ?? 9, align: b.align }); doc.y += 8; }
+      if (snapshot?.body && b.text === undefined) {
+        for (const para of String(snapshot.body).split(/\n{2,}/)) {
+          const t = para.trim(); if (!t) continue; room(24); label(t, left, doc.y, width, { size: 9 }); doc.y += 8;
+        }
+      }
+    } else if (b.type === 'signature_block') {
+      drawSignatureBlock(doc, { f, ink, left, width, label, bottom, accent, signers: [{ name: snapshot?.venue_name ?? 'Venue', role: 'Venue manager / authorised signatory' }, { name: snapshot?.hirer_name ?? 'Hirer', role: 'Hirer' }] });
+    }
+  }
+
+  const wantsFooter = (layout?.blocks ?? []).some((b) => b.type === 'footer');
+  const range = doc.bufferedPageRange();
+  for (let i = 0; i < range.count; i++) {
+    doc.switchToPage(range.start + i); const y = doc.page.height - doc.page.margins.bottom - 12; doc.page.margins.bottom = 0;
+    if (wantsFooter && kit?.footer_text) label(kit.footer_text, left, y, width - 130, { size: 8, lineBreak: false });
+    label(`${sample ? 'SAMPLE · ' : ''}${snapshot?.reference ?? 'Hire agreement'} · Page ${i + 1} of ${range.count}`, left + width - 260, y, 260, { size: 8, align: 'right', lineBreak: false });
+  }
+  doc.end(); await done;
+  return { buffer: Buffer.concat(chunks), pages: range.count };
+}
+
+/**
+ * General business letter PDF. Headed letterhead, structured body paragraphs, optional signature block.
+ * @returns {Promise<{ buffer: Buffer, pages: number }>}
+ */
+export async function renderBusinessLetter({ layout, kit, logo, snapshot, sample = false }) {
+  const f = fonts();
+  assertGlyphs([kit?.display_name, kit?.legal_name, kit?.address, kit?.footer_text, snapshot?.title, snapshot?.addressee, snapshot?.subject, snapshot?.body, snapshot?.sender_name, ...(layout?.blocks ?? []).map((b) => b.text)], f);
+  const accent = hex(kit?.primary_color, '#8458B3'), ink = hex(kit?.secondary_color, '#494D5F');
+  const doc = new PDFDocument({ size: layout?.paper ?? 'A4', layout: layout?.orientation ?? 'portrait', margin: (layout?.margin_mm ?? 18) * MM, bufferPages: true, compress: true, info: { Title: snapshot?.subject ?? 'Business letter', Author: kit?.display_name ?? snapshot?.sender_name ?? 'Sportarena', CreationDate: new Date(), Producer: 'Sportarena' } });
+  const chunks = []; doc.on('data', (c) => chunks.push(c));
+  const done = new Promise((res, rej) => { doc.on('end', res); doc.on('error', rej); });
+  const left = doc.page.margins.left, width = doc.page.width - left - doc.page.margins.right;
+  const bottom = () => doc.page.height - doc.page.margins.bottom - 24;
+  const label = (t, x, y, w, o = {}) => doc.font(o.bold ? f.bold : f.regular).fontSize(o.size ?? 9).fillColor(o.color ?? ink).text(t ?? '', x, y, { width: w, align: o.align ?? 'left', lineBreak: o.lineBreak ?? true });
+  const room = (h) => { if (doc.y + h > bottom()) doc.addPage(); };
+
+  if (sample) label('SAMPLE — preview only', left, Math.max(4, doc.page.margins.top - 14), width, { bold: true, size: 8, color: '#B42318' });
+
+  for (const b of (layout?.blocks ?? [])) {
+    if (b.type === 'header') {
+      drawLetterhead(doc, { f, accent, ink, kit, logo, left, width, label, layout, snapshot });
+    } else if (b.type === 'title') {
+      room(50);
+      if (snapshot?.date) { label(snapshot.date, left + width - 120, doc.y, 120, { size: 9, align: 'right', lineBreak: false }); doc.y += 14; }
+      if (snapshot?.addressee) { label(snapshot.addressee, left, doc.y, width, { size: 10 }); doc.y += 14; }
+      if (snapshot?.subject) { label(`Re: ${snapshot.subject}`, left, doc.y, width, { bold: true, size: 11, color: accent }); doc.y += 14; }
+      if (snapshot?.salutation) { label(snapshot.salutation, left, doc.y, width, { size: 10 }); doc.y += 10; }
+    } else if (b.type === 'parties') {
+      room(50); const y = doc.y, half = width / 2 - 8;
+      label('FROM', left, y, half, { bold: true, size: 8, color: accent });
+      label([kit?.display_name ?? snapshot?.sender_name, kit?.legal_name, kit?.address, [kit?.contact_email, kit?.phone].filter(Boolean).join(' · ')].filter(Boolean).join('\n'), left, y + 12, half, { size: 9 });
+      const endL = doc.y;
+      if (snapshot?.addressee_org) {
+        label('TO', left + half + 16, y, half, { bold: true, size: 8, color: accent });
+        label([snapshot?.addressee, snapshot?.addressee_org, snapshot?.addressee_address].filter(Boolean).join('\n'), left + half + 16, y + 12, half, { size: 9 });
+      }
+      doc.y = Math.max(endL, doc.y) + 14;
+    } else if (b.type === 'text') {
+      room(30);
+      if (b.text) { label(b.text, left, doc.y, width, { size: TEXT_SIZE[b.size] ?? 9, align: b.align }); doc.y += 8; }
+      if (snapshot?.body && b.text === undefined) {
+        for (const para of String(snapshot.body).split(/\n{2,}/)) {
+          const t = para.trim(); if (!t) continue; room(24); label(t, left, doc.y, width, { size: 10 }); doc.y += 8;
+        }
+        if (snapshot?.closing) { doc.y += 4; label(snapshot.closing, left, doc.y, width, { size: 10 }); doc.y += 4; }
+        if (snapshot?.sender_name) { doc.y += 20; label(snapshot.sender_name, left, doc.y, width, { bold: true, size: 10 }); if (snapshot?.sender_title) label(snapshot.sender_title, left, doc.y, width, { size: 9 }); doc.y += 8; }
+      }
+    } else if (b.type === 'signature_block') {
+      drawSignatureBlock(doc, { f, ink, left, width, label, bottom, accent, signers: [{ name: snapshot?.sender_name ?? kit?.display_name ?? 'Sender', role: snapshot?.sender_title ?? 'Authorised signatory' }] });
+    }
+  }
+
+  const wantsFooter = (layout?.blocks ?? []).some((b) => b.type === 'footer');
+  const range = doc.bufferedPageRange();
+  for (let i = 0; i < range.count; i++) {
+    doc.switchToPage(range.start + i); const y = doc.page.height - doc.page.margins.bottom - 12; doc.page.margins.bottom = 0;
+    if (wantsFooter && kit?.footer_text) label(kit.footer_text, left, y, width - 130, { size: 8, lineBreak: false });
+    label(`${sample ? 'SAMPLE · ' : ''}${snapshot?.reference ?? 'Letter'} · Page ${i + 1} of ${range.count}`, left + width - 260, y, 260, { size: 8, align: 'right', lineBreak: false });
+  }
+  doc.end(); await done;
+  return { buffer: Buffer.concat(chunks), pages: range.count };
+}
+
 /**
  * The rulebook as a printable booklet: one card per rule, local changes marked against the standard. Text comes from the catalogue
  * (rulebook/catalog.js) and the local values it is given; nothing is computed here.

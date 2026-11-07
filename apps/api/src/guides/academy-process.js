@@ -168,6 +168,21 @@ export const ACADEMY_STEPS = [
     modules: ['academy-sessions.js', 'academy-attendance.js', 'academy-ops-board.js', 'academy-desk.js'], sources: ['apps/app/src/screens/academy-ops.js'],
   },
   {
+    id: 'wearable_integration', title: 'Connect performance devices',
+    why: 'Elite academies like Nadal Academy, Real Madrid Academies and FC Barcelona track training load, HRV, sleep and GPS metrics daily. Connect your athletes\' wearables so coaches see readiness and load curves without paperwork, and each athlete controls exactly what is shared.',
+    steps: [
+      'Open Integration Hub (Organisation settings) and request access to the providers your athletes use (Oura, WHOOP, Garmin, Fitbit, Strava, Polar, Catapult OpenField). The platform team reviews and enables it.',
+      'Once approved, athletes open Health → Wearables, tap Connect a device, choose the provider and the metrics they allow (heart rate, HRV, sleep, steps, etc.), and paste their provider access token.',
+      'Athletes can narrow or pause what they share at any time. The access token is encrypted and never shown again.',
+      'Devices sync automatically; athletes can tap Sync now or retry after an error. The Data quality panel shows missing days, out-of-range readings and overdue syncs.',
+      'Athletes log session RPE (perceived intensity 1–10 × duration) to add subjective load alongside device data.',
+      'Coaches open Health → Shared wellness and see the Team wearables view: Metrics tab for latest readings, Load (ACWR) tab for the Acute:Chronic Workload Ratio of each athlete colour-coded by zone, and Session RPE tab for self-reported loads.',
+      'Each athlete sets their own alert thresholds (e.g. "tell me when my 3-day average resting heart rate is above 65 bpm"). Alerts are reminders, never medical findings.',
+    ],
+    target: { academy: 'ops' },
+    modules: ['wearables.js', 'wellness.js', 'wellness-sharing.js', 'integrations.js'], sources: ['apps/app/src/screens/wearables.js', 'apps/app/src/screens/wellness.js', 'apps/app/src/screens/wellness-sharing.js'],
+  },
+  {
     id: 'tax', title: 'Set up taxation',
     why: 'Know the tax collected and paid, with your own tax rules and tax details on invoices.',
     steps: ['Open Finance and choose the Tax tab (finance access is required).', 'Add your tax registration and tax rules.', 'Read collected, paid and net tax by period and rate.', 'Tax figures are informational, not tax advice.'],
@@ -347,6 +362,42 @@ id: 'wellbeing', title: 'Support student wellbeing and development',
     target: { screen: 'InjuryEpisodes' },
     modules: ['injury-episodes.js', 'injury-rtp.js', 'injury-coach-view.js', 'injury-alerts.js'],
     sources: ['apps/app/src/screens/injury-episode.js'],
+    id: 'branded_documents',
+    title: 'Issue branded documents',
+    why: 'Generate professional branded PDFs — invoices, training plans, enrolment letters, event timetables and booking confirmations — directly from canonical records without leaving the platform.',
+    steps: [
+      'Set up your brand kit: upload your logo, choose primary and secondary colours, and select a font.',
+      'Choose a document family (invoice, training plan, agreement, timetable, etc.) and start from a curated template.',
+      'Customise blocks in the template designer: header, title, parties, line items, tables and signature blocks.',
+      'Publish the template version — it becomes immutable and can be used to generate documents.',
+      'Generate from a source record: open an invoice, booking, coaching plan or event and tap "Generate Document".',
+      'Download the PDF or share it via a scoped, expiring link that can be revoked at any time.',
+      'All issued documents are stored in the Documents library with full version history and audit trail.',
+    ],
+    target: { screen: 'branded-documents' },
+    modules: ['brand-kits.js', 'document-templates.js', 'document-renderer.js', 'document-library.js'],
+    sources: ['apps/app/src/screens/branded-documents.js', 'apps/app/src/screens/document-library.js', 'apps/app/src/screens/document-viewer.js'],
+  },
+  {
+    id: 'coach_development', title: 'Develop and certify your coaching staff',
+    why: 'Elite academies like Nadal Academy and Real Madrid CF demand verifiable CPD, structured mentoring and rigorous quality assurance. Build a culture of continuous improvement from day one so every coach is growing, every observation drives action, and compliance is always audit-ready.',
+    steps: [
+      'Open Academy, then Coach Development, then Module Library. Tap Add Module to create your CPD catalogue — set the kind (Induction, CPD, Credential, Workshop, Conference), the coaching pillar (Technical, Tactical, Physical, Mental, Lifestyle), CPD hours and whether it is mandatory. Publish the module when it is ready to assign.',
+      'Open a published module and tap Assign. Pick the coach, set a due date and confirm. The coach receives an in-app notification and the assignment appears on their My CPD board. Track completion status (Assigned → In Progress → Submitted → Approved) from the Review tab.',
+      'Coaches submit evidence (certificate, external course, reflection, observation reference or attendance) from their My CPD board. Open the Review tab, check the evidence and tap Approve or Reject. Rejections trigger an appeal right for the coach; resolve appeals from the Appeals tab.',
+      'Open Coach Development, then Mentoring. Tap New Pairing, pick mentor and mentee from your coaching staff, set a start date and cadence (every n weeks) and add development goals. Only one live pairing per mentee per organisation is allowed — the system enforces it.',
+      'Inside a pairing, tap Schedule Session to set a date and duration. After the session the mentor taps Complete Session and records agreed actions. The session timeline is shared between both parties and is append-only for safeguarding purposes.',
+      'Open Coach Development, then TD Quality, then Observations. Tap Add Observation, choose the coach, the session you observed, the pillar focus and an overall 1–5 rating. Add pillar sub-ratings and coaching points. Private strengths and development notes are encrypted and visible only to TD and owner — tap Release to Coach when ready to share feedback.',
+      'From an observation, tap Create Improvement Plan to formalise development commitments. Add timed actions (each with a due date), mark them done as the coach progresses and track open/closed counts at a glance from the plans list.',
+      'Open Coach Development, then Compliance Report to see organisation-wide CPD completion rates, overdue mandatory modules and per-coach CPD hours. Export the report for board review or accreditation audits.',
+    ],
+    target: { academy: 'coach_development' },
+    modules: ['academy-coach-education.js'],
+    sources: [
+      'apps/app/src/screens/academy-coach-education.js',
+      'apps/app/src/screens/academy-coach-mentoring.js',
+      'apps/app/src/screens/academy-td-quality.js',
+    ],
   },
 ];
 
@@ -364,7 +415,7 @@ export const NOT_IN_GUIDE = {
 };
 
 /** The directories/files the guard test watches for org/academy/venue/coach/tax capability modules. */
-export const WATCHED_MODULES = /^(academy-.*|org-.*|organisations|venue-coaches|gst|provider-tax|coach-classes|para-sport-funding|para-sport-sponsorship-outcomes|para-pathway|para-readiness|para-learn|para-staff-credentials|para-spectator-accessibility|boarding-.*)\.js$/;
+export const WATCHED_MODULES = /^(academy-.*|org-.*|organisations|venue-coaches|gst|provider-tax|coach-classes|para-sport-funding|para-sport-sponsorship-outcomes|para-pathway|para-readiness|para-learn|para-staff-credentials|para-spectator-accessibility|boarding-.*|wearables|wellness.*|integrations)\.js$/;
 
 export const SHOT_SIZES = { phone: { width: 390, height: 1100 }, desktop: { width: 1280, height: 900 } };
 export const shotFile = (stepId, size) => `${String(ACADEMY_STEPS.findIndex((s) => s.id === stepId) + 1).padStart(2, '0')}-${stepId}-${size}.png`;

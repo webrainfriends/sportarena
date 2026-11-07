@@ -9894,6 +9894,89 @@ export default {
   'cap.step_review': 'மதிப்பாய்வு',
   'pk.r_too_many': 'கடவுச்சொற்றொடர் பலமுறை தவறாக இருந்தது. நிறுத்தி பாதுகாவலரை அழைக்கவும்.',
 
+  // reviewed: false
+  'cEdu.title': 'பயிற்சியாளர் கல்வி',
+  'cEdu.season': 'நடப்பு பருவம்',
+  'cEdu.tab.overview': 'கண்ணோட்டம்',
+  'cEdu.tab.myCpd': 'என் CPD',
+  'cEdu.tab.review': 'மதிப்பாய்வு',
+  'cEdu.tab.appeals': 'மேல்முறையீடுகள்',
+  'cEdu.kpi.completed': 'முடிந்தது',
+  'cEdu.kpi.overdue': 'தாமதமானது',
+  'cEdu.kpi.inProgress': 'நடந்து வருகிறது',
+  'cEdu.kpi.cpdHours': 'CPD மணிகள்',
+  'cEdu.mod.lib': 'தொகுதி நூலகம்',
+  'cEdu.mod.new': 'தொகுதி சேர்',
+  'cEdu.mod.edit': 'திருத்து',
+  'cEdu.mod.publish': 'வெளியிடு',
+  'cEdu.mod.kind.induction': 'தொடக்கம்',
+  'cEdu.mod.kind.cpd': 'CPD',
+  'cEdu.mod.kind.credential': 'சான்றிதழ்',
+  'cEdu.mod.kind.recertification': 'மறுசான்றிதழ்',
+  'cEdu.mod.kind.assessment': 'மதிப்பீடு',
+  'cEdu.mod.kind.workshop': 'பட்டறை',
+  'cEdu.mod.kind.conference': 'மாநாடு',
+  'cEdu.mod.kind.other': 'மற்றவை',
+  'cEdu.mod.f.title': 'தலைப்பு',
+  'cEdu.mod.f.kind': 'வகை',
+  'cEdu.mod.f.pillar': 'தூண்',
+  'cEdu.mod.f.cpdHours': 'CPD மணிகள்',
+  'cEdu.mod.f.mandatory': 'கட்டாயம்',
+  'cEdu.mod.f.description': 'விவரம்',
+  'cEdu.asn.overdue': '{{n}} நாட்கள் தாமதம்',
+  'cEdu.asn.due': '{{date}} அன்று நிறைவு',
+  'cEdu.asn.start': 'தொடங்கு',
+  'cEdu.asn.continue': 'தொடர்',
+  'cEdu.cmp.submit': 'முடிப்பு சமர்ப்பி',
+  'cEdu.cmp.approve': 'அனுமதி',
+  'cEdu.cmp.reject': 'நிராகரி',
+  'cEdu.cmp.evidenceKind.certificate': 'சான்றிதழ்',
+  'cEdu.cmp.evidenceKind.external_course': 'வெளி பாடம்',
+  'cEdu.cmp.evidenceKind.reflection': 'சிந்தனை',
+  'cEdu.cmp.evidenceKind.observation_ref': 'கண்காணிப்பு',
+  'cEdu.cmp.evidenceKind.credential_ref': 'சான்று',
+  'cEdu.cmp.evidenceKind.attendance': 'வருகை',
+  'cEdu.cmp.evidenceKind.other': 'மற்றவை',
+  'cEdu.apl.pending': 'நிலுவையில்',
+  'cEdu.mnt.title': 'வழிகாட்டுதல்',
+  'cEdu.mnt.newPairing': 'இணை உருவாக்கு',
+  'cEdu.mnt.mentor': 'வழிகாட்டி',
+  'cEdu.mnt.mentee': 'மாணவர்',
+  'cEdu.mnt.startDate': 'தொடக்க தேதி',
+  'cEdu.mnt.endDate': 'முடிவு தேதி',
+  'cEdu.mnt.frequency': 'அலைவெண்',
+  'cEdu.mnt.goals': 'இலக்குகள்',
+  'cEdu.mnt.scheduleSession': 'அமர்வு திட்டமிடு',
+  'cEdu.mnt.completeSession': 'அமர்வு முடி',
+  'cEdu.mnt.nextSession': 'அடுத்தது: {{date}}',
+  'cEdu.mnt.status.active': 'செயலில்',
+  'cEdu.mnt.status.paused': 'இடைநிறுத்தம்',
+  'cEdu.mnt.status.ended': 'முடிந்தது',
+  'cEdu.obs.title': 'கண்காணிப்புகள்',
+  'cEdu.obs.new': 'கண்காணிப்பு சேர்',
+  'cEdu.obs.f.coachId': 'பயிற்சியாளர்',
+  'cEdu.obs.f.sessionDate': 'அமர்வு தேதி',
+  'cEdu.obs.f.context': 'சூழல்',
+  'cEdu.obs.f.pillar': 'தூண்',
+  'cEdu.obs.f.overallRating': 'ஒட்டுமொத்த மதிப்பீடு',
+  'cEdu.obs.f.strengths': 'வலிமைகள்',
+  'cEdu.obs.f.development': 'வளர்ச்சி',
+  'cEdu.obs.release': 'பயிற்சியாளருக்கு வெளியிடு',
+  'cEdu.plan.title': 'மேம்பாட்டு திட்டங்கள்',
+  'cEdu.plan.new': 'திட்டம் சேர்',
+  'cEdu.plan.f.focus': 'கவனம்',
+  'cEdu.plan.f.target': 'இலக்கு தேதி',
+  'cEdu.plan.f.actions': 'செயல்கள்',
+  'cEdu.pillar.technical': 'தொழில்நுட்பம்',
+  'cEdu.pillar.tactical': 'தந்திரம்',
+  'cEdu.pillar.physical': 'உடல்',
+  'cEdu.pillar.mental': 'மனம்',
+  'cEdu.pillar.lifestyle': 'வாழ்க்கை முறை',
+  'cEdu.empty.modules': 'தொகுதிகள் இல்லை.',
+  'cEdu.empty.assignments': 'ஒதுக்கீடுகள் இல்லை.',
+  'cEdu.empty.pairings': 'இணைகள் இல்லை.',
+  'cEdu.empty.observations': 'கண்காணிப்புகள் இல்லை.',
+  'cEdu.empty.plans': 'திட்டங்கள் இல்லை.',
   /* ── PS-28: Para-sport performance insights (machine-drafted; reviewed: false) ── */
   'para_perf.dashboard_title': 'Performance Insights',
   'para_perf.coach_review_title': 'Para Insight Review',
@@ -14929,4 +15012,136 @@ export default {
   'rtp.coach_view_notice': 'பயிற்சியாளர்கள் ஒப்புதல் நிலை மற்றும் சுமை கட்டுப்பாடுகளை மட்டுமே காண்கிறார்கள் — மருத்துவ விவரங்கள் பகிரப்படுவதில்லை.', // machine-drafted
   'rtp.approval_valid_until': 'வரை செல்லுபடியாகும்', // machine-drafted
   'rtp.mark_achieved': 'அடையப்பட்டதாக குறிக்கவும்', // machine-drafted
+};
+  // machine-drafted — branded documents
+  'documents.hub.my_documents': 'My Documents', // machine-drafted
+  'documents.hub.templates': 'Templates', // machine-drafted
+  'documents.hub.brand_kits': 'Brand Kits', // machine-drafted
+  'documents.hub.generate': 'Generate Document', // machine-drafted
+  'documents.library.empty': 'No documents yet', // machine-drafted
+  'documents.library.generate_hint': 'Generate documents from events, invoices, plans and bookings', // machine-drafted
+  'documents.library.download': 'Download', // machine-drafted
+  'documents.library.share': 'Share', // machine-drafted
+  'documents.library.regenerate': 'Regenerate', // machine-drafted
+  'documents.library.versions': 'Versions', // machine-drafted
+  'documents.library.filter_all': 'All', // machine-drafted
+  'documents.library.filter_family': 'Family', // machine-drafted
+  'documents.library.filter_date': 'Date range', // machine-drafted
+  'documents.viewer.download': 'Download', // machine-drafted
+  'documents.viewer.share': 'Share', // machine-drafted
+  'documents.viewer.regenerate': 'Regenerate', // machine-drafted
+  'documents.viewer.create_link': 'Create share link', // machine-drafted
+  'documents.viewer.revoke': 'Revoke', // machine-drafted
+  'documents.viewer.active_shares': 'Active share links', // machine-drafted
+  'documents.viewer.no_shares': 'No active share links', // machine-drafted
+  'documents.viewer.pdf_preview': 'Preview PDF', // machine-drafted
+  'documents.viewer.metadata': 'Document details', // machine-drafted
+  'documents.viewer.checksum': 'Checksum', // machine-drafted
+  'documents.viewer.pages': 'Pages', // machine-drafted
+  'documents.viewer.template_version': 'Template version', // machine-drafted
+  'documents.viewer.brand_kit': 'Brand kit', // machine-drafted
+  'documents.share.expiry_24h': '24 hours', // machine-drafted
+  'documents.share.expiry_72h': '72 hours', // machine-drafted
+  'documents.share.expiry_7d': '7 days', // machine-drafted
+  'documents.share.expiry_30d': '30 days', // machine-drafted
+  'documents.share.created': 'Share link created', // machine-drafted
+  'documents.share.revoked': 'Link revoked', // machine-drafted
+  'documents.share.copy_link': 'Copy link', // machine-drafted
+  'documents.share.expires': 'Expires', // machine-drafted
+  'documents.generate.success': 'Document generated', // machine-drafted
+  'documents.generate.in_progress': 'Generating…', // machine-drafted
+  'documents.generate.error': 'Generation failed', // machine-drafted
+  'documents.generate.batch_success': 'Batch generation started', // machine-drafted
+  'documents.generate.sample_label': 'SAMPLE — preview only', // machine-drafted
+  'documents.templates.create': 'New template', // machine-drafted
+  'documents.templates.publish': 'Publish', // machine-drafted
+  'documents.templates.retire': 'Retire', // machine-drafted
+  'documents.templates.preview': 'Preview', // machine-drafted
+  'documents.templates.sample_label': 'SAMPLE', // machine-drafted
+  'documents.templates.block_header': 'Header', // machine-drafted
+  'documents.templates.block_title': 'Title', // machine-drafted
+  'documents.templates.block_parties': 'Parties', // machine-drafted
+  'documents.templates.block_lines': 'Line items', // machine-drafted
+  'documents.templates.block_totals': 'Totals', // machine-drafted
+  'documents.templates.block_text': 'Text', // machine-drafted
+  'documents.templates.block_footer': 'Footer', // machine-drafted
+  'documents.templates.block_activity_table': 'Activity table', // machine-drafted
+  'documents.templates.block_fixture_table': 'Fixture table', // machine-drafted
+  'documents.templates.block_booking_block': 'Booking block', // machine-drafted
+  'documents.templates.block_signature_block': 'Signature block', // machine-drafted
+  'documents.brand_kit.style': 'Style', // machine-drafted
+  'documents.brand_kit.stamp': 'Stamp image', // machine-drafted
+  'documents.brand_kit.signature': 'Signature image', // machine-drafted
+  'documents.brand_kit.tagline': 'Tagline', // machine-drafted
+  'documents.brand_kit.font_family': 'Font family', // machine-drafted
+  'documents.families.invoice': 'Invoice', // machine-drafted
+  'documents.families.coaching_report': 'Coaching report', // machine-drafted
+  'documents.families.season_report': 'Season report', // machine-drafted
+  'documents.families.sponsorship_agreement': 'Sponsorship agreement', // machine-drafted
+  'documents.families.enrolment_letter': 'Enrolment letter', // machine-drafted
+  'documents.families.federation_document': 'Federation document', // machine-drafted
+  'documents.families.academy_progress_report': 'Progress report', // machine-drafted
+  'documents.families.academy_management_review': 'Management review', // machine-drafted
+  'documents.families.academy_finance_pack': 'Finance pack', // machine-drafted
+  'documents.families.academy_term_report': 'Term report', // machine-drafted
+  'documents.families.academy_campus_quality': 'Campus quality', // machine-drafted
+  'documents.families.coaching_plan': 'Training plan', // machine-drafted
+  'documents.families.coach_agreement': 'Coaching agreement', // machine-drafted
+  'documents.families.referee_letter': 'Appointment letter', // machine-drafted
+  'documents.families.event_timetable': 'Event timetable', // machine-drafted
+  'documents.families.booking_confirmation': 'Booking confirmation', // machine-drafted
+  'documents.families.rehab_plan': 'Rehab plan', // machine-drafted
+  'documents.families.care_plan': 'Care plan', // machine-drafted
+  'documents.families.purchase_order': 'Purchase order', // machine-drafted
+  'documents.families.hire_agreement': 'Hire agreement', // machine-drafted
+  'documents.families.business_letter': 'Business letter', // machine-drafted
+  'account.lang_format_preview': 'வடிவ முன்னோட்டம்', // machine-drafted,
+  // Wearable hub elite extensions: ACWR, readiness, sRPE (#583) — machine-drafted, reviewed: false
+  'wr.team.tab.metrics': 'Metrics',
+  'wr.team.tab.acwr': 'Load (ACWR)',
+  'wr.team.tab.srpe': 'Session RPE',
+  'acwr.title': 'Training Load (ACWR)',
+  'acwr.acute': 'Acute (7d)',
+  'acwr.chronic': 'Chronic (28d)',
+  'acwr.days': '{n} days with data',
+  'acwr.basis': 'Descriptive readings from your devices. Not a diagnosis, medical advice or clearance to train or play.',
+  'acwr.zone.optimal': 'Optimal',
+  'acwr.zone.underload': 'Underload',
+  'acwr.zone.caution': 'Caution',
+  'acwr.zone.excessive': 'Excessive',
+  'acwr.zone.no_data': 'No data',
+  'acwr.desc.optimal': 'Load balance is in a good training range.',
+  'acwr.desc.underload': 'Training load is below your recent baseline.',
+  'acwr.desc.caution': 'Load is approaching a high level — monitor closely.',
+  'acwr.desc.excessive': 'Load is significantly higher than your recent baseline.',
+  'acwr.desc.no_data': 'Not enough data to calculate your ACWR yet.',
+  'acwr.team.empty': 'No ACWR data',
+  'acwr.team.empty_sub': 'Athletes need to connect a wearable device or log sessions.',
+  'readiness.title': 'Readiness',
+  'readiness.dir.improving': '\u2191 Improving',
+  'readiness.dir.stable': '\u2192 Stable',
+  'readiness.dir.declining': '\u2193 Declining',
+  'readiness.dir.no_data': 'No data',
+  'srpe.title': 'Session RPE Log',
+  'srpe.sub': 'Log your perceived effort after each training session (Borg CR-10).',
+  'srpe.add': 'Log session',
+  'srpe.rpe_label': 'Session effort (1-10)',
+  'srpe.duration': 'Duration (minutes)',
+  'srpe.sport': 'Sport or activity',
+  'srpe.notes': 'Notes',
+  'srpe.empty': 'No sessions logged yet.',
+  'srpe.saved': 'Session saved',
+  'srpe.pick_rpe': 'Please select an effort level.',
+  'srpe.rpe.1': 'Very easy',
+  'srpe.rpe.2': 'Easy',
+  'srpe.rpe.3': 'Moderate',
+  'srpe.rpe.4': 'Somewhat hard',
+  'srpe.rpe.5': 'Hard',
+  'srpe.rpe.6': 'Hard +',
+  'srpe.rpe.7': 'Very hard',
+  'srpe.rpe.8': 'Very hard +',
+  'srpe.rpe.9': 'Near maximum',
+  'srpe.rpe.10': 'Maximum',
+  'srpe.team.empty': 'No sRPE data',
+  'srpe.team.empty_sub': 'Athletes will log their sessions here.',
 };

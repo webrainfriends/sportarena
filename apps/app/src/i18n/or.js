@@ -9894,6 +9894,89 @@ export default {
   'cap.step_review': 'କର୍ମୀ ଯୋଜନା',
   'pk.r_too_many': 'ପାସଫ୍ରେଜ୍ ଅନେକଥର ଭୁଲ ହୋଇଛି। ରୁକନ୍ତୁ ଏବଂ ଅଭିଭାବକଙ୍କୁ ଫୋନ୍ କରନ୍ତୁ।',
 
+  // reviewed: false
+  'cEdu.title': 'କୋଚ ଶିକ୍ଷା',
+  'cEdu.season': 'ବର୍ତ୍ତମାନ ଋତୁ',
+  'cEdu.tab.overview': 'ସମୀକ୍ଷା',
+  'cEdu.tab.myCpd': 'ମୋ CPD',
+  'cEdu.tab.review': 'ସମୀକ୍ଷା',
+  'cEdu.tab.appeals': 'ଅପିଲ',
+  'cEdu.kpi.completed': 'ସମ୍ପୂର୍ଣ୍ଣ',
+  'cEdu.kpi.overdue': 'ବିଳମ୍ବ',
+  'cEdu.kpi.inProgress': 'ଚାଲୁଛି',
+  'cEdu.kpi.cpdHours': 'CPD ଘଣ୍ଟା',
+  'cEdu.mod.lib': 'ମଡ୍ୟୁଲ ଲାଇବ୍ରେରୀ',
+  'cEdu.mod.new': 'ମଡ୍ୟୁଲ ଯୋଗ କରନ୍ତୁ',
+  'cEdu.mod.edit': 'ସଂପାଦନ ଂ',
+  'cEdu.mod.publish': 'ପ୍ରକାଶ',
+  'cEdu.mod.kind.induction': 'ଇଣ୍ଡକ୍ସନ',
+  'cEdu.mod.kind.cpd': 'CPD',
+  'cEdu.mod.kind.credential': 'ଶଂସାପତ୍ର',
+  'cEdu.mod.kind.recertification': 'ପୁନଃପ୍ରମାଣ',
+  'cEdu.mod.kind.assessment': 'ମୂଲ୍ୟାଂକନ',
+  'cEdu.mod.kind.workshop': 'କର୍ମଶାଳା',
+  'cEdu.mod.kind.conference': 'ସମ୍ମେଳନ',
+  'cEdu.mod.kind.other': 'ଅନ୍ୟ',
+  'cEdu.mod.f.title': 'ଶୀର୍ଷକ',
+  'cEdu.mod.f.kind': 'ପ୍ରକାର',
+  'cEdu.mod.f.pillar': 'ସ୍ତଂଭ',
+  'cEdu.mod.f.cpdHours': 'CPD ଘଣ୍ଟା',
+  'cEdu.mod.f.mandatory': 'ଆବଶ୍ୟକ',
+  'cEdu.mod.f.description': 'ବିବରଣ',
+  'cEdu.asn.overdue': '{{n}} ଦିନ ବିଳମ୍ବ',
+  'cEdu.asn.due': '{{date}} ରେ ଶେଷ',
+  'cEdu.asn.start': 'ଆରଂଭ',
+  'cEdu.asn.continue': 'ଜାରି ରଖନ୍ତୁ',
+  'cEdu.cmp.submit': 'ସମ୍ପୂର୍ଣ୍ଣ ଦାଖଲ',
+  'cEdu.cmp.approve': 'ଅନୁମୋଦନ',
+  'cEdu.cmp.reject': 'ପ୍ରତ୍ୟାଖ୍ୟାନ',
+  'cEdu.cmp.evidenceKind.certificate': 'ପ୍ରମାଣପତ୍ର',
+  'cEdu.cmp.evidenceKind.external_course': 'ବାହ୍ୟ ପାଠ୍ୟକ୍ରମ',
+  'cEdu.cmp.evidenceKind.reflection': 'ପ୍ରତିଫଳ',
+  'cEdu.cmp.evidenceKind.observation_ref': 'ପର୍ଯ୍ୟବେକ୍ଷଣ',
+  'cEdu.cmp.evidenceKind.credential_ref': 'ଶଂସାପତ୍ର',
+  'cEdu.cmp.evidenceKind.attendance': 'ହାଜରା',
+  'cEdu.cmp.evidenceKind.other': 'ଅନ୍ୟ',
+  'cEdu.apl.pending': 'ଲମ୍ବିତ',
+  'cEdu.mnt.title': 'ମେଂଟରିଂ',
+  'cEdu.mnt.newPairing': 'ଯୋଡ଼ି ତିଆରି',
+  'cEdu.mnt.mentor': 'ମେଂଟର',
+  'cEdu.mnt.mentee': 'ମେଂଟି',
+  'cEdu.mnt.startDate': 'ଆରଂଭ ତାରିଖ',
+  'cEdu.mnt.endDate': 'ଶେଷ ତାରିଖ',
+  'cEdu.mnt.frequency': 'ବାରଂବାରତା',
+  'cEdu.mnt.goals': 'ଲକ୍ଷ୍ୟ',
+  'cEdu.mnt.scheduleSession': 'ଅଧିବେଶନ ନିର୍ଧାରଣ',
+  'cEdu.mnt.completeSession': 'ଅଧିବେଶନ ସମ୍ପୂର୍ଣ୍ଣ',
+  'cEdu.mnt.nextSession': 'ପରବର୍ତ୍ତୀ: {{date}}',
+  'cEdu.mnt.status.active': 'ସକ୍ରିୟ',
+  'cEdu.mnt.status.paused': 'ବିରତ',
+  'cEdu.mnt.status.ended': 'ଶେଷ',
+  'cEdu.obs.title': 'ପର୍ଯ୍ୟବେକ୍ଷଣ',
+  'cEdu.obs.new': 'ପର୍ଯ୍ୟବେକ୍ଷଣ ଯୋଗ',
+  'cEdu.obs.f.coachId': 'କୋଚ',
+  'cEdu.obs.f.sessionDate': 'ଅଧିବେଶନ ତାରିଖ',
+  'cEdu.obs.f.context': 'ପ୍ରସଙ୍ଗ',
+  'cEdu.obs.f.pillar': 'ସ୍ତଂଭ',
+  'cEdu.obs.f.overallRating': 'ସାମଗ୍ରିକ ରେଟିଂ',
+  'cEdu.obs.f.strengths': 'ଶକ୍ତି',
+  'cEdu.obs.f.development': 'ବିକାଶ',
+  'cEdu.obs.release': 'କୋଚଙ୍କୁ ମୁକ୍ତ',
+  'cEdu.plan.title': 'ବିକାଶ ଯୋଜନା',
+  'cEdu.plan.new': 'ଯୋଜନା ଯୋଗ',
+  'cEdu.plan.f.focus': 'ଧ୍ୟାନ',
+  'cEdu.plan.f.target': 'ଲକ୍ଷ୍ୟ ତାରିଖ',
+  'cEdu.plan.f.actions': 'କାର୍ଯ୍ୟ',
+  'cEdu.pillar.technical': 'ଯାନ୍ତ୍ରିକ',
+  'cEdu.pillar.tactical': 'କୌଶଳ',
+  'cEdu.pillar.physical': 'ଶାରୀରିକ',
+  'cEdu.pillar.mental': 'ମାନସିକ',
+  'cEdu.pillar.lifestyle': 'ଜୀବନଶୈଳୀ',
+  'cEdu.empty.modules': 'ମଡ୍ୟୁଲ ନାହିଁ।',
+  'cEdu.empty.assignments': 'ନ୍ୟସ୍ତ ନାହିଁ।',
+  'cEdu.empty.pairings': 'ଯୋଡ଼ି ନାହିଁ।',
+  'cEdu.empty.observations': 'ପର୍ଯ୍ୟବେକ୍ଷଣ ନାହିଁ।',
+  'cEdu.empty.plans': 'ଯୋଜନା ନାହିଁ।',
   /* ── PS-28: Para-sport performance insights (machine-drafted; reviewed: false) ── */
   'para_perf.dashboard_title': 'Performance Insights',
   'para_perf.coach_review_title': 'Para Insight Review',
@@ -14696,133 +14779,6 @@ export default {
   'brd.settings.noBuildings': 'No buildings yet',
   'brd.settings.addBuilding': 'Use the API or add buildings via the management interface.',
 
-  'brd.nav': 'Boarding',
-  'brd.tabs.grid': 'Occupancy',
-  'brd.tabs.apps': 'Applications',
-  'brd.tabs.curfew': 'Curfew',
-  'brd.tabs.duty': 'Duty',
-  'brd.tabs.incidents': 'Incidents',
-  'brd.tabs.meals': 'Meal Plans',
-  'brd.tabs.charges': 'Charges',
-  'brd.tabs.settings': 'Settings',
-  'brd.dash.fill': 'Occupancy',
-  'brd.dash.pending': 'Pending Apps',
-  'brd.dash.overdue': 'Curfew Overdue',
-  'brd.dash.dutyToday': 'Duty Today',
-  'brd.dash.incidents': 'Open Incidents',
-  'brd.grid.empty': 'No buildings configured',
-  'brd.grid.emptySub': 'Add buildings in Boarding Settings to start managing occupancy.',
-  'brd.grid.allBuildings': 'All buildings',
-  'brd.grid.occupied': 'occupied',
-  'brd.grid.floor': 'Floor {{n}}',
-  'brd.grid.room': 'Room',
-  'brd.grid.bed': 'Bed',
-  'brd.grid.vacant': 'Vacant',
-  'brd.grid.occupant': 'Occupant',
-  'brd.grid.since': 'Resident since',
-  'brd.apps.empty': 'No boarding applications yet',
-  'brd.apps.restricted': '(Restricted)',
-  'brd.apps.application': 'Application',
-  'brd.apps.status': 'Status',
-  'brd.apps.priority': 'Priority',
-  'brd.apps.reviewNote': 'Review note',
-  'brd.apps.offer': 'Offer Place',
-  'brd.apps.waitlist': 'Waitlist',
-  'brd.apps.decline': 'Decline',
-  'brd.apps.reviewSaved': 'Review saved.',
-  'brd.apps.expires': 'Offer expires {{d}}',
-  'brd.apps.stage.submitted': 'Submitted',
-  'brd.apps.stage.under_review': 'Under Review',
-  'brd.apps.stage.offered': 'Offered',
-  'brd.apps.stage.awaiting_acceptance': 'Awaiting Acceptance',
-  'brd.apps.stage.allocated': 'Allocated',
-  'brd.curfew.checkedIn': 'Checked In',
-  'brd.curfew.onLeave': 'On Leave',
-  'brd.curfew.overdue': 'Overdue',
-  'brd.curfew.allPresent': 'All residents accounted for',
-  'brd.curfew.asOf': 'As of {{time}}',
-  'brd.curfew.returnsBy': 'Returns by {{d}}',
-  'brd.curfew.curfewAt': 'Curfew at {{time}}',
-  'brd.curfew.markReturned': 'Mark Returned',
-  'brd.curfew.returned': 'Return confirmed.',
-  'brd.duty.today': 'Duty — {{date}}',
-  'brd.duty.noShifts': 'No duty shifts assigned for today. This is a coverage gap.',
-  'brd.duty.allBuildings': 'All buildings',
-  'brd.duty.acknowledge': 'Acknowledge',
-  'brd.duty.ackAt': 'Acknowledged {{time}}',
-  'brd.duty.logWelfare': 'Log welfare check',
-  'brd.duty.welfareLog': 'Welfare check log',
-  'brd.duty.noChecks': 'No welfare checks logged today.',
-  'brd.duty.logWelfareFor': 'Log welfare check',
-  'brd.duty.status': 'Status',
-  'brd.duty.note': 'Note (restricted — safeguarding only)',
-  'brd.duty.submitCheck': 'Submit',
-  'brd.duty.welfareLogged': 'Welfare check logged.',
-  'brd.duty.acknowledged': 'Duty acknowledged.',
-  'brd.duty.building': 'Building',
-  'brd.duty.welfareStatus.all_present': 'All Present',
-  'brd.duty.welfareStatus.present': 'Present',
-  'brd.duty.welfareStatus.absent': 'Absent',
-  'brd.duty.welfareStatus.concern': 'Concern',
-  'brd.duty.welfareStatus.late_return': 'Late Return',
-  'brd.duty.welfareStatus.room_empty': 'Room Empty',
-  'brd.incidents.title': 'Incidents',
-  'brd.incidents.empty': 'No open incidents',
-  'brd.incidents.report': 'Report incident',
-  'brd.incidents.reportTitle': 'Report an incident',
-  'brd.incidents.restricted': 'Restricted — contact Safeguarding Officer',
-  'brd.incidents.encrypted': '(Encrypted — insufficient permissions)',
-  'brd.incidents.category': 'Category',
-  'brd.incidents.severity': 'Severity',
-  'brd.incidents.description': 'Description',
-  'brd.incidents.safeguardingFlag': 'Safeguarding incident (restricted visibility)',
-  'brd.incidents.submit': 'Submit Report',
-  'brd.incidents.reported': 'Incident reported.',
-  'brd.incidents.cat.welfare': 'Welfare',
-  'brd.incidents.cat.maintenance': 'Maintenance',
-  'brd.incidents.cat.safety': 'Safety',
-  'brd.incidents.cat.fire': 'Fire',
-  'brd.incidents.cat.medical_liaison': 'Medical Liaison',
-  'brd.incidents.cat.other': 'Other',
-  'brd.incidents.sev.low': 'Low',
-  'brd.incidents.sev.medium': 'Medium',
-  'brd.incidents.sev.high': 'High',
-  'brd.incidents.sev.critical': 'Critical',
-  'brd.meals.title': 'Meal Plans & Dietary Flags',
-  'brd.meals.empty': 'No dietary flags active',
-  'brd.meals.emptySub': 'Flags are set by guardians or athletes. None are currently active.',
-  'brd.meals.flagNote': 'Flags are operational only — no medical or clinical data is stored here.',
-  'brd.meals.flag.halal': 'Halal',
-  'brd.meals.flag.kosher': 'Kosher',
-  'brd.meals.flag.vegetarian': 'Vegetarian',
-  'brd.meals.flag.vegan': 'Vegan',
-  'brd.meals.flag.nut_free': 'Nut-free',
-  'brd.meals.flag.gluten_free': 'Gluten-free',
-  'brd.meals.flag.dairy_free': 'Dairy-free',
-  'brd.meals.flag.egg_free': 'Egg-free',
-  'brd.meals.flag.shellfish_free': 'Shellfish-free',
-  'brd.meals.flag.low_sugar': 'Low sugar',
-  'brd.meals.flag.other': 'Other',
-  'brd.charges.title': 'Boarding Charges',
-  'brd.charges.empty': 'No active charges.',
-  'brd.settings.title': 'Boarding Settings',
-  'brd.settings.enable': 'Enable residential boarding',
-  'brd.settings.enableDesc': 'Shows the Boarding module to boarding coordinators and admin. Invisible to athletes and families.',
-  'brd.settings.enabled': 'Residential boarding enabled.',
-  'brd.settings.disabled': 'Residential boarding disabled.',
-  'brd.settings.defaults': 'Default policies',
-  'brd.settings.genderPolicy': 'Gender policy',
-  'brd.settings.weekdayCurfew': 'Weekday curfew',
-  'brd.settings.weekendCurfew': 'Weekend curfew',
-  'brd.settings.ageRange': 'Age range',
-  'brd.settings.maxLeaveHours': 'Max leave duration',
-  'brd.settings.buildings': 'Buildings',
-  'brd.settings.rooms': 'rooms',
-  'brd.settings.beds': 'beds',
-  'brd.settings.occupied': 'occupied',
-  'brd.settings.noBuildings': 'No buildings yet',
-  'brd.settings.addBuilding': 'Use the API or add buildings via the management interface.',
-};
   // Safeguarding cases (#784): machine-drafted, unreviewed; long hints fall back to English
   'sg.nav_cases': 'ସୁରକ୍ଷା ମାମଲା',
   'sg.title': 'ସୁରକ୍ଷା ମାମଲା',
@@ -15058,4 +15014,136 @@ export default {
   'rtp.coach_view_notice': 'କୋଚ୍ ଶୁଧୁ ଛାଡ ସ୍ଥିତି ଏବଂ ଲୋଡ ସୀମାବଦ୍ଧତା ଦେଖନ୍ତି — କୌଣସି ଚିକିତ୍ସା ବିବରଣ ବଣ୍ଟା ହୁଏ ନାହିଁ।', // machine-drafted
   'rtp.approval_valid_until': 'ପର୍ଯ୍ୟନ୍ତ ବୈଧ', // machine-drafted
   'rtp.mark_achieved': 'ହାସଲ ଭାବରେ ଚିହ୍ନ ଦିଅନ୍ତୁ', // machine-drafted
+};
+  // machine-drafted — branded documents
+  'documents.hub.my_documents': 'My Documents', // machine-drafted
+  'documents.hub.templates': 'Templates', // machine-drafted
+  'documents.hub.brand_kits': 'Brand Kits', // machine-drafted
+  'documents.hub.generate': 'Generate Document', // machine-drafted
+  'documents.library.empty': 'No documents yet', // machine-drafted
+  'documents.library.generate_hint': 'Generate documents from events, invoices, plans and bookings', // machine-drafted
+  'documents.library.download': 'Download', // machine-drafted
+  'documents.library.share': 'Share', // machine-drafted
+  'documents.library.regenerate': 'Regenerate', // machine-drafted
+  'documents.library.versions': 'Versions', // machine-drafted
+  'documents.library.filter_all': 'All', // machine-drafted
+  'documents.library.filter_family': 'Family', // machine-drafted
+  'documents.library.filter_date': 'Date range', // machine-drafted
+  'documents.viewer.download': 'Download', // machine-drafted
+  'documents.viewer.share': 'Share', // machine-drafted
+  'documents.viewer.regenerate': 'Regenerate', // machine-drafted
+  'documents.viewer.create_link': 'Create share link', // machine-drafted
+  'documents.viewer.revoke': 'Revoke', // machine-drafted
+  'documents.viewer.active_shares': 'Active share links', // machine-drafted
+  'documents.viewer.no_shares': 'No active share links', // machine-drafted
+  'documents.viewer.pdf_preview': 'Preview PDF', // machine-drafted
+  'documents.viewer.metadata': 'Document details', // machine-drafted
+  'documents.viewer.checksum': 'Checksum', // machine-drafted
+  'documents.viewer.pages': 'Pages', // machine-drafted
+  'documents.viewer.template_version': 'Template version', // machine-drafted
+  'documents.viewer.brand_kit': 'Brand kit', // machine-drafted
+  'documents.share.expiry_24h': '24 hours', // machine-drafted
+  'documents.share.expiry_72h': '72 hours', // machine-drafted
+  'documents.share.expiry_7d': '7 days', // machine-drafted
+  'documents.share.expiry_30d': '30 days', // machine-drafted
+  'documents.share.created': 'Share link created', // machine-drafted
+  'documents.share.revoked': 'Link revoked', // machine-drafted
+  'documents.share.copy_link': 'Copy link', // machine-drafted
+  'documents.share.expires': 'Expires', // machine-drafted
+  'documents.generate.success': 'Document generated', // machine-drafted
+  'documents.generate.in_progress': 'Generating…', // machine-drafted
+  'documents.generate.error': 'Generation failed', // machine-drafted
+  'documents.generate.batch_success': 'Batch generation started', // machine-drafted
+  'documents.generate.sample_label': 'SAMPLE — preview only', // machine-drafted
+  'documents.templates.create': 'New template', // machine-drafted
+  'documents.templates.publish': 'Publish', // machine-drafted
+  'documents.templates.retire': 'Retire', // machine-drafted
+  'documents.templates.preview': 'Preview', // machine-drafted
+  'documents.templates.sample_label': 'SAMPLE', // machine-drafted
+  'documents.templates.block_header': 'Header', // machine-drafted
+  'documents.templates.block_title': 'Title', // machine-drafted
+  'documents.templates.block_parties': 'Parties', // machine-drafted
+  'documents.templates.block_lines': 'Line items', // machine-drafted
+  'documents.templates.block_totals': 'Totals', // machine-drafted
+  'documents.templates.block_text': 'Text', // machine-drafted
+  'documents.templates.block_footer': 'Footer', // machine-drafted
+  'documents.templates.block_activity_table': 'Activity table', // machine-drafted
+  'documents.templates.block_fixture_table': 'Fixture table', // machine-drafted
+  'documents.templates.block_booking_block': 'Booking block', // machine-drafted
+  'documents.templates.block_signature_block': 'Signature block', // machine-drafted
+  'documents.brand_kit.style': 'Style', // machine-drafted
+  'documents.brand_kit.stamp': 'Stamp image', // machine-drafted
+  'documents.brand_kit.signature': 'Signature image', // machine-drafted
+  'documents.brand_kit.tagline': 'Tagline', // machine-drafted
+  'documents.brand_kit.font_family': 'Font family', // machine-drafted
+  'documents.families.invoice': 'Invoice', // machine-drafted
+  'documents.families.coaching_report': 'Coaching report', // machine-drafted
+  'documents.families.season_report': 'Season report', // machine-drafted
+  'documents.families.sponsorship_agreement': 'Sponsorship agreement', // machine-drafted
+  'documents.families.enrolment_letter': 'Enrolment letter', // machine-drafted
+  'documents.families.federation_document': 'Federation document', // machine-drafted
+  'documents.families.academy_progress_report': 'Progress report', // machine-drafted
+  'documents.families.academy_management_review': 'Management review', // machine-drafted
+  'documents.families.academy_finance_pack': 'Finance pack', // machine-drafted
+  'documents.families.academy_term_report': 'Term report', // machine-drafted
+  'documents.families.academy_campus_quality': 'Campus quality', // machine-drafted
+  'documents.families.coaching_plan': 'Training plan', // machine-drafted
+  'documents.families.coach_agreement': 'Coaching agreement', // machine-drafted
+  'documents.families.referee_letter': 'Appointment letter', // machine-drafted
+  'documents.families.event_timetable': 'Event timetable', // machine-drafted
+  'documents.families.booking_confirmation': 'Booking confirmation', // machine-drafted
+  'documents.families.rehab_plan': 'Rehab plan', // machine-drafted
+  'documents.families.care_plan': 'Care plan', // machine-drafted
+  'documents.families.purchase_order': 'Purchase order', // machine-drafted
+  'documents.families.hire_agreement': 'Hire agreement', // machine-drafted
+  'documents.families.business_letter': 'Business letter', // machine-drafted
+  'account.lang_format_preview': 'ଫର୍ମ୍ୟାଟ ପ୍ରିଭ୍ୟୁ', // machine-drafted,
+  // Wearable hub elite extensions: ACWR, readiness, sRPE (#583) — machine-drafted, reviewed: false
+  'wr.team.tab.metrics': 'Metrics',
+  'wr.team.tab.acwr': 'Load (ACWR)',
+  'wr.team.tab.srpe': 'Session RPE',
+  'acwr.title': 'Training Load (ACWR)',
+  'acwr.acute': 'Acute (7d)',
+  'acwr.chronic': 'Chronic (28d)',
+  'acwr.days': '{n} days with data',
+  'acwr.basis': 'Descriptive readings from your devices. Not a diagnosis, medical advice or clearance to train or play.',
+  'acwr.zone.optimal': 'Optimal',
+  'acwr.zone.underload': 'Underload',
+  'acwr.zone.caution': 'Caution',
+  'acwr.zone.excessive': 'Excessive',
+  'acwr.zone.no_data': 'No data',
+  'acwr.desc.optimal': 'Load balance is in a good training range.',
+  'acwr.desc.underload': 'Training load is below your recent baseline.',
+  'acwr.desc.caution': 'Load is approaching a high level — monitor closely.',
+  'acwr.desc.excessive': 'Load is significantly higher than your recent baseline.',
+  'acwr.desc.no_data': 'Not enough data to calculate your ACWR yet.',
+  'acwr.team.empty': 'No ACWR data',
+  'acwr.team.empty_sub': 'Athletes need to connect a wearable device or log sessions.',
+  'readiness.title': 'Readiness',
+  'readiness.dir.improving': '\u2191 Improving',
+  'readiness.dir.stable': '\u2192 Stable',
+  'readiness.dir.declining': '\u2193 Declining',
+  'readiness.dir.no_data': 'No data',
+  'srpe.title': 'Session RPE Log',
+  'srpe.sub': 'Log your perceived effort after each training session (Borg CR-10).',
+  'srpe.add': 'Log session',
+  'srpe.rpe_label': 'Session effort (1-10)',
+  'srpe.duration': 'Duration (minutes)',
+  'srpe.sport': 'Sport or activity',
+  'srpe.notes': 'Notes',
+  'srpe.empty': 'No sessions logged yet.',
+  'srpe.saved': 'Session saved',
+  'srpe.pick_rpe': 'Please select an effort level.',
+  'srpe.rpe.1': 'Very easy',
+  'srpe.rpe.2': 'Easy',
+  'srpe.rpe.3': 'Moderate',
+  'srpe.rpe.4': 'Somewhat hard',
+  'srpe.rpe.5': 'Hard',
+  'srpe.rpe.6': 'Hard +',
+  'srpe.rpe.7': 'Very hard',
+  'srpe.rpe.8': 'Very hard +',
+  'srpe.rpe.9': 'Near maximum',
+  'srpe.rpe.10': 'Maximum',
+  'srpe.team.empty': 'No sRPE data',
+  'srpe.team.empty_sub': 'Athletes will log their sessions here.',
 };

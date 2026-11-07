@@ -193,3 +193,147 @@ test('everything is an API capability (REST + MCP) and requires sign-in', async 
   assert.equal((await call('GET', '/me/wearables')).status, 401);
   assert.equal((await call('GET', '/wearables/team')).status, 401);
 });
+
+// ===== Elite extensions: ACWR, sRPE, Readiness, Polar, Catapult (#583) =====
+
+test('ACWR zones: no-data, underload, optimal, caution, excessive', async () => {
+  const s = await setup();
+  // No data → no_data zone
+  const nodata = ok(await get(s.ath.token, '/me/wearables/acwr'));
+  assert.equal(nodata.zone, 'no_data');
+  assert.equal(nodata.ratio, null);
+  assert.doesNotMatch(JSON.stringify(nodata), /injur|overtrain|illness|diagnos/i);
+
+  // Push 7 days of low load (acute=100, chronic=200) → ACWR 0.5 → underload
+  await enable(s.pa, s.owner, s.orgId, 'device_push');
+  const dp = ok(await connect(s, 'device_push', ['training_load']), 201);
+  const push = async (val, daysAgo) => post(s.ath.token, `/me/wearables/${dp.id}/readings`, { readings: [{ metric: 'training_load', value: val, unit: 'au', date: day(-daysAgo) }] });
+  for (let i = 1; i <= 28; i++) await push(i <= 7 ? 100 : 200, i);
+  const uw = ok(await get(s.ath.token, '/me/wearables/acwr'));
+  assert.equal(uw.zone, 'underload', `ACWR ${uw.ratio} should be underload`);
+  assert.ok(uw.ratio < 0.8, `ratio=${uw.ratio}`);
+
+  // Reload with equal 28-day and 7-day load → optimal
+  const s2 = await setup();
+  await enable(s2.pa, s2.owner, s2.orgId, 'device_push');
+  const dp2 = ok(await connect(s2, 'device_push', ['training_load']), 201);
+  for (let i = 1; i <= 28; i++) await post(s2.ath.token, `/me/wearables/${dp2.id}/readings`, { readings: [{ metric: 'training_load', value: 400, unit: 'au', date: day(-i) }] });
+  const opt = ok(await get(s2.ath.token, '/me/wearables/acwr'));
+  assert.ok(opt.ratio >= 0.8 && opt.ratio <= 1.3, `expected optimal, got ratio=${opt.ratio}`);
+  assert.equal(opt.zone, 'optimal');
+
+  // Excessive: 7-day avg >> 28-day avg
+  const s3 = await setup();
+  await enable(s3.pa, s3.owner, s3.orgId, 'device_push');
+  const dp3 = ok(await connect(s3, 'device_push', ['training_load']), 201);
+  for (let i = 8; i <= 28; i++) await post(s3.ath.token, `/me/wearables/${dp3.id}/readings`, { readings: [{ metric: 'training_load', value: 100, unit: 'au', date: day(-i) }] });
+  for (let i = 1; i <= 7; i++) await post(s3.ath.token, `/me/wearables/${dp3.id}/readings`, { readings: [{ metric: 'training_load', value: 1500, unit: 'au', date: day(-i) }] });
+  const exc = ok(await get(s3.ath.token, '/me/wearables/acwr'));
+  assert.ok(exc.ratio > 1.5, `expected excessive, got ratio=${exc.ratio}`);
+  assert.equal(exc.zone, 'excessive');
+  assert.doesNotMatch(JSON.stringify(exc), /injur|illness|risk|diagnos/i);
+});
+
+test('sRPE log validates, upserts and contributes to ACWR', async () => {
+  const s = await setup();
+  // Validation
+  assert.equal((await post(s.ath.token, '/me/wearables/srpe', { rpe: 11, duration_minutes: 60 })).status, 400);
+  assert.equal((await post(s.ath.token, '/me/wearables/srpe', { rpe: 5, duration_minutes: 0 })).status, 400);
+
+  // Log
+  const r = ok(await post(s.ath.token, '/me/wearables/srpe', { rpe: 7, duration_minutes: 90, sport: 'Tennis', logged_on: day(-1) }), 201);
+  assert.equal(r.session_load, 630);
+  assert.equal(r.rpe, 7);
+
+  // Upsert same day+sport
+  const r2 = ok(await post(s.ath.token, '/me/wearables/srpe', { rpe: 5, duration_minutes: 60, sport: 'Tennis', logged_on: day(-1) }), 201);
+  assert.equal(r2.id, r.id, 'upserted, same row');
+  assert.equal(r2.session_load, 300);
+
+  // List
+  const list = ok(await get(s.ath.token, '/me/wearables/srpe'));
+  assert.ok(list.items.length >= 1);
+  assert.ok(list.items.some((x) => x.id === r.id));
+
+  // sRPE contributes to ACWR chronic load
+  for (let i = 2; i <= 28; i++) await post(s.ath.token, '/me/wearables/srpe', { rpe: 5, duration_minutes: 60, logged_on: day(-i) });
+  const acwr = ok(await get(s.ath.token, '/me/wearables/acwr'));
+  assert.ok(acwr.days_with_data >= 1, 'sRPE contributed to ACWR');
+  assert.equal(typeof acwr.ratio, 'number');
+
+  // Ownership enforced
+  const other = await signup();
+  assert.equal((await get(other.token, '/me/wearables/srpe')).body?.items?.some((x) => x.id === r.id), false);
+});
+
+test('readiness score has valid range, direction, and NOT_MEDICAL disclaimer', async () => {
+  const s = await setup();
+  const none = ok(await get(s.ath.token, '/me/wearables/readiness'));
+  assert.equal(none.score, null);
+  assert.equal(none.direction, 'no_data');
+
+  await enable(s.pa, s.owner, s.orgId, 'device_push');
+  const dp = ok(await connect(s, 'device_push', ['hrv_rmssd', 'sleep_duration', 'resting_hr']), 201);
+  // Push improving trend: HRV rising, sleep stable, HR falling
+  for (let i = 14; i >= 1; i--) {
+    await post(s.ath.token, `/me/wearables/${dp.id}/readings`, { readings: [
+      { metric: 'hrv_rmssd', value: 40 + (14 - i) * 2, unit: 'ms', date: day(-i) },
+      { metric: 'sleep_duration', value: 7.5 * 3600, unit: 's', date: day(-i) },
+      { metric: 'resting_hr', value: 60 - (14 - i), unit: 'bpm', date: day(-i) },
+    ] });
+  }
+  const r = ok(await get(s.ath.token, '/me/wearables/readiness'));
+  assert.ok(r.score >= 0 && r.score <= 100, `score out of range: ${r.score}`);
+  assert.ok(['improving', 'stable', 'declining', 'no_data'].includes(r.direction), `bad direction: ${r.direction}`);
+  assert.ok(Array.isArray(r.components) && r.components.length > 0, 'components missing');
+  assert.doesNotMatch(JSON.stringify(r), /injur|illness|risk|diagnos|fit|cleared|cleared to train/i);
+  // NOT_MEDICAL disclaimer present on the endpoint
+  const raw = await get(s.ath.token, '/me/wearables/readiness');
+  assert.match(JSON.stringify(raw.body), /not a diagnosis|descriptive readings/i);
+});
+
+test('Polar and Catapult multi-provider sweep with new metrics', async () => {
+  const { ADAPTERS, normalise } = await import('../src/wearables/normalise.js');
+
+  // Polar: exercise + nightly recharge response
+  const polarResp = {
+    exercises: [{ start_time: '2026-11-05', training_load_status: { training_load_shorthand: 300 }, distance: 5000, calories: 400, vo2max: 58.2 }],
+    nightly_recharge: [{ date: '2026-11-05', sleep_charge_status: { sleep_charge: 72 }, spo2_average: 97.4 }],
+  };
+  const polarRows = ADAPTERS.polar.parse(polarResp);
+  assert.ok(polarRows.some((r) => r.metric_key === 'training_load' && r.value === 300), 'polar training_load');
+  assert.ok(polarRows.some((r) => r.metric_key === 'distance'), 'polar distance');
+  assert.ok(polarRows.some((r) => r.metric_key === 'vo2max' && r.value === 58.2), 'polar vo2max');
+  assert.ok(polarRows.some((r) => r.metric_key === 'sleep_quality' && r.value === 72), 'polar sleep_quality');
+  assert.ok(polarRows.some((r) => r.metric_key === 'spo2' && r.value === 97.4), 'polar spo2');
+
+  // Catapult: GPS activity response
+  const catResp = {
+    activities: [{ start_time: '2026-11-05', total_distance_m: 8500, high_speed_running_m: 1200, max_velocity_kmh: 32.4, player_load: 580 }],
+  };
+  const catRows = ADAPTERS.catapult_opf.parse(catResp);
+  assert.ok(catRows.some((r) => r.metric_key === 'distance'), 'catapult distance');
+  assert.ok(catRows.some((r) => r.metric_key === 'sprint_distance' && r.value === 1200), 'catapult sprint_distance');
+  assert.ok(catRows.some((r) => r.metric_key === 'max_speed' && r.value === 32.4), 'catapult max_speed');
+  assert.ok(catRows.some((r) => r.metric_key === 'training_load' && r.value === 580), 'catapult player_load');
+
+  // Normalisation: km/h, m/s, mph all convert correctly
+  const ms = normalise('max_speed', 10, 'm/s');
+  assert.ok(Math.abs(ms.value - 36) < 0.01, `m/s→km/h: ${ms.value}`);
+  const mph = normalise('max_speed', 20, 'mph');
+  assert.ok(Math.abs(mph.value - 32.19) < 0.1, `mph→km/h: ${mph.value}`);
+
+  // New capabilities registered
+  const { capabilities } = await import('../src/registry.js');
+  const names = new Set(capabilities.map((c) => c.name));
+  for (const n of ['get_my_acwr', 'get_my_readiness', 'log_session_rpe', 'list_session_rpe', 'get_team_acwr', 'get_team_srpe']) {
+    assert.ok(names.has(n), `missing capability: ${n}`);
+  }
+
+  // Polar and Catapult registered as providers
+  const { PROVIDERS } = await import('../src/integrations/registry.js');
+  assert.ok(PROVIDERS.polar, 'polar provider registered');
+  assert.ok(PROVIDERS.catapult_opf, 'catapult_opf provider registered');
+  assert.ok(PROVIDERS.polar.capabilities.includes('sleep_quality'), 'polar sleep_quality capability');
+  assert.ok(PROVIDERS.catapult_opf.capabilities.includes('gps_tracking'), 'catapult gps_tracking capability');
+});
