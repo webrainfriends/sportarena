@@ -101,6 +101,11 @@ export function Avatar({ user, size = 44, emoji, color }) {
   );
 }
 
+/** A row that wraps onto further lines, with an even gap between items (chips, tags, small badges). */
+export function Wrap({ gap = 8, style, children }) {
+  return <View style={[{ flexDirection: 'row', flexWrap: 'wrap', gap }, style]}>{children}</View>;
+}
+
 export function Row({ left, title, sub, right, onPress, color = c.paper }) {
   return (
     <Card onPress={onPress} color={color} pad={12} accessibilityLabel={onPress ? [title, sub].filter((x) => typeof x === 'string').join('. ') : undefined}>

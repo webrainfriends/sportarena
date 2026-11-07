@@ -6,8 +6,8 @@ import { audit } from './helpers.js';
 import { notFound } from './errors.js';
 import { YOUTH_SQL, hasConsent } from './youth.js';
 
-export const SECTION_FLAGS = ['show_matches', 'show_results', 'show_awards', 'show_credentials', 'show_career', 'show_video', 'show_references', 'show_preferences', 'show_availability', 'show_academic', 'show_journey', 'show_development'];
-export const scopeOf = (l) => ({ ...Object.fromEntries(SECTION_FLAGS.map((k) => [k, !!l[k]])), playlist_id: l.playlist_id ?? null });
+export const SECTION_FLAGS = ['show_matches', 'show_results', 'show_awards', 'show_credentials', 'show_career', 'show_video', 'show_references', 'show_preferences', 'show_availability', 'show_academic', 'show_journey', 'show_development', 'show_para_class', 'show_para_guide', 'show_para_class_history'];
+export const scopeOf = (l) => ({ ...Object.fromEntries(SECTION_FLAGS.map((k) => [k, !!l[k]])), playlist_id: l.playlist_id ?? null, para_evidence_filter: l.para_evidence_filter ?? 'all' });
 export const FULL_SCOPE = Object.fromEntries(SECTION_FLAGS.map((k) => [k, true]));
 
 /** Does `coachId` currently coach `athleteId`: on a team together as coach/manager, or through an active hire, cohort or plan? */
@@ -23,7 +23,7 @@ const CONSENT_OK = `(NOT EXISTS (SELECT 1 FROM users u WHERE u.id=l.user_id AND 
   OR EXISTS (SELECT 1 FROM youth_consents c WHERE c.child_id=l.user_id AND c.purpose='recruitment_sharing' AND c.revoked_at IS NULL AND c.expires_at > now()
         AND EXISTS (SELECT 1 FROM guardian_links g WHERE g.guardian_id=c.granted_by AND g.child_id=c.child_id AND g.status='active' AND g.revoked_at IS NULL AND (g.expires_at IS NULL OR g.expires_at > now()))))`;
 const LIVE = `l.token_hash=$1 AND l.revoked_at IS NULL AND l.expires_at > now() AND (l.recipient_id IS NULL OR l.recipient_id=$2) AND ${CONSENT_OK}`;
-const RET = `l.id, l.user_id, l.recipient_id, l.expires_at, l.playlist_id, ${SECTION_FLAGS.map((k) => `l.${k}`).join(', ')}`;
+const RET = `l.id, l.user_id, l.recipient_id, l.expires_at, l.playlist_id, ${SECTION_FLAGS.map((k) => `l.${k}`).join(', ')}, l.para_evidence_filter`;
 
 /** The single enforcement point. A wrong, expired, revoked, other-recipient or consent-withdrawn link all look the same (404). */
 export async function openLink(tokenHash, viewer, kind = 'passport') {

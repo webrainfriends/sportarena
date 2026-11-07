@@ -396,6 +396,7 @@ import './para-sport-funding.js';
 import './para-sport-sponsorship-outcomes.js';
 import './para-learn.js';
 import './adaptive-equipment.js';
+import './para-staff-credentials.js';
 // Merged with screens in the app but never loaded, so their endpoints answered "Route not found".
 import './stream-hub.js';
 import './carpool.js';

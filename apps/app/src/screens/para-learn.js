@@ -1,4 +1,6 @@
-// PS-20: Para-sport Learn & Study content catalogue.
+// PS-20 / PS-21: Para-sport Learn & Study content catalogue + Para qualifications (staff tracks).
+// PS-20: governed, versioned learning paths for athletes/general learners (auto-badges on completion).
+// PS-21: "Para qualifications" inner tab showing role-specific staff tracks; taps through to ParaStaffCred.
 // Governed, versioned, beginner-to-advanced learning paths published by the platform or approved
 // institutions. Extends the Learn & Study hub (pathways.js) — adds the "Adaptive sport" tab.
 // No new LMS, no duplicate of institution discovery. Credentials reuse the Badges tab (pathways.js).
@@ -68,6 +70,7 @@ export function AdaptiveLearn({ push }) {
   const innerTabs = [
     { value: 'browse', label: t('pl.browse.title') },
     { value: 'my_progress', label: t('pl.progress.title') },
+    { value: 'para_quals', label: t('paraStaffCred.title') },
     ...(isAdmin ? [{ value: 'manage', label: t('pl.manage.title') }] : []),
   ];
 
@@ -89,6 +92,7 @@ export function AdaptiveLearn({ push }) {
         <BrowsePaths sport={sport} setSport={setSport} levelFilter={levelFilter} setLevelFilter={setLevelFilter} push={push} />
       )}
       {innerTab === 'my_progress' && <MyProgress push={push} />}
+      {innerTab === 'para_quals' && <ParaStaffQuals push={push} />}
       {innerTab === 'manage' && isAdmin && <PublishingQueue push={push} />}
     </View>
   );
@@ -557,6 +561,93 @@ export function LearnPathSuggestion({ recommendations, push }) {
       {recommendations.length > 3 && (
         <Btn small title={t('pl.recommend.see_all')} color={c.paper} ink={c.pink} style={{ alignSelf: 'flex-start', marginTop: 4 }} onPress={() => push('Pathways')} />
       )}
+    </View>
+  );
+}
+
+// ── PS-21: Para qualifications tab ──────────────────────────────────────────
+// Shows staff professional development tracks inline in the Adaptive sport hub.
+// Tapping a track pushes to the full ParaStaffCred wallet (para-staff-cred.js).
+const STAFF_ROLES = ['adaptive_coach', 'para_referee', 'technical_official', 'guide_support', 'classifier_candidate'];
+const ROLE_COLORS = { adaptive_coach: c.pink, para_referee: c.cyan, technical_official: c.lime, guide_support: c.sun, classifier_candidate: c.orange };
+
+function ParaStaffQuals({ push }) {
+  const [role, setRole] = useState(null);
+  const [sport, setSport] = useState(null);
+  const tracks = useLoad(() => api.get('/para/staff/tracks', { role_category: role, sport: sport ?? undefined, limit: 50 }), [role, sport]);
+
+  return (
+    <View style={{ marginTop: 8 }}>
+      <T size={12} color={c.mute} style={{ marginHorizontal: 16, marginBottom: 10 }}>{t('paraStaffCred.classifierNote')}</T>
+
+      <View style={{ marginHorizontal: 16, marginBottom: 10 }}>
+        <SportSelect label={t('pl.browse.sport_label')} value={sport} onChange={setSport} />
+      </View>
+
+      <View style={{ flexDirection: 'row', gap: 8, flexWrap: 'wrap', marginHorizontal: 16, marginBottom: 10 }}>
+        {[null, ...STAFF_ROLES].map((r) => (
+          <Pressable
+            key={r ?? 'all'}
+            onPress={() => setRole(r)}
+            accessibilityRole="button"
+            accessibilityState={{ selected: role === r }}
+            style={{ minHeight: 36, minWidth: 44, backgroundColor: role === r ? (ROLE_COLORS[r] ?? c.pink) : c.pinkSoft, borderRadius: 999, paddingHorizontal: 12, paddingVertical: 6, justifyContent: 'center' }}
+          >
+            <T size={12} weight={role === r ? '700' : '400'} color={role === r ? '#fff' : c.pink}>
+              {r ? t(`paraStaffCred.roleCategory.${r}`) : t('pl.browse.all_levels')}
+            </T>
+          </Pressable>
+        ))}
+      </View>
+
+      {tracks.loading
+        ? <Loading />
+        : !tracks.data?.length
+          ? <Empty label={t('paraStaffCred.emptyBrowse')} />
+          : tracks.data.map((tr) => (
+            <Pressable
+              key={tr.id}
+              onPress={() => push('ParaStaffCred', { trackId: tr.id })}
+              accessibilityRole="button"
+              accessibilityLabel={`${tr.title} - ${t(`paraStaffCred.roleCategory.${tr.role_category}`)}`}
+            >
+              <Card pad={12} style={{ marginHorizontal: 16, marginBottom: 8 }}>
+                <View style={{ flexDirection: 'row', gap: 10, alignItems: 'flex-start' }}>
+                  <T size={22}>{tr.sport_emoji ?? '♿'}</T>
+                  <View style={{ flex: 1 }}>
+                    <T weight="700" size={14}>{tr.title}</T>
+                    <T size={12} color={c.mute}>{tr.body_name ?? tr.publisher_org_name ?? ''}</T>
+                  </View>
+                  {tr.level_key && <LevelChip level={tr.level_key} />}
+                </View>
+                <View style={{ flexDirection: 'row', gap: 6, flexWrap: 'wrap', marginTop: 8 }}>
+                  <View style={{ backgroundColor: c.violetSoft, borderRadius: 999, paddingHorizontal: 10, paddingVertical: 3 }}>
+                    <T size={11} color={c.violet}>{t(`paraStaffCred.roleCategory.${tr.role_category}`)}</T>
+                  </View>
+                  {tr.renewal_months && (
+                    <View style={{ backgroundColor: c.sunSoft, borderRadius: 999, paddingHorizontal: 10, paddingVertical: 3 }}>
+                      <T size={11} color={c.sun}>{t('paraStaffCred.renewalPeriod', { n: tr.renewal_months })}</T>
+                    </View>
+                  )}
+                  {tr.role_category === 'classifier_candidate' && (
+                    <View style={{ backgroundColor: c.orangeSoft, borderRadius: 999, paddingHorizontal: 10, paddingVertical: 3 }}>
+                      <T size={10} color={c.orange}>Learning only</T>
+                    </View>
+                  )}
+                </View>
+              </Card>
+            </Pressable>
+          ))}
+
+      <Btn
+        small
+        title={t('paraStaffCred.myCredentials')}
+        color={c.pinkSoft}
+        ink={c.pink}
+        style={{ alignSelf: 'flex-start', marginHorizontal: 16, marginTop: 8 }}
+        onPress={() => push('ParaStaffCred')}
+        accessibilityLabel={t('paraStaffCred.myCredentials')}
+      />
     </View>
   );
 }

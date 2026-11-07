@@ -45,6 +45,39 @@ export async function buildPassport(userId, scope = FULL_SCOPE, ctx = {}) {
   const rec = await recruitmentSections(userId, scope, ctx);
   // the journey is read from the same canonical sources as the Athlete 360 at the time of the request; a young person's is never put on a link
   const journey = scope.show_journey && !(await isYouth(userId)) ? await portfolioJourney(userId, { development: !!scope.show_development }) : null;
+
+  // Para-specific: class history and guide attribution, with athlete-controlled privacy guards.
+  // show_para_class / show_para_guide / show_para_class_history all default FALSE (opt-in by athlete per link).
+  // Medical, functional, impairment and clinical details are NEVER fetched or returned here.
+  const paraEvidenceWhere = scope.para_evidence_filter === 'official' ? `AND r.provenance IN ('official','governing_body')` : '';
+  const [paraRecords, paraClassHistory] = await Promise.all([
+    scope.show_results ? many(
+      `SELECT r.record_type, s.slug AS sport_slug, r.metric, r.value, r.unit,
+              ${scope.show_para_class ? 'r.sport_class, r.classification_snapshot,' : 'NULL::text AS sport_class, NULL::jsonb AS classification_snapshot,'}
+              r.achieved_at, r.status, r.ratified_at, r.provenance,
+              ${scope.show_para_guide ? 'gu.display_name AS guide_name, gu.handle AS guide_handle,' : 'NULL::text AS guide_name, NULL::text AS guide_handle,'}
+              r.event_id
+         FROM para_records r JOIN sports s ON s.id=r.sport_id
+         LEFT JOIN users gu ON gu.id=r.guide_athlete_id
+        WHERE r.holder_user_id=$1 AND r.status IN ('current','pending_ratification') ${paraEvidenceWhere}
+        ORDER BY r.sport_class, r.record_type, r.metric`, [userId]) : null,
+    scope.show_para_class_history ? many(
+      `SELECT o.class_code, o.status, to_char(o.effective_from,'YYYY-MM-DD') AS effective_from,
+              to_char(o.superseded_at,'YYYY-MM-DD') AS superseded_at,
+              cv.title AS version_title, cv.source_ref, cv.version AS rulebook_version,
+              a.name AS authority_name, o.discipline, o.review_by, o.expires_on
+         FROM para_outcomes o
+         JOIN para_class_versions cv ON cv.id=o.version_id
+         JOIN para_governing_bodies a ON a.id=o.authority_id
+        WHERE o.athlete_id=$1 AND o.status IN ('confirmed','review','provisional')
+        ORDER BY o.effective_from DESC LIMIT 20`, [userId]) : null,
+  ]);
+
+  // Strip class codes from verified_results when athlete opts out of show_para_class
+  const verifiedResultsOut = results?.map((r) => scope.show_para_class
+    ? r
+    : { ...r, sport_class: null, classification_snapshot: null });
+
   // career totals per sport, derived from the same season rows
   const career = new Map();
   for (const r of activity) {
@@ -55,23 +88,27 @@ export async function buildPassport(userId, scope = FULL_SCOPE, ctx = {}) {
   return {
     athlete: u, sport_profiles: profiles,
     career: scope.show_matches ? [...career.values()] : null, seasons: scope.show_matches ? activity : null,
-    verified_results: scope.show_results ? results : null,
-    para_records: scope.show_results ? await many(
-      `SELECT r.record_type, s.slug AS sport_slug, r.metric, r.value, r.unit, r.sport_class, r.achieved_at, r.status, r.ratified_at
-         FROM para_records r JOIN sports s ON s.id=r.sport_id
-        WHERE r.holder_user_id=$1 AND r.status IN ('current','pending_ratification')
-        ORDER BY r.sport_class, r.record_type, r.metric`, [userId]) : null,
+    verified_results: scope.show_results ? verifiedResultsOut : null,
+    para_records: paraRecords,
+    para_class_history: paraClassHistory,
+    para_privacy: {
+      show_para_class: !!scope.show_para_class,
+      show_para_guide: !!scope.show_para_guide,
+      show_para_class_history: !!scope.show_para_class_history,
+      evidence_filter: scope.para_evidence_filter ?? 'all',
+      note: 'Medical, functional, impairment and clinical details are never included in passport responses.',
+    },
     awards: scope.show_awards ? awards : null, credentials: scope.show_credentials ? credentials : null,
     memberships: scope.show_career ? memberships : null,
     journey,
     ...rec,
-    evidence: 'Match counts mix official games with matches the athlete logged themselves (see official_matches). Results listed are approved competition results only. Memberships marked verified were confirmed by the club; others are self-reported. Videos and coach references appear only after a coach approved the video and the athlete approved the reference; academic items marked self_reported were entered by the athlete and are not verified.',
+    evidence: 'Match counts mix official games with matches the athlete logged themselves (see official_matches). Results listed are approved competition results only. Memberships marked verified were confirmed by the club; others are self-reported. Videos and coach references appear only after a coach approved the video and the athlete approved the reference; academic items marked self_reported were entered by the athlete and are not verified. Para records show class codes and results only; no medical or clinical detail is ever included.',
     generated_at: new Date().toISOString(),
   };
 }
 
 const SHOW = Object.fromEntries(SECTION_FLAGS.map((k) => [k, z.boolean().default(['show_matches', 'show_results', 'show_awards', 'show_credentials'].includes(k))]));
-const COLS = `id, label, playlist_id, ${SECTION_FLAGS.join(', ')}, recipient_id, expires_at, revoked_at, version, view_count, last_viewed_at, created_at`;
+const COLS = `id, label, playlist_id, ${SECTION_FLAGS.join(', ')}, para_evidence_filter, recipient_id, expires_at, revoked_at, version, view_count, last_viewed_at, created_at`;
 
 /** Whose passport is this call about? Yourself, or a young person you are a verified guardian of. Young people cannot arrange sharing alone. */
 async function subjectOf(user, athleteId) {
@@ -96,8 +133,8 @@ async function manageable(user, linkId) {
 
 cap({
   name: 'create_passport_link', method: 'POST', path: '/me/passport-links', tag: TAG, status: 201,
-  summary: 'Create a share link to your player passport for a coach or scout. You choose what it shows (match history, approved results, awards, certificates, your club career timeline, and for recruitment: approved video, approved coach references, preferences, availability, academic evidence), who may open it (anyone with the link, or one signed-in person) and when it expires (up to 90 days). The secret is shown once; put it in a QR code. A young person\'s link is arranged by their verified guardian (pass athlete_id) and works only while the guardian\'s recruitment_sharing consent is in force.',
-  input: z.object({ athlete_id: id.optional(), label: z.string().trim().max(60).optional(), expires_in_days: z.number().int().min(1).max(90).default(30), recipient_id: id.optional(), playlist_id: id.optional().describe('limit the link to ONE of your playlists/highlight reels: it then shows only that playlist\'s shared clips and nothing else from the passport'), ...SHOW }),
+  summary: 'Create a share link to your player passport for a coach or scout. You choose what it shows (match history, approved results, awards, certificates, your club career timeline, and for recruitment: approved video, approved coach references, preferences, availability, academic evidence), who may open it (anyone with the link, or one signed-in person) and when it expires (up to 90 days). The secret is shown once; put it in a QR code. A young person\'s link is arranged by their verified guardian (pass athlete_id) and works only while the guardian\'s recruitment_sharing consent is in force. You can optionally include para-sport achievements (class-specific records, class codes and guide attribution) under separate athlete-controlled toggles that default to off.',
+  input: z.object({ athlete_id: id.optional(), label: z.string().trim().max(60).optional(), expires_in_days: z.number().int().min(1).max(90).default(30), recipient_id: id.optional(), playlist_id: id.optional().describe('limit the link to ONE of your playlists/highlight reels: it then shows only that playlist\'s shared clips and nothing else from the passport'), para_evidence_filter: z.enum(['all', 'official']).default('all').describe('official = only results from official competitions and governing bodies; all = includes self-reported para results'), ...SHOW }),
   async handler({ user }, i) {
     const owner = await subjectOf(user, i.athlete_id);
     if (owner !== user.id) await requireConsent(owner, 'recruitment_sharing', 'sharing this passport');
@@ -109,9 +146,9 @@ cap({
     await checkRecipient(i.recipient_id, owner);
     const token = newOpaqueToken();
     const row = await one(
-      `INSERT INTO passport_links(user_id, created_by, token_hash, label, recipient_id, ${SECTION_FLAGS.join(', ')}, expires_at, playlist_id)
-       VALUES ($1,$2,$3,$4,$5, ${SECTION_FLAGS.map((_, n) => `$${n + 6}`).join(', ')}, now() + $${SECTION_FLAGS.length + 6} * interval '1 day', $${SECTION_FLAGS.length + 7}) RETURNING ${COLS}`,
-      [owner, user.id, sha256(token), i.label || null, i.recipient_id ?? null, ...SECTION_FLAGS.map((k) => i[k]), i.expires_in_days, i.playlist_id ?? null]);
+      `INSERT INTO passport_links(user_id, created_by, token_hash, label, recipient_id, ${SECTION_FLAGS.join(', ')}, para_evidence_filter, expires_at, playlist_id)
+       VALUES ($1,$2,$3,$4,$5, ${SECTION_FLAGS.map((_, n) => `$${n + 6}`).join(', ')}, $${SECTION_FLAGS.length + 6}, now() + $${SECTION_FLAGS.length + 7} * interval '1 day', $${SECTION_FLAGS.length + 8}) RETURNING ${COLS}`,
+      [owner, user.id, sha256(token), i.label || null, i.recipient_id ?? null, ...SECTION_FLAGS.map((k) => i[k]), i.para_evidence_filter ?? 'all', i.expires_in_days, i.playlist_id ?? null]);
     const path = `/?passport=${encodeURIComponent(token)}`;
     return { ...row, token, path, url: `${String(config.appUrl ?? config.apiPublicUrl).replace(/\/$/, '')}${path}` };
   },
@@ -134,6 +171,7 @@ cap({
   name: 'update_passport_link', method: 'PATCH', path: '/me/passport-links/:id', tag: TAG,
   summary: 'Change what an active passport link shows, who it is for, its label or how long it lasts (from now). Send the version you last saw; a stale version is refused (409) so two devices cannot overwrite each other. Takes effect on the next open of the link.',
   input: z.object({ id, version: z.number().int().min(1), label: z.string().trim().max(60).nullable().optional(), expires_in_days: z.number().int().min(1).max(90).optional(), recipient_id: id.nullable().optional(),
+    para_evidence_filter: z.enum(['all', 'official']).optional(),
     ...Object.fromEntries(SECTION_FLAGS.map((k) => [k, z.boolean().optional()])) }),
   async handler({ user }, i) {
     const l = await manageable(user, i.id);
@@ -144,6 +182,7 @@ cap({
     if (i.label !== undefined) set('label', i.label || null);
     if (i.recipient_id !== undefined) set('recipient_id', i.recipient_id);
     for (const k of SECTION_FLAGS) if (i[k] !== undefined) set(k, i[k]);
+    if (i.para_evidence_filter !== undefined) set('para_evidence_filter', i.para_evidence_filter);
     if (i.expires_in_days !== undefined) { vals.push(i.expires_in_days); sets.push(`expires_at=now() + $${vals.length} * interval '1 day'`); }
     const row = await one(`UPDATE passport_links SET ${[...sets, 'version=version+1', 'updated_at=now()'].join(', ')} WHERE id=$1 AND version=$2 AND revoked_at IS NULL AND expires_at > now() RETURNING ${COLS}`, vals);
     if (!row) throw conflict('This link was changed elsewhere; reload and try again', { code: 'stale_version' });
