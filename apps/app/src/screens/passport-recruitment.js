@@ -7,6 +7,7 @@ import { useLoad } from '../hooks';
 import { useSession } from '../session';
 import { Btn, Card, Empty, ErrorBox, H2, Loading, T, Tag } from '../ui';
 import { FormSheet } from '../FormSheet';
+import { MenuField } from '../menu-field';
 import { c, day } from '../theme';
 import { t } from '../i18n';
 import { pickMedia } from '../market/media';
@@ -232,22 +233,99 @@ export function RecruitmentProfile() {
 export function CoachPassportDesk() {
   const { toast, user } = useSession();
   const q = useLoad(() => api.get('/coach/passport-videos'), []);
+  const athletes = useLoad(() => api.get('/coach/athletes'), []);
+  const refs = useLoad(() => api.get('/coach/passport-references', { limit: 100 }), []);
   const [form, setForm] = useState(false);
+
   if (!user?.roles?.includes('coach')) return null;
-  const decide = async (v, decision) => { try { await api.post(`/passport-videos/${v.id}/review`, { version: v.version, decision }); toast(decision === 'approved' ? 'Video approved' : 'Video not approved'); await q.reload(); } catch (e) { toast(e.message); } };
+
+  const decide = async (v, decision) => {
+    try { await api.post(`/passport-videos/${v.id}/review`, { version: v.version, decision }); toast(decision === 'approved' ? 'Video approved' : 'Video not approved'); await q.reload(); }
+    catch (e) { toast(e.message); }
+  };
+
+  const athleteList = Array.isArray(athletes.data) ? athletes.data : (athletes.data?.items ?? []);
+  const athleteOpts = athleteList.map((a) => ({ value: a.id ?? a.athlete_id, label: a.display_name ?? a.name, sub: a.handle ? `@${a.handle}` : undefined }));
+
+  // Build sport lookup per athlete
+  const athleteSportsMap = {};
+  for (const a of athleteList) {
+    const aid = a.id ?? a.athlete_id;
+    const sp = (a.sports ?? []).map((s) => (typeof s === 'string' ? { value: s, label: s } : { value: s.slug, label: s.name ?? s.slug }));
+    if (sp.length) athleteSportsMap[aid] = sp;
+  }
+
+  // Per-athlete reference status from refs list
+  const refStatusMap = {};
+  for (const r of (refs.data ?? [])) refStatusMap[r.athlete_id] = r.status ?? 'pending';
+
+  const refStatusColor = { approved: c.green ?? c.cyan, pending: c.sun, declined: c.red };
+
+  const clips = q.data ?? [];
+  const pendingClips = clips.filter((v) => !v.decision);
+  const totalRefs = (refs.data ?? []).length;
+  const approvedRefs = (refs.data ?? []).filter((r) => r.status === 'approved').length;
+
   return (
-    <Block title="Athletes you coach" sub="Approve clips that show the athlete, and write references they can share." state={q} empty={['🎬', 'Nothing to review', 'Clips from athletes you coach will appear here.']}
-      action={<Btn small title="Write a reference" onPress={() => setForm(true)} />}>
-      {q.data?.map((v) => (
-        <Row key={v.id} title={v.title} sub={`${v.athlete_name} (@${v.athlete_handle}) · ${v.has_file ? 'uploaded clip' : 'link'}`} above={<VideoPlayer video={v.has_file ? { ...v, file_url: `/passport-videos/${v.id}/file` } : v} />}>
-          <Btn small title="Approve" onPress={() => decide(v, 'approved')} />
-          <Btn small title="Reject" color={c.paper} ink={c.red} onPress={() => decide(v, 'rejected')} />
-        </Row>
-      ))}
-      {form ? <FormSheet visible onClose={() => setForm(false)} title="Write a reference" submitLabel="Send to athlete for approval"
-        fields={[{ key: 'athlete_id', label: 'Athlete', type: 'entity', noun: 'athlete', role: 'athlete' }, { key: 'sport_slug', label: 'Sport', type: 'sport', optional: true }, { key: 'body', label: 'Reference (20–1500 characters)', type: 'multiline' }]}
-        onSubmit={async (v) => { await api.post(`/athletes/${v.athlete_id}/passport-references`, { body: v.body, sport_slug: v.sport_slug || undefined }); return 'Sent. It can be shared once the athlete approves it.'; }} /> : null}
-    </Block>
+    <View style={{ gap: 14 }}>
+      {/* KPI strip */}
+      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10 }}>
+        <Card pad={12} style={{ flex: 1, minWidth: 100 }}><T size={22} weight="800">{athleteList.length}</T><T size={12} color={c.mute}>Athletes coached</T></Card>
+        <Card pad={12} style={{ flex: 1, minWidth: 100 }}><T size={22} weight="800">{approvedRefs}</T><T size={12} color={c.mute}>References approved</T></Card>
+        <Card pad={12} style={{ flex: 1, minWidth: 100 }}><T size={22} weight="800" color={pendingClips.length ? c.sun : undefined}>{pendingClips.length}</T><T size={12} color={c.mute}>Clips to review</T></Card>
+        <Card pad={12} style={{ flex: 1, minWidth: 100 }}><T size={22} weight="800">{totalRefs - approvedRefs}</T><T size={12} color={c.mute}>References pending</T></Card>
+      </View>
+
+      {/* Athletes with reference status */}
+      <Block title="Athletes you coach" sub="Write a reference or approve their recruitment clips."
+        action={<Btn small title="Write a reference" onPress={() => setForm(true)} />}
+        state={athletes} empty={['🏃', 'No athletes yet', 'Athletes you have an active coaching relationship with will appear here.']}>
+        {athleteList.map((a) => {
+          const aid = a.id ?? a.athlete_id;
+          const status = refStatusMap[aid];
+          return (
+            <Row key={aid} title={a.display_name ?? a.name} sub={[a.handle ? `@${a.handle}` : null, a.sports?.join(', ')].filter(Boolean).join(' · ')}
+              tag={status ? [status, refStatusColor[status] ?? c.mute] : null}>
+              {!status ? <Btn small title="Write a reference" onPress={() => setForm(true)} /> : null}
+            </Row>
+          );
+        })}
+      </Block>
+
+      {/* Clip review queue */}
+      {clips.length ? (
+        <Block title="Recruitment clips" sub="Approve clips before athletes can share them in their passport." state={q}
+          empty={['🎬', 'Nothing to review', 'Clips from athletes you coach will appear here.']}>
+          {clips.map((v) => (
+            <Row key={v.id} title={v.title} sub={`${v.athlete_name} (@${v.athlete_handle}) · ${v.has_file ? 'uploaded clip' : 'link'}`}
+              above={<VideoPlayer video={v.has_file ? { ...v, file_url: `/passport-videos/${v.id}/file` } : v} />}>
+              {!v.decision ? <>
+                <Btn small title="Approve" onPress={() => decide(v, 'approved')} />
+                <Btn small title="Reject" color={c.paper} ink={c.red} onPress={() => decide(v, 'rejected')} />
+              </> : <Tag label={v.decision} color={v.decision === 'approved' ? (c.green ?? c.cyan) : c.red} />}
+            </Row>
+          ))}
+        </Block>
+      ) : null}
+
+      {/* Write a reference sheet */}
+      {form ? (
+        <FormSheet visible onClose={() => setForm(false)} title="Write a reference" submitLabel="Send to athlete for approval"
+          fields={[
+            { key: 'athlete_id', label: 'Athlete', type: 'custom', render: ({ v, set }) => <MenuField label="ATHLETE" value={v.athlete_id ?? ''} onChange={(x) => { set('athlete_id', x); set('sport_slug', ''); }} options={athleteOpts} placeholder="Choose an athlete you coach" /> },
+            { key: 'sport_slug', label: 'Sport', type: 'custom', optional: true, show: (v) => !!(v.athlete_id && (athleteSportsMap[v.athlete_id]?.length)), render: ({ v, set }) => <MenuField label="SPORT (OPTIONAL)" value={v.sport_slug ?? ''} onChange={(x) => set('sport_slug', x)} options={[{ value: '', label: 'All sports / General' }, ...(athleteSportsMap[v.athlete_id] ?? [])]} /> },
+            { key: 'body', label: 'Reference (20–1500 characters)', type: 'multiline', hint: 'What makes this athlete stand out? Be specific — elite recruiters value detail.' },
+          ]}
+          onSubmit={async (v) => {
+            if (!v.athlete_id) throw new Error('Please select an athlete.');
+            if ((v.body ?? '').trim().length < 20) throw new Error('Reference must be at least 20 characters.');
+            await api.post(`/athletes/${v.athlete_id}/passport-references`, { body: v.body.trim(), ...(v.sport_slug ? { sport_slug: v.sport_slug } : {}) });
+            refs.reload();
+            return 'Sent. It can be shared once the athlete approves it.';
+          }}
+        />
+      ) : null}
+    </View>
   );
 }
 

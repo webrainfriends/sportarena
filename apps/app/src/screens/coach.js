@@ -211,6 +211,11 @@ export function CoachPlan({ id }) {
             {s.athlete_data_hidden ? <T size={12} color={c.mute}>{s.athlete_data_hidden === 'guardian_consent' ? 'Results are hidden until a guardian allows coaching records to be shared.' : 'Results are hidden because you no longer coach this athlete.'}</T> : null}
             <Compliance data={s.compliance} rules={p.sport_rules} />
             {s.coach_feedback ? <T size={12}>Coach feedback: {s.coach_feedback}</T> : null}
+            {s.coach_effort_rating != null ? <T size={12} color={c.mute}>Coach effort rating: {s.coach_effort_rating}/10</T> : null}
+            {s.coach_technical_notes ? <T size={12} color={c.mute}>Technical: {s.coach_technical_notes}</T> : null}
+            {s.coach_tactical_notes ? <T size={12} color={c.mute}>Tactical: {s.coach_tactical_notes}</T> : null}
+            {s.coach_physical_notes ? <T size={12} color={c.mute}>Physical: {s.coach_physical_notes}</T> : null}
+            {s.coach_next_focus ? <T size={12} weight="700">Next session focus: {s.coach_next_focus}</T> : null}
             <View style={{ flexDirection: 'row', gap: 8, marginTop: 8, flexWrap: 'wrap' }}>
               {!coach && s.status === 'scheduled' && s.structure ? <Btn small title={s.actuals ? 'Update my results' : 'Log my results'} color={c.violet} onPress={() => setForm({ mode: 'log', s })} /> : null}
               {!coach && s.status === 'scheduled' ? <><Btn small title={s.structure ? 'Finish workout' : 'Mark done'} onPress={() => setForm({ mode: s.structure ? 'finish' : 'rate', s })} /><Btn small title="Skipped" color={c.paper} ink={c.ink} onPress={() => logWorkout(s, { status: 'skipped' }, 'Marked skipped')} /></> : null}
@@ -260,9 +265,17 @@ export function CoachPlan({ id }) {
       <FormSheet visible={form?.mode === 'rate'} onClose={() => setForm(null)} title="How did it go?" submitLabel="Save" initial={{ athlete_rpe: 6 }}
         fields={[{ key: 'athlete_rpe', label: 'Effort 1–10', type: 'stepper', min: 1, max: 10, step: 1, default: 6 }, { key: 'athlete_feedback', label: 'Notes for your coach (no medical details)', type: 'multiline', optional: true }]}
         onSubmit={async (v) => { const r = await queueDraft({ kind: 'workout_log', label: form.s.title ?? 'Workout', sub: dateTimeIn(form.s.starts_at, tz), payload: { session_id: form.s.id, expected_version: form.s.version, status: 'completed', athlete_rpe: Number(v.athlete_rpe), athlete_feedback: v.athlete_feedback || undefined } }); setForm(null); plan.reload(); return saveMessage(r, 'Workout saved'); }} />
-      <FormSheet visible={form?.mode === 'note'} onClose={() => setForm(null)} title="Coach feedback" submitLabel="Save" initial={{ coach_feedback: form?.s?.coach_feedback ?? '' }}
-        fields={[{ key: 'coach_feedback', label: 'Feedback', type: 'multiline' }]}
-        onSubmit={async (v) => { await api.patch(`/training-sessions/${form.s.id}`, { coach_feedback: v.coach_feedback }); setForm(null); plan.reload(); }} />
+      <FormSheet visible={form?.mode === 'note'} onClose={() => setForm(null)} title="Coach feedback" submitLabel="Save"
+        initial={{ coach_feedback: form?.s?.coach_feedback ?? '', coach_effort_rating: form?.s?.coach_effort_rating ?? 7, coach_technical_notes: form?.s?.coach_technical_notes ?? '', coach_tactical_notes: form?.s?.coach_tactical_notes ?? '', coach_physical_notes: form?.s?.coach_physical_notes ?? '', coach_next_focus: form?.s?.coach_next_focus ?? '' }}
+        fields={[
+          { key: 'coach_effort_rating', label: 'Session effort (1–10)', type: 'stepper', min: 1, max: 10, step: 1, hint: form?.s?.athlete_rpe ? `Athlete self-reported: ${form.s.athlete_rpe}/10` : undefined },
+          { key: 'coach_technical_notes', label: 'Technical observations', type: 'multiline', hint: 'Technique, skill execution, tactical decisions' },
+          { key: 'coach_tactical_notes', label: 'Tactical notes', type: 'multiline', optional: true, hint: 'Game awareness, positioning, decision-making' },
+          { key: 'coach_physical_notes', label: 'Physical / load notes', type: 'multiline', optional: true, hint: 'Fitness, fatigue, injury flags (no medical diagnoses)' },
+          { key: 'coach_next_focus', label: 'Next session focus', type: 'multiline', optional: true, hint: 'Key priority to carry into the next session' },
+          { key: 'coach_feedback', label: 'Overall summary (shared with athlete)', type: 'multiline', optional: true, hint: 'What to highlight when sharing with the athlete' },
+        ]}
+        onSubmit={async (v) => { await api.patch(`/training-sessions/${form.s.id}`, { coach_effort_rating: v.coach_effort_rating || undefined, coach_technical_notes: v.coach_technical_notes || undefined, coach_tactical_notes: v.coach_tactical_notes || undefined, coach_physical_notes: v.coach_physical_notes || undefined, coach_next_focus: v.coach_next_focus || undefined, coach_feedback: v.coach_feedback || undefined }); setForm(null); plan.reload(); }} />
       <FormSheet visible={form?.mode === 'change'} onClose={() => setForm(null)} title="What should change?" submitLabel="Send" initial={{}}
         fields={[{ key: 'note', label: 'Your request', type: 'multiline' }]}
         onSubmit={async (v) => { await api.post(`/training-plans/${p.id}/respond`, { response: 'change_requested', note: v.note }); setForm(null); plan.reload(); }} />

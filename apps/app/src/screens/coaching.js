@@ -925,7 +925,7 @@ export function AddCoachSportSheet({ visible, onClose, onDone, initialSport, cur
     try {
       const id = profileId;
       const patch = {
-        coaching_tier: tier,
+        coaching_tier: tier ?? undefined,
         athlete_levels: athleteLevels,
         coaching_specialisations: specialisations,
         session_formats: formats,

@@ -10,11 +10,12 @@ import { t } from './i18n';
 export function MenuField({ label, value, onChange, options, placeholder = t('common.choose'), hint, disabled, title }) {
   const [open, setOpen] = useState(false);
   const [q, setQ] = useState('');
-  const now = options.find((o) => o.value === value);
+  const opts = options ?? [];
+  const now = opts.find((o) => o.value === value);
   const shown = useMemo(() => {
     const t = q.trim().toLowerCase();
-    return t ? options.filter((o) => `${o.label} ${o.sub ?? ''}`.toLowerCase().includes(t)) : options;
-  }, [options, q]);
+    return t ? opts.filter((o) => `${o.label} ${o.sub ?? ''}`.toLowerCase().includes(t)) : opts;
+  }, [opts, q]);
   return (
     <View style={{ gap: 6 }}>
       {label ? <T weight="600" size={12} color={c.mute} style={{ letterSpacing: 0.4 }}>{label.toUpperCase()}</T> : null}
@@ -25,7 +26,7 @@ export function MenuField({ label, value, onChange, options, placeholder = t('co
       </Pressable>
       {hint ? <T size={12} color={c.mute}>{hint}</T> : null}
       <Sheet visible={open} onClose={() => setOpen(false)} title={title ?? label ?? t('common.choose')}>
-        {options.length > 8 ? <Field value={q} onChangeText={setQ} placeholder={t('common.search')} accessibilityLabel={t('common.search_list')} /> : null}
+        {opts.length > 8 ? <Field value={q} onChangeText={setQ} placeholder={t('common.search')} accessibilityLabel={t('common.search_list')} /> : null}
         {shown.length ? shown.map((o) => (
           <Pressable key={String(o.value)} onPress={() => { onChange(o.value); setOpen(false); }} accessibilityRole="button" accessibilityLabel={o.label} accessibilityState={{ selected: o.value === value }}
             style={({ pressed }) => ({ flexDirection: 'row', alignItems: 'center', gap: 10, minHeight: 48, paddingHorizontal: 12, borderRadius: 12, backgroundColor: o.value === value ? c.violetSoft : pressed ? c.bg : 'transparent' })}>
