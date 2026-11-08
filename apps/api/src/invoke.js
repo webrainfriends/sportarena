@@ -28,6 +28,11 @@ export function toErrorBody(e) {
   if (e?.code === '22P02' || e?.code === '22007' || e?.code === '22008') return { status: 400, code: 'bad_request', message: 'Malformed value in request' };
   if (e?.code === '23503') return { status: 409, code: 'conflict', message: 'Referenced record does not exist or is still in use' };
   if (e?.code === '23505') return { status: 409, code: 'conflict', message: 'Already exists' };
-  console.error('[error]', e);
+  if (e?.code === '42703') return { status: 400, code: 'schema_mismatch',  message: 'A field in the request does not exist in the database — schema may be out of date' };
+  if (e?.code === '42804') return { status: 400, code: 'type_mismatch',    message: 'A field value could not be stored — type mismatch' };
+  if (e?.code === '42846') return { status: 400, code: 'type_mismatch',    message: 'Cannot cast a field value to the required type' };
+  if (e?.code === '22003') return { status: 400, code: 'out_of_range',     message: 'A numeric value is out of range for its field type' };
+  if (e?.code === '23502') return { status: 400, code: 'missing_value',    message: 'A required field has no value' };
+  console.error('[error]', { code: e?.code, detail: e?.detail, message: e?.message }, e);
   return { status: 500, code: 'internal_error', message: 'Something went wrong' };
 }
