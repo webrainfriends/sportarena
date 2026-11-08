@@ -953,7 +953,6 @@ export function AddCoachSportSheet({ visible, onClose, onDone, initialSport, cur
         booking_notice_hours: bookingNotice,
         group_rate_cents: rateGroup ? Math.round(parseFloat(rateGroup) * 100) : undefined,
         institutional_rate_cents: rateInstitutional ? Math.round(parseFloat(rateInstitutional) * 100) : undefined,
-        hourly_rate_cents: rate1to1 ? Math.round(parseFloat(rate1to1) * 100) : undefined,
         weekly_hours: weeklyHours,
         travel_willing: travelWilling,
         coaching_languages: coachingLanguages,
