@@ -28,8 +28,10 @@ import { BuyPackageSheet, SubscribeSheet, isRedeemablePack } from './coach-subsc
 import { Grid, PaySheet, Pill, StatusPill, nice, useCols } from './marketplace';
 import { c, grad, toneFor } from '../theme';
 import { dateTimeIn, localDate, localToIso, moneyIn, timeIn, todayIn, WEEKDAYS } from '../vtime';
-import { CurrencyDropdown } from '../currency-dropdown';
 import { PlacePicker } from '../place-picker';
+import { storage } from '../storage';
+
+const COACH_WIZARD_DRAFT_KEY = 'coach_wizard_draft';
 
 const deviceTz = (() => { try { return Intl.DateTimeFormat().resolvedOptions().timeZone; } catch { return 'UTC'; } })();
 export const price = (cents, currency) => moneyIn(cents, currency);
@@ -894,41 +896,95 @@ export function AddCoachSportSheet({ visible, onClose, onDone, initialSport, cur
   const [coachingCountries, setCoachingCountries] = useState([]);
 
   // step 5
-  const [rate1to1, setRate1to1] = useState('');
-  const [rateGroup, setRateGroup] = useState('');
-  const [rateInstitutional, setRateInstitutional] = useState('');
   const [bookingNotice, setBookingNotice] = useState(24);
   const [weeklyHours, setWeeklyHours] = useState(10);
   const [travelWilling, setTravelWilling] = useState(false);
   const [baseLocation, setBaseLocation] = useState(null);
-  const [rateCurrency, setRateCurrency] = useState('');
-  const [rateOnline, setRateOnline] = useState('');
-  const [rateTrial, setRateTrial] = useState('');
   const [sessionDuration, setSessionDuration] = useState(60);
   const [maxAthletes, setMaxAthletes] = useState(5);
   const [minCommitment, setMinCommitment] = useState(null);
   const [travelRadius, setTravelRadius] = useState(100);
   const [availableDays, setAvailableDays] = useState([]);
 
-  useEffect(() => { if (!rateCurrency && currency) setRateCurrency(currency); }, [currency]);
-
   const reset = () => {
+    storage.del(COACH_WIZARD_DRAFT_KEY).catch(() => {});
     setStep(1); setErr(null); setProfileId(null);
     setSport(initialSport ?? null); setTier(null); setAthleteLevels([]); setParaEnabled(false); setYearsCoaching(1); setPeakLevel(null);
     setLicences([]); setShowLicenceForm(false); setEditLicenceIdx(null); setDbsStatus(null); setDbsIssuedOn(null); setFirstAidExpires(null); setDegree('');
     setSpecialisations([]); setFormats([]); setBio(''); setCoachingLanguages([]);
     setCareer([]); setShowCareerForm(false); setEditCareerIdx(null); setCoachingCountries([]);
-    setRate1to1(''); setRateGroup(''); setRateInstitutional(''); setBookingNotice(24); setWeeklyHours(10); setTravelWilling(false);
-    setBaseLocation(null); setRateCurrency(currency ?? ''); setRateOnline(''); setRateTrial('');
+    setBookingNotice(24); setWeeklyHours(10); setTravelWilling(false);
+    setBaseLocation(null);
     setSessionDuration(60); setMaxAthletes(5); setMinCommitment(null); setTravelRadius(100); setAvailableDays([]);
   };
 
-  useEffect(() => { if (!visible) reset(); }, [visible]);
+  // Load draft when wizard opens; leave draft intact when it closes (so it can be resumed)
+  useEffect(() => {
+    if (!visible) return;
+    storage.get(COACH_WIZARD_DRAFT_KEY).then((raw) => {
+      if (!raw) return;
+      try {
+        const d = JSON.parse(raw);
+        if (d.sport) setSport(d.sport);
+        if (d.tier !== undefined) setTier(d.tier);
+        if (d.athleteLevels) setAthleteLevels(d.athleteLevels);
+        if (d.paraEnabled !== undefined) setParaEnabled(d.paraEnabled);
+        if (d.yearsCoaching) setYearsCoaching(d.yearsCoaching);
+        if (d.peakLevel !== undefined) setPeakLevel(d.peakLevel);
+        if (d.licences) setLicences(d.licences);
+        if (d.dbsStatus !== undefined) setDbsStatus(d.dbsStatus);
+        if (d.dbsIssuedOn !== undefined) setDbsIssuedOn(d.dbsIssuedOn);
+        if (d.firstAidExpires !== undefined) setFirstAidExpires(d.firstAidExpires);
+        if (d.degree !== undefined) setDegree(d.degree);
+        if (d.specialisations) setSpecialisations(d.specialisations);
+        if (d.formats) setFormats(d.formats);
+        if (d.bio !== undefined) setBio(d.bio);
+        if (d.coachingLanguages) setCoachingLanguages(d.coachingLanguages);
+        if (d.career) setCareer(d.career);
+        if (d.coachingCountries) setCoachingCountries(d.coachingCountries);
+        if (d.bookingNotice !== undefined) setBookingNotice(d.bookingNotice);
+        if (d.weeklyHours !== undefined) setWeeklyHours(d.weeklyHours);
+        if (d.travelWilling !== undefined) setTravelWilling(d.travelWilling);
+        if (d.baseLocation !== undefined) setBaseLocation(d.baseLocation);
+        if (d.sessionDuration) setSessionDuration(d.sessionDuration);
+        if (d.maxAthletes) setMaxAthletes(d.maxAthletes);
+        if (d.minCommitment !== undefined) setMinCommitment(d.minCommitment);
+        if (d.travelRadius) setTravelRadius(d.travelRadius);
+        if (d.availableDays) setAvailableDays(d.availableDays);
+        if (d.profileId) setProfileId(d.profileId);
+        if (d.step > 1) setStep(d.step);
+      } catch {}
+    }).catch(() => {});
+  }, [visible]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Auto-save draft whenever any field changes while the wizard is open
+  useEffect(() => {
+    if (!visible) return;
+    const draft = {
+      step, profileId, sport, tier, athleteLevels, paraEnabled, yearsCoaching, peakLevel,
+      licences, dbsStatus, dbsIssuedOn, firstAidExpires, degree,
+      specialisations, formats, bio, coachingLanguages,
+      career, coachingCountries,
+      bookingNotice, weeklyHours, travelWilling,
+      baseLocation, sessionDuration, maxAthletes,
+      minCommitment, travelRadius, availableDays,
+    };
+    storage.set(COACH_WIZARD_DRAFT_KEY, JSON.stringify(draft)).catch(() => {});
+  }, [ // eslint-disable-line react-hooks/exhaustive-deps
+    visible, step, profileId, sport, tier, athleteLevels, paraEnabled, yearsCoaching, peakLevel,
+    licences, dbsStatus, dbsIssuedOn, firstAidExpires, degree,
+    specialisations, formats, bio, coachingLanguages,
+    career, coachingCountries,
+    bookingNotice, weeklyHours, travelWilling,
+    baseLocation, sessionDuration, maxAthletes,
+    minCommitment, travelRadius, availableDays,
+  ]);
 
   const goNext = async () => {
     setErr(null);
     if (step === 1) {
       if (!sport) { setErr('Please select a sport.'); return; }
+      if (profileId) { setStep(2); return; } // sport profile already created in a previous session — skip POST
       setBusy(true);
       try {
         const res = await api.post('/me/sport-profiles', { sport, role: 'coach', experience_years: yearsCoaching });
@@ -951,8 +1007,6 @@ export function AddCoachSportSheet({ visible, onClose, onDone, initialSport, cur
         coaching_bio: bio.trim() || undefined,
         peak_playing_level: peakLevel,
         booking_notice_hours: bookingNotice,
-        group_rate_cents: rateGroup ? Math.round(parseFloat(rateGroup) * 100) : undefined,
-        institutional_rate_cents: rateInstitutional ? Math.round(parseFloat(rateInstitutional) * 100) : undefined,
         weekly_hours: weeklyHours,
         travel_willing: travelWilling,
         coaching_languages: coachingLanguages,
@@ -960,10 +1014,6 @@ export function AddCoachSportSheet({ visible, onClose, onDone, initialSport, cur
         dbs_issued_on: dbsIssuedOn,
         first_aid_expires_on: firstAidExpires,
         coaching_degree: degree.trim() || undefined,
-        hourly_rate_cents:    rate1to1 ? Math.round(parseFloat(rate1to1) * 100) : undefined,
-        rate_currency:        rateCurrency || undefined,
-        online_rate_cents:    rateOnline ? Math.round(parseFloat(rateOnline) * 100) : undefined,
-        trial_rate_cents:     rateTrial ? Math.round(parseFloat(rateTrial) * 100) : undefined,
         travel_radius_km:     travelWilling && travelRadius ? travelRadius : undefined,
         available_days:       availableDays.length ? availableDays : undefined,
         min_commitment:       minCommitment ?? undefined,
@@ -982,6 +1032,7 @@ export function AddCoachSportSheet({ visible, onClose, onDone, initialSport, cur
       for (const entry of career) {
         await api.post(`/me/sport-profiles/${id}/coach/career`, entry).catch(() => {});
       }
+      await storage.del(COACH_WIZARD_DRAFT_KEY).catch(() => {});
       toast?.(t('coach.sport.wizard.successToast'));
       await onDone?.();
       onClose?.();
@@ -1131,24 +1182,9 @@ export function AddCoachSportSheet({ visible, onClose, onDone, initialSport, cur
         </View>
       )}
 
-      {/* ── Step 5: Availability & Rates ──────────────────────────────────────── */}
+      {/* ── Step 5: Availability ──────────────────────────────────────────────── */}
       {step === 5 && (
         <View>
-          {/* A — RATES */}
-          <SectionLabel label={t('coach.sport.rates.sectionTitle')} />
-          <T size={12} color={c.mute} style={{ marginBottom: 10 }}>{t('coach.sport.ratesLaterHint')}</T>
-          <CurrencyDropdown label={t('coach.sport.rateCurrency.label')} value={rateCurrency} onChange={setRateCurrency} hint={t('coach.sport.rateCurrency.hint')} />
-          <Field label={t('coach.sport.rate1to1.label')} value={rate1to1} onChangeText={setRate1to1} keyboardType="decimal-pad" placeholder="0.00"
-            hint={t('coach.sport.rate1to1.hint')} prefix={rateCurrency || undefined} optional />
-          <Field label={t('coach.sport.rateGroup.label')} value={rateGroup} onChangeText={setRateGroup} keyboardType="decimal-pad" placeholder="0.00"
-            hint={t('coach.sport.rateGroup.hint')} prefix={rateCurrency || undefined} optional />
-          <Field label={t('coach.sport.rateInstitutional.label')} value={rateInstitutional} onChangeText={setRateInstitutional} keyboardType="decimal-pad" placeholder="0.00"
-            hint={t('coach.sport.rateInstitutional.hint')} prefix={rateCurrency || undefined} optional />
-          <Field label={t('coach.sport.rateOnline.label')} value={rateOnline} onChangeText={setRateOnline} keyboardType="decimal-pad" placeholder="0.00"
-            hint={t('coach.sport.rateOnline.hint')} prefix={rateCurrency || undefined} optional />
-          <Field label={t('coach.sport.rateTrial.label')} value={rateTrial} onChangeText={setRateTrial} keyboardType="decimal-pad" placeholder="0.00"
-            hint={t('coach.sport.rateTrial.hint')} prefix={rateCurrency || undefined} optional />
-
           {/* B — BOOKING & CAPACITY */}
           <SectionLabel label={t('coach.sport.booking.sectionTitle')} />
           <T size={12} color={c.mute} style={{ marginBottom: 8 }}>{t('coach.sport.bookingNotice.label')}</T>
@@ -1197,6 +1233,10 @@ export function AddCoachSportSheet({ visible, onClose, onDone, initialSport, cur
             options={WEEKDAY_OPTS.map((d) => ({ value: d.value, label: t(`coach.sport.weekday.${d.key}`) }))}
             value={availableDays} onChange={setAvailableDays} multiSelect />
 
+          <View style={{ marginTop: 16, padding: 14, borderRadius: 12, backgroundColor: c.bg, borderWidth: 1, borderColor: c.line }}>
+            <T size={13} weight="600" style={{ marginBottom: 4 }}>{t('coach.sport.wizard.rateCardNudgeTitle')}</T>
+            <T size={12} color={c.mute}>{t('coach.sport.wizard.rateCardNudgeSub')}</T>
+          </View>
           <T size={12} color={c.mute} style={{ marginTop: 12, marginBottom: 4 }}>{t('coach.sport.wizard.finishHint')}</T>
         </View>
       )}
