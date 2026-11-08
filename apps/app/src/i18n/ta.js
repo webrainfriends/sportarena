@@ -1031,6 +1031,8 @@ export default {
   'nav.title.MyTickets': 'என் டிக்கெட்டுகள்',
   'nav.title.Tickets': 'டிக்கெட்டுகள்',
   'nav.title.Copilots': 'கோபைலட்கள்',
+  'nav.title.PlatformUsers': 'Platform Users', // platform-users hotfix — machine draft, reviewed: false
+  'nav.title.AcademyStaffUsage': 'Staff Usage', // platform-users hotfix — machine draft, reviewed: false
   'nav.tab.Calendar': 'நாட்காட்டி',
   'nav.tab.Profile': 'சுயவிவரம்',
   'nav.tab.More': 'மேலும்',

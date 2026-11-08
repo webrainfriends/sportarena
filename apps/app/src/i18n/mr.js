@@ -1031,6 +1031,8 @@ export default {
   'nav.title.MyTickets': 'माझी तिकिटे',
   'nav.title.Tickets': 'तिकिटे',
   'nav.title.Copilots': 'कोपायलट',
+  'nav.title.PlatformUsers': 'Platform Users', // platform-users hotfix — machine draft, reviewed: false
+  'nav.title.AcademyStaffUsage': 'Staff Usage', // platform-users hotfix — machine draft, reviewed: false
   'nav.tab.Calendar': 'दिनदर्शिका',
   'nav.tab.Profile': 'प्रोफाइल',
   'nav.tab.More': 'अधिक',

@@ -1031,6 +1031,8 @@ export default {
   'nav.title.MyTickets': 'నా టిక్కెట్లు',
   'nav.title.Tickets': 'టిక్కెట్లు',
   'nav.title.Copilots': 'కోపైలట్‌లు',
+  'nav.title.PlatformUsers': 'Platform Users', // platform-users hotfix — machine draft, reviewed: false
+  'nav.title.AcademyStaffUsage': 'Staff Usage', // platform-users hotfix — machine draft, reviewed: false
   'nav.tab.Calendar': 'క్యాలెండర్',
   'nav.tab.Profile': 'ప్రొఫైల్',
   'nav.tab.More': 'మరిన్ని',
