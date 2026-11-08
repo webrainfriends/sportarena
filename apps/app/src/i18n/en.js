@@ -15563,4 +15563,3 @@ export default {
   'asu.prev': '← Previous',
   'asu.next': 'Next →',
 };
-};
