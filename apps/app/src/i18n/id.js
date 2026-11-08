@@ -15547,4 +15547,3 @@ export default {
   'asu.prev': '← Sebelumnya',
   'asu.next': 'Berikutnya →',
 };
-};
