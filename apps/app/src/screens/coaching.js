@@ -28,7 +28,6 @@ import { BuyPackageSheet, SubscribeSheet, isRedeemablePack } from './coach-subsc
 import { Grid, PaySheet, Pill, StatusPill, nice, useCols } from './marketplace';
 import { c, grad, toneFor } from '../theme';
 import { dateTimeIn, localDate, localToIso, moneyIn, timeIn, todayIn, WEEKDAYS } from '../vtime';
-import { CurrencyDropdown } from '../currency-dropdown';
 import { PlacePicker } from '../place-picker';
 import { storage } from '../storage';
 
@@ -897,23 +896,15 @@ export function AddCoachSportSheet({ visible, onClose, onDone, initialSport, cur
   const [coachingCountries, setCoachingCountries] = useState([]);
 
   // step 5
-  const [rate1to1, setRate1to1] = useState('');
-  const [rateGroup, setRateGroup] = useState('');
-  const [rateInstitutional, setRateInstitutional] = useState('');
   const [bookingNotice, setBookingNotice] = useState(24);
   const [weeklyHours, setWeeklyHours] = useState(10);
   const [travelWilling, setTravelWilling] = useState(false);
   const [baseLocation, setBaseLocation] = useState(null);
-  const [rateCurrency, setRateCurrency] = useState('');
-  const [rateOnline, setRateOnline] = useState('');
-  const [rateTrial, setRateTrial] = useState('');
   const [sessionDuration, setSessionDuration] = useState(60);
   const [maxAthletes, setMaxAthletes] = useState(5);
   const [minCommitment, setMinCommitment] = useState(null);
   const [travelRadius, setTravelRadius] = useState(100);
   const [availableDays, setAvailableDays] = useState([]);
-
-  useEffect(() => { if (!rateCurrency && currency) setRateCurrency(currency); }, [currency]);
 
   const reset = () => {
     storage.del(COACH_WIZARD_DRAFT_KEY).catch(() => {});
@@ -922,8 +913,8 @@ export function AddCoachSportSheet({ visible, onClose, onDone, initialSport, cur
     setLicences([]); setShowLicenceForm(false); setEditLicenceIdx(null); setDbsStatus(null); setDbsIssuedOn(null); setFirstAidExpires(null); setDegree('');
     setSpecialisations([]); setFormats([]); setBio(''); setCoachingLanguages([]);
     setCareer([]); setShowCareerForm(false); setEditCareerIdx(null); setCoachingCountries([]);
-    setRate1to1(''); setRateGroup(''); setRateInstitutional(''); setBookingNotice(24); setWeeklyHours(10); setTravelWilling(false);
-    setBaseLocation(null); setRateCurrency(currency ?? ''); setRateOnline(''); setRateTrial('');
+    setBookingNotice(24); setWeeklyHours(10); setTravelWilling(false);
+    setBaseLocation(null);
     setSessionDuration(60); setMaxAthletes(5); setMinCommitment(null); setTravelRadius(100); setAvailableDays([]);
   };
 
@@ -951,16 +942,10 @@ export function AddCoachSportSheet({ visible, onClose, onDone, initialSport, cur
         if (d.coachingLanguages) setCoachingLanguages(d.coachingLanguages);
         if (d.career) setCareer(d.career);
         if (d.coachingCountries) setCoachingCountries(d.coachingCountries);
-        if (d.rate1to1 !== undefined) setRate1to1(d.rate1to1);
-        if (d.rateGroup !== undefined) setRateGroup(d.rateGroup);
-        if (d.rateInstitutional !== undefined) setRateInstitutional(d.rateInstitutional);
         if (d.bookingNotice !== undefined) setBookingNotice(d.bookingNotice);
         if (d.weeklyHours !== undefined) setWeeklyHours(d.weeklyHours);
         if (d.travelWilling !== undefined) setTravelWilling(d.travelWilling);
         if (d.baseLocation !== undefined) setBaseLocation(d.baseLocation);
-        if (d.rateCurrency) setRateCurrency(d.rateCurrency);
-        if (d.rateOnline !== undefined) setRateOnline(d.rateOnline);
-        if (d.rateTrial !== undefined) setRateTrial(d.rateTrial);
         if (d.sessionDuration) setSessionDuration(d.sessionDuration);
         if (d.maxAthletes) setMaxAthletes(d.maxAthletes);
         if (d.minCommitment !== undefined) setMinCommitment(d.minCommitment);
@@ -980,8 +965,8 @@ export function AddCoachSportSheet({ visible, onClose, onDone, initialSport, cur
       licences, dbsStatus, dbsIssuedOn, firstAidExpires, degree,
       specialisations, formats, bio, coachingLanguages,
       career, coachingCountries,
-      rate1to1, rateGroup, rateInstitutional, bookingNotice, weeklyHours, travelWilling,
-      baseLocation, rateCurrency, rateOnline, rateTrial, sessionDuration, maxAthletes,
+      bookingNotice, weeklyHours, travelWilling,
+      baseLocation, sessionDuration, maxAthletes,
       minCommitment, travelRadius, availableDays,
     };
     storage.set(COACH_WIZARD_DRAFT_KEY, JSON.stringify(draft)).catch(() => {});
@@ -990,8 +975,8 @@ export function AddCoachSportSheet({ visible, onClose, onDone, initialSport, cur
     licences, dbsStatus, dbsIssuedOn, firstAidExpires, degree,
     specialisations, formats, bio, coachingLanguages,
     career, coachingCountries,
-    rate1to1, rateGroup, rateInstitutional, bookingNotice, weeklyHours, travelWilling,
-    baseLocation, rateCurrency, rateOnline, rateTrial, sessionDuration, maxAthletes,
+    bookingNotice, weeklyHours, travelWilling,
+    baseLocation, sessionDuration, maxAthletes,
     minCommitment, travelRadius, availableDays,
   ]);
 
@@ -1022,8 +1007,6 @@ export function AddCoachSportSheet({ visible, onClose, onDone, initialSport, cur
         coaching_bio: bio.trim() || undefined,
         peak_playing_level: peakLevel,
         booking_notice_hours: bookingNotice,
-        group_rate_cents: rateGroup ? Math.round(parseFloat(rateGroup) * 100) : undefined,
-        institutional_rate_cents: rateInstitutional ? Math.round(parseFloat(rateInstitutional) * 100) : undefined,
         weekly_hours: weeklyHours,
         travel_willing: travelWilling,
         coaching_languages: coachingLanguages,
@@ -1031,10 +1014,6 @@ export function AddCoachSportSheet({ visible, onClose, onDone, initialSport, cur
         dbs_issued_on: dbsIssuedOn,
         first_aid_expires_on: firstAidExpires,
         coaching_degree: degree.trim() || undefined,
-        hourly_rate_cents:    rate1to1 ? Math.round(parseFloat(rate1to1) * 100) : undefined,
-        rate_currency:        rateCurrency || undefined,
-        online_rate_cents:    rateOnline ? Math.round(parseFloat(rateOnline) * 100) : undefined,
-        trial_rate_cents:     rateTrial ? Math.round(parseFloat(rateTrial) * 100) : undefined,
         travel_radius_km:     travelWilling && travelRadius ? travelRadius : undefined,
         available_days:       availableDays.length ? availableDays : undefined,
         min_commitment:       minCommitment ?? undefined,
@@ -1203,24 +1182,9 @@ export function AddCoachSportSheet({ visible, onClose, onDone, initialSport, cur
         </View>
       )}
 
-      {/* ── Step 5: Availability & Rates ──────────────────────────────────────── */}
+      {/* ── Step 5: Availability ──────────────────────────────────────────────── */}
       {step === 5 && (
         <View>
-          {/* A — RATES */}
-          <SectionLabel label={t('coach.sport.rates.sectionTitle')} />
-          <T size={12} color={c.mute} style={{ marginBottom: 10 }}>{t('coach.sport.ratesLaterHint')}</T>
-          <CurrencyDropdown label={t('coach.sport.rateCurrency.label')} value={rateCurrency} onChange={setRateCurrency} hint={t('coach.sport.rateCurrency.hint')} />
-          <Field label={t('coach.sport.rate1to1.label')} value={rate1to1} onChangeText={setRate1to1} keyboardType="decimal-pad" placeholder="0.00"
-            hint={t('coach.sport.rate1to1.hint')} prefix={rateCurrency || undefined} optional />
-          <Field label={t('coach.sport.rateGroup.label')} value={rateGroup} onChangeText={setRateGroup} keyboardType="decimal-pad" placeholder="0.00"
-            hint={t('coach.sport.rateGroup.hint')} prefix={rateCurrency || undefined} optional />
-          <Field label={t('coach.sport.rateInstitutional.label')} value={rateInstitutional} onChangeText={setRateInstitutional} keyboardType="decimal-pad" placeholder="0.00"
-            hint={t('coach.sport.rateInstitutional.hint')} prefix={rateCurrency || undefined} optional />
-          <Field label={t('coach.sport.rateOnline.label')} value={rateOnline} onChangeText={setRateOnline} keyboardType="decimal-pad" placeholder="0.00"
-            hint={t('coach.sport.rateOnline.hint')} prefix={rateCurrency || undefined} optional />
-          <Field label={t('coach.sport.rateTrial.label')} value={rateTrial} onChangeText={setRateTrial} keyboardType="decimal-pad" placeholder="0.00"
-            hint={t('coach.sport.rateTrial.hint')} prefix={rateCurrency || undefined} optional />
-
           {/* B — BOOKING & CAPACITY */}
           <SectionLabel label={t('coach.sport.booking.sectionTitle')} />
           <T size={12} color={c.mute} style={{ marginBottom: 8 }}>{t('coach.sport.bookingNotice.label')}</T>
@@ -1269,6 +1233,10 @@ export function AddCoachSportSheet({ visible, onClose, onDone, initialSport, cur
             options={WEEKDAY_OPTS.map((d) => ({ value: d.value, label: t(`coach.sport.weekday.${d.key}`) }))}
             value={availableDays} onChange={setAvailableDays} multiSelect />
 
+          <View style={{ marginTop: 16, padding: 14, borderRadius: 12, backgroundColor: c.bg, borderWidth: 1, borderColor: c.line }}>
+            <T size={13} weight="600" style={{ marginBottom: 4 }}>{t('coach.sport.wizard.rateCardNudgeTitle')}</T>
+            <T size={12} color={c.mute}>{t('coach.sport.wizard.rateCardNudgeSub')}</T>
+          </View>
           <T size={12} color={c.mute} style={{ marginTop: 12, marginBottom: 4 }}>{t('coach.sport.wizard.finishHint')}</T>
         </View>
       )}
