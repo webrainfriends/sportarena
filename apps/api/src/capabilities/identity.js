@@ -343,6 +343,18 @@ cap({
     dbs_issued_on: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional().nullable(),
     first_aid_expires_on: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional().nullable(),
     coaching_degree: z.string().trim().max(200).optional().nullable(),
+    hourly_rate_cents:    z.number().int().min(0).optional().nullable(),
+    base_city:            z.string().trim().max(200).optional().nullable(),
+    rate_currency:        z.string().length(3).optional().nullable(),
+    online_rate_cents:    z.number().int().min(0).optional().nullable(),
+    trial_rate_cents:     z.number().int().min(0).optional().nullable(),
+    travel_radius_km:     z.number().int().min(0).max(10000).optional().nullable(),
+    available_days:       z.array(z.number().int().min(0).max(6)).max(7).optional(),
+    min_commitment:       z.enum(['single','monthly','quarterly','seasonal','annual']).optional().nullable(),
+    max_athletes:         z.number().int().min(1).max(200).optional().nullable(),
+    session_duration_min: z.number().int().min(15).max(480).optional().nullable(),
+    base_lat:             z.number().optional().nullable(),
+    base_lng:             z.number().optional().nullable(),
   }),
   async handler({ user }, i, { params }) {
     const profileId = params.id;
@@ -368,6 +380,18 @@ cap({
       if ('dbs_issued_on' in i) push('dbs_issued_on', i.dbs_issued_on);
       if ('first_aid_expires_on' in i) push('first_aid_expires_on', i.first_aid_expires_on);
       if ('coaching_degree' in i) push('coaching_degree', i.coaching_degree);
+      if ('hourly_rate_cents' in i) push('hourly_rate_cents', i.hourly_rate_cents);
+      if ('base_city' in i) push('base_city', i.base_city);
+      if ('rate_currency' in i) push('rate_currency', i.rate_currency);
+      if ('online_rate_cents' in i) push('online_rate_cents', i.online_rate_cents);
+      if ('trial_rate_cents' in i) push('trial_rate_cents', i.trial_rate_cents);
+      if ('travel_radius_km' in i) push('travel_radius_km', i.travel_radius_km);
+      if ('available_days' in i) push('available_days', i.available_days);
+      if ('min_commitment' in i) push('min_commitment', i.min_commitment);
+      if ('max_athletes' in i) push('max_athletes', i.max_athletes);
+      if ('session_duration_min' in i) push('session_duration_min', i.session_duration_min);
+      if ('base_lat' in i) push('base_lat', i.base_lat);
+      if ('base_lng' in i) push('base_lng', i.base_lng);
       if (sets.length) {
         sets.push(`updated_at=now()`);
         await c.query(`UPDATE sport_profiles SET ${sets.join(',')} WHERE id=$1`, vals);
