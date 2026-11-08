@@ -386,7 +386,7 @@ cap({
       if ('online_rate_cents' in i) push('online_rate_cents', i.online_rate_cents);
       if ('trial_rate_cents' in i) push('trial_rate_cents', i.trial_rate_cents);
       if ('travel_radius_km' in i) push('travel_radius_km', i.travel_radius_km);
-      if ('available_days' in i) push('available_days', i.available_days);
+      if ('available_days' in i) { vals.push(i.available_days); sets.push(`available_days=$${vals.length}::int[]`); }
       if ('min_commitment' in i) push('min_commitment', i.min_commitment);
       if ('max_athletes' in i) push('max_athletes', i.max_athletes);
       if ('session_duration_min' in i) push('session_duration_min', i.session_duration_min);
