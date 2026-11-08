@@ -1031,6 +1031,8 @@ export default {
   'nav.title.MyTickets': 'Tiket saya',
   'nav.title.Tickets': 'Tiket',
   'nav.title.Copilots': 'Copilot',
+  'nav.title.PlatformUsers': 'Platform Users', // platform-users hotfix — machine draft, reviewed: false
+  'nav.title.AcademyStaffUsage': 'Staff Usage', // platform-users hotfix — machine draft, reviewed: false
   'nav.tab.Calendar': 'Kalender',
   'nav.tab.Profile': 'Profil',
   'nav.tab.More': 'Lainnya',

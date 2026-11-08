@@ -1031,6 +1031,8 @@ export default {
   'nav.title.MyTickets': 'मेरे टिकट',
   'nav.title.Tickets': 'टिकट',
   'nav.title.Copilots': 'कोपायलट',
+  'nav.title.PlatformUsers': 'Platform Users', // platform-users hotfix — machine draft, reviewed: false
+  'nav.title.AcademyStaffUsage': 'Staff Usage', // platform-users hotfix — machine draft, reviewed: false
   'nav.tab.Calendar': 'कैलेंडर',
   'nav.tab.Profile': 'प्रोफ़ाइल',
   'nav.tab.More': 'और',

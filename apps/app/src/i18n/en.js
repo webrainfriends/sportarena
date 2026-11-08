@@ -1054,6 +1054,8 @@ export default {
   'nav.title.MyTickets': 'My tickets',
   'nav.title.Tickets': 'Tickets',
   'nav.title.Copilots': 'Copilots',
+  'nav.title.PlatformUsers': 'Platform Users',
+  'nav.title.AcademyStaffUsage': 'Staff Usage',
   'nav.tab.Calendar': 'Calendar',
   'nav.tab.Profile': 'Profile',
   'nav.tab.More': 'More',
