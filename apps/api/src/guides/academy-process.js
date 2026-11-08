@@ -415,6 +415,21 @@ id: 'wellbeing', title: 'Support student wellbeing and development',
       'apps/app/src/screens/academy-td-quality.js',
     ],
   },
+  {
+    id: 'data_residency',
+    title: 'Data residency & privacy',
+    why: 'Elite academies operate globally. Each athlete\'s personal data must be stored in the right jurisdiction — in-country where GotMyGame has an active region, or in Singapore with explicit informed consent otherwise.',
+    steps: [
+      '1. At account creation, the athlete or guardian selects a home country.',
+      '2. GotMyGame automatically assigns the nearest provisioned region, or prompts for Singapore fallback consent.',
+      '3. Consent is recorded with a policy hash and timestamp — immutable, versioned, withdrawable.',
+      '4. Athletes can review their current region and consent history from Account → Data Residency.',
+      '5. When a new region becomes available for their country, they can request a migration (13-stage, zero-data-loss workflow).',
+    ],
+    target: { screen: 'DataResidency' },
+    modules: ['data-residency.js'],
+    sources: ['apps/app/src/screens/data-residency.js'],
+  },
 ];
 
 /** Org/academy API modules with no step of their own, and why. Anything not here and not in a step fails the guard test. */
