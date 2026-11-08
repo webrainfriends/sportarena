@@ -320,3 +320,104 @@ cap({
     return { from, to, shifts: shifts.map((s) => ({ ...s, source_type: 'academy_shift', source_id: s.id, needs_response: s.status === 'assigned' })), sessions: sessions.map((s) => ({ ...s, source_type: 'academy_session', source_id: s.id, needs_response: s.my_status === 'assigned' && s.status === 'published' })), time_off: leave };
   },
 });
+
+// ------------------------------------------------------------------ staff usage (academy manager view)
+cap({
+  name: 'list_academy_staff_usage', method: 'GET', path: '/organisations/:id/academy/staff/usage', tag: TAG, auth: 'user',
+  summary: 'Academy owner/admin: each active staff member with their last login date/time, cumulative storage bytes, AI token usage (last 30 days) and API call count (last 30 days). Data is scoped to members of this organisation only.',
+  input: z.object({
+    id,
+    ...page,
+    limit: z.coerce.number().int().min(1).max(200).default(50),
+    sort: z.enum(['last_login', 'storage', 'ai_tokens', 'api_calls', 'name']).default('last_login'),
+    order: z.enum(['asc', 'desc']).default('desc'),
+    search: z.string().max(80).optional(),
+  }),
+  async handler({ user }, i) {
+    const a = await opsAccess(user, i.id);
+    if (!a.admin) throw forbidden('Only academy owners and admins can view staff usage');
+
+    const ORDER = {
+      last_login: 'll.last_login_at', storage: 's.storage_bytes',
+      ai_tokens: 'ai.ai_tokens', api_calls: 'ap.api_calls', name: 'u.display_name',
+    };
+    const col = ORDER[i.sort];
+    const dir = i.order === 'asc' ? 'ASC' : 'DESC';
+    const nulls = i.order === 'desc' ? 'NULLS LAST' : 'NULLS FIRST';
+
+    const params = [i.id];
+    const extraClauses = [];
+    if (i.search) {
+      params.push(`%${i.search.toLowerCase()}%`);
+      extraClauses.push(`(lower(u.handle) LIKE $${params.length} OR lower(u.display_name) LIKE $${params.length})`);
+    }
+    params.push(i.limit, i.offset ?? 0);
+    const limitP = `$${params.length - 1}`;
+    const offsetP = `$${params.length}`;
+    const extraWhere = extraClauses.length ? `AND ${extraClauses.join(' AND ')}` : '';
+
+    const rows = await many(
+      `WITH storage AS (
+         SELECT user_id, SUM(bytes)::bigint AS storage_bytes, SUM(cnt)::bigint AS doc_count FROM (
+           SELECT uploaded_by AS user_id, SUM(size_bytes) AS bytes, COUNT(*)::bigint AS cnt
+             FROM venue_media WHERE size_bytes IS NOT NULL GROUP BY uploaded_by
+           UNION ALL SELECT uploaded_by, SUM(size_bytes), COUNT(*)
+             FROM insurance_documents WHERE size_bytes IS NOT NULL GROUP BY uploaded_by
+           UNION ALL SELECT uploaded_by, SUM(size_bytes), COUNT(*)
+             FROM subject_documents WHERE size_bytes IS NOT NULL GROUP BY uploaded_by
+           UNION ALL SELECT uploaded_by, SUM(size_bytes), COUNT(*)
+             FROM coaching_evidence WHERE size_bytes IS NOT NULL GROUP BY uploaded_by
+           UNION ALL SELECT uploader_id, SUM(size_bytes), COUNT(*)
+             FROM team_chat_media WHERE size_bytes IS NOT NULL GROUP BY uploader_id
+         ) sub GROUP BY user_id
+       ),
+       ai AS (
+         SELECT user_id, SUM(tokens_in + tokens_out)::bigint AS ai_tokens
+           FROM ai_token_usage WHERE at >= CURRENT_DATE - 30 GROUP BY user_id
+       ),
+       ap AS (
+         SELECT user_id, SUM(call_count)::bigint AS api_calls
+           FROM user_daily_api_calls WHERE date >= CURRENT_DATE - 30 GROUP BY user_id
+       ),
+       ll AS (SELECT user_id, MAX(created_at) AS last_login_at FROM auth_sessions GROUP BY user_id)
+       SELECT u.id, u.handle, u.display_name, u.roles, u.avatar_emoji, u.avatar_color,
+              m.role AS org_role, e.job_title, e.engagement_type, e.state,
+              ll.last_login_at,
+              COALESCE(s.storage_bytes, 0) AS storage_bytes,
+              COALESCE(s.doc_count, 0) AS doc_count,
+              COALESCE(ai.ai_tokens, 0) AS ai_tokens_30d,
+              COALESCE(ap.api_calls, 0) AS api_calls_30d
+         FROM organisation_members m
+         JOIN users u ON u.id = m.user_id
+         LEFT JOIN org_staff_engagements e ON e.organisation_id = m.organisation_id AND e.user_id = m.user_id
+         LEFT JOIN storage s ON s.user_id = m.user_id
+         LEFT JOIN ai ON ai.user_id = m.user_id
+         LEFT JOIN ap ON ap.user_id = m.user_id
+         LEFT JOIN ll ON ll.user_id = m.user_id
+        WHERE m.organisation_id = $1 AND m.status = 'active'
+          AND m.role IN ('owner','admin','coach','staff','finance')
+          ${extraWhere}
+        ORDER BY ${col} ${dir} ${nulls}
+        LIMIT ${limitP} OFFSET ${offsetP}`,
+      params,
+    );
+
+    const total = await one(
+      "SELECT COUNT(*)::int AS n FROM organisation_members WHERE organisation_id=$1 AND status='active' AND role IN ('owner','admin','coach','staff','finance')",
+      [i.id],
+    );
+
+    return {
+      staff: rows.map((r) => ({
+        id: r.id, handle: r.handle, display_name: r.display_name, roles: r.roles,
+        avatar_emoji: r.avatar_emoji, avatar_color: r.avatar_color,
+        org_role: r.org_role, job_title: r.job_title ?? null,
+        engagement_type: r.engagement_type ?? null, state: r.state ?? null,
+        last_login_at: r.last_login_at ?? null,
+        storage_bytes: Number(r.storage_bytes), doc_count: Number(r.doc_count),
+        ai_tokens_30d: Number(r.ai_tokens_30d), api_calls_30d: Number(r.api_calls_30d),
+      })),
+      meta: { total: total.n, offset: i.offset ?? 0, limit: i.limit },
+    };
+  },
+});

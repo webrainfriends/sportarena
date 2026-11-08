@@ -13,6 +13,7 @@ import { createMcpServer } from './mcp.js';
 import { pool } from './db.js';
 import { webhookRouter } from './payments/webhooks.js';
 import { commsWebhookRouter } from './comms-webhooks.js';
+import { trackApiCall } from './usage.js';
 import { backgroundCheckWebhookRouter } from './background-check-webhooks.js';
 import { integrationWebhookRouter } from './integrations/webhooks.js';
 import { signatureCallbackRouter } from './capabilities/sponsorship-contracts.js';
@@ -153,6 +154,7 @@ export function createApp() {
     v1[c.method.toLowerCase()](c.path, async (req, res) => {
       try {
         const user = await authenticate(req.headers.authorization);
+        if (user?.id) trackApiCall(user.id); // fire-and-forget; never awaited
         const body = ['POST', 'PATCH'].includes(c.method) ? { ...(req.body ?? {}) } : {};
         const web = usesWebCookies(c, req);
         if (web && c.name === 'refresh_session' && !body.refresh_token && req.cookies?.[REFRESH_COOKIE]) body.refresh_token = req.cookies[REFRESH_COOKIE];

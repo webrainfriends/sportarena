@@ -4,7 +4,8 @@ import { one, many, pool, tx } from '../db.js';
 import { badRequest, conflict, notFound } from '../errors.js';
 import { audit, isAdmin } from '../helpers.js';
 import { sha256 } from '../crypto.js';
-import { askJson, aiConfigured, aiModel, quoteData, AI_RULES } from '../ai.js';
+import { askJson, askJsonDetailed, aiConfigured, aiModel, quoteData, AI_RULES } from '../ai.js';
+import { trackAiUsage } from '../usage.js';
 import { hiddenYouth, requireRelationship } from '../coaching.js';
 import { requireTeam, ownRecord, savePlan, block } from './coaching-journal.js';
 import { authorise, series } from './coaching-goals.js';
@@ -193,10 +194,12 @@ cap({
       const hit = await one("SELECT id, output FROM ai_outputs WHERE kind='coaching_assist' AND subject_id=$1 AND input_hash=$2", [user.id, hash]);
       if (hit) { out = hit.output; aiOutputId = hit.id; model = aiModel(); } else {
         await audit(null, user.id, 'ai_coaching_assist', 'coaching_draft', null);
-        out = await askJson({
+        const aiResult = await askJsonDetailed({
           system: `You are a careful assistant to a sports coach. ${TASK_BRIEF[i.task]} Players appear only as labels such as "Player A"; keep using the labels. Cite the source refs (e.g. O1, G2) that support each item. Separate what the coach observed (basis "observed", needs a source ref) from your own suggestion (basis "suggestion"). Never diagnose, never mention injuries or treatment, never clear anyone to play, and never rank or compare players. Where facts.coach_approach is present it is the coach's own stated philosophy; keep suggestions consistent with it, but never treat it as evidence about a player. Keep it short and practical. ${AI_RULES}`,
           user: `<data>${JSON.stringify(payload)}</data>`, schema: outSchema, shape: SHAPE, maxTokens: 1400,
         });
+        out = aiResult?.data ?? null;
+        if (out && aiResult?.usage) trackAiUsage(user.id, 'coaching_assist', aiModel(), aiResult.usage.input_tokens, aiResult.usage.output_tokens);
         if (out) {
           model = aiModel();
           aiOutputId = (await one("INSERT INTO ai_outputs(kind, subject_id, input_hash, model, output, created_by) VALUES ('coaching_assist',$1,$2,$3,$4,$1) ON CONFLICT (kind, subject_id, input_hash) DO UPDATE SET model=ai_outputs.model RETURNING id", [user.id, hash, model, JSON.stringify(out)])).id;
