@@ -333,7 +333,7 @@ cap({
     session_formats: z.array(z.string().max(60)).max(10).optional(),
     coaching_bio: z.string().trim().max(300).optional().nullable(),
     peak_playing_level: z.enum(['recreational', 'club', 'regional', 'national', 'international']).optional().nullable(),
-    booking_notice_hours: z.number().int().min(0).max(336).optional().nullable(),
+    booking_notice_hours: z.number().int().min(0).max(720).optional().nullable(),
     group_rate_cents: z.number().int().min(0).optional().nullable(),
     institutional_rate_cents: z.number().int().min(0).optional().nullable(),
     weekly_hours: z.number().int().min(0).max(80).optional().nullable(),
