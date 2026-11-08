@@ -30,6 +30,9 @@ import { c, grad, toneFor } from '../theme';
 import { dateTimeIn, localDate, localToIso, moneyIn, timeIn, todayIn, WEEKDAYS } from '../vtime';
 import { CurrencyDropdown } from '../currency-dropdown';
 import { PlacePicker } from '../place-picker';
+import { storage } from '../storage';
+
+const COACH_WIZARD_DRAFT_KEY = 'coach_wizard_draft';
 
 const deviceTz = (() => { try { return Intl.DateTimeFormat().resolvedOptions().timeZone; } catch { return 'UTC'; } })();
 export const price = (cents, currency) => moneyIn(cents, currency);
@@ -913,6 +916,7 @@ export function AddCoachSportSheet({ visible, onClose, onDone, initialSport, cur
   useEffect(() => { if (!rateCurrency && currency) setRateCurrency(currency); }, [currency]);
 
   const reset = () => {
+    storage.del(COACH_WIZARD_DRAFT_KEY).catch(() => {});
     setStep(1); setErr(null); setProfileId(null);
     setSport(initialSport ?? null); setTier(null); setAthleteLevels([]); setParaEnabled(false); setYearsCoaching(1); setPeakLevel(null);
     setLicences([]); setShowLicenceForm(false); setEditLicenceIdx(null); setDbsStatus(null); setDbsIssuedOn(null); setFirstAidExpires(null); setDegree('');
@@ -923,12 +927,79 @@ export function AddCoachSportSheet({ visible, onClose, onDone, initialSport, cur
     setSessionDuration(60); setMaxAthletes(5); setMinCommitment(null); setTravelRadius(100); setAvailableDays([]);
   };
 
-  useEffect(() => { if (!visible) reset(); }, [visible]);
+  // Load draft when wizard opens; leave draft intact when it closes (so it can be resumed)
+  useEffect(() => {
+    if (!visible) return;
+    storage.get(COACH_WIZARD_DRAFT_KEY).then((raw) => {
+      if (!raw) return;
+      try {
+        const d = JSON.parse(raw);
+        if (d.sport) setSport(d.sport);
+        if (d.tier !== undefined) setTier(d.tier);
+        if (d.athleteLevels) setAthleteLevels(d.athleteLevels);
+        if (d.paraEnabled !== undefined) setParaEnabled(d.paraEnabled);
+        if (d.yearsCoaching) setYearsCoaching(d.yearsCoaching);
+        if (d.peakLevel !== undefined) setPeakLevel(d.peakLevel);
+        if (d.licences) setLicences(d.licences);
+        if (d.dbsStatus !== undefined) setDbsStatus(d.dbsStatus);
+        if (d.dbsIssuedOn !== undefined) setDbsIssuedOn(d.dbsIssuedOn);
+        if (d.firstAidExpires !== undefined) setFirstAidExpires(d.firstAidExpires);
+        if (d.degree !== undefined) setDegree(d.degree);
+        if (d.specialisations) setSpecialisations(d.specialisations);
+        if (d.formats) setFormats(d.formats);
+        if (d.bio !== undefined) setBio(d.bio);
+        if (d.coachingLanguages) setCoachingLanguages(d.coachingLanguages);
+        if (d.career) setCareer(d.career);
+        if (d.coachingCountries) setCoachingCountries(d.coachingCountries);
+        if (d.rate1to1 !== undefined) setRate1to1(d.rate1to1);
+        if (d.rateGroup !== undefined) setRateGroup(d.rateGroup);
+        if (d.rateInstitutional !== undefined) setRateInstitutional(d.rateInstitutional);
+        if (d.bookingNotice !== undefined) setBookingNotice(d.bookingNotice);
+        if (d.weeklyHours !== undefined) setWeeklyHours(d.weeklyHours);
+        if (d.travelWilling !== undefined) setTravelWilling(d.travelWilling);
+        if (d.baseLocation !== undefined) setBaseLocation(d.baseLocation);
+        if (d.rateCurrency) setRateCurrency(d.rateCurrency);
+        if (d.rateOnline !== undefined) setRateOnline(d.rateOnline);
+        if (d.rateTrial !== undefined) setRateTrial(d.rateTrial);
+        if (d.sessionDuration) setSessionDuration(d.sessionDuration);
+        if (d.maxAthletes) setMaxAthletes(d.maxAthletes);
+        if (d.minCommitment !== undefined) setMinCommitment(d.minCommitment);
+        if (d.travelRadius) setTravelRadius(d.travelRadius);
+        if (d.availableDays) setAvailableDays(d.availableDays);
+        if (d.profileId) setProfileId(d.profileId);
+        if (d.step > 1) setStep(d.step);
+      } catch {}
+    }).catch(() => {});
+  }, [visible]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Auto-save draft whenever any field changes while the wizard is open
+  useEffect(() => {
+    if (!visible) return;
+    const draft = {
+      step, profileId, sport, tier, athleteLevels, paraEnabled, yearsCoaching, peakLevel,
+      licences, dbsStatus, dbsIssuedOn, firstAidExpires, degree,
+      specialisations, formats, bio, coachingLanguages,
+      career, coachingCountries,
+      rate1to1, rateGroup, rateInstitutional, bookingNotice, weeklyHours, travelWilling,
+      baseLocation, rateCurrency, rateOnline, rateTrial, sessionDuration, maxAthletes,
+      minCommitment, travelRadius, availableDays,
+    };
+    storage.set(COACH_WIZARD_DRAFT_KEY, JSON.stringify(draft)).catch(() => {});
+  }, [ // eslint-disable-line react-hooks/exhaustive-deps
+    visible, step, profileId, sport, tier, athleteLevels, paraEnabled, yearsCoaching, peakLevel,
+    licences, dbsStatus, dbsIssuedOn, firstAidExpires, degree,
+    specialisations, formats, bio, coachingLanguages,
+    career, coachingCountries,
+    rate1to1, rateGroup, rateInstitutional, bookingNotice, weeklyHours, travelWilling,
+    baseLocation, rateCurrency, rateOnline, rateTrial, sessionDuration, maxAthletes,
+    minCommitment, travelRadius, availableDays,
+  ]);
 
   const goNext = async () => {
     setErr(null);
     if (step === 1) {
       if (!sport) { setErr('Please select a sport.'); return; }
+      if (profileId) { setStep(2); return; } // sport profile already created in a previous session — skip POST
       setBusy(true);
       try {
         const res = await api.post('/me/sport-profiles', { sport, role: 'coach', experience_years: yearsCoaching });
@@ -982,6 +1053,7 @@ export function AddCoachSportSheet({ visible, onClose, onDone, initialSport, cur
       for (const entry of career) {
         await api.post(`/me/sport-profiles/${id}/coach/career`, entry).catch(() => {});
       }
+      await storage.del(COACH_WIZARD_DRAFT_KEY).catch(() => {});
       toast?.(t('coach.sport.wizard.successToast'));
       await onDone?.();
       onClose?.();
