@@ -4,7 +4,7 @@ import { z } from 'zod';
 import { cap, page } from '../registry.js';
 import { many, one } from '../db.js';
 import { mustBePlatformAdmin } from '../platform.js';
-import { decryptField, blindIndex } from '../crypto.js';
+import { decrypt, blindIndex } from '../crypto.js';
 import { audit } from '../helpers.js';
 
 const TAG = 'Platform admin';
@@ -107,7 +107,7 @@ cap({
     );
 
     // Decrypt emails and audit the bulk read
-    const users = rows.map((r) => ({ ...r, email: r.email_enc ? decryptField(r.email_enc, 'users', 'email') : null }));
+    const users = rows.map((r) => ({ ...r, email: r.email_enc ? decrypt(r.email_enc, 'users.email') : null }));
     await audit(null, user.id, 'list_platform_users', 'users', null);
 
     // Platform-wide totals (lightweight aggregate, computed once per page load)
