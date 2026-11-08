@@ -28,6 +28,8 @@ import { BuyPackageSheet, SubscribeSheet, isRedeemablePack } from './coach-subsc
 import { Grid, PaySheet, Pill, StatusPill, nice, useCols } from './marketplace';
 import { c, grad, toneFor } from '../theme';
 import { dateTimeIn, localDate, localToIso, moneyIn, timeIn, todayIn, WEEKDAYS } from '../vtime';
+import { CurrencyDropdown } from '../currency-dropdown';
+import { PlacePicker } from '../place-picker';
 
 const deviceTz = (() => { try { return Intl.DateTimeFormat().resolvedOptions().timeZone; } catch { return 'UTC'; } })();
 export const price = (cents, currency) => moneyIn(cents, currency);
@@ -748,7 +750,12 @@ const SPECIALISATIONS = ['technical', 'tactical', 'physical', 'mental', 'video',
 const SESSION_FORMATS = ['oneToOne', 'smallGroup', 'team', 'online', 'camp', 'videoReview', 'programme'];
 const PEAK_LEVELS = ['recreational', 'club', 'regional', 'national', 'international'];
 const DBS_OPTS = ['valid', 'pending', 'not_required'];
-const NOTICE_OPTS = [{ value: 0, key: 'sameDay' }, { value: 24, key: 'h24' }, { value: 48, key: 'h48' }, { value: 168, key: 'week' }];
+const NOTICE_OPTS = [{ value: 0, key: 'sameDay' }, { value: 24, key: 'h24' }, { value: 48, key: 'h48' }, { value: 168, key: 'week' }, { value: 336, key: 'twoWeeks' }, { value: 720, key: 'month' }];
+const MIN_COMMITMENT_OPTS = ['single', 'monthly', 'quarterly', 'seasonal', 'annual'];
+const WEEKDAY_OPTS = [
+  { value: 1, key: 'mon' }, { value: 2, key: 'tue' }, { value: 3, key: 'wed' },
+  { value: 4, key: 'thu' }, { value: 5, key: 'fri' }, { value: 6, key: 'sat' }, { value: 0, key: 'sun' },
+];
 
 // Language list (ISO 639-1 → display name)
 const LANG_OPTIONS = [
@@ -893,7 +900,17 @@ export function AddCoachSportSheet({ visible, onClose, onDone, initialSport, cur
   const [bookingNotice, setBookingNotice] = useState(24);
   const [weeklyHours, setWeeklyHours] = useState(10);
   const [travelWilling, setTravelWilling] = useState(false);
-  const [baseCity, setBaseCity] = useState('');
+  const [baseLocation, setBaseLocation] = useState(null);
+  const [rateCurrency, setRateCurrency] = useState('');
+  const [rateOnline, setRateOnline] = useState('');
+  const [rateTrial, setRateTrial] = useState('');
+  const [sessionDuration, setSessionDuration] = useState(60);
+  const [maxAthletes, setMaxAthletes] = useState(5);
+  const [minCommitment, setMinCommitment] = useState(null);
+  const [travelRadius, setTravelRadius] = useState(100);
+  const [availableDays, setAvailableDays] = useState([]);
+
+  useEffect(() => { if (!rateCurrency && currency) setRateCurrency(currency); }, [currency]);
 
   const reset = () => {
     setStep(1); setErr(null); setProfileId(null);
@@ -901,7 +918,9 @@ export function AddCoachSportSheet({ visible, onClose, onDone, initialSport, cur
     setLicences([]); setShowLicenceForm(false); setEditLicenceIdx(null); setDbsStatus(null); setDbsIssuedOn(null); setFirstAidExpires(null); setDegree('');
     setSpecialisations([]); setFormats([]); setBio(''); setCoachingLanguages([]);
     setCareer([]); setShowCareerForm(false); setEditCareerIdx(null); setCoachingCountries([]);
-    setRate1to1(''); setRateGroup(''); setRateInstitutional(''); setBookingNotice(24); setWeeklyHours(10); setTravelWilling(false); setBaseCity('');
+    setRate1to1(''); setRateGroup(''); setRateInstitutional(''); setBookingNotice(24); setWeeklyHours(10); setTravelWilling(false);
+    setBaseLocation(null); setRateCurrency(currency ?? ''); setRateOnline(''); setRateTrial('');
+    setSessionDuration(60); setMaxAthletes(5); setMinCommitment(null); setTravelRadius(100); setAvailableDays([]);
   };
 
   useEffect(() => { if (!visible) reset(); }, [visible]);
@@ -942,7 +961,18 @@ export function AddCoachSportSheet({ visible, onClose, onDone, initialSport, cur
         dbs_issued_on: dbsIssuedOn,
         first_aid_expires_on: firstAidExpires,
         coaching_degree: degree.trim() || undefined,
-        base_city: baseCity.trim() || undefined,
+        hourly_rate_cents:    rate1to1 ? Math.round(parseFloat(rate1to1) * 100) : undefined,
+        rate_currency:        rateCurrency || undefined,
+        online_rate_cents:    rateOnline ? Math.round(parseFloat(rateOnline) * 100) : undefined,
+        trial_rate_cents:     rateTrial ? Math.round(parseFloat(rateTrial) * 100) : undefined,
+        travel_radius_km:     travelWilling && travelRadius ? travelRadius : undefined,
+        available_days:       availableDays.length ? availableDays : undefined,
+        min_commitment:       minCommitment ?? undefined,
+        max_athletes:         maxAthletes > 0 ? maxAthletes : undefined,
+        session_duration_min: sessionDuration > 0 ? sessionDuration : undefined,
+        base_city:            baseLocation?.name ?? undefined,
+        base_lat:             baseLocation?.lat ?? undefined,
+        base_lng:             baseLocation?.lng ?? undefined,
       };
       await api.patch(`/me/sport-profiles/${id}/coach`, patch);
       // persist licences
@@ -1105,16 +1135,43 @@ export function AddCoachSportSheet({ visible, onClose, onDone, initialSport, cur
       {/* ── Step 5: Availability & Rates ──────────────────────────────────────── */}
       {step === 5 && (
         <View>
-          <Field label={t('coach.sport.rate1to1.label')} value={rate1to1} onChangeText={setRate1to1} keyboardType="decimal-pad" placeholder="0.00" optional />
-          <Field label={t('coach.sport.rateGroup.label')} value={rateGroup} onChangeText={setRateGroup} keyboardType="decimal-pad" placeholder="0.00" optional />
-          <Field label={t('coach.sport.rateInstitutional.label')} value={rateInstitutional} onChangeText={setRateInstitutional} keyboardType="decimal-pad" placeholder="0.00" hint={t('coach.sport.rateInstitutional.hint')} optional />
-          <T size={12} color={c.mute} style={{ marginBottom: 12 }}>{t('coach.sport.ratesLaterHint')}</T>
+          {/* A — RATES */}
+          <SectionLabel label={t('coach.sport.rates.sectionTitle')} />
+          <T size={12} color={c.mute} style={{ marginBottom: 10 }}>{t('coach.sport.ratesLaterHint')}</T>
+          <CurrencyDropdown label={t('coach.sport.rateCurrency.label')} value={rateCurrency} onChange={setRateCurrency} hint={t('coach.sport.rateCurrency.hint')} />
+          <Field label={t('coach.sport.rate1to1.label')} value={rate1to1} onChangeText={setRate1to1} keyboardType="decimal-pad" placeholder="0.00"
+            hint={t('coach.sport.rate1to1.hint')} prefix={rateCurrency || undefined} optional />
+          <Field label={t('coach.sport.rateGroup.label')} value={rateGroup} onChangeText={setRateGroup} keyboardType="decimal-pad" placeholder="0.00"
+            hint={t('coach.sport.rateGroup.hint')} prefix={rateCurrency || undefined} optional />
+          <Field label={t('coach.sport.rateInstitutional.label')} value={rateInstitutional} onChangeText={setRateInstitutional} keyboardType="decimal-pad" placeholder="0.00"
+            hint={t('coach.sport.rateInstitutional.hint')} prefix={rateCurrency || undefined} optional />
+          <Field label={t('coach.sport.rateOnline.label')} value={rateOnline} onChangeText={setRateOnline} keyboardType="decimal-pad" placeholder="0.00"
+            hint={t('coach.sport.rateOnline.hint')} prefix={rateCurrency || undefined} optional />
+          <Field label={t('coach.sport.rateTrial.label')} value={rateTrial} onChangeText={setRateTrial} keyboardType="decimal-pad" placeholder="0.00"
+            hint={t('coach.sport.rateTrial.hint')} prefix={rateCurrency || undefined} optional />
 
-          <SectionLabel label={t('coach.sport.bookingNotice.label')} />
+          {/* B — BOOKING & CAPACITY */}
+          <SectionLabel label={t('coach.sport.booking.sectionTitle')} />
+          <T size={12} color={c.mute} style={{ marginBottom: 8 }}>{t('coach.sport.bookingNotice.label')}</T>
           <ChipRow options={noticeOpts} value={bookingNotice} onChange={setBookingNotice} multiSelect={false} />
 
-          <SectionLabel label={t('coach.sport.weeklyHours.label')} />
-          <Counter value={weeklyHours} onChange={setWeeklyHours} min={1} max={80} suffix={t('coach.sport.weeklyHours.suffix')} accessibilityLabel={t('coach.sport.weeklyHours.label')} />
+          <SectionLabel label={t('coach.sport.sessionDuration.label')} />
+          <Counter value={sessionDuration} onChange={setSessionDuration} min={30} max={300} step={15}
+            suffix={t('coach.sport.sessionDuration.suffix')} accessibilityLabel={t('coach.sport.sessionDuration.label')} />
+
+          <SectionLabel label={t('coach.sport.maxAthletes.label')} />
+          <Counter value={maxAthletes} onChange={setMaxAthletes} min={1} max={100}
+            suffix={t('coach.sport.maxAthletes.suffix')} accessibilityLabel={t('coach.sport.maxAthletes.label')} />
+
+          <SectionLabel label={t('coach.sport.minCommitment.label')} />
+          <ChipRow
+            options={MIN_COMMITMENT_OPTS.map((v) => ({ value: v, label: t(`coach.sport.minCommitment.${v}`) }))}
+            value={minCommitment} onChange={setMinCommitment} multiSelect={false} />
+
+          {/* C — LOCATION & TRAVEL */}
+          <SectionLabel label={t('coach.sport.location.sectionTitle')} />
+          <PlacePicker label={t('coach.sport.baseCity.label')} value={baseLocation} onChange={setBaseLocation}
+            hint={t('coach.sport.baseCity.hint')} optional />
 
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: 16, minHeight: 44, padding: 12, borderRadius: 12, backgroundColor: c.bg, borderWidth: 1, borderColor: c.line }}>
             <Switch value={travelWilling} onValueChange={setTravelWilling} trackColor={{ true: c.pink }} accessibilityLabel={t('coach.sport.travel.label')} />
@@ -1123,8 +1180,23 @@ export function AddCoachSportSheet({ visible, onClose, onDone, initialSport, cur
               <T size={12} color={c.mute}>{t('coach.sport.travel.sub')}</T>
             </View>
           </View>
+          {travelWilling && (
+            <View style={{ marginTop: 12 }}>
+              <SectionLabel label={t('coach.sport.travelRadius.label')} />
+              <Counter value={travelRadius} onChange={setTravelRadius} min={10} max={5000} step={10}
+                suffix={t('coach.sport.travelRadius.suffix')} accessibilityLabel={t('coach.sport.travelRadius.label')} />
+            </View>
+          )}
 
-          <Field label={t('coach.sport.baseCity.label')} value={baseCity} onChangeText={setBaseCity} hint={t('coach.sport.baseCity.hint')} optional />
+          {/* D — WEEKLY SCHEDULE */}
+          <SectionLabel label={t('coach.sport.schedule.sectionTitle')} />
+          <T size={12} color={c.mute} style={{ marginBottom: 8 }}>{t('coach.sport.weeklyHours.label')}</T>
+          <Counter value={weeklyHours} onChange={setWeeklyHours} min={1} max={80} suffix={t('coach.sport.weeklyHours.suffix')} accessibilityLabel={t('coach.sport.weeklyHours.label')} />
+
+          <SectionLabel label={t('coach.sport.availableDays.label')} />
+          <ChipRow
+            options={WEEKDAY_OPTS.map((d) => ({ value: d.value, label: t(`coach.sport.weekday.${d.key}`) }))}
+            value={availableDays} onChange={setAvailableDays} multiSelect />
 
           <T size={12} color={c.mute} style={{ marginTop: 12, marginBottom: 4 }}>{t('coach.sport.wizard.finishHint')}</T>
         </View>
