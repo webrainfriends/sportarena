@@ -118,7 +118,7 @@ cap({
          FROM users u LEFT JOIN auth_sessions s ON s.user_id = u.id`,
     );
     const usageTotals = await one(
-      `SELECT COALESCE(SUM(a.tokens_in + a.tokens_out), 0)::bigint AS total_ai_tokens_30d,
+      `SELECT COALESCE(a.tokens_in, 0)::bigint AS total_ai_tokens_30d,
               COALESCE(SUM(c.call_count), 0)::bigint AS total_api_calls_30d
          FROM (SELECT 1) x
          LEFT JOIN (SELECT SUM(tokens_in + tokens_out) AS tokens_in FROM ai_token_usage WHERE at >= CURRENT_DATE - 30) a ON true
