@@ -912,7 +912,7 @@ export function AddCoachSportSheet({ visible, onClose, onDone, initialSport, cur
       if (!sport) { setErr('Please select a sport.'); return; }
       setBusy(true);
       try {
-        const res = await api.post('/me/sport-profiles', { sport, role: 'coach', level: tier ?? 'amateur', experience_years: yearsCoaching });
+        const res = await api.post('/me/sport-profiles', { sport, role: 'coach', experience_years: yearsCoaching });
         setProfileId(res.id ?? res.sport_profile?.id);
         setStep(2);
         if (paraEnabled) { try { await api.post('/me/coach-adaptive', { sport }); } catch {} }
