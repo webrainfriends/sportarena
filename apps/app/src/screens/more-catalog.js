@@ -42,6 +42,7 @@ export const WORKSPACES = [
   ['platform_admin', 'CommercialConsole', 'Catalogue, pricing & entitlements', null, 'Commercial console'],
   ['platform_admin', 'IntegrationRequests', 'Price and enable integrations for organisations', null, 'Integration requests'],
   ['platform_admin', 'PlatformSecurity', 'Encryption keys & audit log', null, 'Keys & audit console'],
+  ['platform_admin', 'PlatformBenchmarks', 'Competitive health across all 10 platform KPIs', null, 'Platform benchmarks'],
   ['platform_admin', 'PlatformUsers', 'All login IDs, storage, AI & API usage', null, 'Platform users'],
   ['official_verifier', 'VerifierDesk', 'Official verification requests', null, 'Official verifier desk'],
 ];
