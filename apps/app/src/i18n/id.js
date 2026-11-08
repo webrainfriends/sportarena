@@ -15423,7 +15423,6 @@ export default {
   'para_a11y.defect_status.in_progress': 'In Progress',
   'para_a11y.defect_status.resolved': 'Resolved',
   'para_a11y.defect_status.wont_fix': "Won't Fix",
-},
   'pu.title': 'Pengguna platform',
   'pu.sub': 'ID masuk · penyimpanan · penggunaan AI & API',
   'pu.total': '{n} akun',
