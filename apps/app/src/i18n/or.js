@@ -15548,4 +15548,3 @@ export default {
   'asu.prev': '← ପୂର୍ବ',
   'asu.next': 'ପରବର୍ତ୍ତୀ →',
 };
-};
