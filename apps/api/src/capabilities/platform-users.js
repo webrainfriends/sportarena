@@ -45,7 +45,7 @@ function fmtUser(r) {
 }
 
 cap({
-  name: 'list_platform_users', method: 'GET', path: '/admin/users', tag: TAG, auth: ['admin'],
+  name: 'list_all_users', method: 'GET', path: '/admin/users', tag: TAG, auth: ['admin'],
   summary: 'Platform admin: all user accounts with their handle, decrypted email, roles, last login date/time, cumulative storage bytes, AI token usage (last 30 days) and API call count (last 30 days). Emails are audit-logged on each call. Paginated; default 50 per page.',
   input: z.object({
     ...page,
@@ -108,7 +108,7 @@ cap({
 
     // Decrypt emails and audit the bulk read
     const users = rows.map((r) => ({ ...r, email: r.email_enc ? decrypt(r.email_enc, 'users.email') : null }));
-    await audit(null, user.id, 'list_platform_users', 'users', null);
+    await audit(null, user.id, 'list_all_users', 'users', null);
 
     // Platform-wide totals (lightweight aggregate, computed once per page load)
     const totals = await one(
