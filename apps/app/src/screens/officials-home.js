@@ -19,6 +19,7 @@ import { Banner, Metric, money } from '../federation-ui';
 import { openPdf } from '../open-file';
 import { t } from '../i18n';
 import { OfficialProfileBanner, OfficialProfileWizard } from './official-profile-wizard';
+import { RateCardOnboardingBanner } from './rate-card-catalog';
 import { Cols } from '../federation-bits';
 import { VerificationSection } from './verification';
 import { MatchDayPack } from './match-day-pack';
@@ -582,6 +583,7 @@ export function OfficialsHome({ tab: tab0 }) {
       <OfficialProfileBanner onSetup={() => setShowProfileWizard(true)} />
       {showProfileWizard ? <OfficialProfileWizard onClose={() => setShowProfileWizard(false)} onDone={() => setShowProfileWizard(false)} toast={(msg) => {}} /> : null}
       {!h.sports.length ? <Banner tone={c.sunSoft} action="Add a sport profile" onAction={() => go('SportProfile')}>Add a referee sport profile so organisers can find and ask you.</Banner> : null}
+      <RateCardOnboardingBanner onPress={() => go('RateCardCatalog')} />
       <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginTop: 12 }}>
         <Metric value={h.stats.this_week} label="Matches this week" onPress={() => setTab('calendar')} />
         <Metric value={h.stats.pending} label="Requests to answer" tone={h.stats.pending ? c.sunSoft : undefined} onPress={() => setTab('today')} />

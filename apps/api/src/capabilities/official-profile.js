@@ -288,7 +288,7 @@ cap({
 // ------------------------------------------------------------------ rate cards (step 7)
 cap({
   name: 'save_official_rate_cards', method: 'PUT', path: '/me/official-profile/rate-cards', tag: TAG,
-  summary: 'Full-replace rate cards.',
+  summary: 'Full-replace rate cards (wizard step 7). Accepts both legacy 11-field format and extended service-catalog fields (#1015).',
   input: z.object({
     rates: z.array(z.object({
       sport_id: id.optional(),
@@ -302,6 +302,21 @@ cap({
       expenses_note: text(300).optional(),
       valid_from: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
       valid_until: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+      // Extended service-catalog fields (optional for backwards compatibility)
+      name: z.string().trim().max(120).optional(),
+      service_type: z.enum(['hourly','match','session','day']).optional(),
+      weekend_sat_pct: z.number().min(0).max(100).optional(),
+      weekend_sun_pct: z.number().min(0).max(100).optional(),
+      holiday_pct: z.number().min(0).max(100).optional(),
+      overtime_rate_minor: z.number().int().min(0).optional(),
+      min_fee_minor: z.number().int().min(0).optional(),
+      deposit_type: z.enum(['none','pct','fixed']).optional(),
+      deposit_pct: z.number().min(0).max(100).optional(),
+      deposit_minor: z.number().int().min(0).optional(),
+      tax_inclusive: z.boolean().optional(),
+      status: z.enum(['draft','active']).optional(),
+      is_indicative: z.boolean().optional(),
+      private_notes: z.string().trim().max(2000).optional(),
     })),
   }),
   async handler({ user }, i) {
@@ -311,11 +326,22 @@ cap({
       if (!p) throw notFound('Official profile');
       await c.query("UPDATE official_profile_rates SET archived_at=now() WHERE profile_id=$1 AND archived_at IS NULL", [p.id]);
       for (const r of i.rates) {
-        await c.query('INSERT INTO official_profile_rates(profile_id,sport_id,role,fixture_type,level_label,fee_minor,fee_currency,includes_travel,travel_allowance_per_km_minor,expenses_note,valid_from,valid_until) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)',
-          [p.id, r.sport_id||null, r.role||null, r.fixture_type, r.level_label||null, r.fee_minor, r.fee_currency, r.includes_travel??false, r.travel_allowance_per_km_minor||null, r.expenses_note||null, r.valid_from||null, r.valid_until||null]);
+        const pnEnc = r.private_notes ? encrypt(r.private_notes) : null;
+        await c.query(`INSERT INTO official_profile_rates(
+          profile_id,sport_id,role,fixture_type,level_label,fee_minor,fee_currency,
+          includes_travel,travel_allowance_per_km_minor,expenses_note,valid_from,valid_until,
+          name,service_type,weekend_sat_pct,weekend_sun_pct,holiday_pct,overtime_rate_minor,
+          min_fee_minor,deposit_type,deposit_pct,deposit_minor,tax_inclusive,status,
+          version_number,is_indicative,private_notes_enc
+        ) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27)`,
+          [p.id, r.sport_id||null, r.role||null, r.fixture_type, r.level_label||null, r.fee_minor, r.fee_currency,
+           r.includes_travel??false, r.travel_allowance_per_km_minor||null, r.expenses_note||null, r.valid_from||null, r.valid_until||null,
+           r.name||null, r.service_type||null, r.weekend_sat_pct??0, r.weekend_sun_pct??0, r.holiday_pct??0, r.overtime_rate_minor??0,
+           r.min_fee_minor??0, r.deposit_type??'none', r.deposit_pct??0, r.deposit_minor??0, r.tax_inclusive??true,
+           r.status??'active', 1, r.is_indicative??true, pnEnc]);
       }
       await c.query("UPDATE official_profiles SET step_reached=GREATEST(step_reached,7), row_version=row_version+1, updated_at=now() WHERE id=$1", [p.id]);
-      return many('SELECT id, sport_id, role, fixture_type, level_label, fee_minor, fee_currency, includes_travel, travel_allowance_per_km_minor, expenses_note, valid_from, valid_until FROM official_profile_rates WHERE profile_id=$1 AND archived_at IS NULL ORDER BY created_at', [p.id]);
+      return many('SELECT id, sport_id, role, fixture_type, level_label, fee_minor, fee_currency, includes_travel, travel_allowance_per_km_minor, expenses_note, valid_from, valid_until, name, service_type, status, version_number, is_indicative FROM official_profile_rates WHERE profile_id=$1 AND archived_at IS NULL ORDER BY created_at', [p.id]);
     });
   },
 });

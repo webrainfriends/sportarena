@@ -15832,6 +15832,97 @@ export default {
   'opw.view.rates': 'Rate Cards',
   'nav.title.OfficialProfileWizard': 'Official Profile Setup',
   'nav.title.OfficialProfileView': 'Official Profile',
+  'nav.title.RateCardCatalog': 'Rate Cards', // machine draft, reviewed: false
+  'nav.title.RateCardWizard': 'Rate Card Setup', // machine draft, reviewed: false
+  'nav.title.QuoteCalculator': 'Quote Calculator', // machine draft, reviewed: false
+  'rc.title': 'Rate Cards', // machine draft, reviewed: false
+  'rc.catalog_sub': 'Service Catalog', // machine draft, reviewed: false
+  'rc.stats_active': 'Active', // machine draft, reviewed: false
+  'rc.stats_draft': 'Draft', // machine draft, reviewed: false
+  'rc.stats_avg': 'Avg / Match', // machine draft, reviewed: false
+  'rc.stats_archived': 'Archived', // machine draft, reviewed: false
+  'rc.filter_all': 'All', // machine draft, reviewed: false
+  'rc.filter_active': 'Active', // machine draft, reviewed: false
+  'rc.filter_draft': 'Draft', // machine draft, reviewed: false
+  'rc.onboard_title': 'Complete your Service Catalog', // machine draft, reviewed: false
+  'rc.onboard_sub': 'Activate at least one rate card to appear in the marketplace.', // machine draft, reviewed: false
+  'rc.onboard_cta': 'Activate a Card', // machine draft, reviewed: false
+  'rc.new': 'New Rate Card', // machine draft, reviewed: false
+  'rc.edit': 'Edit', // machine draft, reviewed: false
+  'rc.duplicate': 'Duplicate', // machine draft, reviewed: false
+  'rc.quote': 'Quote', // machine draft, reviewed: false
+  'rc.activate': 'Activate', // machine draft, reviewed: false
+  'rc.deactivate': 'Deactivate', // machine draft, reviewed: false
+  'rc.save_draft': 'Save Draft', // machine draft, reviewed: false
+  'rc.review_activate': 'Activate', // machine draft, reviewed: false
+  'rc.badge_active': 'Active', // machine draft, reviewed: false
+  'rc.badge_draft': 'Draft', // machine draft, reviewed: false
+  'rc.badge_archived': 'Archived', // machine draft, reviewed: false
+  'rc.step_type': 'Type', // machine draft, reviewed: false
+  'rc.step_sport': 'Sport', // machine draft, reviewed: false
+  'rc.step_price': 'Price', // machine draft, reviewed: false
+  'rc.step_premium': 'Premium', // machine draft, reviewed: false
+  'rc.step_terms': 'Terms', // machine draft, reviewed: false
+  'rc.step_visible': 'Visible', // machine draft, reviewed: false
+  'rc.step_review': 'Review', // machine draft, reviewed: false
+  'rc.name_label': 'Service Name', // machine draft, reviewed: false
+  'rc.name_hint': 'e.g. Elite Match Referee — Football', // machine draft, reviewed: false
+  'rc.service_type_label': 'Service Rate Type', // machine draft, reviewed: false
+  'rc.type_hourly': 'Hourly', // machine draft, reviewed: false
+  'rc.type_match': 'Per Match', // machine draft, reviewed: false
+  'rc.type_session': 'Per Session', // machine draft, reviewed: false
+  'rc.type_day': 'Day Rate', // machine draft, reviewed: false
+  'rc.base_fee': 'Base Fee', // machine draft, reviewed: false
+  'rc.min_fee': 'Minimum Fee', // machine draft, reviewed: false
+  'rc.fee_hint': 'In minor currency units (pence/cents). 16500 = £165.00', // machine draft, reviewed: false
+  'rc.weekend_sat': 'Saturday Premium', // machine draft, reviewed: false
+  'rc.weekend_sun': 'Sunday Premium', // machine draft, reviewed: false
+  'rc.holiday': 'Public Holiday Premium', // machine draft, reviewed: false
+  'rc.overtime': 'Overtime Rate (per hour)', // machine draft, reviewed: false
+  'rc.prem_preview': 'Premium Preview', // machine draft, reviewed: false
+  'rc.deposit_label': 'Deposit Requirement', // machine draft, reviewed: false
+  'rc.deposit_none': 'None', // machine draft, reviewed: false
+  'rc.deposit_pct': '% Rate', // machine draft, reviewed: false
+  'rc.deposit_fixed': 'Fixed Amount', // machine draft, reviewed: false
+  'rc.tax_inclusive': 'Tax Inclusive', // machine draft, reviewed: false
+  'rc.tax_inclusive_sub': 'Rate already includes VAT / sales tax', // machine draft, reviewed: false
+  'rc.travel_included': 'Travel Included', // machine draft, reviewed: false
+  'rc.travel_per_km': 'Travel Allowance (per km)', // machine draft, reviewed: false
+  'rc.travel_radius': 'Free Travel Radius (km)', // machine draft, reviewed: false
+  'rc.valid_from': 'Valid From', // machine draft, reviewed: false
+  'rc.valid_until': 'Valid Until', // machine draft, reviewed: false
+  'rc.vis_indicative': 'Indicative Rate (Public)', // machine draft, reviewed: false
+  'rc.vis_indicative_sub': 'Published to marketplace. Exact negotiated price stays private.', // machine draft, reviewed: false
+  'rc.vis_negotiated': 'Negotiated Rate (Private)', // machine draft, reviewed: false
+  'rc.vis_negotiated_sub': 'Shared only via direct quote. Never in public search.', // machine draft, reviewed: false
+  'rc.private_notes': 'Private Notes', // machine draft, reviewed: false
+  'rc.private_notes_hint': 'Stored encrypted. Never shown to counterparts.', // machine draft, reviewed: false
+  'rc.review_title': 'Review & Activate', // machine draft, reviewed: false
+  'rc.review_sub': 'Changes to an active card create a new version.', // machine draft, reviewed: false
+  'rc.version': 'Version', // machine draft, reviewed: false
+  'rc.quote_title': 'Request a Quote', // machine draft, reviewed: false
+  'rc.quote_event_date': 'Event Date', // machine draft, reviewed: false
+  'rc.quote_duration': 'Duration', // machine draft, reviewed: false
+  'rc.quote_travel': 'Travel Distance (one-way)', // machine draft, reviewed: false
+  'rc.quote_overtime': 'Overtime Hours', // machine draft, reviewed: false
+  'rc.quote_holiday': 'Public Holiday?', // machine draft, reviewed: false
+  'rc.breakdown_title': 'Fee Breakdown', // machine draft, reviewed: false
+  'rc.breakdown_base': 'Base Fee', // machine draft, reviewed: false
+  'rc.breakdown_weekend': 'Weekend Premium', // machine draft, reviewed: false
+  'rc.breakdown_holiday': 'Holiday Premium', // machine draft, reviewed: false
+  'rc.breakdown_travel': 'Travel', // machine draft, reviewed: false
+  'rc.breakdown_overtime': 'Overtime', // machine draft, reviewed: false
+  'rc.breakdown_subtotal': 'Subtotal', // machine draft, reviewed: false
+  'rc.breakdown_tax': 'Tax', // machine draft, reviewed: false
+  'rc.breakdown_deposit': 'Deposit Required', // machine draft, reviewed: false
+  'rc.breakdown_total': 'Total (est.)', // machine draft, reviewed: false
+  'rc.breakdown_note': 'Indicative estimate. Final price confirmed on acceptance.', // machine draft, reviewed: false
+  'rc.send_request': 'Send Booking Request', // machine draft, reviewed: false
+  'rc.download_pdf': 'Download Estimate PDF', // machine draft, reviewed: false
+  'rc.home_onboard_title': 'Set Up Your Rate Cards', // machine draft, reviewed: false
+  'rc.home_onboard_sub': 'Add a rate card to appear in the marketplace and receive booking requests.', // machine draft, reviewed: false
+  'rc.home_onboard_cta': 'Set Up Rate Cards', // machine draft, reviewed: false
+};
 
   'nav.title.AssignmentBoard': 'ଅଧିକାରୀ ନିଯୁକ୍ତି ବୋର୍ଡ',
   'nav.title.OfficialsBulkInvite': 'ଅଧିକାରୀମାନଙ୍କୁ ଏକାଠି ଆମନ୍ତ୍ରଣ',

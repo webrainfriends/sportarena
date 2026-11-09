@@ -416,6 +416,19 @@ id: 'wellbeing', title: 'Support student wellbeing and development',
     ],
   },
   {
+    id: 'officials', title: 'Book officials with standard rate cards',
+    why: 'Elite academies like Nadal Academy, Real Madrid Academies and FC Barcelona need vetted, priced officials — referees, technical officials and umpires — with locked, snapshot-safe rate agreements. The referee service catalog lets officials publish structured rate cards; academies build instant fee estimates and send booking requests directly from the quote calculator.',
+    steps: [
+      'Officials: open your profile (More → Official profile) and tap Rate Cards. Tap + New Rate Card to open the 7-step wizard. Step 1 — Type: give the card a name (e.g. "Elite Grand Slam Match Referee") and choose service type (Hourly / Match / Session / Day). Step 2 — Sport: pick your sport, role and fixture type from the catalogue and enter a level label. Step 3 — Price: set the base fee and minimum fee (stepper with live currency display). Step 4 — Premium: set weekend Saturday premium %, Sunday premium % and bank holiday premium %; set your overtime hourly rate. The table shows a live preview of a sample fee for each scenario. Step 5 — Terms: set deposit type (none, percentage or fixed amount), toggle tax-inclusive, configure travel (included, or charge per km beyond a free radius), and set a valid-from and valid-until date. Step 6 — Visibility: choose Indicative (published to the marketplace so anyone can see the rate) or Negotiated (direct quote only, never publicly listed); add private notes for your own reference — these are stored encrypted and never shown to organisers. Step 7 — Review: check the full summary, then tap Save Draft or Activate. Activated cards are locked; editing one archives the old version and creates a new draft (version 2, 3, …) so any accepted booking snapshot is never retrospectively changed.',
+      'From the Rate Cards screen, Activate or Deactivate any card with a single tap. Duplicate a card to build a variant (e.g. a junior-match card at a lower rate). Archived cards are still visible in the catalog with an Archived badge so the history is preserved.',
+      'Organisers and academies: open an official's public profile and tap Rate Cards. The public catalog shows only Indicative + Active cards. Tap a card to see the full rate breakdown, then tap Get a Quote. In the quote calculator, choose event date (day-of-week is detected automatically and the right premium applied), duration, travel distance and any overtime hours, and toggle Bank holiday if applicable. The itemized breakdown shows base fee, premium surcharge, travel charge and overtime charge, the subtotal and the deposit amount due on booking. Tap Send Booking Request to start the booking flow, or Download Estimate PDF to share the costing with your finance team.',
+      'Rate snapshots on accepted bookings are immutable: the rate card version is frozen at the moment a booking is confirmed, so a later rate revision never changes an already-agreed fee.',
+    ],
+    target: { screen: 'OfficialProfile' },
+    modules: ['official-rate-card.js'],
+    sources: ['apps/app/src/screens/rate-card-catalog.js', 'apps/app/src/screens/rate-card-wizard.js', 'apps/app/src/screens/quote-calculator.js'],
+  },
+  {
     id: 'data_residency',
     title: 'Data residency & privacy',
     why: 'Elite academies operate globally. Each athlete\'s personal data must be stored in the right jurisdiction — in-country where GotMyGame has an active region, or in Singapore with explicit informed consent otherwise.',
@@ -447,7 +460,7 @@ export const NOT_IN_GUIDE = {
 };
 
 /** The directories/files the guard test watches for org/academy/venue/coach/tax capability modules. */
-export const WATCHED_MODULES = /^(academy-.*|org-.*|organisations|venue-coaches|gst|provider-tax|coach-classes|para-sport-funding|para-sport-sponsorship-outcomes|para-pathway|para-readiness|para-learn|para-staff-credentials|para-spectator-accessibility|para-ux-conformance|boarding-.*|wearables|wellness.*|integrations)\.js$/;
+export const WATCHED_MODULES = /^(academy-.*|org-.*|organisations|venue-coaches|gst|provider-tax|coach-classes|para-sport-funding|para-sport-sponsorship-outcomes|para-pathway|para-readiness|para-learn|para-staff-credentials|para-spectator-accessibility|para-ux-conformance|boarding-.*|wearables|wellness.*|integrations|official-rate-card)\.js$/;
 
 export const SHOT_SIZES = { phone: { width: 390, height: 1100 }, desktop: { width: 1280, height: 900 } };
 export const shotFile = (stepId, size) => `${String(ACADEMY_STEPS.findIndex((s) => s.id === stepId) + 1).padStart(2, '0')}-${stepId}-${size}.png`;
