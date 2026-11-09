@@ -900,7 +900,6 @@ export default {
   'nav.title.MyAccreditations': 'എന്റെ ബാഡ്ജുകൾ',
   'nav.title.OfficialsDevelopment': 'ഒഫീഷ്യൽ വികസനം',
   'nav.title.OfficialAssessment': 'Assessment',
-  'nav.title.OfficialCrewHub': 'Crew hub',
   'crew.completeness_label': 'Crew completeness',
   'crew.ready': 'All required roles filled',
   'crew.incomplete': 'Some required roles are not yet filled',

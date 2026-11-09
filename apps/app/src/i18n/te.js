@@ -900,7 +900,6 @@ export default {
   'nav.title.MyAccreditations': 'నా బ్యాడ్జ్‌లు',
   'nav.title.OfficialsDevelopment': 'అధికారుల అభివృద్ధి',
   'nav.title.OfficialAssessment': 'Assessment',
-  'nav.title.OfficialCrewHub': 'Crew hub',
   'crew.completeness_label': 'Crew completeness',
   'crew.ready': 'All required roles filled',
   'crew.incomplete': 'Some required roles are not yet filled',

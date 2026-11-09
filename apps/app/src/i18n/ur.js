@@ -907,7 +907,6 @@ export default {
   'nav.title.MyAccreditations': 'میرے بیجز',
   'nav.title.OfficialsDevelopment': 'منصفین کی ترقی',
   'nav.title.OfficialAssessment': 'Assessment',
-  'nav.title.OfficialCrewHub': 'Crew hub',
   'crew.completeness_label': 'Crew completeness',
   'crew.ready': 'All required roles filled',
   'crew.incomplete': 'Some required roles are not yet filled',

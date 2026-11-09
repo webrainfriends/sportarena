@@ -151,6 +151,9 @@ export function EventCommand({ id, tab: first = 'overview', sub: firstSub, plan:
       {tab === 'people' && (
         <>
           {isOrg ? <View style={{ flexDirection: 'row', gap: 8 }}><AChip label="🧩 Departments" active={sub.people === 'departments'} onPress={() => go('people', 'departments')} /><AChip label="🩺 Hiring" active={sub.people === 'hiring'} onPress={() => go('people', 'hiring')} /></View> : null}
+          {isOrg ? (
+            <ABtn small title="📋 Assignment Board" onPress={() => nav.push('AssignmentBoard', { event_id: id })} style={{ alignSelf: 'flex-start', marginBottom: 8 }} />
+          ) : null}
           {isOrg ? <EventOfficialsSettings e={e} reload={reloadAll} /> : null}
           {sub.people === 'hiring' && isOrg ? <HiringTab {...P} roles={D.roles.data ?? []} staff={D.staff.data ?? []} reload={reloadAll} /> : <DepartmentsTab id={id} isOrg={isOrg} />}
         </>

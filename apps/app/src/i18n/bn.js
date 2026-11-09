@@ -900,7 +900,6 @@ export default {
   'nav.title.MyAccreditations': 'আমার ব্যাজ',
   'nav.title.OfficialsDevelopment': 'কর্মকর্তা উন্নয়ন',
   'nav.title.OfficialAssessment': 'Assessment',
-  'nav.title.OfficialCrewHub': 'Crew hub',
   'crew.completeness_label': 'Crew completeness',
   'crew.ready': 'All required roles filled',
   'crew.incomplete': 'Some required roles are not yet filled',

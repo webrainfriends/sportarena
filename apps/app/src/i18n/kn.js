@@ -900,7 +900,6 @@ export default {
   'nav.title.MyAccreditations': 'ನನ್ನ ಬ್ಯಾಡ್ಜ್‌ಗಳು',
   'nav.title.OfficialsDevelopment': 'ಅಧಿಕಾರಿ ಅಭಿವೃದ್ಧಿ',
   'nav.title.OfficialAssessment': 'Assessment',
-  'nav.title.OfficialCrewHub': 'Crew hub',
   'crew.completeness_label': 'Crew completeness',
   'crew.ready': 'All required roles filled',
   'crew.incomplete': 'Some required roles are not yet filled',
