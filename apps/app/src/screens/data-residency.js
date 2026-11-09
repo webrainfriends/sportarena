@@ -192,23 +192,26 @@ export function DataResidencyConsent({ route }) {
   const country = route?.params?.country ?? '';
   const [busy, setBusy] = useState(false);
   const [done, setDone] = useState(false);
+  const [policyInfo, setPolicyInfo] = useState(null);
 
-  const POLICY_HASH = 'a3f8c2d1';
-  const POLICY_VERSION = 1;
+  useEffect(() => {
+    if (country) api.get('/data-residency/preview', { country }).then(setPolicyInfo).catch(() => {});
+  }, [country]);
 
   const agree = useCallback(async () => {
+    if (!policyInfo) return;
     setBusy(true);
     try {
       await api.post('/data-residency/consent/singapore', {
         source_country: country,
-        policy_version: POLICY_VERSION,
-        policy_text_hash: POLICY_HASH,
+        policy_version: policyInfo.policy_version,
+        policy_text_hash: policyInfo.policy_text_hash,
         data_categories: ['profile_identity', 'sport_records', 'device_session', 'payment_references'],
         purposes: ['platform_access', 'event_management', 'results_rankings', 'communications', 'support_safety'],
       });
       setDone(true);
     } finally { setBusy(false); }
-  }, [country]);
+  }, [country, policyInfo]);
 
   if (done) return (
     <View style={{ flex: 1, backgroundColor: c.bg, alignItems: 'center', justifyContent: 'center', padding: 32 }}>
@@ -262,8 +265,8 @@ export function DataResidencyConsent({ route }) {
 
       <Card style={{ gap: 4 }}>
         {[
-          { k: t('residency.policy_version_label'), v: `v${POLICY_VERSION} · 2026-11-08` },
-          { k: t('residency.policy_hash_label'), v: `sha256:${POLICY_HASH}…` },
+          { k: t('residency.policy_version_label'), v: policyInfo ? `v${policyInfo.policy_version} · 2026-11-08` : '…' },
+          { k: t('residency.policy_hash_label'), v: policyInfo ? `sha256:${policyInfo.policy_text_hash}…` : '…' },
           { k: t('residency.policy_region_label'), v: 'ap-southeast-1' },
         ].map(({ k, v }) => (
           <Row key={k} style={{ justifyContent: 'space-between' }}>
@@ -278,7 +281,7 @@ export function DataResidencyConsent({ route }) {
         <Text style={{ fontSize: 12, color: c.ink, lineHeight: 20 }}>{t('residency.affirmation_body')}</Text>
       </View>
 
-      <Btn label={`🇸🇬 ${t('residency.fallback_agree')}`} onPress={agree} disabled={busy} />
+      <Btn label={`🇸🇬 ${t('residency.fallback_agree')}`} onPress={agree} disabled={busy || !policyInfo} />
       <Btn label={`⏳ ${t('residency.fallback_waitlist')}`} onPress={back} variant="secondary" />
       <Btn label={t('residency.fallback_decline')} onPress={back} variant="ghost" />
       <Text style={{ fontSize: 11, color: c.mute, textAlign: 'center' }}>{t('residency.no_pretick')}</Text>

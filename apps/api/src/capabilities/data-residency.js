@@ -14,6 +14,7 @@ const POLICY_VERSION = 1;
 // canonical text shown to a user before they consent to Singapore storage; hash is recorded in residency_consents
 const SG_POLICY_TEXT = `GotMyGame will store and process your personal data in AWS Singapore (ap-southeast-1). Singapore PDPA applies. You may withdraw consent at any time from Account → Data Residency, which will pause your account pending migration to a supported region. Data categories: profile & identity, sport records, device & session, payment references. Purposes: platform access, event management, results & rankings, communications, support & safety.`;
 const policyHash = () => createHash('sha256').update(`v${POLICY_VERSION}:${SG_POLICY_TEXT}`).digest('hex').slice(0, 16);
+const policyInfo = () => ({ policy_text: SG_POLICY_TEXT, policy_version: POLICY_VERSION, policy_text_hash: policyHash() });
 
 // ---- public: list all provisioned+healthy+approved regions
 cap({
@@ -39,10 +40,10 @@ cap({
   async handler(_ctx, { country }) {
     const row = await one(`SELECT aws_region, display_name, is_provisioned, is_healthy, is_policy_approved
       FROM residency_region_catalog WHERE country_code = $1 AND retired_at IS NULL ORDER BY effective_at DESC LIMIT 1`, [country]);
-    if (!row) return { country, supported: false, fallback_required: true, fallback_region: 'ap-southeast-1', fallback_display: 'AWS Singapore' };
+    if (!row) return { country, supported: false, fallback_required: true, fallback_region: 'ap-southeast-1', fallback_display: 'AWS Singapore', ...policyInfo() };
     if (row.is_provisioned && row.is_healthy && row.is_policy_approved)
-      return { country, supported: true, region: row.aws_region, display_name: row.display_name, fallback_required: false };
-    return { country, supported: false, fallback_required: true, fallback_region: 'ap-southeast-1', fallback_display: 'AWS Singapore' };
+      return { country, supported: true, region: row.aws_region, display_name: row.display_name, fallback_required: false, ...policyInfo() };
+    return { country, supported: false, fallback_required: true, fallback_region: 'ap-southeast-1', fallback_display: 'AWS Singapore', ...policyInfo() };
   },
 });
 
