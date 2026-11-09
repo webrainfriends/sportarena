@@ -369,6 +369,7 @@ import './season-archive.js';
 import './transfers.js';
 import './discipline.js';
 import './official-verification.js';
+import './official-report-signoff.js';
 import './my-workspace.js';
 import './security-keys.js';
 import './upload-limits.js';
