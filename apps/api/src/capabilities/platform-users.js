@@ -119,10 +119,10 @@ cap({
     );
     const usageTotals = await one(
       `SELECT COALESCE(a.tokens_in, 0)::bigint AS total_ai_tokens_30d,
-              COALESCE(SUM(c.call_count), 0)::bigint AS total_api_calls_30d
+              COALESCE(c.call_count, 0)::bigint AS total_api_calls_30d
          FROM (SELECT 1) x
          LEFT JOIN (SELECT SUM(tokens_in + tokens_out) AS tokens_in FROM ai_token_usage WHERE at >= CURRENT_DATE - 30) a ON true
-         LEFT JOIN (SELECT SUM(call_count) FROM user_daily_api_calls WHERE date >= CURRENT_DATE - 30) c(call_count) ON true`,
+         LEFT JOIN (SELECT SUM(call_count) AS call_count FROM user_daily_api_calls WHERE date >= CURRENT_DATE - 30) c ON true`,
     );
 
     return {
