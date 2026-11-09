@@ -13,7 +13,19 @@ export const PURPOSE_OPTIONS = [
   { value: 'routine', label: 'Routine' }, { value: 'promotion', label: 'Promotion' }, { value: 'mentoring', label: 'Mentoring' }, { value: 'probation', label: 'Probation' }, { value: 'return', label: 'Return to officiating' }, { value: 'other', label: 'Other' },
 ];
 export const PURPOSE = Object.fromEntries(PURPOSE_OPTIONS.map((o) => [o.value, o.label]));
-export const ROLE_OPTIONS = [{ value: 'referee', label: 'Referee' }, { value: 'umpire', label: 'Umpire' }, { value: 'linesman', label: 'Assistant referee' }, { value: 'scorer', label: 'Scorer' }];
+export const ROLE_OPTIONS = [
+  { value: 'referee', label: 'Referee' },
+  { value: 'umpire', label: 'Umpire' },
+  { value: 'linesman', label: 'Assistant referee' },
+  { value: 'scorer', label: 'Scorer / timekeeper' },
+  { value: 'video_assistant_referee', label: 'VAR' },
+  { value: 'fourth_official', label: 'Fourth official' },
+  { value: 'reserve_assistant_referee', label: 'Reserve AR' },
+  { value: 'shot_clock_operator', label: 'Shot clock operator' },
+  { value: 'timekeeper', label: 'Timekeeper' },
+  { value: 'goal_line_official', label: 'Goal-line official' },
+  { value: 'technical_official', label: 'Technical official' },
+];
 export const ROLE_NAME = Object.fromEntries(ROLE_OPTIONS.map((o) => [o.value, o.label]));
 // Generic starting points a body can tap in when it builds a rubric; they are only labels, the body decides what each means.
 export const DIMENSION_IDEAS = ['Application of the laws', 'Positioning and movement', 'Decision process', 'Communication', 'Teamwork and crew management', 'Match control', 'Administration and reporting'];

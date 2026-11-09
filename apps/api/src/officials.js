@@ -1,7 +1,11 @@
 // Shared invariants for fixture officials: eligibility + double-booking checks used by create, reschedule, invite and accept.
 import { badRequest, conflict } from './errors.js';
 
-export const OFFICIAL_ROLES = ['referee', 'umpire', 'linesman', 'scorer'];
+export const OFFICIAL_ROLES = [
+  'referee', 'umpire', 'linesman', 'scorer',
+  'video_assistant_referee', 'fourth_official', 'reserve_assistant_referee',
+  'shot_clock_operator', 'timekeeper', 'goal_line_official', 'technical_official',
+];
 const OPEN = ['invited', 'accepted'];
 
 /** Serialise all assignment decisions for one official (released at commit/rollback). */

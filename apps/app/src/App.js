@@ -124,6 +124,7 @@ import { AdaptiveEquipmentExplore, AdaptiveEquipmentHub, AdaptiveLoanFlow, Fitti
 import { DataResidency, DataResidencyConsent, DataResidencyMigration, DataResidencyAdmin } from './screens/data-residency';
 import { OfficialsDevelopment } from './screens/officials-development';
 import { OfficialsHome, OfficialMatch } from './screens/officials-home';
+import { OfficialCrewHub } from './screens/officials-crew';
 import { OfficialAssessment, AssessmentEditor } from './screens/officials-assessment';
 import { OfficialProfileWizard, OfficialProfileView } from './screens/official-profile-wizard';
 import { AcademyFamily } from './screens/academy-portal';
