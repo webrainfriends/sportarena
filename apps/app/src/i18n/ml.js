@@ -15450,6 +15450,10 @@ export default {
   'residency.consent_revoked': 'Revoked',
   'residency.no_consents': 'No consent records yet.',
   'residency.no_assignment': 'No data residency assignment yet. Complete onboarding to assign a region.',
+  // reviewed: false
+  'residency.no_assignment_title': 'Consent required to assign a region',
+  'residency.no_assignment_body': 'Your home country is set but no data-storage region has been assigned yet. Review and agree to the storage policy to activate your data residency.',
+  'residency.no_assignment_cta': 'Set up data storage',
   'residency.request_migration': 'Request region migration',
   'residency.migration_unavailable': 'No other provisioned region available for your country yet.',
   'residency.migration_in_progress': 'A migration is already in progress.',
