@@ -4,7 +4,7 @@
 // The server decides every permission; this only shows what comes back and keeps touch targets large for pitch-side use.
 import { FixtureParaSummary } from './para-competition';
 import React, { useMemo, useState } from 'react';
-import { View } from 'react-native';
+import { View, Pressable } from 'react-native';
 import { api } from '../api';
 import { useLoad } from '../hooks';
 import { useNav } from '../nav';
@@ -93,6 +93,7 @@ function Today({ h, reload, go, tz }) {
     ['🗂️', 'Officiating history', () => go('OfficialsHome', { tab: 'history' })], ['💼', 'Opportunities', () => go('Openings')], ['🪪', 'Verification & renewal', () => go('OfficialsHome', { tab: 'credential' })],
     ['⚖️', 'Reports & disputes', () => go('OfficialsHome', { tab: 'history' })], ['🎓', 'Grade, assessments & CPD', () => go('OfficialsDevelopment')],
     ['💰', 'Earnings & fees', () => go('OfficialEarnings')],
+    ['⚖️', t('off.ql_reports'), () => go('OfficialsHome', { tab: 'reports' })], ['🏛', t('off.ql_discipline'), () => go('DisciplineCases')], ['🎓', 'Grade, assessments & CPD', () => go('OfficialsDevelopment')],
   ];
   const matches = (
     <View style={{ gap: 14 }}>
@@ -438,6 +439,102 @@ export function AskRules({ fixtureId, sport }) {
   );
 }
 
+// ------------------------------------------------------------------ Reports Tab (all my reports with new status workflow)
+const REPORT_STATUS_CHIP = {
+  filed:      [t('or.status.filed'),      c.violetSoft],
+  revised:    [t('or.status.revised'),    c.violetSoft],
+  co_signing: [t('or.status.co_signing'), c.sunSoft],
+  submitted:  [t('or.status.submitted'),  c.cyanSoft],
+  accepted:   [t('or.status.accepted'),   c.mintSoft],
+  queried:    [t('or.status.queried'),    c.redSoft],
+};
+const INCIDENT_BADGE = { caution: '🟨', send_off: '🟥', suspension: '⚠️', abandonment: '🚫', venue: '🏟️', protest: '🤝', misconduct: '⚠️', other: '📋' };
+
+function ReportStatusTag({ status }) {
+  const [label, bg] = REPORT_STATUS_CHIP[status] ?? [status, c.violetSoft];
+  return <Tag label={label} color={bg} />;
+}
+
+function ReportCard({ r, onView, onProvenance }) {
+  const incidents = Array.isArray(r.incidents) ? r.incidents : [];
+  const cauCount = incidents.filter((i) => i.type === 'caution').length;
+  const soCount = incidents.filter((i) => i.type === 'send_off').length;
+  const needsCosign = r.status === 'co_signing';
+  const needsAction = r.status === 'queried';
+  return (
+    <Card onPress={onView} accessibilityLabel={`${r.category?.replace(/_/g, ' ')} report, ${r.status}`}>
+      <View style={{ gap: 8 }}>
+        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, alignItems: 'center' }}>
+          <ReportStatusTag status={r.status} />
+          {needsCosign ? <Tag label={t('or.needs_cosign')} color={c.sunSoft} /> : null}
+          {needsAction ? <Tag label={t('or.queried_action')} color={c.redSoft} /> : null}
+        </View>
+        <T weight="800" size={16}>{r.home_name ?? 'TBD'} v {r.away_name ?? 'TBD'}</T>
+        <T size={13} color={c.mute}>{r.event_name ? `${r.event_name} · ` : ''}{r.created_at ? new Date(r.created_at).toLocaleDateString(undefined, { weekday: 'short', day: 'numeric', month: 'short' }) : ''}</T>
+        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
+          <Tag label={REPORT_TYPES.find((t) => t.value === r.category)?.label ?? r.category} color={c.pinkSoft} />
+          {cauCount > 0 ? <Tag label={`🟨 ${cauCount}`} color={c.sunSoft} /> : null}
+          {soCount > 0 ? <Tag label={`🟥 ${soCount}`} color={c.redSoft} /> : null}
+          {r.disc_case_id ? <Tag label={t('or.disc_case_linked')} color={c.orangeSoft} /> : null}
+          {r.attachment_count > 0 ? <Tag label={`📎 ${r.attachment_count}`} color={c.cyanSoft} /> : null}
+        </View>
+        <View style={{ flexDirection: 'row', gap: 8, flexWrap: 'wrap', marginTop: 2 }}>
+          <Btn small title={t('or.view')} onPress={onView} style={{ minHeight: 44 }} />
+          {r.submitted_hash ? <Btn small title={t('or.provenance')} color={c.pinkSoft} onPress={onProvenance} style={{ minHeight: 44 }} /> : null}
+        </View>
+      </View>
+    </Card>
+  );
+}
+
+function ReportsTab({ go }) {
+  const [statusFilter, setStatusFilter] = useState('all');
+  const reports = useLoad(() => api.get('/me/officials/home', { limit: 1, offset: 0 }).then(() =>
+    api.get('/discipline/my-cases', { kind: 'all', status: 'all', limit: 1, offset: 0 })
+      .catch(() => ({ items: [] }))), []);
+  const myReports = useLoad(() => api.get('/fixtures', { my_official_reports: true, limit: 50, offset: 0 }).catch(() => ({ items: [] })), [statusFilter]);
+  const cases = useLoad(() => api.get('/discipline/my-cases', { kind: 'all', status: 'all', limit: 20, offset: 0 }), []);
+  const caseCount = cases.data?.items?.length ?? 0;
+  const items = myReports.data?.items ?? [];
+
+  return (
+    <View style={{ gap: 0 }}>
+      {caseCount > 0 ? (
+        <Section title={t('or.disc_cases_header')} color={c.orange} action={t('or.view_all')} onAction={() => go('DisciplineCases')}>
+          <Card color={c.orangeSoft} onPress={() => go('DisciplineCases')}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+              <T size={28}>⚖️</T>
+              <View style={{ flex: 1 }}>
+                <T weight="800">{t('or.disc_open', { count: caseCount })}</T>
+                <T size={13} color={c.mute}>{t('or.disc_open_sub')}</T>
+              </View>
+              <T size={20} color={c.orange}>›</T>
+            </View>
+          </Card>
+        </Section>
+      ) : null}
+      <View style={{ flexDirection: 'row', gap: 6, paddingHorizontal: 16, paddingBottom: 8, flexWrap: 'wrap' }}>
+        {[['all', t('or.filter_all')], ['filed', t('or.status.filed')], ['co_signing', t('or.status.co_signing')], ['submitted', t('or.status.submitted')], ['accepted', t('or.status.accepted')], ['queried', t('or.status.queried')]].map(([v, l]) => (
+          <Pressable key={v} onPress={() => setStatusFilter(v)} style={{ paddingHorizontal: 12, paddingVertical: 6, borderRadius: 999, backgroundColor: statusFilter === v ? c.pink : c.paper, minHeight: 44, justifyContent: 'center' }} accessibilityRole="button">
+            <T size={12} weight="700" color={statusFilter === v ? '#fff' : c.mute}>{l}</T>
+          </Pressable>
+        ))}
+      </View>
+      {myReports.loading ? <Loading /> : items.length === 0 ? (
+        <Empty emoji="📋" title={t('or.empty_title')} sub={t('or.empty_sub')} />
+      ) : (
+        <View style={{ gap: 0 }}>
+          {items.map((r) => (
+            <ReportCard key={r.id} r={r}
+              onView={() => go('OfficialReportDetail', { id: r.id })}
+              onProvenance={() => go('OfficialReportProvenance', { id: r.id })} />
+          ))}
+        </View>
+      )}
+    </View>
+  );
+}
+
 // ------------------------------------------------------------------ Officials Home
 export function OfficialsHome({ tab: tab0 }) {
   const { push: go } = useNav();
@@ -455,6 +552,7 @@ export function OfficialsHome({ tab: tab0 }) {
     : tab === 'calendar' ? <CalendarTab tz={tz} go={go} sportId={sportId} />
     : tab === 'availability' ? <AvailabilityTab sports={h.sports} />
     : tab === 'history' ? <HistoryTab go={go} tz={tz} />
+    : tab === 'reports' ? <ReportsTab go={go} />
     : tab === 'record' ? <RecordTab sports={h.sports} />
     : tab === 'rules' ? <Section title="Rules & interpretations" color={c.violet}>
         {h.next ? <T size={13} color={c.mute}>Answers use the rulebook and local rules for your next match: {h.next.event_name}.</T> : null}
@@ -491,7 +589,7 @@ export function OfficialsHome({ tab: tab0 }) {
         <Metric value={h.stats.actions} label="Need attention" tone={h.stats.actions ? c.sunSoft : undefined} onPress={() => setTab('today')} />
       </View>
       <View style={{ marginTop: 12, marginBottom: 12 }}>
-        <Seg options={[{ value: 'today', label: 'Overview' }, { value: 'calendar', label: 'Calendar' }, { value: 'availability', label: 'Availability' }, { value: 'history', label: 'History' }, { value: 'record', label: 'Record' }, { value: 'rules', label: 'Rules' }, { value: 'credential', label: 'Credential' }]} value={tab} onChange={setTab} />
+        <Seg options={[{ value: 'today', label: t('off.tab_overview') }, { value: 'calendar', label: t('off.tab_calendar') }, { value: 'availability', label: t('off.tab_availability') }, { value: 'history', label: t('off.tab_history') }, { value: 'reports', label: t('off.tab_reports') }, { value: 'record', label: t('off.tab_record') }, { value: 'rules', label: t('off.tab_rules') }, { value: 'credential', label: t('off.tab_credential') }]} value={tab} onChange={setTab} />
       </View>
       {body}
     </Screen>
@@ -582,7 +680,8 @@ export function OfficialMatch({ id, report: openReport }) {
       <View style={{ gap: 8 }}>
         {live ? <Btn title="🎛️ Open the live console" onPress={() => go('MatchCentre', { id })} style={{ minHeight: 56 }} /> : null}
         <Btn title="📝 Result & sign-off (score sheet)" color={c.violet} onPress={() => go('ScoreSheet', { id })} style={{ minHeight: 56 }} />
-        <Btn title="🗒️ File a match or incident report" color={c.paper} ink={c.ink} onPress={() => setRep(true)} style={{ minHeight: 56 }} />
+        <Btn title={t('or.file_report_btn')} color={c.paper} ink={c.ink} onPress={() => setRep(true)} style={{ minHeight: 56 }} />
+        <Btn title={t('or.file_full_report_btn')} color={c.pinkSoft} ink={c.pink} onPress={() => go('OfficialReportWizard', { fixtureId: id })} style={{ minHeight: 56 }} />
         <T size={12} color={c.mute}>Scoring, fouls, cards and substitutions are recorded in the live console; undo is an audited correction, and taps are safe to repeat after a lost connection. The result is not official until the score sheet is signed, approved and published. Disputes and appeals go through Support, linked to this match.</T>
       </View>
     </Section>
@@ -600,8 +699,30 @@ export function OfficialMatch({ id, report: openReport }) {
           <T size={12} color={c.mute}>Five fixed criteria, no overall score. The official sees the averages and your comment without your name, once at least three people have answered.</T>
         </Section>
       ) : null}
-      <Section title="Reports on this match" color={c.violet}>
-        {mine.length ? <View style={{ gap: 8 }}>{mine.map((r) => <Card key={r.id} pad={14}><T weight="800">{REPORT_TYPES.find((t) => t.value === r.category)?.label ?? r.category}</T><T size={13}>{r.summary}</T><T size={11.5} color={c.mute}>{r.author_name} · revision {r.revision}</T></Card>)}</View> : <Empty emoji="🗒️" title="No reports yet" />}
+      <Section title={t('or.section_title')} color={c.violet}>
+        {mine.length ? (
+          <View style={{ gap: 8 }}>
+            {mine.map((r) => (
+              <Card key={r.id} pad={14} onPress={() => go('OfficialReportDetail', { id: r.id })}>
+                <View style={{ gap: 6 }}>
+                  <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, alignItems: 'center' }}>
+                    <ReportStatusTag status={r.status} />
+                    {r.status === 'co_signing' ? <Tag label={t('or.needs_cosign')} color={c.sunSoft} /> : null}
+                    {r.status === 'queried' ? <Tag label={t('or.queried_action')} color={c.redSoft} /> : null}
+                  </View>
+                  <T weight="800">{REPORT_TYPES.find((tp) => tp.value === r.category)?.label ?? r.category}</T>
+                  <T size={13}>{r.summary}</T>
+                  <T size={11.5} color={c.mute}>{r.author_name} · {t('or.revision')} {r.revision}</T>
+                  <View style={{ flexDirection: 'row', gap: 8, flexWrap: 'wrap', marginTop: 2 }}>
+                    <Btn small title={t('or.view')} onPress={() => go('OfficialReportDetail', { id: r.id })} style={{ minHeight: 44 }} />
+                    {!r.locked && r.author_id === b?.my_role ? <Btn small title={t('or.submit_btn')} color={c.pink} onPress={() => go('OfficialReportWizard', { fixtureId: id, reportId: r.id })} style={{ minHeight: 44 }} /> : null}
+                    {r.submitted_hash ? <Btn small title={t('or.provenance')} color={c.pinkSoft} onPress={() => go('OfficialReportProvenance', { id: r.id })} style={{ minHeight: 44 }} /> : null}
+                  </View>
+                </View>
+              </Card>
+            ))}
+          </View>
+        ) : <Empty emoji="🗒️" title={t('or.no_reports')} />}
       </Section>
       <FormSheet visible={rep} onClose={() => setRep(false)} title="Official report" submitLabel="File report" onSubmit={async (v) => {
         await api.post(`/fixtures/${id}/reports`, { category: v.category, summary: v.summary, note: v.note || undefined, visibility: v.visibility });

@@ -15949,3 +15949,203 @@ export default {
   'officialEarnings.statement.status': 'स्थिति', // reviewed: false
   'officialEarnings.statement.payout': 'भुगतान', // reviewed: false
 };
+  'nav.title.OfficialReportWizard': 'File Official Report', // reviewed: false
+  'nav.title.OfficialReportDetail': 'Official Report', // reviewed: false
+  'nav.title.OfficialReportProvenance': 'Report Provenance', // reviewed: false
+  'nav.title.DisciplineCases': 'Discipline Cases', // reviewed: false
+  'or.tab.overview': 'Overview', // reviewed: false
+  'or.tab.incidents': 'Incidents', // reviewed: false
+  'or.tab.venue': 'Venue', // reviewed: false
+  'or.tab.abandonment': 'Abandonment', // reviewed: false
+  'or.tab.attachments': 'Attachments', // reviewed: false
+  'or.tab.cosign': 'Co-sign', // reviewed: false
+  'or.tab.submit': 'Submit', // reviewed: false
+  'or.wizard_title': 'Official Match Report', // reviewed: false
+  'or.type_label': 'Report type', // reviewed: false
+  'or.back': 'Back', // reviewed: false
+  'or.next': 'Next', // reviewed: false
+  'or.save_draft': 'Save draft', // reviewed: false
+  'or.save_draft_instead': 'Save as draft instead', // reviewed: false
+  'or.draft_saved': 'Draft saved.', // reviewed: false
+  'or.draft_summary': 'Draft report', // reviewed: false
+  'or.confirm_required': 'Tick the declaration before submitting.', // reviewed: false
+  'or.submitted_success': 'Report submitted and locked.', // reviewed: false
+  'or.kickoff_actual': 'Kick-off (actual)', // reviewed: false
+  'or.final_whistle': 'Final whistle', // reviewed: false
+  'or.attendance': 'Attendance', // reviewed: false
+  'or.ball_in_play': 'Ball in play (min)', // reviewed: false
+  'or.pitch_condition': 'Pitch condition', // reviewed: false
+  'or.weather': 'Weather', // reviewed: false
+  'or.score_at_ft': 'Score at full time', // reviewed: false
+  'or.extra_time': 'Extra time', // reviewed: false
+  'or.penalties': 'Penalty shoot-out', // reviewed: false
+  'or.summary_label': 'Report summary', // reviewed: false
+  'or.summary_hint': 'Factual account of the match from first whistle to last.', // reviewed: false
+  'or.addendum': 'Addendum (optional)', // reviewed: false
+  'or.incidents_hint': 'Add every caution, dismissal, protest and venue incident.', // reviewed: false
+  'or.no_incidents_yet': 'No incidents recorded', // reviewed: false
+  'or.no_incidents_sub': 'All quiet — tap a button to add one.', // reviewed: false
+  'or.add_caution': 'Add caution', // reviewed: false
+  'or.add_sendoff': 'Add send-off', // reviewed: false
+  'or.add_other': 'Other incident', // reviewed: false
+  'or.incident_type': 'Incident type', // reviewed: false
+  'or.minute': 'Minute', // reviewed: false
+  'or.minute_hint': 'e.g. 72 (or 90+5)', // reviewed: false
+  'or.person_name': 'Person name', // reviewed: false
+  'or.person_hint': 'Player or official involved', // reviewed: false
+  'or.team_name': 'Team', // reviewed: false
+  'or.law_ref': 'Law / rule reference', // reviewed: false
+  'or.law_ref_hint': 'e.g. Law 12 — violent conduct', // reviewed: false
+  'or.reason': 'Reason / description', // reviewed: false
+  'or.edit': 'Edit', // reviewed: false
+  'or.remove': 'Remove', // reviewed: false
+  'or.edit_incident': 'Edit incident', // reviewed: false
+  'or.add_incident': 'Add incident', // reviewed: false
+  'or.save_incident': 'Save incident', // reviewed: false
+  'or.incident_notice': 'This entry forms part of a legally binding official report.', // reviewed: false
+  'or.sendoff_disc_notice': '⚖️ Send-off — discipline case will be opened automatically on submission.', // reviewed: false
+  'or.venue_hint': 'Record spectator and crowd incidents.', // reviewed: false
+  'or.ejections': 'Ejections', // reviewed: false
+  'or.arrests': 'Arrests', // reviewed: false
+  'or.flares': 'Flares / pyrotechnics', // reviewed: false
+  'or.pitch_invasion': 'Pitch invasion', // reviewed: false
+  'or.police_called': 'Police called', // reviewed: false
+  'or.venue_details': 'Venue incident details', // reviewed: false
+  'or.match_abandoned': 'Match was abandoned', // reviewed: false
+  'or.abandon_minute': 'Minute of abandonment', // reviewed: false
+  'or.abandon_reason': 'Primary reason', // reviewed: false
+  'or.abandon_details': 'Abandonment narrative', // reviewed: false
+  'or.abandon_hint': 'Detail the events leading to and including the decision to abandon.', // reviewed: false
+  'or.abandon_disc_notice': '⚖️ Abandonment report — discipline case opened automatically.', // reviewed: false
+  'or.abandon_not_applicable': 'Match played to completion — no abandonment to report.', // reviewed: false
+  'or.attachments_hint': 'Upload photos, video clips or documents as evidence.', // reviewed: false
+  'or.attachments_note': 'Evidence added here is securely stored and visible to the organiser and federation only.', // reviewed: false
+  'or.attachments_locked_note': 'Attachments are locked once the report is submitted.', // reviewed: false
+  'or.cosign_hint': 'Select crew members who must co-sign this report before submission.', // reviewed: false
+  'or.cosign_add': 'Add co-signer', // reviewed: false
+  'or.cosign_added': '✓ Added', // reviewed: false
+  'or.cosign_pending': 'Pending', // reviewed: false
+  'or.no_crew_for_cosign': 'No other crew members found for this fixture.', // reviewed: false
+  'or.submit_title': 'Sign & Submit', // reviewed: false
+  'or.summary_check': 'Report summary', // reviewed: false
+  'or.cosign_status': 'Co-signatories', // reviewed: false
+  'or.cosignatories': 'co-signatories', // reviewed: false
+  'or.disc_trigger_notice': '⚖️ This report will trigger a discipline case.', // reviewed: false
+  'or.disc_trigger_sub': 'A governance case is opened automatically for send-offs, misconducts and abandonments.', // reviewed: false
+  'or.immutable_notice_title': '🔐 Once submitted, this report is locked.', // reviewed: false
+  'or.immutable_notice_body': 'Submission is permanent. The SHA-256 fingerprint of the full report is recorded as provenance.', // reviewed: false
+  'or.declaration': 'I declare this report is accurate and complete to the best of my knowledge.', // reviewed: false
+  'or.submit_final': 'Submit & lock report', // reviewed: false
+  'or.type.match_report': 'Match report', // reviewed: false
+  'or.type.misconduct': 'Misconduct', // reviewed: false
+  'or.type.send_off': 'Send-off', // reviewed: false
+  'or.type.abandonment': 'Abandonment', // reviewed: false
+  'or.type.venue_incident': 'Venue incident', // reviewed: false
+  'or.type.equipment_field': 'Equipment / field', // reviewed: false
+  'or.type.protest_noted': 'Protest noted', // reviewed: false
+  'or.type.other': 'Other', // reviewed: false
+  'or.incident.caution': 'Caution (yellow card)', // reviewed: false
+  'or.incident.send_off': 'Send-off (red card)', // reviewed: false
+  'or.incident.suspension': 'Suspension', // reviewed: false
+  'or.incident.misconduct': 'Misconduct', // reviewed: false
+  'or.incident.protest': 'Protest', // reviewed: false
+  'or.incident.venue': 'Venue incident', // reviewed: false
+  'or.incident.other': 'Other', // reviewed: false
+  'or.pitch.good': 'Good', // reviewed: false
+  'or.pitch.wet_heavy': 'Wet / heavy', // reviewed: false
+  'or.pitch.hard_dry': 'Hard / dry', // reviewed: false
+  'or.pitch.unsafe': 'Unsafe', // reviewed: false
+  'or.weather.fine': 'Fine', // reviewed: false
+  'or.weather.overcast': 'Overcast', // reviewed: false
+  'or.weather.rain': 'Rain', // reviewed: false
+  'or.weather.heavy_rain': 'Heavy rain', // reviewed: false
+  'or.weather.fog': 'Fog', // reviewed: false
+  'or.weather.snow': 'Snow', // reviewed: false
+  'or.abandon.weather': 'Weather', // reviewed: false
+  'or.abandon.floodlight': 'Floodlight failure', // reviewed: false
+  'or.abandon.crowd_disorder': 'Crowd disorder', // reviewed: false
+  'or.abandon.security': 'Security threat', // reviewed: false
+  'or.abandon.venue_unsafe': 'Venue unsafe', // reviewed: false
+  'or.abandon.team_refusal': 'Team refusal', // reviewed: false
+  'or.abandon.equipment': 'Equipment failure', // reviewed: false
+  'or.abandon.other': 'Other', // reviewed: false
+  'or.status.filed': 'Filed', // reviewed: false
+  'or.status.revised': 'Revised', // reviewed: false
+  'or.status.co_signing': 'Awaiting co-sign', // reviewed: false
+  'or.status.submitted': 'Submitted', // reviewed: false
+  'or.status.accepted': 'Accepted', // reviewed: false
+  'or.status.queried': 'Queried', // reviewed: false
+  'or.view': 'View', // reviewed: false
+  'or.submit_btn': 'Submit', // reviewed: false
+  'or.provenance': 'Provenance', // reviewed: false
+  'or.file_report_btn': 'File report', // reviewed: false
+  'or.file_full_report_btn': 'File full report', // reviewed: false
+  'or.needs_cosign': 'Awaiting co-sign', // reviewed: false
+  'or.queried_action': 'Action required', // reviewed: false
+  'or.disc_case_linked': 'Discipline case', // reviewed: false
+  'or.section_title': 'My reports on this match', // reviewed: false
+  'or.revision': 'Rev.', // reviewed: false
+  'or.no_reports': 'No reports filed', // reviewed: false
+  'or.empty_title': 'No reports yet', // reviewed: false
+  'or.empty_sub': 'Your official reports for this match will appear here.', // reviewed: false
+  'or.filter_all': 'All', // reviewed: false
+  'or.disc_cases_header': 'Discipline', // reviewed: false
+  'or.view_all': 'View all', // reviewed: false
+  'or.disc_open': '{n} open', // reviewed: false
+  'or.disc_open_sub': 'discipline case(s)', // reviewed: false
+  'or.score': 'Score', // reviewed: false
+  'or.match_facts_section': 'Match facts', // reviewed: false
+  'or.incidents_section': 'Incidents', // reviewed: false
+  'or.report_detail_title': 'Official Report', // reviewed: false
+  'or.view_disc_case': 'View case', // reviewed: false
+  'or.provenance_title': 'Report Provenance', // reviewed: false
+  'or.fingerprint_title': 'Cryptographic fingerprint', // reviewed: false
+  'or.fingerprint_note': 'SHA-256 of the full report payload at time of submission. Tamper-evident.', // reviewed: false
+  'or.timeline_title': 'Audit timeline', // reviewed: false
+  'or.prov_created': 'Report created', // reviewed: false
+  'or.prov_revised': 'Revision {n}', // reviewed: false
+  'or.prov_cosigned': 'Co-signed', // reviewed: false
+  'or.prov_cosign_pending': 'Co-sign pending', // reviewed: false
+  'or.prov_submitted': 'Submitted & locked', // reviewed: false
+  'or.prov_accepted': 'Accepted by organiser', // reviewed: false
+  'or.disc_case_opened_prov': '⚖️ A discipline case was opened automatically from this report.', // reviewed: false
+  'disc.kind.discipline': 'Discipline', // reviewed: false
+  'disc.kind.appeal': 'Appeal', // reviewed: false
+  'disc.kind.protest': 'Protest', // reviewed: false
+  'disc.kind.eligibility': 'Eligibility', // reviewed: false
+  'disc.kind.licence': 'Licence', // reviewed: false
+  'disc.kind.waiver': 'Waiver', // reviewed: false
+  'disc.status.pending_review': 'Pending review', // reviewed: false
+  'disc.status.open': 'Open', // reviewed: false
+  'disc.status.hearing': 'Hearing', // reviewed: false
+  'disc.status.closed': 'Closed', // reviewed: false
+  'disc.status.withdrawn': 'Withdrawn', // reviewed: false
+  'disc.status.dismissed': 'Dismissed', // reviewed: false
+  'disc.auto_triggered': 'Auto-triggered', // reviewed: false
+  'disc.active_sanctions': 'active sanction(s)', // reviewed: false
+  'disc.needs_review': 'Needs review', // reviewed: false
+  'disc.view_case': 'View case', // reviewed: false
+  'disc.view_report': 'View report', // reviewed: false
+  'disc.appeal_deadline': 'Appeal deadline', // reviewed: false
+  'disc.m_open': 'Open', // reviewed: false
+  'disc.m_hearing': 'Hearing', // reviewed: false
+  'disc.m_sanctions': 'Sanctions', // reviewed: false
+  'disc.m_appeals': 'Appeals', // reviewed: false
+  'disc.m_protests': 'Protests', // reviewed: false
+  'disc.screen_label': 'Governance', // reviewed: false
+  'disc.screen_title': 'Discipline Cases', // reviewed: false
+  'disc.screen_sub': 'Cases from your reports, decisions and sanctions.', // reviewed: false
+  'disc.filter_all': 'All kinds', // reviewed: false
+  'disc.filter_all_status': 'All statuses', // reviewed: false
+  'disc.empty_title': 'No discipline cases', // reviewed: false
+  'disc.empty_sub': 'Cases opened from your reports or competitions will appear here.', // reviewed: false
+  'off.tab_overview': 'Overview', // reviewed: false
+  'off.tab_calendar': 'Calendar', // reviewed: false
+  'off.tab_availability': 'Availability', // reviewed: false
+  'off.tab_history': 'History', // reviewed: false
+  'off.tab_reports': 'Reports', // reviewed: false
+  'off.tab_record': 'Record', // reviewed: false
+  'off.tab_rules': 'Rules', // reviewed: false
+  'off.tab_credential': 'Credentials', // reviewed: false
+  'off.ql_reports': 'Reports & disputes', // reviewed: false
+  'off.ql_discipline': 'Discipline cases', // reviewed: false
