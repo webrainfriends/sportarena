@@ -95,6 +95,12 @@ export function Me() {
         <Btn small title={t('me.adaptiveLoans')} color={c.paper} ink={c.ink} onPress={() => push('MyAdaptiveLoans')} style={{ marginTop: 10 }} />
       </Section>
 
+      <Section title={t('residency.title')} color={c.violet}>
+        <Card color={c.violetSoft}>
+          <T size={12} color={c.mute} weight="700">{user.home_country ? `${t('residency.country_label')}: ${user.home_country}` : t('residency.no_assignment')}</T>
+          <Btn small title={user.home_country ? t('residency.country_change_note') : t('residency.set_country_cta')} color={c.violet} style={{ marginTop: 10 }} onPress={() => push('DataResidency')} />
+        </Card>
+      </Section>
       <SecuritySection />
       <TokensSection mcpUrl={MCP_URL} />
 
