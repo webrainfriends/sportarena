@@ -31,6 +31,7 @@ const TABS = [
   { value: 'overview', label: () => t('officialEarnings.tab.overview') },
   { value: 'statement', label: () => t('officialEarnings.tab.statement') },
   { value: 'payouts', label: () => t('officialEarnings.tab.payouts') },
+  { value: 'expenses', label: () => t('oi.tab.expenses') },
   { value: 'export', label: () => t('officialEarnings.tab.export') },
   { value: 'bank', label: () => t('officialEarnings.tab.bank') },
 ];
@@ -325,6 +326,56 @@ function ExportTab({ currency }) {
   );
 }
 
+// ── Expenses tab (#1008) ────────────────────────────────────────────────────
+
+function ExpensesTab() {
+  const summary = useLoad(() => api.get('/me/officials/expense-summary'), []);
+  const expenses = useLoad(() => api.get('/official-expenses', { limit: 50, offset: 0 }), []);
+  const { push: go } = useNav();
+
+  const EXP_STATUS_COLOR = { draft: c.info, submitted: c.warn, approved: c.positive, rejected: c.danger };
+
+  if (summary.loading || expenses.loading) return <Loading />;
+  if (summary.error) return <ErrorBox error={summary.error} />;
+
+  const rows = summary.data?.expenses ?? [];
+  const expRows = expenses.data?.expenses ?? [];
+
+  return (
+    <ScrollView contentContainerStyle={{ gap: 16, paddingBottom: 32 }}>
+      {rows.map((s) => (
+        <Section key={s.currency} title={s.currency}>
+          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+            <StatPill value={cash(s.submitted_minor, s.currency)} label={t('oi.report.expenses_submitted')} color={c.warn} />
+            <StatPill value={cash(s.approved_minor, s.currency)} label={t('oi.report.expenses_reimbursed')} color={c.positive} />
+            <StatPill value={cash(s.pending_minor, s.currency)} label="Pending reimbursement" color={c.info} />
+          </View>
+        </Section>
+      ))}
+      {!expRows.length ? (
+        <Empty emoji="🧾" title={t('oi.empty.expenses')} />
+      ) : (
+        <Section title="Recent claims">
+          <View style={{ gap: 8 }}>
+            {expRows.map((e) => (
+              <Card key={e.id} accessibilityLabel={`${e.category} expense, ${cash(e.amount_minor, e.currency)}, ${e.status}`}>
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <View style={{ gap: 3 }}>
+                    <T weight="700">{e.category} · {cash(e.amount_minor, e.currency)}</T>
+                    {e.fixture_name ? <T size={12} color={c.mute}>{e.fixture_name}</T> : null}
+                  </View>
+                  <Tag label={e.status} color={EXP_STATUS_COLOR[e.status] ?? c.info} />
+                </View>
+              </Card>
+            ))}
+          </View>
+        </Section>
+      )}
+      <Btn title="View all invoices & expenses" onPress={() => go('OfficialInvoices', { role: 'official' })} style={{ minHeight: 48 }} />
+    </ScrollView>
+  );
+}
+
 // ── Bank & Settings tab ────────────────────────────────────────────────────
 
 function BankTab() {
@@ -390,6 +441,7 @@ export function OfficialEarnings() {
       {tab === 'overview' && <OverviewTab currency={currency} />}
       {tab === 'statement' && <StatementTab currency={currency} />}
       {tab === 'payouts' && <PayoutsTab currency={currency} />}
+      {tab === 'expenses' && <ExpensesTab />}
       {tab === 'export' && <ExportTab currency={currency} />}
       {tab === 'bank' && <BankTab />}
     </Screen>

@@ -85,6 +85,9 @@ function Today({ h, reload, go, tz }) {
     if (it.kind === 'invitation' || it.kind === 'changed') return null;
     if (it.fixture_id) return () => go('OfficialMatch', { id: it.fixture_id, ...(it.kind === 'report_due' ? { report: true } : {}) });
     if (it.kind === 'credential') return () => go('OfficialsHome', { tab: 'credential' });
+    // Invoice-related inbox actions (#1008)
+    if (it.kind === 'rci_pending' || it.kind === 'invoice_queried' || it.kind === 'payout_complete') return () => go('OfficialInvoices', { role: 'official' });
+    if (it.kind === 'expense_approved_batch_prompt') return () => go('OfficialInvoices', { role: 'official', tab: 'expenses' });
     return null;
   };
   const quick = [
@@ -94,6 +97,7 @@ function Today({ h, reload, go, tz }) {
     ['🗂️', 'Officiating history', () => go('OfficialsHome', { tab: 'history' })], ['💼', 'Opportunities', () => go('Openings')], ['🪪', 'Verification & renewal', () => go('OfficialsHome', { tab: 'credential' })],
     ['⚖️', 'Reports & disputes', () => go('OfficialsHome', { tab: 'history' })], ['🎓', 'Grade, assessments & CPD', () => go('OfficialsDevelopment')],
     ['💰', 'Earnings & fees', () => go('OfficialEarnings')],
+    ['🧾', 'Invoices & expenses', () => go('OfficialInvoices', { role: 'official' })],
     ['⚖️', t('off.ql_reports'), () => go('OfficialsHome', { tab: 'reports' })], ['🏛', t('off.ql_discipline'), () => go('DisciplineCases')], ['🎓', 'Grade, assessments & CPD', () => go('OfficialsDevelopment')],
   ];
   const matches = (
