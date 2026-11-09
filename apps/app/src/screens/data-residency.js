@@ -101,7 +101,11 @@ export function DataResidency() {
           </Row>
         </View>
       ) : data?.home_country ? (
-        <Card><Text style={{ color: c.mute, fontSize: 13 }}>{t('residency.no_assignment')}</Text></Card>
+        <Card style={{ gap: 12, borderLeftWidth: 3, borderLeftColor: '#E8A000' }}>
+          <Text style={{ fontSize: 15, fontWeight: '800', color: c.ink }}>{t('residency.no_assignment_title')}</Text>
+          <Text style={{ fontSize: 13, color: c.mute, lineHeight: 20 }}>{t('residency.no_assignment_body')}</Text>
+          <Btn label={t('residency.no_assignment_cta')} onPress={() => push('DataResidencyConsent', { country: data.home_country })} />
+        </Card>
       ) : (
         <Card style={{ gap: 14 }}>
           <Text style={{ fontSize: 17, fontWeight: '800', color: c.ink }}>{t('residency.set_country_title')}</Text>
