@@ -81,6 +81,6 @@ UPDATE official_reports r
  WHERE r.fixture_id = f.id AND r.event_id IS NULL;
 
 UPDATE official_reports r
-   SET competition_id = e.competition_id
-  FROM fixtures f JOIN events e ON e.id = f.event_id
- WHERE r.fixture_id = f.id AND r.competition_id IS NULL AND e.competition_id IS NOT NULL;
+   SET competition_id = f.competition_id
+  FROM fixtures f
+ WHERE r.fixture_id = f.id AND r.competition_id IS NULL AND f.competition_id IS NOT NULL;
