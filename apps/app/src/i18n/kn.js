@@ -851,6 +851,51 @@ export default {
   'nav.title.Cover': 'ಯಾರು ಪಾವತಿಸುತ್ತಾರೆ',
   'nav.title.OfficialsHome': 'ಅಧಿಕಾರಿ ಮುಖಪುಟ',
   'nav.title.OfficialMatch': 'ಪಂದ್ಯ ಬ್ರೀಫಿಂಗ್',
+  'nav.title.OfficialCrewHub': 'Crew hub', // crew-multi — machine draft, reviewed: false
+  'crew.btn_crew_hub': 'Crew hub', // crew-multi — machine draft, reviewed: false
+  'crew.completeness_label': 'Crew completeness', // crew-multi — machine draft, reviewed: false
+  'crew.missing_roles': 'Missing', // crew-multi — machine draft, reviewed: false
+  'crew.emergency_badge': 'Emergency', // crew-multi — machine draft, reviewed: false
+  'crew.substitution_of_label': 'Substitution', // crew-multi — machine draft, reviewed: false
+  'crew.pinned': 'Pinned', // crew-multi — machine draft, reviewed: false
+  'crew.mandatory_short': 'required', // crew-multi — machine draft, reviewed: false
+  'crew.metric_confirmed': 'Confirmed', // crew-multi — machine draft, reviewed: false
+  'crew.metric_roles_req': 'Roles required', // crew-multi — machine draft, reviewed: false
+  'crew.metric_messages': 'Messages', // crew-multi — machine draft, reviewed: false
+  'crew.section_crew': 'Officiating crew', // crew-multi — machine draft, reviewed: false
+  'crew.section_pending': 'Pending invitations', // crew-multi — machine draft, reviewed: false
+  'crew.section_requirements': 'Crew requirements', // crew-multi — machine draft, reviewed: false
+  'crew.section_broadcast': 'Crew channel', // crew-multi — machine draft, reviewed: false
+  'crew.empty_title': 'No crew yet', // crew-multi — machine draft, reviewed: false
+  'crew.empty_body': 'Once the organiser invites officials and they accept, the crew appears here.', // crew-multi — machine draft, reviewed: false
+  'crew.no_requirements': 'No crew requirements set for this event.', // crew-multi — machine draft, reviewed: false
+  'crew.no_broadcast': 'No crew messages yet.', // crew-multi — machine draft, reviewed: false
+  'crew.btn_duties': 'Duties', // crew-multi — machine draft, reviewed: false
+  'crew.btn_substitute': 'Emergency sub', // crew-multi — machine draft, reviewed: false
+  'crew.btn_broadcast': 'Broadcast to crew', // crew-multi — machine draft, reviewed: false
+  'crew.btn_send_message': 'Send message', // crew-multi — machine draft, reviewed: false
+  'crew.btn_send': 'Send', // crew-multi — machine draft, reviewed: false
+  'crew.btn_confirm_sub': 'Confirm substitution', // crew-multi — machine draft, reviewed: false
+  'crew.btn_save_duties': 'Save duties', // crew-multi — machine draft, reviewed: false
+  'crew.pin_toggle': 'Pin to top', // crew-multi — machine draft, reviewed: false
+  'crew.sub_sheet_title': 'Emergency substitution', // crew-multi — machine draft, reviewed: false
+  'crew.sub_sheet_body': 'Replace {name} ({role}) immediately. The original assignment is closed as substituted.', // crew-multi — machine draft, reviewed: false
+  'crew.sub_replacement_id': 'Replacement official ID', // crew-multi — machine draft, reviewed: false
+  'crew.sub_replacement_placeholder': 'User ID of the replacement official', // crew-multi — machine draft, reviewed: false
+  'crew.sub_reason': 'Reason', // crew-multi — machine draft, reviewed: false
+  'crew.sub_reason_placeholder': 'e.g. Injury, failed fitness check', // crew-multi — machine draft, reviewed: false
+  'crew.duties_sheet_title': 'Assignment duties', // crew-multi — machine draft, reviewed: false
+  'crew.duties_sheet_body': 'Enter one duty per line (e.g. 'VAR monitor 2', 'Goal north side').', // crew-multi — machine draft, reviewed: false
+  'crew.duties_field_label': 'Duties (one per line)', // crew-multi — machine draft, reviewed: false
+  'crew.duties_placeholder': 'e.g.
+Goal-line north
+VAR review station 1', // crew-multi — machine draft, reviewed: false
+  'crew.broadcast_sheet_title': 'Send crew message', // crew-multi — machine draft, reviewed: false
+  'crew.broadcast_body_label': 'Message', // crew-multi — machine draft, reviewed: false
+  'crew.broadcast_placeholder': 'e.g. Meeting point changed to main tunnel at 13:30', // crew-multi — machine draft, reviewed: false
+  'crew.tab_crew': 'Crew', // crew-multi — machine draft, reviewed: false
+  'crew.tab_requirements': 'Requirements', // crew-multi — machine draft, reviewed: false
+  'crew.tab_broadcast': 'Channel', // crew-multi — machine draft, reviewed: false
   'nav.title.Rewards': 'ಬಹುಮಾನಗಳು',
   'nav.title.RewardsConsole': 'ಬಹುಮಾನಗಳು ಮತ್ತು ರೆಫರಲ್‌ಗಳು',
   'nav.title.MyPasses': 'ನನ್ನ ಪಾಸ್‌ಗಳು',
@@ -863,7 +908,53 @@ export default {
   'nav.title.GateScan': 'ಗೇಟ್ ಸ್ಕ್ಯಾನರ್',
   'nav.title.MyAccreditations': 'ನನ್ನ ಬ್ಯಾಡ್ಜ್‌ಗಳು',
   'nav.title.OfficialsDevelopment': 'ಅಧಿಕಾರಿ ಅಭಿವೃದ್ಧಿ',
-  'nav.title.OfficialAssessment': 'ಮೌಲ್ಯಮಾಪನ',
+  'nav.title.OfficialAssessment': t('Assessment'),
+  'nav.title.OfficialCrewHub': t('Crew hub'),
+  'crew.completeness_label': t('Crew completeness'),
+  'crew.ready': t('All required roles filled'),
+  'crew.incomplete': t('Some required roles are not yet filled'),
+  'crew.missing_roles': t('Missing: {roles}'),
+  'crew.unfilled_role': t('Required · not yet filled'),
+  'crew.unfilled_title': t('Unfilled required roles'),
+  'crew.you': t('You'),
+  'crew.hub_btn': t('Crew'),
+  'crew.channel_title': t('Crew channel'),
+  'crew.channel_empty': t('No messages yet. Send a broadcast to the crew.'),
+  'crew.message_placeholder': t('Message to crew…'),
+  'crew.send': t('Send'),
+  'crew.seen_by_n': t('seen by {n}'),
+  'crew.substitute': t('Substitute'),
+  'crew.duties': t('Duties'),
+  'crew.invite': t('Invite'),
+  'crew.substitute_title': t('Emergency substitution'),
+  'crew.substitute_sub': t('Replacing {name} ({role})'),
+  'crew.being_replaced': t('Official being replaced'),
+  'crew.replacement_role': t('Replacement role'),
+  'crew.role': t('Role'),
+  'crew.select_person': t('Select replacement official'),
+  'crew.user_id_placeholder': t('Enter official user ID'),
+  'crew.duties_label': t('Assigned duties'),
+  'crew.duties_placeholder': t('e.g. Chief Referee, AR – Home side'),
+  'crew.reason': t('Reason'),
+  'crew.reason_placeholder': t('Reason for emergency substitution'),
+  'crew.reason_required': t('Please give a reason for the substitution'),
+  'crew.select_replacement': t('Please select a replacement official'),
+  'crew.emergency_accept': t('On-site emergency acceptance'),
+  'crew.emergency_accept_sub': t('Mark the replacement as immediately confirmed'),
+  'crew.confirm_sub': t('Confirm substitution'),
+  'crew.sub_history_note': t('Full substitution history is preserved.'),
+  'crew.substituted_ok': t('Substitution confirmed'),
+  'crew.duties_title': t('Set duties'),
+  'crew.duties_sub': t('Assign specific duties to {name} for this match'),
+  'crew.save_duties': t('Save duties'),
+  'crew.duties_saved': t('Duties updated'),
+  'crew.history_title': t('Assignment history'),
+  'crew.no_crew': t('No crew assigned yet'),
+  'crew.substitute_label': t('Emergency substitute'),
+  'crew.substituted_alert': t('{name} ({role}) was substituted'),
+  'crew.requirements_title': t('Crew requirements'),
+  'crew.broadcast_sent': t('Message sent to crew'),
+  'crew.pinned': t('Pinned'),
   'nav.title.AssessmentEditor': 'ಮೌಲ್ಯಮಾಪನ ವರದಿ',
   'nav.title.MediaWorkspace': 'ಮಾಧ್ಯಮ ಮತ್ತು ಪ್ರಸಾರ',
   'nav.title.Federations': 'ಒಕ್ಕೂಟಗಳು',
@@ -15568,3 +15659,4 @@ export default {
   'asu.prev': '← ಹಿಂದಿನದು',
   'asu.next': 'ಮುಂದಿನದು →',
 };
+

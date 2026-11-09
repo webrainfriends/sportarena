@@ -323,6 +323,7 @@ import './officials-assessors.js';
 import './officials-assessments.js';
 import './officials-progression.js';
 import './officials-mentoring.js';
+import './officials-crew.js';
 import './media-rights-licensing.js';
 import './media-rights-ops.js';
 import './media-rights-assets.js';

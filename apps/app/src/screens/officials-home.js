@@ -22,7 +22,11 @@ import { Cols } from '../federation-bits';
 import { VerificationSection } from './verification';
 import { MatchDayPack } from './match-day-pack';
 
-export const ROLE_LABEL = { referee: 'Referee', umpire: 'Umpire', linesman: 'Assistant referee', scorer: 'Scorer / timekeeper' };
+export const ROLE_LABEL = {
+  referee: 'Referee', umpire: 'Umpire', linesman: 'Assistant referee', scorer: 'Scorer / timekeeper',
+  video_assistant_referee: 'VAR', fourth_official: 'Fourth official', reserve_assistant_referee: 'Reserve AR',
+  shot_clock_operator: 'Shot clock', timekeeper: 'Timekeeper', goal_line_official: 'Goal-line official', technical_official: 'Technical official',
+};
 const STATUS = {
   invited: ['⏳ Awaiting your reply', c.sunSoft], accepted: ['✅ Confirmed', c.mintSoft], completed: ['🏁 Completed', c.violetSoft], declined: ['Declined', c.paper],
   withdrawn: ['Withdrawn', c.paper], released: ['Released by organiser', c.paper], cancelled: ['Match cancelled', c.paper],
@@ -97,6 +101,7 @@ function Today({ h, reload, go, tz }) {
               <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 4 }}>
                 <Btn title="Briefing & checks" onPress={() => go('OfficialMatch', { id: a.fixture_id })} style={{ minHeight: 48 }} />
                 <Btn title="Open live console" color={c.violet} onPress={() => go('MatchCentre', { id: a.fixture_id })} style={{ minHeight: 48 }} />
+                <Btn title={t('crew.btn_crew_hub')} color={c.mintSoft} onPress={() => go('OfficialCrewHub', { fixtureId: a.fixture_id })} style={{ minHeight: 48 }} />
               </View>
             </Assignment>
           ))}</View>
