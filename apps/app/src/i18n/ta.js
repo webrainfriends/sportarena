@@ -16511,7 +16511,6 @@ export default {
   'otax.reg_status.not_registered': 'பதிவு செய்யப்படவில்லை',
   'otax.reg_status.exempt': 'விலக்கு',
   'otax.reg_status.pending': 'பதிவு நிலுவையில்',
-};
   // Official rate agreements (R35) — reviewed: false
   'ora.title': 'கட்டண ஒப்பந்தங்கள்',
   'ora.new': 'புதிய ஒப்பந்தம்',
@@ -16581,3 +16580,163 @@ export default {
   'ora.wizard.sport': 'விளையாட்டு',
   'ora.wizard.currency': 'நாணயம்',
   'ora.wizard.effectiveFrom': 'நடைமுறை தேதி',
+  'ora.back': "திரும்பு", /* reviewed: false */
+  'ora.accept': "ஏற்றுக்கொள்", /* reviewed: false */
+  'ora.counter': "எதிர் முன்மொழிவு", /* reviewed: false */
+  'ora.decline': "நிராகரி", /* reviewed: false */
+  'ora.send_proposal': "முன்மொழிவு அனுப்பு →", /* reviewed: false */
+  'ora.save_draft': "வரைவாக சேமி", /* reviewed: false */
+  'ora.continue': "தொடர் →", /* reviewed: false */
+  'ora.any_sport': "எந்த விளையாட்டும்", /* reviewed: false */
+  'ora.optional': "விருப்பத்தேர்வு", /* reviewed: false */
+  'ora.optional_open_ended': "திறந்த ஒப்பந்தத்திற்கு காலியாக விடவும்", /* reviewed: false */
+  'ora.games': "போட்டிகள்", /* reviewed: false */
+  'ora.game': "போட்டி", /* reviewed: false */
+  'ora.month': "மாதம்", /* reviewed: false */
+  'ora.night': "இரவு", /* reviewed: false */
+  'ora.days': "நாட்கள்", /* reviewed: false */
+  'ora.tier': "நிலை", /* reviewed: false */
+  'ora.declined': "நிராகரிக்கப்பட்டது", /* reviewed: false */
+  'ora.ctx_event': "நிகழ்வு / போட்டி மேலடை", /* reviewed: false */
+  'ora.ctx_event_desc': "குறிப்பிட்ட நிகழ்வுக்கான தனிப்பயன் விகிதம்", /* reviewed: false */
+  'ora.ctx_academy': "அகாடமி ஒப்பந்தம்", /* reviewed: false */
+  'ora.ctx_academy_desc': "ஒரு அகாடமியுடன் நடந்துகொண்டிருக்கும் ஏற்பாடு", /* reviewed: false */
+  'ora.ctx_season': "சீசன் / தொடர்", /* reviewed: false */
+  'ora.ctx_season_desc': "ஒரு லீக் அல்லது சீசனில் அனைத்து போட்டிகளும்", /* reviewed: false */
+  'ora.ctx_club': "கிளப் / நிறுவனம்", /* reviewed: false */
+  'ora.ctx_club_desc': "ஒரு கிளப் அல்லது கூட்டமைப்புடன் நிலையான ஏற்பாடு", /* reviewed: false */
+  'ora.ctx_retainer': "ஒதுக்கீடு", /* reviewed: false */
+  'ora.ctx_retainer_desc': "மாதாந்திர ஒதுக்கீடு + தோற்றம் கூடுதல்", /* reviewed: false */
+  'ora.rt_fixed': "நிலையான போட்டி", /* reviewed: false */
+  'ora.rt_hour': "மணி நேரத்திற்கு", /* reviewed: false */
+  'ora.rt_day': "நாளுக்கு", /* reviewed: false */
+  'ora.rt_tiers': "தொகுதி நிலைகள்", /* reviewed: false */
+  'ora.rt_retainer': "ஒதுக்கீடு", /* reviewed: false */
+  'ora.rt_bundle': "தொகுப்பு", /* reviewed: false */
+  'ora.rt_negotiated': "பேச்சுவார்த்தை", /* reviewed: false */
+  'ora.tab_active': "செயலில்", /* reviewed: false */
+  'ora.tab_pending': "நிலுவையில்", /* reviewed: false */
+  'ora.tab_history': "வரலாறு", /* reviewed: false */
+  'ora.metric_active': "செயலில்", /* reviewed: false */
+  'ora.metric_active_unit': "ஒப்பந்தங்கள்", /* reviewed: false */
+  'ora.metric_avg': "சராசரி கட்டணம்", /* reviewed: false */
+  'ora.metric_avg_unit': "போட்டிக்கு", /* reviewed: false */
+  'ora.metric_pending': "நிலுவை", /* reviewed: false */
+  'ora.metric_pending_unit': "மதிப்பாய்வு", /* reviewed: false */
+  'ora.empty_active_title': "செயலில் உள்ள ஒப்பந்தங்கள் இல்லை", /* reviewed: false */
+  'ora.empty_active_body': "உங்கள் கட்டணங்களை உறுதிப்படுத்த ஒரு அகாடமி, கிளப் அல்லது நிகழ்வுடன் விகித ஒப்பந்தத்தை உருவாக்கவும்.", /* reviewed: false */
+  'ora.empty_pending_title': "மதிப்பாய்வு செய்ய எதுவும் இல்லை", /* reviewed: false */
+  'ora.empty_pending_body': "உள்வரும் முன்மொழிவுகள் மற்றும் உங்கள் வரைவுகள் இங்கே தோன்றும்.", /* reviewed: false */
+  'ora.empty_history_title': "இதுவரை வரலாறு இல்லை", /* reviewed: false */
+  'ora.empty_history_body': "கடந்த மற்றும் ரத்தான ஒப்பந்தங்கள் இங்கே தோன்றும்.", /* reviewed: false */
+  'ora.incoming': "உங்கள் பதிலுக்காக காத்திருக்கிறது", /* reviewed: false */
+  'ora.sent': "அனுப்பப்பட்டது", /* reviewed: false */
+  'ora.review': "மதிப்பாய்வு", /* reviewed: false */
+  'ora.awaiting_response': "அவர்கள் பதிலுக்காக காத்திருக்கிறது", /* reviewed: false */
+  'ora.wiz_title': "புதிய ஒப்பந்தம்", /* reviewed: false */
+  'ora.wiz_s1_title': "ஒப்பந்த வகை", /* reviewed: false */
+  'ora.wiz_s1_sub': "இந்த விகித ஒப்பந்தம் எதற்காக?", /* reviewed: false */
+  'ora.wiz_s2_title': "யாருடன்?", /* reviewed: false */
+  'ora.wiz_s2_sub': "நிகழ்வு, அகாடமி அல்லது நிறுவனத்தை தேடவும்", /* reviewed: false */
+  'ora.wiz_s2_search': "நிறுவனம்", /* reviewed: false */
+  'ora.wiz_s2_search_ph': "நிறுவனங்களை தேடவும்…", /* reviewed: false */
+  'ora.wiz_s2_sport': "விளையாட்டு", /* reviewed: false */
+  'ora.wiz_s2_role': "நடுவர் பாத்திரம்", /* reviewed: false */
+  'ora.wiz_s3_title': "விகித அமைப்பு", /* reviewed: false */
+  'ora.wiz_s3_sub': "கட்டணங்கள் எவ்வாறு கணக்கிடப்படுகின்றன என்பதை வரையறுக்கவும்", /* reviewed: false */
+  'ora.wiz_s4_title': "செல்லுபடியாகும் காலம் & விதிமுறைகள்", /* reviewed: false */
+  'ora.wiz_s4_sub': "நடைமுறை காலம் மற்றும் புதுப்பிப்பு விதிமுறைகளை அமைக்கவும்", /* reviewed: false */
+  'ora.wiz_s5_title': "முன்மொழிவை மதிப்பாய்வு செய்யவும்", /* reviewed: false */
+  'ora.wiz_s5_sub': "அனுப்பும் முன் எல்லாவற்றையும் சரிபார்க்கவும்", /* reviewed: false */
+  'ora.rate_summary': "விகித சுருக்கம்", /* reviewed: false */
+  'ora.rate_type': "விகித வகை", /* reviewed: false */
+  'ora.currency': "நாணயம்", /* reviewed: false */
+  'ora.base_fee': "போட்டி கட்டணம்", /* reviewed: false */
+  'ora.retainer': "மாதாந்திர ஒதுக்கீடு", /* reviewed: false */
+  'ora.retainer_monthly': "மாதாந்திர ஒதுக்கீடு", /* reviewed: false */
+  'ora.per_game_supplement': "போட்டிக்கு கூடுதல்", /* reviewed: false */
+  'ora.travel': "பயண கொடுப்பனவு", /* reviewed: false */
+  'ora.travel_per_game': "பயணம் (போட்டிக்கு)", /* reviewed: false */
+  'ora.overtime': "மிகை நேர விகிதம்", /* reviewed: false */
+  'ora.overtime_per_hour': "மிகை நேரம் (மணி நேரத்திற்கு)", /* reviewed: false */
+  'ora.accommodation': "தங்குமிடம்", /* reviewed: false */
+  'ora.accommodation_per_night': "தங்குமிடம் (இரவுக்கு)", /* reviewed: false */
+  'ora.bundle_fee': "தொகுப்பு கட்டணம்", /* reviewed: false */
+  'ora.bundle_total': "மொத்த தொகுப்பு கட்டணம்", /* reviewed: false */
+  'ora.bundle_includes': "தொகுப்பில் அடங்கும்", /* reviewed: false */
+  'ora.bundle_desc': "தொகுப்பில் என்ன அடங்கும்", /* reviewed: false */
+  'ora.additional_rates': "கூடுதல் விகிதங்கள்", /* reviewed: false */
+  'ora.validity': "செல்லுபடியாகும் தன்மை", /* reviewed: false */
+  'ora.effective_from': "தொடங்கும் தேதி", /* reviewed: false */
+  'ora.effective_until': "முடிவு தேதி", /* reviewed: false */
+  'ora.auto_renew': "தானாக புதுப்பி", /* reviewed: false */
+  'ora.ar_none': "தானாக புதுப்பிக்க வேண்டாம்", /* reviewed: false */
+  'ora.ar_30': "முடிவதற்கு 30 நாட்களுக்கு முன் அறிவி", /* reviewed: false */
+  'ora.ar_60': "முடிவதற்கு 60 நாட்களுக்கு முன் அறிவி", /* reviewed: false */
+  'ora.ar_auto': "அதே விதிமுறைகளில் தானாக புதுப்பி", /* reviewed: false */
+  'ora.cancellation': "ரத்து", /* reviewed: false */
+  'ora.notice': "நோட்டீஸ் காலம்", /* reviewed: false */
+  'ora.notice_days': "நோட்டீஸ் காலம் (நாட்கள்)", /* reviewed: false */
+  'ora.cancel_fee': "ரத்து கட்டணம்", /* reviewed: false */
+  'ora.cancel_fee_pct': "ரத்து கட்டணம் (%)", /* reviewed: false */
+  'ora.cancel_pct_hint': "மீதமுள்ள சீசன் மதிப்பின் %", /* reviewed: false */
+  'ora.payment_terms': "பணம் செலுத்தும் விதிமுறைகள்", /* reviewed: false */
+  'ora.invoice_trigger': "விலைப்பட்டியல் தூண்டுதல்", /* reviewed: false */
+  'ora.payment_net': "நிகர பணம் செலுத்துதல்", /* reviewed: false */
+  'ora.payment_net_days': "பணம் செலுத்தும் தேதி (நாட்கள்)", /* reviewed: false */
+  'ora.net_days_hint': "விலைப்பட்டியலிலிருந்து நிகர நாட்கள்", /* reviewed: false */
+  'ora.pt_per_game': "ஒவ்வொரு போட்டிக்கும் 7 நாட்களுக்குள்", /* reviewed: false */
+  'ora.pt_weekly': "வாராந்திரம்", /* reviewed: false */
+  'ora.pt_monthly': "மாதாந்திரம்", /* reviewed: false */
+  'ora.pt_completion': "நிகழ்வு நிறைவில்", /* reviewed: false */
+  'ora.private_notes': "தனிப்பட்ட குறிப்புகள்", /* reviewed: false */
+  'ora.note_placeholder': "உள் குறிப்புகள் (பகிரப்படாது)", /* reviewed: false */
+  'ora.counterpart': "அகாடமி / நிறுவனம்", /* reviewed: false */
+  'ora.official': "நடுவர்", /* reviewed: false */
+  'ora.tiers': "தொகுதி நிலைகள்", /* reviewed: false */
+  'ora.tier_range': "போட்டி வரம்பு", /* reviewed: false */
+  'ora.tier_fee': "கட்டணம் / போட்டி", /* reviewed: false */
+  'ora.tier_travel': "பயணம்", /* reviewed: false */
+  'ora.tier_from': "இருந்து", /* reviewed: false */
+  'ora.tier_to': "வரை", /* reviewed: false */
+  'ora.tier_fee_label': "கட்டணம்", /* reviewed: false */
+  'ora.add_tier': "நிலை சேர்", /* reviewed: false */
+  'ora.snapshot_notice': "ஏற்றுக்கொண்டவுடன், விகிதங்கள் மற்றும் விதிமுறைகள் மாற்ற முடியாத சுய-நடவடிக்கையாக பூட்டப்படும்.", /* reviewed: false */
+  'ora.snapshot_notice_send': "இந்த முன்மொழிவு இரு தரப்பினருக்கும் மட்டுமே. ஏற்றுக்கொண்டவுடன் விகிதங்கள் உறைந்துவிடும்.", /* reviewed: false */
+  'ora.snapshot_on_confirm': "நியமனத்தை உறுதிப்படுத்தியவுடன், இந்த கட்டணம் ({fee}) முடிவான சுய-நடவடிக்கையாக பூட்டப்படும்.", /* reviewed: false */
+  'ora.timeline': "ஒப்புதல் காலக்கோடு", /* reviewed: false */
+  'ora.tl_created': "வரைவு உருவாக்கப்பட்டது", /* reviewed: false */
+  'ora.tl_proposed': "முன்மொழிவு அனுப்பப்பட்டது", /* reviewed: false */
+  'ora.tl_countered': "எதிர் முன்மொழிவு", /* reviewed: false */
+  'ora.tl_accepted': "ஒப்பந்தம் ஏற்றுக்கொள்ளப்பட்டது", /* reviewed: false */
+  'ora.tl_cancelled': "ரத்தானது", /* reviewed: false */
+  'ora.tl_superseded': "மாற்றப்பட்டது", /* reviewed: false */
+  'ora.tl_note': "குறிப்பு சேர்க்கப்பட்டது", /* reviewed: false */
+  'ora.cancel_agreement': "ஒப்பந்தத்தை ரத்து செய்", /* reviewed: false */
+  'ora.counter_title': "எதிர் முன்மொழிவு", /* reviewed: false */
+  'ora.counter_body': "எந்த விதிமுறைகளையும் மாற்றலாம்.", /* reviewed: false */
+  'ora.counter_note': "விளக்கம் (விருப்பத்தேர்வு)", /* reviewed: false */
+  'ora.counter_proceed': "திருத்தி எதிர் முன்மொழிவு →", /* reviewed: false */
+  'ora.cancel_title': "ஒப்பந்தத்தை ரத்து செய்", /* reviewed: false */
+  'ora.cancel_body': "ஒரு காரணம் கொடு.", /* reviewed: false */
+  'ora.cancel_reason': "காரணம் (தேவை)", /* reviewed: false */
+  'ora.confirm_cancel': "ரத்தை உறுதிப்படுத்து", /* reviewed: false */
+  'ora.fee_preview_title': "கட்டண முன்னோட்டம்", /* reviewed: false */
+  'ora.applicable_fee': "பொருந்தும் கட்டணம்", /* reviewed: false */
+  'ora.precedence': "முன்னுரிமை சங்கிலி", /* reviewed: false */
+  'ora.breakdown': "விவரம்", /* reviewed: false */
+  'ora.total_this_game': "இந்த போட்டிக்கு மொத்தம்", /* reviewed: false */
+  'ora.not_included': "சேர்க்கப்படவில்லை", /* reviewed: false */
+  'ora.not_in_agreement': "ஒப்பந்தத்தில் இல்லை", /* reviewed: false */
+  'ora.prec_default': "சுயவிவர இயல்புநிலை", /* reviewed: false */
+  'ora.prec_segment': "பிரிவு விகிதம்", /* reviewed: false */
+  'ora.prec_customer': "வாடிக்கையாளர் மேலடை", /* reviewed: false */
+  'ora.prec_agreement': "விகித ஒப்பந்தம்", /* reviewed: false */
+  'ora.prec_snapshot': "முன்பதிவு சுய-நடவடிக்கை", /* reviewed: false */
+  'ora.agreement': "ஒப்பந்தம்", /* reviewed: false */
+  'ora.err_counterpart': "அகாடமி, கிளப் அல்லது நிகழ்வு நிர்வாகியை தேர்ந்தெடுக்கவும்", /* reviewed: false */
+  'ora.err_role': "உங்கள் பாத்திரத்தை தேர்ந்தெடுக்கவும்", /* reviewed: false */
+  'ora.err_tiers': "குறைந்தது 2 தொகுதி நிலைகளை சேர்க்கவும்", /* reviewed: false */
+  'ora.err_fee': "கட்டண தொகையை உள்ளிடவும்", /* reviewed: false */
+  'ora.err_date': "ஒரு தொடக்க தேதியை அமைக்கவும்", /* reviewed: false */
+};

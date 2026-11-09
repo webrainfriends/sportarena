@@ -133,6 +133,10 @@ import { OfficialAssessment, AssessmentEditor } from './screens/officials-assess
 import { OfficialProfileWizard, OfficialProfileView } from './screens/official-profile-wizard';
 import { OfficialReportWizard, OfficialReportDetail, OfficialReportProvenance } from './screens/official-report-wizard';
 import { DisciplineCases } from './screens/discipline-cases';
+import { OfficialRateAgreements } from './screens/official-rate-agreements';
+import { OfficialRateAgreementDetail } from './screens/official-rate-agreement-detail';
+import { OfficialRateAgreementWizard } from './screens/official-rate-agreement-wizard';
+import { OfficialRateFeePreview } from './screens/official-rate-fee-preview';
 import { AcademyFamily } from './screens/academy-portal';
 import { InspectorAudits } from './screens/academy-accreditation';
 import { Trials } from './screens/trials';
