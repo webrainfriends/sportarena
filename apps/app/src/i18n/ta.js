@@ -15902,4 +15902,49 @@ export default {
   'officials.bulk.go_to_board': 'நியமன பலகைக்கு செல்லவும்',
   'officials.bulk.selected': 'தேர்ந்தெடுக்கப்பட்டது',
   'officials.bulk.not_scheduled': 'இன்னும் திட்டமிடப்படவில்லை',
+
+  'officialEarnings.title': 'வருமானம் மற்றும் கட்டணங்கள்', // reviewed: false
+  'officialEarnings.tab.overview': 'கண்ணோட்டம்', // reviewed: false
+  'officialEarnings.tab.statement': 'அறிக்கை', // reviewed: false
+  'officialEarnings.tab.payouts': 'கட்டணங்கள்', // reviewed: false
+  'officialEarnings.tab.export': 'ஏற்றுமதி', // reviewed: false
+  'officialEarnings.tab.bank': 'வங்கி & அமைப்புகள்', // reviewed: false
+  'officialEarnings.overview.lifetime_paid': 'வாழ்நாள் கட்டணம்', // reviewed: false
+  'officialEarnings.overview.pending_due': 'நிலுவை / காத்திருக்கும்', // reviewed: false
+  'officialEarnings.overview.payout_pending': 'கட்டண வரிசையில்', // reviewed: false
+  'officialEarnings.overview.assignments': 'நியமனங்கள்', // reviewed: false
+  'officialEarnings.overview.no_data': 'இன்னும் கட்டண தரவு இல்லை.', // reviewed: false
+  'officialEarnings.overview.chart_title': 'மாதாந்திர வருமானம்', // reviewed: false
+  'officialEarnings.overview.by_sport': 'விளையாட்டு வாரியாக', // reviewed: false
+  'officialEarnings.overview.by_event': 'சிறந்த நிகழ்வுகள்', // reviewed: false
+  'officialEarnings.overview.top_events_empty': 'இன்னும் கட்டண நிகழ்வுகள் இல்லை.', // reviewed: false
+  'officialEarnings.overview.trend_empty': 'இன்னும் போக்கு தரவு இல்லை.', // reviewed: false
+  'officialEarnings.statement.title': 'கட்டண அறிக்கை', // reviewed: false
+  'officialEarnings.statement.empty': 'இந்த வடிகட்டிக்கு நியமனங்கள் இல்லை.', // reviewed: false
+  'officialEarnings.statement.load_more': 'மேலும் ஏற்று', // reviewed: false
+  'officialEarnings.payouts.title': 'கட்டண வரலாறு', // reviewed: false
+  'officialEarnings.payouts.empty': 'இன்னும் கட்டண உருப்படிகள் இல்லை.', // reviewed: false
+  'officialEarnings.payouts.view_statement': 'அறிக்கை PDF பார்க்கவும்', // reviewed: false
+  'officialEarnings.export.title': 'வருமானம் ஏற்றுமதி', // reviewed: false
+  'officialEarnings.export.date_range': 'தேதி வரம்பு', // reviewed: false
+  'officialEarnings.export.currency': 'நாணயம்', // reviewed: false
+  'officialEarnings.export.status_filter': 'நிலை', // reviewed: false
+  'officialEarnings.export.btn_csv': 'CSV பதிவிறக்கம்', // reviewed: false
+  'officialEarnings.export.exporting': 'ஏற்றுமதி தயாரிக்கிறது…', // reviewed: false
+  'officialEarnings.export.done': 'ஏற்றுமதி தயார்', // reviewed: false
+  'officialEarnings.bank.title': 'வங்கி & கட்டண அமைப்புகள்', // reviewed: false
+  'officialEarnings.bank.hint': 'உங்கள் கட்டண கணக்கு உங்கள் பணப்பைல் நிர்வகிக்கப்படுகிறது.', // reviewed: false
+  'officialEarnings.bank.go_wallet': 'பணப்பை & கட்டணங்கள் திறக்கவும்', // reviewed: false
+  'nav.title.OfficialEarnings': 'வருமானம் & கட்டணங்கள்', // reviewed: false
+  'officialEarnings.statement.filter_all': 'அனைத்தும்', // reviewed: false
+  'officialEarnings.statement.filter_paid': 'கட்டணம் செலுத்தப்பட்டது', // reviewed: false
+  'officialEarnings.statement.filter_due': 'நிலுவை', // reviewed: false
+  'officialEarnings.statement.filter_agreed': 'ஒப்புக்கொண்டது', // reviewed: false
+  'officialEarnings.statement.filter_disputed': 'சர்ச்சைக்குரியது', // reviewed: false
+  'officialEarnings.statement.fixture': 'போட்டி', // reviewed: false
+  'officialEarnings.statement.event': 'நிகழ்வு', // reviewed: false
+  'officialEarnings.statement.role': 'பங்கு', // reviewed: false
+  'officialEarnings.statement.fee': 'கட்டணம்', // reviewed: false
+  'officialEarnings.statement.status': 'நிலை', // reviewed: false
+  'officialEarnings.statement.payout': 'கட்டணம்', // reviewed: false
 };

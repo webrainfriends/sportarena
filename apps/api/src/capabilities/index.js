@@ -83,6 +83,7 @@ import './officials-match.js';
 import './officials-pay.js';
 import './officials-feedback.js';
 import './officials-extract.js';
+import './officials-earnings.js';
 import './event-invites.js';
 import './event-schedule.js';
 import './bracket-stages.js';

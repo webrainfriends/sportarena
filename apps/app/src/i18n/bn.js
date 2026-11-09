@@ -15904,4 +15904,49 @@ export default {
   'officials.bulk.go_to_board': 'নিয়োগ বোর্ডে যান',
   'officials.bulk.selected': 'নির্বাচিত',
   'officials.bulk.not_scheduled': 'এখনও নির্ধারিত হয়নি',
+
+  'officialEarnings.title': 'আয় ও ফি', // reviewed: false
+  'officialEarnings.tab.overview': 'সংক্ষিপ্ত বিবরণ', // reviewed: false
+  'officialEarnings.tab.statement': 'বিবৃতি', // reviewed: false
+  'officialEarnings.tab.payouts': 'পেআউট', // reviewed: false
+  'officialEarnings.tab.export': 'রপ্তানি', // reviewed: false
+  'officialEarnings.tab.bank': 'ব্যাংক ও সেটিংস', // reviewed: false
+  'officialEarnings.overview.lifetime_paid': 'জীবনকাল পরিশোধিত', // reviewed: false
+  'officialEarnings.overview.pending_due': 'বাকি / অপেক্ষামান', // reviewed: false
+  'officialEarnings.overview.payout_pending': 'পেআউট সারিতে', // reviewed: false
+  'officialEarnings.overview.assignments': 'অ্যাসাইনমেন্ট', // reviewed: false
+  'officialEarnings.overview.no_data': 'এখনো ফি ডেটা নেই।', // reviewed: false
+  'officialEarnings.overview.chart_title': 'মাসিক আয়', // reviewed: false
+  'officialEarnings.overview.by_sport': 'খেলাধুলা অনুসারে', // reviewed: false
+  'officialEarnings.overview.by_event': 'শীর্ষ ইভেন্ট', // reviewed: false
+  'officialEarnings.overview.top_events_empty': 'এখনো পরিশোধিত ইভেন্ট নেই।', // reviewed: false
+  'officialEarnings.overview.trend_empty': 'এখনো ট্রেন্ড ডেটা নেই।', // reviewed: false
+  'officialEarnings.statement.title': 'ফি বিবৃতি', // reviewed: false
+  'officialEarnings.statement.empty': 'এই ফিল্টারের জন্য কোনো অ্যাসাইনমেন্ট নেই।', // reviewed: false
+  'officialEarnings.statement.load_more': 'আরো লোড করুন', // reviewed: false
+  'officialEarnings.payouts.title': 'পেআউট ইতিহাস', // reviewed: false
+  'officialEarnings.payouts.empty': 'এখনো পেআউট আইটেম নেই।', // reviewed: false
+  'officialEarnings.payouts.view_statement': 'বিবৃতি PDF দেখুন', // reviewed: false
+  'officialEarnings.export.title': 'আয় রপ্তানি', // reviewed: false
+  'officialEarnings.export.date_range': 'তারিখ পরিসর', // reviewed: false
+  'officialEarnings.export.currency': 'মুদ্রা', // reviewed: false
+  'officialEarnings.export.status_filter': 'অবস্থা', // reviewed: false
+  'officialEarnings.export.btn_csv': 'CSV ডাউনলোড', // reviewed: false
+  'officialEarnings.export.exporting': 'রপ্তানি প্রস্তুত হচ্ছে…', // reviewed: false
+  'officialEarnings.export.done': 'রপ্তানি প্রস্তুত', // reviewed: false
+  'officialEarnings.bank.title': 'ব্যাংক ও পেআউট সেটিংস', // reviewed: false
+  'officialEarnings.bank.hint': 'আপনার পেআউট অ্যাকাউন্ট আপনার ওয়ালেটে পরিচালিত হয়।', // reviewed: false
+  'officialEarnings.bank.go_wallet': 'ওয়ালেট ও পেআউট খুলুন', // reviewed: false
+  'nav.title.OfficialEarnings': 'আয় ও ফি', // reviewed: false
+  'officialEarnings.statement.filter_all': 'সব', // reviewed: false
+  'officialEarnings.statement.filter_paid': 'পরিশোধিত', // reviewed: false
+  'officialEarnings.statement.filter_due': 'বাকি', // reviewed: false
+  'officialEarnings.statement.filter_agreed': 'সম্মত', // reviewed: false
+  'officialEarnings.statement.filter_disputed': 'বিতর্কিত', // reviewed: false
+  'officialEarnings.statement.fixture': 'ম্যাচ', // reviewed: false
+  'officialEarnings.statement.event': 'ইভেন্ট', // reviewed: false
+  'officialEarnings.statement.role': 'ভূমিকা', // reviewed: false
+  'officialEarnings.statement.fee': 'ফি', // reviewed: false
+  'officialEarnings.statement.status': 'অবস্থা', // reviewed: false
+  'officialEarnings.statement.payout': 'পেআউট', // reviewed: false
 };

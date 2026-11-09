@@ -15903,4 +15903,49 @@ export default {
   'officials.bulk.go_to_board': 'नियुक्ती बोर्डवर जा',
   'officials.bulk.selected': 'निवडले',
   'officials.bulk.not_scheduled': 'अद्याप नियोजित नाही',
+
+  'officialEarnings.title': 'कमाई आणि शुल्क', // reviewed: false
+  'officialEarnings.tab.overview': 'आढावा', // reviewed: false
+  'officialEarnings.tab.statement': 'विवरण', // reviewed: false
+  'officialEarnings.tab.payouts': 'पेआउट', // reviewed: false
+  'officialEarnings.tab.export': 'निर्यात', // reviewed: false
+  'officialEarnings.tab.bank': 'बँक आणि सेटिंग्ज', // reviewed: false
+  'officialEarnings.overview.lifetime_paid': 'आजीव भरलेले', // reviewed: false
+  'officialEarnings.overview.pending_due': 'प्रलंबित / बाकी', // reviewed: false
+  'officialEarnings.overview.payout_pending': 'पेआउट रांगेत', // reviewed: false
+  'officialEarnings.overview.assignments': 'नियुक्त्या', // reviewed: false
+  'officialEarnings.overview.no_data': 'अद्याप शुल्क डेटा नाही.', // reviewed: false
+  'officialEarnings.overview.chart_title': 'मासिक कमाई', // reviewed: false
+  'officialEarnings.overview.by_sport': 'खेळानुसार', // reviewed: false
+  'officialEarnings.overview.by_event': 'शीर्ष कार्यक्रम', // reviewed: false
+  'officialEarnings.overview.top_events_empty': 'अद्याप भरलेले कार्यक्रम नाहीत.', // reviewed: false
+  'officialEarnings.overview.trend_empty': 'अद्याप ट्रेंड डेटा नाही.', // reviewed: false
+  'officialEarnings.statement.title': 'शुल्क विवरण', // reviewed: false
+  'officialEarnings.statement.empty': 'या फिल्टरसाठी नियुक्त्या नाहीत.', // reviewed: false
+  'officialEarnings.statement.load_more': 'अधिक लोड करा', // reviewed: false
+  'officialEarnings.payouts.title': 'पेआउट इतिहास', // reviewed: false
+  'officialEarnings.payouts.empty': 'अद्याप पेआउट आयटम नाहीत.', // reviewed: false
+  'officialEarnings.payouts.view_statement': 'विवरण PDF पहा', // reviewed: false
+  'officialEarnings.export.title': 'कमाई निर्यात', // reviewed: false
+  'officialEarnings.export.date_range': 'तारीख श्रेणी', // reviewed: false
+  'officialEarnings.export.currency': 'चलन', // reviewed: false
+  'officialEarnings.export.status_filter': 'स्थिती', // reviewed: false
+  'officialEarnings.export.btn_csv': 'CSV डाउनलोड', // reviewed: false
+  'officialEarnings.export.exporting': 'निर्यात तयार होत आहे…', // reviewed: false
+  'officialEarnings.export.done': 'निर्यात तयार', // reviewed: false
+  'officialEarnings.bank.title': 'बँक आणि पेआउट सेटिंग्ज', // reviewed: false
+  'officialEarnings.bank.hint': 'तुमचे पेआउट खाते तुमच्या वॉलेटमध्ये व्यवस्थापित केले जाते.', // reviewed: false
+  'officialEarnings.bank.go_wallet': 'वॉलेट आणि पेआउट उघडा', // reviewed: false
+  'nav.title.OfficialEarnings': 'कमाई आणि शुल्क', // reviewed: false
+  'officialEarnings.statement.filter_all': 'सर्व', // reviewed: false
+  'officialEarnings.statement.filter_paid': 'भरलेले', // reviewed: false
+  'officialEarnings.statement.filter_due': 'बाकी', // reviewed: false
+  'officialEarnings.statement.filter_agreed': 'मान्य', // reviewed: false
+  'officialEarnings.statement.filter_disputed': 'विवादित', // reviewed: false
+  'officialEarnings.statement.fixture': 'सामना', // reviewed: false
+  'officialEarnings.statement.event': 'कार्यक्रम', // reviewed: false
+  'officialEarnings.statement.role': 'भूमिका', // reviewed: false
+  'officialEarnings.statement.fee': 'शुल्क', // reviewed: false
+  'officialEarnings.statement.status': 'स्थिती', // reviewed: false
+  'officialEarnings.statement.payout': 'पेआउट', // reviewed: false
 };

@@ -15903,4 +15903,49 @@ export default {
   'officials.bulk.go_to_board': 'നിയമന ബോർഡിലേക്ക് പോകുക',
   'officials.bulk.selected': 'തിരഞ്ഞെടുത്തു',
   'officials.bulk.not_scheduled': 'ഇനിയും ഷെഡ്യൂൾ ചെയ്തിട്ടില്ല',
+
+  'officialEarnings.title': 'വരുമാനം & ഫീസ്', // reviewed: false
+  'officialEarnings.tab.overview': 'അവലോകനം', // reviewed: false
+  'officialEarnings.tab.statement': 'സ്റ്റേറ്റ്‌മെന്റ്', // reviewed: false
+  'officialEarnings.tab.payouts': 'പേഔട്ടുകൾ', // reviewed: false
+  'officialEarnings.tab.export': 'എക്‌സ്‌പോർട്ട്', // reviewed: false
+  'officialEarnings.tab.bank': 'ബാങ്ക് & ക്രമീകരണങ്ങൾ', // reviewed: false
+  'officialEarnings.overview.lifetime_paid': 'ആജീവനാന്ത പേ', // reviewed: false
+  'officialEarnings.overview.pending_due': 'കാത്തിരിക്കുന്നത്', // reviewed: false
+  'officialEarnings.overview.payout_pending': 'പേഔട്ട് ക്യൂവിൽ', // reviewed: false
+  'officialEarnings.overview.assignments': 'അസൈൻമെന്റുകൾ', // reviewed: false
+  'officialEarnings.overview.no_data': 'ഇതുവരെ ഫീസ് ഡേറ്റ ഇല്ല.', // reviewed: false
+  'officialEarnings.overview.chart_title': 'മാസ വരുമാനം', // reviewed: false
+  'officialEarnings.overview.by_sport': 'കായിക ഇനം അനുസരിച്ച്', // reviewed: false
+  'officialEarnings.overview.by_event': 'മികച്ച ഇവന്റുകൾ', // reviewed: false
+  'officialEarnings.overview.top_events_empty': 'ഇതുവരെ പേ ഇവന്റുകൾ ഇല്ല.', // reviewed: false
+  'officialEarnings.overview.trend_empty': 'ഇതുവരെ ട്രെൻഡ് ഡേറ്റ ഇല്ല.', // reviewed: false
+  'officialEarnings.statement.title': 'ഫീസ് സ്റ്റേറ്റ്‌മെന്റ്', // reviewed: false
+  'officialEarnings.statement.empty': 'ഈ ഫിൽട്ടറിൽ അസൈൻമെന്റുകൾ ഇല്ല.', // reviewed: false
+  'officialEarnings.statement.load_more': 'കൂടുതൽ ലോഡ് ചെയ്യുക', // reviewed: false
+  'officialEarnings.payouts.title': 'പേഔട്ട് ചരിത്രം', // reviewed: false
+  'officialEarnings.payouts.empty': 'ഇതുവരെ പേഔട്ട് ഇനങ്ങൾ ഇല്ല.', // reviewed: false
+  'officialEarnings.payouts.view_statement': 'സ്റ്റേറ്റ്‌മെന്റ് PDF കാണുക', // reviewed: false
+  'officialEarnings.export.title': 'വരുമാനം എക്‌സ്‌പോർട്ട്', // reviewed: false
+  'officialEarnings.export.date_range': 'തീയതി ശ്രേണി', // reviewed: false
+  'officialEarnings.export.currency': 'കറൻസി', // reviewed: false
+  'officialEarnings.export.status_filter': 'സ്ഥിതി', // reviewed: false
+  'officialEarnings.export.btn_csv': 'CSV ഡൗൺലോഡ്', // reviewed: false
+  'officialEarnings.export.exporting': 'എക്‌സ്‌പോർട്ട് തയ്യാറാക്കുന്നു…', // reviewed: false
+  'officialEarnings.export.done': 'എക്‌സ്‌പോർട്ട് തയ്യാർ', // reviewed: false
+  'officialEarnings.bank.title': 'ബാങ്ക് & പേഔട്ട് ക്രമീകരണങ്ങൾ', // reviewed: false
+  'officialEarnings.bank.hint': 'നിങ്ങളുടെ പേഔട്ട് അക്കൗണ്ട് വാലറ്റിൽ നിർവ്വഹിക്കപ്പെടുന്നു.', // reviewed: false
+  'officialEarnings.bank.go_wallet': 'വാലറ്റ് & പേഔട്ടുകൾ തുറക്കുക', // reviewed: false
+  'nav.title.OfficialEarnings': 'വരുമാനം & ഫീസ്', // reviewed: false
+  'officialEarnings.statement.filter_all': 'എല്ലാം', // reviewed: false
+  'officialEarnings.statement.filter_paid': 'ഇടപ്പെട്ടു', // reviewed: false
+  'officialEarnings.statement.filter_due': 'ബാക്കി', // reviewed: false
+  'officialEarnings.statement.filter_agreed': 'സമ്മതിച്ചു', // reviewed: false
+  'officialEarnings.statement.filter_disputed': 'തർക്കം', // reviewed: false
+  'officialEarnings.statement.fixture': 'മത്സരം', // reviewed: false
+  'officialEarnings.statement.event': 'ഇവന്റ്', // reviewed: false
+  'officialEarnings.statement.role': 'റോൾ', // reviewed: false
+  'officialEarnings.statement.fee': 'ഫീസ്', // reviewed: false
+  'officialEarnings.statement.status': 'സ്ഥിതി', // reviewed: false
+  'officialEarnings.statement.payout': 'പേഔട്ട്', // reviewed: false
 };

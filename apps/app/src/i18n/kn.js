@@ -15903,4 +15903,49 @@ export default {
   'officials.bulk.go_to_board': 'ನಿಯೋಜನೆ ಬೋರ್ಡ್‌ಗೆ ಹೋಗಿ',
   'officials.bulk.selected': 'ಆಯ್ಕೆಯಾಗಿದೆ',
   'officials.bulk.not_scheduled': 'ಇನ್ನೂ ನಿಗದಿಯಾಗಿಲ್ಲ',
+
+  'officialEarnings.title': 'ಆದಾಯ ಮತ್ತು ಶುಲ್ಕಗಳು', // reviewed: false
+  'officialEarnings.tab.overview': 'ಅವಲೋಕನ', // reviewed: false
+  'officialEarnings.tab.statement': 'ಹೇಳಿಕೆ', // reviewed: false
+  'officialEarnings.tab.payouts': 'ಪಾವತಿಗಳು', // reviewed: false
+  'officialEarnings.tab.export': 'ರಫ್ತು', // reviewed: false
+  'officialEarnings.tab.bank': 'ಬ್ಯಾಂಕ್ ಮತ್ತು ಸೆಟ್ಟಿಂಗ್‌ಗಳು', // reviewed: false
+  'officialEarnings.overview.lifetime_paid': 'ಜೀವಮಾನ ಪಾವತಿ', // reviewed: false
+  'officialEarnings.overview.pending_due': 'ಬಾಕಿ / ನಿರೀಕ್ಷಿಸಲಾಗುತ್ತಿದೆ', // reviewed: false
+  'officialEarnings.overview.payout_pending': 'ಪಾವತಿ ಸರತಿಯಲ್ಲಿ', // reviewed: false
+  'officialEarnings.overview.assignments': 'ನಿಯೋಜನೆಗಳು', // reviewed: false
+  'officialEarnings.overview.no_data': 'ಇನ್ನೂ ಶುಲ್ಕ ಡೇಟಾ ಇಲ್ಲ.', // reviewed: false
+  'officialEarnings.overview.chart_title': 'ಮಾಸಿಕ ಆದಾಯ', // reviewed: false
+  'officialEarnings.overview.by_sport': 'ಕ್ರೀಡೆ ಪ್ರಕಾರ', // reviewed: false
+  'officialEarnings.overview.by_event': 'ಉನ್ನತ ಕಾರ್ಯಕ್ರಮಗಳು', // reviewed: false
+  'officialEarnings.overview.top_events_empty': 'ಇನ್ನೂ ಪಾವತಿ ಕಾರ್ಯಕ್ರಮಗಳು ಇಲ್ಲ.', // reviewed: false
+  'officialEarnings.overview.trend_empty': 'ಇನ್ನೂ ಟ್ರೆಂಡ್ ಡೇಟಾ ಇಲ್ಲ.', // reviewed: false
+  'officialEarnings.statement.title': 'ಶುಲ್ಕ ಹೇಳಿಕೆ', // reviewed: false
+  'officialEarnings.statement.empty': 'ಈ ಫಿಲ್ಟರ್‌ಗೆ ನಿಯೋಜನೆಗಳು ಇಲ್ಲ.', // reviewed: false
+  'officialEarnings.statement.load_more': 'ಇನ್ನಷ್ಟು ಲೋಡ್ ಮಾಡಿ', // reviewed: false
+  'officialEarnings.payouts.title': 'ಪಾವತಿ ಇತಿಹಾಸ', // reviewed: false
+  'officialEarnings.payouts.empty': 'ಇನ್ನೂ ಪಾವತಿ ಐಟಂಗಳು ಇಲ್ಲ.', // reviewed: false
+  'officialEarnings.payouts.view_statement': 'ಹೇಳಿಕೆ PDF ನೋಡಿ', // reviewed: false
+  'officialEarnings.export.title': 'ಆದಾಯ ರಫ್ತು', // reviewed: false
+  'officialEarnings.export.date_range': 'ದಿನಾಂಕ ಶ್ರೇಣಿ', // reviewed: false
+  'officialEarnings.export.currency': 'ಕರೆನ್ಸಿ', // reviewed: false
+  'officialEarnings.export.status_filter': 'ಸ್ಥಿತಿ', // reviewed: false
+  'officialEarnings.export.btn_csv': 'CSV ಡೌನ್‌ಲೋಡ್', // reviewed: false
+  'officialEarnings.export.exporting': 'ರಫ್ತು ಸಿದ್ಧಪಡಿಸಲಾಗುತ್ತಿದೆ…', // reviewed: false
+  'officialEarnings.export.done': 'ರಫ್ತು ಸಿದ್ಧ', // reviewed: false
+  'officialEarnings.bank.title': 'ಬ್ಯಾಂಕ್ ಮತ್ತು ಪಾವತಿ ಸೆಟ್ಟಿಂಗ್‌ಗಳು', // reviewed: false
+  'officialEarnings.bank.hint': 'ನಿಮ್ಮ ಪಾವತಿ ಖಾತೆಯನ್ನು ನಿಮ್ಮ ವಾಲೆಟ್‌ನಲ್ಲಿ ನಿರ್ವಹಿಸಲಾಗುತ್ತದೆ.', // reviewed: false
+  'officialEarnings.bank.go_wallet': 'ವಾಲೆಟ್ ಮತ್ತು ಪಾವತಿಗಳನ್ನು ತೆರೆಯಿರಿ', // reviewed: false
+  'nav.title.OfficialEarnings': 'ಆದಾಯ ಮತ್ತು ಶುಲ್ಕಗಳು', // reviewed: false
+  'officialEarnings.statement.filter_all': 'ಎಲ್ಲಾ', // reviewed: false
+  'officialEarnings.statement.filter_paid': 'ಪಾವತಿಸಲಾಗಿದೆ', // reviewed: false
+  'officialEarnings.statement.filter_due': 'ಬಾಕಿ', // reviewed: false
+  'officialEarnings.statement.filter_agreed': 'ಒಪ್ಪಿಗೆ', // reviewed: false
+  'officialEarnings.statement.filter_disputed': 'ವಿವಾದ', // reviewed: false
+  'officialEarnings.statement.fixture': 'ಪಂದ್ಯ', // reviewed: false
+  'officialEarnings.statement.event': 'ಕಾರ್ಯಕ್ರಮ', // reviewed: false
+  'officialEarnings.statement.role': 'ಪಾತ್ರ', // reviewed: false
+  'officialEarnings.statement.fee': 'ಶುಲ್ಕ', // reviewed: false
+  'officialEarnings.statement.status': 'ಸ್ಥಿತಿ', // reviewed: false
+  'officialEarnings.statement.payout': 'ಪಾವತಿ', // reviewed: false
 };

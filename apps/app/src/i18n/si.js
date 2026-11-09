@@ -15904,4 +15904,49 @@ export default {
   'officials.bulk.go_to_board': 'පත්වීම් පුවරුවට යන්න',
   'officials.bulk.selected': 'තෝරාගත්තා',
   'officials.bulk.not_scheduled': 'තවම නියම නොකළ',
+
+  'officialEarnings.title': 'ඉපැයීම් සහ ගාස්තු', // reviewed: false
+  'officialEarnings.tab.overview': 'දළ විශ්ලේෂණය', // reviewed: false
+  'officialEarnings.tab.statement': 'ප්‍රකාශය', // reviewed: false
+  'officialEarnings.tab.payouts': 'ගෙවීම්', // reviewed: false
+  'officialEarnings.tab.export': 'අපනයනය', // reviewed: false
+  'officialEarnings.tab.bank': 'බැංකු සහ සැකසුම්', // reviewed: false
+  'officialEarnings.overview.lifetime_paid': 'ජීවිත කාලීනව ගෙවූ', // reviewed: false
+  'officialEarnings.overview.pending_due': 'ශේෂ / බලාපොරොත්තු', // reviewed: false
+  'officialEarnings.overview.payout_pending': 'ගෙවීම් පෝලිමේ', // reviewed: false
+  'officialEarnings.overview.assignments': 'පැවරුම්', // reviewed: false
+  'officialEarnings.overview.no_data': 'ගාස්තු දත්ත තවම නැත.', // reviewed: false
+  'officialEarnings.overview.chart_title': 'මාසික ඉපැයීම්', // reviewed: false
+  'officialEarnings.overview.by_sport': 'ක්‍රීඩාව අනුව', // reviewed: false
+  'officialEarnings.overview.by_event': 'ඉහළ ක්‍රීඩා සිදුවීම්', // reviewed: false
+  'officialEarnings.overview.top_events_empty': 'ගෙවූ සිදුවීම් නැත.', // reviewed: false
+  'officialEarnings.overview.trend_empty': 'ප්‍රවණතා දත්ත නැත.', // reviewed: false
+  'officialEarnings.statement.title': 'ගාස්තු ප්‍රකාශය', // reviewed: false
+  'officialEarnings.statement.empty': 'මෙම පෙරහනට පැවරුම් නැත.', // reviewed: false
+  'officialEarnings.statement.load_more': 'තවත් පූරණය කරන්න', // reviewed: false
+  'officialEarnings.payouts.title': 'ගෙවීම් ඉතිහාසය', // reviewed: false
+  'officialEarnings.payouts.empty': 'ගෙවීම් අයිතම නැත.', // reviewed: false
+  'officialEarnings.payouts.view_statement': 'ප්‍රකාශය PDF බලන්න', // reviewed: false
+  'officialEarnings.export.title': 'ඉපැයීම් අපනයනය', // reviewed: false
+  'officialEarnings.export.date_range': 'දිනය පරාසය', // reviewed: false
+  'officialEarnings.export.currency': 'මුදල', // reviewed: false
+  'officialEarnings.export.status_filter': 'තත්වය', // reviewed: false
+  'officialEarnings.export.btn_csv': 'CSV බාගත කරන්න', // reviewed: false
+  'officialEarnings.export.exporting': 'අපනයනය සූදානම් කරනවා…', // reviewed: false
+  'officialEarnings.export.done': 'අපනයනය සූදානම්', // reviewed: false
+  'officialEarnings.bank.title': 'බැංකු සහ ගෙවීම් සැකසුම්', // reviewed: false
+  'officialEarnings.bank.hint': 'ඔබේ ගෙවීම් ගිණුම ඔබේ මෙවලමෙහි කළමනාකරණය කෙරේ.', // reviewed: false
+  'officialEarnings.bank.go_wallet': 'මෙවලම සහ ගෙවීම් විවෘත කරන්න', // reviewed: false
+  'nav.title.OfficialEarnings': 'ඉපැයීම් සහ ගාස්තු', // reviewed: false
+  'officialEarnings.statement.filter_all': 'සියල්ල', // reviewed: false
+  'officialEarnings.statement.filter_paid': 'ගෙවූ', // reviewed: false
+  'officialEarnings.statement.filter_due': 'ශේෂ', // reviewed: false
+  'officialEarnings.statement.filter_agreed': 'එකඟ', // reviewed: false
+  'officialEarnings.statement.filter_disputed': 'විවාදිත', // reviewed: false
+  'officialEarnings.statement.fixture': 'තරඟය', // reviewed: false
+  'officialEarnings.statement.event': 'සිදුවීම', // reviewed: false
+  'officialEarnings.statement.role': 'භූමිකාව', // reviewed: false
+  'officialEarnings.statement.fee': 'ගාස්තුව', // reviewed: false
+  'officialEarnings.statement.status': 'තත්වය', // reviewed: false
+  'officialEarnings.statement.payout': 'ගෙවීම', // reviewed: false
 };
