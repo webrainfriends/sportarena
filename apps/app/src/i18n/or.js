@@ -16239,4 +16239,61 @@ export default {
   'off.tab_credential': 'Credentials', // reviewed: false
   'off.ql_reports': 'Reports & disputes', // reviewed: false
   'off.ql_discipline': 'Discipline cases', // reviewed: false
+  'oi.tab.my_invoices': 'My Invoices', // reviewed: false
+  'oi.tab.expenses': 'Expenses', // reviewed: false
+  'oi.tab.batches': 'Batches', // reviewed: false
+  'oi.tab.documents': 'Documents', // reviewed: false
+  'oi.tab.pending': 'Pending Approval', // reviewed: false
+  'oi.tab.paid': 'Paid', // reviewed: false
+  'oi.tab.reports': 'Reports', // reviewed: false
+  'oi.status.draft': 'Draft', // reviewed: false
+  'oi.status.submitted': 'Submitted', // reviewed: false
+  'oi.status.approved': 'Approved', // reviewed: false
+  'oi.status.queried': 'Queried', // reviewed: false
+  'oi.status.disputed': 'Disputed', // reviewed: false
+  'oi.status.void': 'Void', // reviewed: false
+  'oi.kind.self_issued': 'Self-issued invoice', // reviewed: false
+  'oi.kind.rci': 'Recipient created invoice', // reviewed: false
+  'oi.action.create': 'Create Invoice', // reviewed: false
+  'oi.action.submit': 'Submit for Approval', // reviewed: false
+  'oi.action.approve': 'Approve', // reviewed: false
+  'oi.action.query': 'Query', // reviewed: false
+  'oi.action.dispute': 'Dispute', // reviewed: false
+  'oi.action.void': 'Void', // reviewed: false
+  'oi.action.confirm_rci': 'Confirm Invoice', // reviewed: false
+  'oi.action.reject_rci': 'Reject Invoice', // reviewed: false
+  'oi.action.download_pdf': 'Download PDF', // reviewed: false
+  'oi.action.add_expense': 'Add Expense', // reviewed: false
+  'oi.action.create_batch': 'Create Batch', // reviewed: false
+  'oi.field.invoice_number': 'Invoice Number', // reviewed: false
+  'oi.field.total': 'Total', // reviewed: false
+  'oi.field.tax': 'Tax', // reviewed: false
+  'oi.field.withholding': 'Withholding Tax', // reviewed: false
+  'oi.field.net_payable': 'Net Payable', // reviewed: false
+  'oi.field.currency': 'Currency', // reviewed: false
+  'oi.expense.category.travel': 'Travel', // reviewed: false
+  'oi.expense.category.accommodation': 'Accommodation', // reviewed: false
+  'oi.expense.category.subsistence': 'Subsistence', // reviewed: false
+  'oi.expense.category.equipment': 'Equipment', // reviewed: false
+  'oi.expense.category.other': 'Other', // reviewed: false
+  'oi.expense.status.draft': 'Draft', // reviewed: false
+  'oi.expense.status.submitted': 'Submitted', // reviewed: false
+  'oi.expense.status.approved': 'Approved', // reviewed: false
+  'oi.expense.status.rejected': 'Rejected', // reviewed: false
+  'oi.batch.create': 'Create Reimbursement Batch', // reviewed: false
+  'oi.batch.submit': 'Submit Batch', // reviewed: false
+  'oi.batch.approve': 'Approve Batch', // reviewed: false
+  'oi.report.invoices_raised': 'Invoices Raised', // reviewed: false
+  'oi.report.invoices_paid': 'Invoices Paid', // reviewed: false
+  'oi.report.invoices_outstanding': 'Outstanding', // reviewed: false
+  'oi.report.expenses_submitted': 'Expenses Submitted', // reviewed: false
+  'oi.report.expenses_reimbursed': 'Expenses Reimbursed', // reviewed: false
+  'oi.report.withholding_deducted': 'Withholding Deducted', // reviewed: false
+  'oi.empty.invoices': 'No invoices yet. Create one from a confirmed assignment.', // reviewed: false
+  'oi.empty.expenses': 'No expenses yet. Add expenses to assignments.', // reviewed: false
+  'oi.empty.batches': 'No expense batches yet. Submit approved expenses as a batch for reimbursement.', // reviewed: false
+  'oi.inbox.rci_pending': 'An invoice was created on your behalf — confirm or reject it.', // reviewed: false
+  'oi.inbox.invoice_queried': 'The organiser has a question about your invoice.', // reviewed: false
+  'oi.inbox.expense_approved_batch_prompt': '{count} expenses approved — create a reimbursement batch.', // reviewed: false
+  'oi.inbox.payout_complete': 'Your invoice has been paid.', // reviewed: false
 };
