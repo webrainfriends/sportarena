@@ -15903,4 +15903,49 @@ export default {
   'officials.bulk.go_to_board': 'నియామక బోర్డుకు వెళ్ళండి',
   'officials.bulk.selected': 'ఎంచుకోబడ్డాయి',
   'officials.bulk.not_scheduled': 'ఇంకా షెడ్యూల్ చేయలేదు',
+
+  'officialEarnings.title': 'ఆదాయాలు & రుసుములు', // reviewed: false
+  'officialEarnings.tab.overview': 'అవలోకనం', // reviewed: false
+  'officialEarnings.tab.statement': 'స్టేట్‌మెంట్', // reviewed: false
+  'officialEarnings.tab.payouts': 'చెల్లింపులు', // reviewed: false
+  'officialEarnings.tab.export': 'ఎగుమతి', // reviewed: false
+  'officialEarnings.tab.bank': 'బ్యాంక్ & సెట్టింగ్స్', // reviewed: false
+  'officialEarnings.overview.lifetime_paid': 'జీవితకాల చెల్లింపు', // reviewed: false
+  'officialEarnings.overview.pending_due': 'పెండింగ్ / వేచి ఉంది', // reviewed: false
+  'officialEarnings.overview.payout_pending': 'పేఅవుట్ క్యూలో', // reviewed: false
+  'officialEarnings.overview.assignments': 'అసైన్‌మెంట్లు', // reviewed: false
+  'officialEarnings.overview.no_data': 'ఇంకా రుసుము డేటా లేదు.', // reviewed: false
+  'officialEarnings.overview.chart_title': 'నెలవారీ ఆదాయాలు', // reviewed: false
+  'officialEarnings.overview.by_sport': 'క్రీడ వారీగా', // reviewed: false
+  'officialEarnings.overview.by_event': 'అగ్ర ఈవెంట్లు', // reviewed: false
+  'officialEarnings.overview.top_events_empty': 'ఇంకా చెల్లింపు ఈవెంట్లు లేవు.', // reviewed: false
+  'officialEarnings.overview.trend_empty': 'ఇంకా ట్రెండ్ డేటా లేదు.', // reviewed: false
+  'officialEarnings.statement.title': 'రుసుము స్టేట్‌మెంట్', // reviewed: false
+  'officialEarnings.statement.empty': 'ఈ ఫిల్టర్‌కు అసైన్‌మెంట్లు లేవు.', // reviewed: false
+  'officialEarnings.statement.load_more': 'మరిన్ని లోడ్ చేయి', // reviewed: false
+  'officialEarnings.payouts.title': 'పేఅవుట్ చరిత్ర', // reviewed: false
+  'officialEarnings.payouts.empty': 'ఇంకా పేఅవుట్ అంశాలు లేవు.', // reviewed: false
+  'officialEarnings.payouts.view_statement': 'స్టేట్‌మెంట్ PDF చూడు', // reviewed: false
+  'officialEarnings.export.title': 'ఆదాయాలు ఎగుమతి', // reviewed: false
+  'officialEarnings.export.date_range': 'తేదీ పరిధి', // reviewed: false
+  'officialEarnings.export.currency': 'కరెన్సీ', // reviewed: false
+  'officialEarnings.export.status_filter': 'స్థితి', // reviewed: false
+  'officialEarnings.export.btn_csv': 'CSV డౌన్‌లోడ్', // reviewed: false
+  'officialEarnings.export.exporting': 'ఎగుమతి సిద్ధపడుతోంది…', // reviewed: false
+  'officialEarnings.export.done': 'ఎగుమతి సిద్ధంగా ఉంది', // reviewed: false
+  'officialEarnings.bank.title': 'బ్యాంక్ & పేఅవుట్ సెట్టింగ్స్', // reviewed: false
+  'officialEarnings.bank.hint': 'మీ పేఅవుట్ ఖాతా మీ వాలెట్‌లో నిర్వహించబడుతుంది.', // reviewed: false
+  'officialEarnings.bank.go_wallet': 'వాలెట్ & చెల్లింపులు తెరవు', // reviewed: false
+  'nav.title.OfficialEarnings': 'ఆదాయాలు & రుసుములు', // reviewed: false
+  'officialEarnings.statement.filter_all': 'అన్నీ', // reviewed: false
+  'officialEarnings.statement.filter_paid': 'చెల్లించబడింది', // reviewed: false
+  'officialEarnings.statement.filter_due': 'బాకీ', // reviewed: false
+  'officialEarnings.statement.filter_agreed': 'అంగీకరించబడింది', // reviewed: false
+  'officialEarnings.statement.filter_disputed': 'వివాదాస్పదం', // reviewed: false
+  'officialEarnings.statement.fixture': 'మ్యాచ్', // reviewed: false
+  'officialEarnings.statement.event': 'ఈవెంట్', // reviewed: false
+  'officialEarnings.statement.role': 'పాత్ర', // reviewed: false
+  'officialEarnings.statement.fee': 'రుసుము', // reviewed: false
+  'officialEarnings.statement.status': 'స్థితి', // reviewed: false
+  'officialEarnings.statement.payout': 'చెల్లింపు', // reviewed: false
 };

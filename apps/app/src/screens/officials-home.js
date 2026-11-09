@@ -92,6 +92,7 @@ function Today({ h, reload, go, tz }) {
     ['🎛️', 'Match-day console', h.next ? () => go('MatchCentre', { id: h.next.fixture_id }) : null], ['📖', 'Rules & interpretations', () => go('OfficialsHome', { tab: 'rules' })],
     ['🗂️', 'Officiating history', () => go('OfficialsHome', { tab: 'history' })], ['💼', 'Opportunities', () => go('Openings')], ['🪪', 'Verification & renewal', () => go('OfficialsHome', { tab: 'credential' })],
     ['⚖️', 'Reports & disputes', () => go('OfficialsHome', { tab: 'history' })], ['🎓', 'Grade, assessments & CPD', () => go('OfficialsDevelopment')],
+    ['💰', 'Earnings & fees', () => go('OfficialEarnings')],
   ];
   const matches = (
     <View style={{ gap: 14 }}>

@@ -15903,4 +15903,49 @@ export default {
   'officials.bulk.go_to_board': 'Ke papan penugasan',
   'officials.bulk.selected': 'dipilih',
   'officials.bulk.not_scheduled': 'Belum dijadwalkan',
+
+  'officialEarnings.title': 'Penghasilan & Biaya', // reviewed: false
+  'officialEarnings.tab.overview': 'Ikhtisar', // reviewed: false
+  'officialEarnings.tab.statement': 'Laporan', // reviewed: false
+  'officialEarnings.tab.payouts': 'Pembayaran', // reviewed: false
+  'officialEarnings.tab.export': 'Ekspor', // reviewed: false
+  'officialEarnings.tab.bank': 'Bank & Pengaturan', // reviewed: false
+  'officialEarnings.overview.lifetime_paid': 'Dibayarkan seumur hidup', // reviewed: false
+  'officialEarnings.overview.pending_due': 'Tertunda / Menunggu', // reviewed: false
+  'officialEarnings.overview.payout_pending': 'Dalam antrean pembayaran', // reviewed: false
+  'officialEarnings.overview.assignments': 'Penugasan', // reviewed: false
+  'officialEarnings.overview.no_data': 'Belum ada data biaya.', // reviewed: false
+  'officialEarnings.overview.chart_title': 'Penghasilan bulanan', // reviewed: false
+  'officialEarnings.overview.by_sport': 'Berdasarkan olahraga', // reviewed: false
+  'officialEarnings.overview.by_event': 'Acara teratas', // reviewed: false
+  'officialEarnings.overview.top_events_empty': 'Belum ada acara yang dibayarkan.', // reviewed: false
+  'officialEarnings.overview.trend_empty': 'Belum ada data tren.', // reviewed: false
+  'officialEarnings.statement.title': 'Laporan biaya', // reviewed: false
+  'officialEarnings.statement.empty': 'Tidak ada penugasan untuk filter ini.', // reviewed: false
+  'officialEarnings.statement.load_more': 'Muat lebih banyak', // reviewed: false
+  'officialEarnings.payouts.title': 'Riwayat pembayaran', // reviewed: false
+  'officialEarnings.payouts.empty': 'Belum ada item pembayaran.', // reviewed: false
+  'officialEarnings.payouts.view_statement': 'Lihat laporan PDF', // reviewed: false
+  'officialEarnings.export.title': 'Ekspor penghasilan', // reviewed: false
+  'officialEarnings.export.date_range': 'Rentang tanggal', // reviewed: false
+  'officialEarnings.export.currency': 'Mata uang', // reviewed: false
+  'officialEarnings.export.status_filter': 'Status', // reviewed: false
+  'officialEarnings.export.btn_csv': 'Unduh CSV', // reviewed: false
+  'officialEarnings.export.exporting': 'Mempersiapkan ekspor…', // reviewed: false
+  'officialEarnings.export.done': 'Ekspor siap', // reviewed: false
+  'officialEarnings.bank.title': 'Bank & Pengaturan pembayaran', // reviewed: false
+  'officialEarnings.bank.hint': 'Akun pembayaran Anda dikelola di Dompet Anda.', // reviewed: false
+  'officialEarnings.bank.go_wallet': 'Buka Dompet & Pembayaran', // reviewed: false
+  'nav.title.OfficialEarnings': 'Penghasilan & Biaya', // reviewed: false
+  'officialEarnings.statement.filter_all': 'Semua', // reviewed: false
+  'officialEarnings.statement.filter_paid': 'Dibayarkan', // reviewed: false
+  'officialEarnings.statement.filter_due': 'Terutang', // reviewed: false
+  'officialEarnings.statement.filter_agreed': 'Disepakati', // reviewed: false
+  'officialEarnings.statement.filter_disputed': 'Disengketakan', // reviewed: false
+  'officialEarnings.statement.fixture': 'Pertandingan', // reviewed: false
+  'officialEarnings.statement.event': 'Acara', // reviewed: false
+  'officialEarnings.statement.role': 'Peran', // reviewed: false
+  'officialEarnings.statement.fee': 'Biaya', // reviewed: false
+  'officialEarnings.statement.status': 'Status', // reviewed: false
+  'officialEarnings.statement.payout': 'Pembayaran', // reviewed: false
 };

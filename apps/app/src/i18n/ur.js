@@ -15911,4 +15911,49 @@ export default {
   'officials.bulk.go_to_board': 'تقرری بورڈ پر جائیں',
   'officials.bulk.selected': 'منتخب',
   'officials.bulk.not_scheduled': 'ابھی طے نہیں',
+
+  'officialEarnings.title': 'آمدنی اور فیس', // reviewed: false
+  'officialEarnings.tab.overview': 'جائزہ', // reviewed: false
+  'officialEarnings.tab.statement': 'بیان', // reviewed: false
+  'officialEarnings.tab.payouts': 'ادائیگیاں', // reviewed: false
+  'officialEarnings.tab.export': 'برآمد', // reviewed: false
+  'officialEarnings.tab.bank': 'بینک اور ترتیبات', // reviewed: false
+  'officialEarnings.overview.lifetime_paid': 'زندگی بھر کی ادائیگی', // reviewed: false
+  'officialEarnings.overview.pending_due': 'زیر التواء / بقایا', // reviewed: false
+  'officialEarnings.overview.payout_pending': 'ادائیگی کی قطار میں', // reviewed: false
+  'officialEarnings.overview.assignments': 'تفویضات', // reviewed: false
+  'officialEarnings.overview.no_data': 'ابھی تک فیس کا ڈیٹا نہیں۔', // reviewed: false
+  'officialEarnings.overview.chart_title': 'ماہانہ آمدنی', // reviewed: false
+  'officialEarnings.overview.by_sport': 'کھیل کے مطابق', // reviewed: false
+  'officialEarnings.overview.by_event': 'سرفہرست تقریبات', // reviewed: false
+  'officialEarnings.overview.top_events_empty': 'ابھی تک ادا شدہ تقریبات نہیں۔', // reviewed: false
+  'officialEarnings.overview.trend_empty': 'ابھی تک رجحان ڈیٹا نہیں۔', // reviewed: false
+  'officialEarnings.statement.title': 'فیس بیان', // reviewed: false
+  'officialEarnings.statement.empty': 'اس فلٹر کے لیے کوئی تفویض نہیں۔', // reviewed: false
+  'officialEarnings.statement.load_more': 'مزید لوڈ کریں', // reviewed: false
+  'officialEarnings.payouts.title': 'ادائیگی کی تاریخ', // reviewed: false
+  'officialEarnings.payouts.empty': 'ابھی تک ادائیگی کی اشیاء نہیں۔', // reviewed: false
+  'officialEarnings.payouts.view_statement': 'بیان PDF دیکھیں', // reviewed: false
+  'officialEarnings.export.title': 'آمدنی برآمد', // reviewed: false
+  'officialEarnings.export.date_range': 'تاریخ کی حد', // reviewed: false
+  'officialEarnings.export.currency': 'کرنسی', // reviewed: false
+  'officialEarnings.export.status_filter': 'حالت', // reviewed: false
+  'officialEarnings.export.btn_csv': 'CSV ڈاؤن لوڈ', // reviewed: false
+  'officialEarnings.export.exporting': 'برآمد تیار ہو رہی ہے…', // reviewed: false
+  'officialEarnings.export.done': 'برآمد تیار', // reviewed: false
+  'officialEarnings.bank.title': 'بینک اور ادائیگی کی ترتیبات', // reviewed: false
+  'officialEarnings.bank.hint': 'آپ کا ادائیگی اکاؤنٹ آپ کے بٹوے میں منظم ہے۔', // reviewed: false
+  'officialEarnings.bank.go_wallet': 'بٹوہ اور ادائیگیاں کھولیں', // reviewed: false
+  'nav.title.OfficialEarnings': 'آمدنی اور فیس', // reviewed: false
+  'officialEarnings.statement.filter_all': 'سب', // reviewed: false
+  'officialEarnings.statement.filter_paid': 'ادا شدہ', // reviewed: false
+  'officialEarnings.statement.filter_due': 'بقایا', // reviewed: false
+  'officialEarnings.statement.filter_agreed': 'متفق', // reviewed: false
+  'officialEarnings.statement.filter_disputed': 'متنازعہ', // reviewed: false
+  'officialEarnings.statement.fixture': 'میچ', // reviewed: false
+  'officialEarnings.statement.event': 'تقریب', // reviewed: false
+  'officialEarnings.statement.role': 'کردار', // reviewed: false
+  'officialEarnings.statement.fee': 'فیس', // reviewed: false
+  'officialEarnings.statement.status': 'حالت', // reviewed: false
+  'officialEarnings.statement.payout': 'ادائیگی', // reviewed: false
 };

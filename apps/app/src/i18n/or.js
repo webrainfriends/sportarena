@@ -15904,4 +15904,49 @@ export default {
   'officials.bulk.go_to_board': 'ନିଯୁକ୍ତି ବୋର୍ଡ ଯାଆନ୍ତୁ',
   'officials.bulk.selected': 'ବଛା',
   'officials.bulk.not_scheduled': 'ଏ ପର୍ଯ୍ୟନ୍ତ ଯୋଜନା ନାହିଁ',
+
+  'officialEarnings.title': 'ଆୟ ଏବଂ ଶୁଳ୍କ', // reviewed: false
+  'officialEarnings.tab.overview': 'ସଂକ୍ଷିପ୍ତ ବିବରଣ', // reviewed: false
+  'officialEarnings.tab.statement': 'ବିବୃତ୍ତି', // reviewed: false
+  'officialEarnings.tab.payouts': 'ପେଆଉଟ', // reviewed: false
+  'officialEarnings.tab.export': 'ରପ୍ତାନ', // reviewed: false
+  'officialEarnings.tab.bank': 'ବ୍ୟାଙ୍କ ଓ ସେଟିଂ', // reviewed: false
+  'officialEarnings.overview.lifetime_paid': 'ଜୀବନ ଭୁଗ୍ତାନ', // reviewed: false
+  'officialEarnings.overview.pending_due': 'ବାକ / ଅପେକ୍ଷାରତ', // reviewed: false
+  'officialEarnings.overview.payout_pending': 'ପେଆଉଟ ଧାଡ଼ିରେ', // reviewed: false
+  'officialEarnings.overview.assignments': 'ନିଯୁକ୍ତି', // reviewed: false
+  'officialEarnings.overview.no_data': 'ଏ ପର୍ଯ୍ୟନ୍ତ ଶୁଳ୍କ ଡାଟା ନାହିଁ।', // reviewed: false
+  'officialEarnings.overview.chart_title': 'ମାସ ଆୟ', // reviewed: false
+  'officialEarnings.overview.by_sport': 'କ୍ରୀଡ଼ା ଅନୁଯାୟୀ', // reviewed: false
+  'officialEarnings.overview.by_event': 'ଶୀର୍ଷ ଇଭେଣ୍ଟ', // reviewed: false
+  'officialEarnings.overview.top_events_empty': 'ଏ ପର୍ଯ୍ୟନ୍ତ ଭୁଗ୍ତାନ ଇଭେଣ୍ଟ ନାହିଁ।', // reviewed: false
+  'officialEarnings.overview.trend_empty': 'ଏ ପର୍ଯ୍ୟନ୍ତ ଟ୍ରେଣ୍ଡ ଡାଟା ନାହିଁ।', // reviewed: false
+  'officialEarnings.statement.title': 'ଶୁଳ୍କ ବିବୃତ୍ତି', // reviewed: false
+  'officialEarnings.statement.empty': 'ଏହି ଫିଲ୍ଟର ପାଇଁ ନିଯୁକ୍ତି ନାହିଁ।', // reviewed: false
+  'officialEarnings.statement.load_more': 'ଆହୁରି ଲୋଡ କରନ୍ତୁ', // reviewed: false
+  'officialEarnings.payouts.title': 'ପେଆଉଟ ଇତିହାସ', // reviewed: false
+  'officialEarnings.payouts.empty': 'ଏ ପର୍ଯ୍ୟନ୍ତ ପେଆଉଟ ଆଇଟମ ନାହିଁ।', // reviewed: false
+  'officialEarnings.payouts.view_statement': 'ବିବୃତ୍ତି PDF ଦେଖନ୍ତୁ', // reviewed: false
+  'officialEarnings.export.title': 'ଆୟ ରପ୍ତାନ', // reviewed: false
+  'officialEarnings.export.date_range': 'ତାରିଖ ପରିସର', // reviewed: false
+  'officialEarnings.export.currency': 'ମୁଦ୍ରା', // reviewed: false
+  'officialEarnings.export.status_filter': 'ସ୍ଥିତି', // reviewed: false
+  'officialEarnings.export.btn_csv': 'CSV ଡାଉନ୍‌ଲୋଡ', // reviewed: false
+  'officialEarnings.export.exporting': 'ରପ୍ତାନ ପ୍ରସ୍ତୁତ ହଉଛି…', // reviewed: false
+  'officialEarnings.export.done': 'ରପ୍ତାନ ପ୍ରସ୍ତୁତ', // reviewed: false
+  'officialEarnings.bank.title': 'ବ୍ୟାଙ୍କ ଓ ପେଆଉଟ ସେଟିଂ', // reviewed: false
+  'officialEarnings.bank.hint': 'ଆପଣଙ୍କ ପେଆଉଟ ଆକାଉଣ୍ଟ ୱାଲେଟରେ ପରିଚାଳନା ହୁଏ।', // reviewed: false
+  'officialEarnings.bank.go_wallet': 'ୱାଲେଟ ଓ ପେଆଉଟ ଖୋଲନ୍ତୁ', // reviewed: false
+  'nav.title.OfficialEarnings': 'ଆୟ ଏବଂ ଶୁଳ୍କ', // reviewed: false
+  'officialEarnings.statement.filter_all': 'ସବୁ', // reviewed: false
+  'officialEarnings.statement.filter_paid': 'ଭୁଗ୍ତାନ', // reviewed: false
+  'officialEarnings.statement.filter_due': 'ବାକ', // reviewed: false
+  'officialEarnings.statement.filter_agreed': 'ରାଜି', // reviewed: false
+  'officialEarnings.statement.filter_disputed': 'ବିବାଦ', // reviewed: false
+  'officialEarnings.statement.fixture': 'ମ୍ୟାଚ', // reviewed: false
+  'officialEarnings.statement.event': 'ଇଭେଣ୍ଟ', // reviewed: false
+  'officialEarnings.statement.role': 'ଭୂମିକା', // reviewed: false
+  'officialEarnings.statement.fee': 'ଶୁଳ୍କ', // reviewed: false
+  'officialEarnings.statement.status': 'ସ୍ଥିତି', // reviewed: false
+  'officialEarnings.statement.payout': 'ପେଆଉଟ', // reviewed: false
 };
