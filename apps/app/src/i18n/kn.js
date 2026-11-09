@@ -15921,7 +15921,6 @@ export default {
   'rc.home_onboard_title': 'Set Up Your Rate Cards', // machine draft, reviewed: false
   'rc.home_onboard_sub': 'Add a rate card to appear in the marketplace and receive booking requests.', // machine draft, reviewed: false
   'rc.home_onboard_cta': 'Set Up Rate Cards', // machine draft, reviewed: false
-};
 
   'nav.title.AssignmentBoard': 'ಅಧಿಕಾರಿಗಳ ನಿಯೋಜನೆ ಬೋರ್ಡ್',
   'nav.title.OfficialsBulkInvite': 'ಅಧಿಕಾರಿಗಳನ್ನು ಒಟ್ಟಾಗಿ ಆಹ್ವಾನಿಸಿ',
@@ -16039,7 +16038,6 @@ export default {
   'officialEarnings.statement.fee': 'ಶುಲ್ಕ', // reviewed: false
   'officialEarnings.statement.status': 'ಸ್ಥಿತಿ', // reviewed: false
   'officialEarnings.statement.payout': 'ಪಾವತಿ', // reviewed: false
-};
   'nav.title.OfficialReportWizard': 'File Official Report', // reviewed: false
   'nav.title.OfficialReportDetail': 'Official Report', // reviewed: false
   'nav.title.OfficialReportProvenance': 'Report Provenance', // reviewed: false
@@ -16240,3 +16238,4 @@ export default {
   'off.tab_credential': 'Credentials', // reviewed: false
   'off.ql_reports': 'Reports & disputes', // reviewed: false
   'off.ql_discipline': 'Discipline cases', // reviewed: false
+};

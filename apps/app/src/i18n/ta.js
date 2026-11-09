@@ -15920,7 +15920,6 @@ export default {
   'rc.home_onboard_title': 'Set Up Your Rate Cards', // machine draft, reviewed: false
   'rc.home_onboard_sub': 'Add a rate card to appear in the marketplace and receive booking requests.', // machine draft, reviewed: false
   'rc.home_onboard_cta': 'Set Up Rate Cards', // machine draft, reviewed: false
-};
 
   'nav.title.AssignmentBoard': 'அதிகாரிகள் நியமன பலகை',
   'nav.title.OfficialsBulkInvite': 'அதிகாரிகளை மொத்தமாக அழைக்கவும்',
