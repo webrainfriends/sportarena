@@ -419,3 +419,4 @@ import './venue-revenue-intelligence.js';
 import './platform-benchmarks.js';
 import './para-ux-conformance.js';
 import './platform-users.js';
+import './data-residency.js';
