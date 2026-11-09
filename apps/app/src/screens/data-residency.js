@@ -46,14 +46,14 @@ export function DataResidency() {
   const [savingCountry, setSavingCountry] = useState(false);
 
   useEffect(() => {
-    api('GET', '/data-residency/me').then((d) => { setData(d); if (!d?.home_country) setPickCountry(inferCountry()); }).finally(() => setLoading(false));
+    api.get('/data-residency/me').then((d) => { setData(d); if (!d?.home_country) setPickCountry(inferCountry()); }).finally(() => setLoading(false));
   }, []);
 
   useEffect(() => {
     if (!pickCountry) { setPreview(null); return; }
     let cancelled = false;
     const timer = setTimeout(() => {
-      api('GET', '/data-residency/preview', { country: pickCountry }).then((r) => { if (!cancelled) setPreview(r); }).catch(() => {});
+      api.get('/data-residency/preview', { country: pickCountry }).then((r) => { if (!cancelled) setPreview(r); }).catch(() => {});
     }, 400);
     return () => { cancelled = true; clearTimeout(timer); };
   }, [pickCountry]);
@@ -62,10 +62,10 @@ export function DataResidency() {
     if (!pickCountry) return;
     setSavingCountry(true);
     try {
-      await api('PATCH', '/me/home-country', { home_country: pickCountry });
-      const p = preview ?? await api('GET', '/data-residency/preview', { country: pickCountry });
+      await api.patch('/me/home-country', { home_country: pickCountry });
+      const p = preview ?? await api.get('/data-residency/preview', { country: pickCountry });
       if (!p?.supported) { push('DataResidencyConsent', { country: pickCountry }); return; }
-      const d = await api('GET', '/data-residency/me');
+      const d = await api.get('/data-residency/me');
       setData(d);
     } catch (e) { /* show nothing, user can retry */ } finally { setSavingCountry(false); }
   };
@@ -199,7 +199,7 @@ export function DataResidencyConsent({ route }) {
   const agree = useCallback(async () => {
     setBusy(true);
     try {
-      await api('POST', '/data-residency/consent/singapore', {
+      await api.post('/data-residency/consent/singapore', {
         source_country: country,
         policy_version: POLICY_VERSION,
         policy_text_hash: POLICY_HASH,
@@ -294,14 +294,14 @@ export function DataResidencyMigration() {
   const [done, setDone] = useState(false);
 
   useEffect(() => {
-    api('GET', '/data-residency/me').then(setData);
+    api.get('/data-residency/me').then(setData);
   }, []);
 
   const submit = async () => {
     if (!data?.assignment) return;
     setBusy(true);
     try {
-      await api('POST', '/data-residency/migration', { to_region: 'ap-south-1' });
+      await api.post('/data-residency/migration', { to_region: 'ap-south-1' });
       setDone(true);
     } finally { setBusy(false); }
   };
@@ -371,7 +371,7 @@ export function DataResidencyAdmin() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    api('GET', '/data-residency/regions').then((d) => setCatalog(d.regions ?? [])).finally(() => setLoading(false));
+    api.get('/data-residency/regions').then((d) => setCatalog(d.regions ?? [])).finally(() => setLoading(false));
   }, []);
 
   if (loading) return <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: c.bg }}><ActivityIndicator color={c.pink} /></View>;
