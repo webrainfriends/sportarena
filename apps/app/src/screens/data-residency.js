@@ -78,7 +78,7 @@ export function DataResidency() {
   const migrationAvailable = assignment && !transfer;
 
   return (
-    <ScrollView style={{ flex: 1, backgroundColor: c.bg }} contentContainerStyle={{ padding: 16, gap: 14 }}>
+    <ScrollView style={{ flex: 1, backgroundColor: c.bg }} contentContainerStyle={{ padding: 16, gap: 14 }} keyboardShouldPersistTaps="handled">
       <Row style={{ marginBottom: 4 }}>
         <TouchableOpacity onPress={back} hitSlop={12} style={{ marginRight: 12 }}>
           <Text style={{ fontSize: 22, color: c.ink }}>←</Text>
@@ -224,7 +224,7 @@ export function DataResidencyConsent({ route }) {
   );
 
   return (
-    <ScrollView style={{ flex: 1, backgroundColor: c.bg }} contentContainerStyle={{ padding: 16, gap: 14 }}>
+    <ScrollView style={{ flex: 1, backgroundColor: c.bg }} contentContainerStyle={{ padding: 16, gap: 14 }} keyboardShouldPersistTaps="handled">
       <Row style={{ marginBottom: 4 }}>
         <TouchableOpacity onPress={back} hitSlop={12} style={{ marginRight: 12 }}>
           <Text style={{ fontSize: 22, color: c.ink }}>←</Text>
@@ -314,7 +314,7 @@ export function DataResidencyMigration() {
   if (!data) return <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: c.bg }}><ActivityIndicator color={c.pink} /></View>;
 
   return (
-    <ScrollView style={{ flex: 1, backgroundColor: c.bg }} contentContainerStyle={{ padding: 16, gap: 14 }}>
+    <ScrollView style={{ flex: 1, backgroundColor: c.bg }} contentContainerStyle={{ padding: 16, gap: 14 }} keyboardShouldPersistTaps="handled">
       <Row style={{ marginBottom: 4 }}>
         <TouchableOpacity onPress={back} hitSlop={12} style={{ marginRight: 12 }}>
           <Text style={{ fontSize: 22, color: c.ink }}>←</Text>
