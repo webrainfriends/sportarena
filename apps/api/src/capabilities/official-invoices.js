@@ -252,10 +252,10 @@ cap({
 
       // assign invoice number in a serialisable sub-transaction
       const kind = oi.kind === 'rci' ? 'official_rci' : 'official_self';
-      const counter = (await c.query('SELECT prefix, next_seq FROM invoice_counters WHERE kind=$1 FOR UPDATE', [kind])).rows[0];
+      const counter = (await c.query('SELECT prefix, next_seq FROM official_invoice_counters WHERE kind=$1 FOR UPDATE', [kind])).rows[0];
       if (!counter) throw conflict('Invoice counter not initialised — run migration 195');
       const invoiceNumber = `${counter.prefix}-${String(counter.next_seq).padStart(6, '0')}`;
-      await c.query('UPDATE invoice_counters SET next_seq=next_seq+1 WHERE kind=$1', [kind]);
+      await c.query('UPDATE official_invoice_counters SET next_seq=next_seq+1 WHERE kind=$1', [kind]);
 
       await c.query(
         `UPDATE official_invoices SET status='submitted', invoice_number=$2, submitted_at=now(), updated_at=now() WHERE id=$1`,
