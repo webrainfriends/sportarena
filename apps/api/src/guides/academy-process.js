@@ -213,6 +213,22 @@ export const ACADEMY_STEPS = [
     modules: ['settlement.js', 'academy-finance.js', 'provider-tax.js'], sources: ['apps/app/src/screens/seller-onboarding.js', 'apps/app/src/screens/earnings.js'],
   },
   {
+    id: 'officials_rates', title: 'Negotiate rate agreements with officials',
+    why: 'Elite academies host high-volume fixture programmes. Rather than setting ad-hoc per-game fees, a rate agreement creates a negotiated, approval-gated contract between the academy and an official (or the official and your academy). Once accepted, rates are frozen into an immutable contractual snapshot at assignment time — no retrospective surprises for either party. Volume tiers let you offer lower per-game fees once an official clocks enough games in a season, rewarding loyalty. Multi-currency agreements suit academies operating across jurisdictions.',
+    steps: [
+      'Open Officials, then Rate Agreements. The metric strip shows active agreements, average fee and pending proposals.',
+      'Tap New Agreement and work through the 5-step wizard: (1) Agreement Type — choose the context (Event / Tournament, Academy Contract, Season / Series, Club / Organisation, or Retainer); (2) Scope — pick the sport, official role and currency; (3) Rate Structure — choose how fees are calculated: Fixed Match Fee, Per Hour, Per Day, Volume Tiers (enter bracket thresholds and per-game amounts), Retainer (monthly + per-game supplement), Service Bundle (flat total for a defined scope), or Negotiated; optionally add travel allowance, overtime rate and accommodation; (4) Validity & Terms — set effective dates, auto-renew option, cancellation notice period, cancellation fee percentage and payment trigger (per game, weekly, monthly or on completion); (5) Review & Send — read the full summary, add an optional private note (not shared) and a message to the other party, then tap Send Proposal.',
+      'The official (or academy admin, depending on who initiated) receives a notification. They open the Rate Agreements screen, find the proposal under the Pending tab, and tap the card to review every term.',
+      'From the detail screen, the receiving party can Accept, Counter, or Cancel. Accepting locks the contractual snapshot — rates and terms become immutable for all bookings under this agreement. Countering opens the wizard pre-filled with the existing terms so they can adjust and send back a counter-offer (up to 20 rounds). Cancelling requires a reason.',
+      'Once Active, the agreement appears in the resolver: when you confirm an official\'s assignment in the event console, the platform automatically applies the best applicable rate from the precedence stack (profile default → segment rate → customer override → rate agreement → booked snapshot). The resolution is shown in the Fee Preview panel before you confirm.',
+      'To see which rate will apply to a specific assignment before confirming it, open the assignment, tap Fee Preview. The Precedence Chain table shows all five levels with the winning level highlighted. Where a volume-tier agreement is active, the tier bracket updates live as more games are confirmed.',
+      'Each assignment confirmation freezes a booked snapshot: a point-in-time record of the fee, travel allowance and overtime rate that cannot be changed retrospectively. The official and the academy can both see the snapshot on the agreement detail screen.',
+      'To review all past versions and counter-offer history for an agreement, tap the agreement card and scroll to the Approval Timeline.',
+    ],
+    target: { academy: 'officials' },
+    modules: ['official-rate-agreements.js', 'officials-pay.js'], sources: ['apps/app/src/screens/official-rate-agreements.js', 'apps/app/src/screens/official-rate-agreement-detail.js', 'apps/app/src/screens/official-rate-agreement-wizard.js', 'apps/app/src/screens/official-rate-fee-preview.js'],
+  },
+  {
     id: 'reports', title: 'Read reports',
     why: 'See outcomes, retention, finance health and partners on the executive home, and export what you need.',
     steps: ['Open Academy, then Home for the executive view.', 'Check the funnel, fees, outcomes and retention indicators.', 'Open Finance to export the profit and loss.', 'Open Finance, then Overview, for the monthly trend, the cost mix and the branch comparison, and issue the finance pack or management review as a PDF.', 'Open an athlete on the Progress page to issue their progress report as a PDF.', 'Share season reports and shared reports with families or partners.'],
@@ -457,10 +473,11 @@ export const NOT_IN_GUIDE = {
   'injury-rtp.js': 'Covered by the injury_rtp onboarding step.',
   'injury-coach-view.js': 'Covered by the injury_rtp onboarding step.',
   'injury-alerts.js': 'Covered by the injury_rtp onboarding step.',
+  'official-rate-agreements.js': 'Covered by the officials_rates onboarding step (R35).',
 };
 
 /** The directories/files the guard test watches for org/academy/venue/coach/tax capability modules. */
-export const WATCHED_MODULES = /^(academy-.*|org-.*|organisations|venue-coaches|gst|provider-tax|coach-classes|para-sport-funding|para-sport-sponsorship-outcomes|para-pathway|para-readiness|para-learn|para-staff-credentials|para-spectator-accessibility|para-ux-conformance|boarding-.*|wearables|wellness.*|integrations|official-rate-card)\.js$/;
+export const WATCHED_MODULES = /^(academy-.*|org-.*|organisations|venue-coaches|gst|provider-tax|coach-classes|para-sport-funding|para-sport-sponsorship-outcomes|para-pathway|para-readiness|para-learn|para-staff-credentials|para-spectator-accessibility|para-ux-conformance|boarding-.*|wearables|wellness.*|integrations|official-rate-card|official-rate-agreements)\.js$/;
 
 export const SHOT_SIZES = { phone: { width: 390, height: 1100 }, desktop: { width: 1280, height: 900 } };
 export const shotFile = (stepId, size) => `${String(ACADEMY_STEPS.findIndex((s) => s.id === stepId) + 1).padStart(2, '0')}-${stepId}-${size}.png`;
