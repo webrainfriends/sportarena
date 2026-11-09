@@ -95,11 +95,8 @@ function Today({ h, reload, go, tz }) {
     ['📨', `Pending requests${h.stats.pending ? ` (${h.stats.pending})` : ''}`, () => go('OfficialsHome', { tab: 'today' })],
     ['🎛️', 'Match-day console', h.next ? () => go('MatchCentre', { id: h.next.fixture_id }) : null], ['📖', 'Rules & interpretations', () => go('OfficialsHome', { tab: 'rules' })],
     ['🗂️', 'Officiating history', () => go('OfficialsHome', { tab: 'history' })], ['💼', 'Opportunities', () => go('Openings')], ['🪪', 'Verification & renewal', () => go('OfficialsHome', { tab: 'credential' })],
-    ['⚖️', 'Reports & disputes', () => go('OfficialsHome', { tab: 'history' })], ['🎓', 'Grade, assessments & CPD', () => go('OfficialsDevelopment')],
-    ['💰', 'Earnings & fees', () => go('OfficialEarnings')],
-    ['🧾', 'Invoices & expenses', () => go('OfficialInvoices', { role: 'official' })],
     ['⚖️', t('off.ql_reports'), () => go('OfficialsHome', { tab: 'reports' })], ['🏛', t('off.ql_discipline'), () => go('DisciplineCases')], ['🎓', 'Grade, assessments & CPD', () => go('OfficialsDevelopment')],
-    ['💰', 'Earnings & fees', () => go('OfficialEarnings')], ['🏦', 'Payout account', () => go('OfficialPayoutAccount', { officialId: h.user_id ?? h.official?.user_id })], ['🧾', 'Tax & earnings', () => go('OfficialTax')],
+    ['💰', 'Earnings & fees', () => go('OfficialEarnings')], ['💳', t('rc.title'), () => go('RateCardCatalog')], ['🏦', 'Payout account', () => go('OfficialPayoutAccount', { officialId: h.user_id ?? h.official?.user_id })], ['🧾', 'Tax & earnings', () => go('OfficialTax')],
   ];
   const matches = (
     <View style={{ gap: 14 }}>
