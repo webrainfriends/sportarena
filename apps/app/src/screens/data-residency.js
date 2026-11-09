@@ -188,19 +188,21 @@ export function DataResidency() {
 
 // ── DataResidencyConsent: Singapore fallback consent screen ───────────────────
 export function DataResidencyConsent({ route }) {
-  const { back } = useNav();
+  const { back, push } = useNav();
   const country = route?.params?.country ?? '';
   const [busy, setBusy] = useState(false);
   const [done, setDone] = useState(false);
+  const [localCountry, setLocalCountry] = useState(country);
 
   const POLICY_HASH = 'a3f8c2d1';
   const POLICY_VERSION = 1;
 
   const agree = useCallback(async () => {
+    if (!localCountry || localCountry.length !== 2) return;
     setBusy(true);
     try {
       await api.post('/data-residency/consent/singapore', {
-        source_country: country,
+        source_country: localCountry,
         policy_version: POLICY_VERSION,
         policy_text_hash: POLICY_HASH,
         data_categories: ['profile_identity', 'sport_records', 'device_session', 'payment_references'],
@@ -208,7 +210,7 @@ export function DataResidencyConsent({ route }) {
       });
       setDone(true);
     } finally { setBusy(false); }
-  }, [country]);
+  }, [localCountry]);
 
   if (done) return (
     <View style={{ flex: 1, backgroundColor: c.bg, alignItems: 'center', justifyContent: 'center', padding: 32 }}>
@@ -278,7 +280,10 @@ export function DataResidencyConsent({ route }) {
         <Text style={{ fontSize: 12, color: c.ink, lineHeight: 20 }}>{t('residency.affirmation_body')}</Text>
       </View>
 
-      <Btn label={`🇸🇬 ${t('residency.fallback_agree')}`} onPress={agree} disabled={busy} />
+      {!localCountry && (
+        <CountryPicker value={localCountry} onChange={setLocalCountry} label={t('residency.country_label')} />
+      )}
+      <Btn label={`🇸🇬 ${t('residency.fallback_agree')}`} onPress={agree} disabled={busy || localCountry.length !== 2} />
       <Btn label={`⏳ ${t('residency.fallback_waitlist')}`} onPress={back} variant="secondary" />
       <Btn label={t('residency.fallback_decline')} onPress={back} variant="ghost" />
       <Text style={{ fontSize: 11, color: c.mute, textAlign: 'center' }}>{t('residency.no_pretick')}</Text>
