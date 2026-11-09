@@ -18,6 +18,7 @@ import { c, grad } from '../theme';
 import { Banner, Metric, money } from '../federation-ui';
 import { openPdf } from '../open-file';
 import { t } from '../i18n';
+import { OfficialProfileBanner, OfficialProfileWizard } from './official-profile-wizard';
 import { Cols } from '../federation-bits';
 import { VerificationSection } from './verification';
 import { MatchDayPack } from './match-day-pack';
@@ -441,6 +442,7 @@ export function OfficialsHome({ tab: tab0 }) {
   const { push: go } = useNav();
   const L = useLayout();
   const [tab, setTab] = useState(tab0 ?? 'today');
+  const [showProfileWizard, setShowProfileWizard] = useState(false);
   const [sportId, setSportId] = useState(null);
   const q = useLoad(() => api.get('/me/officials/home', sportId ? { sport_id: sportId } : {}), [sportId]);
   React.useEffect(() => { if (tab0) setTab(tab0); }, [tab0]);
@@ -478,6 +480,8 @@ export function OfficialsHome({ tab: tab0 }) {
           {h.sports.length > 1 ? <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>{h.sports.map((s) => <Chip key={s.id} label={`${s.emoji} ${s.name}`} active={(sportId ?? h.sport?.id) === s.id} onPress={() => setSportId(s.id)} />)}</View> : null}
         </View>
       </GradCard>
+      <OfficialProfileBanner onSetup={() => setShowProfileWizard(true)} />
+      {showProfileWizard ? <OfficialProfileWizard onClose={() => setShowProfileWizard(false)} onDone={() => setShowProfileWizard(false)} toast={(msg) => {}} /> : null}
       {!h.sports.length ? <Banner tone={c.sunSoft} action="Add a sport profile" onAction={() => go('SportProfile')}>Add a referee sport profile so organisers can find and ask you.</Banner> : null}
       <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginTop: 12 }}>
         <Metric value={h.stats.this_week} label="Matches this week" onPress={() => setTab('calendar')} />
