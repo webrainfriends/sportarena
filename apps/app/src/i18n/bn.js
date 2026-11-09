@@ -1033,6 +1033,10 @@ export default {
   'nav.title.Copilots': 'কোপাইলট',
   'nav.title.PlatformUsers': 'Platform Users', // platform-users hotfix — machine draft, reviewed: false
   'nav.title.AcademyStaffUsage': 'Staff Usage', // platform-users hotfix — machine draft, reviewed: false
+  'nav.title.DataResidency': 'My Data Residency', // data-residency hotfix — machine draft, reviewed: false
+  'nav.title.DataResidencyConsent': 'Data Storage Consent', // data-residency hotfix — machine draft, reviewed: false
+  'nav.title.DataResidencyMigration': 'Request Region Transfer', // data-residency hotfix — machine draft, reviewed: false
+  'nav.title.DataResidencyAdmin': 'Region Registry', // data-residency hotfix — machine draft, reviewed: false
   'nav.tab.Calendar': 'ক্যালেন্ডার',
   'nav.tab.Profile': 'প্রোফাইল',
   'nav.tab.More': 'আরও',

@@ -1033,6 +1033,10 @@ export default {
   'nav.title.Copilots': 'කෝපයිලට්',
   'nav.title.PlatformUsers': 'Platform Users', // platform-users hotfix — machine draft, reviewed: false
   'nav.title.AcademyStaffUsage': 'Staff Usage', // platform-users hotfix — machine draft, reviewed: false
+  'nav.title.DataResidency': 'My Data Residency', // data-residency hotfix — machine draft, reviewed: false
+  'nav.title.DataResidencyConsent': 'Data Storage Consent', // data-residency hotfix — machine draft, reviewed: false
+  'nav.title.DataResidencyMigration': 'Request Region Transfer', // data-residency hotfix — machine draft, reviewed: false
+  'nav.title.DataResidencyAdmin': 'Region Registry', // data-residency hotfix — machine draft, reviewed: false
   'nav.tab.Calendar': 'දින දර්ශනය',
   'nav.tab.Profile': 'පැතිකඩ',
   'nav.tab.More': 'තවත්',
