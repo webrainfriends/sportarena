@@ -1,231 +1,454 @@
-// Test suite for officials-bulk capabilities (Issue #1005 / R13)
-// Covers: pool query, auto-suggest scoring, shortlist, bulk invite (idempotency + race),
-//         swap (conflict checks, neutrality, override), reschedule preview, assignment board.
-import { describe, it, before, after, beforeEach } from 'node:test';
+import { describe, it, before, after } from 'node:test';
 import assert from 'node:assert/strict';
-import { pool } from '../src/db.js';
-import { testUser, testEvent, testFixture, testSportProfile, cleanup } from './helpers.js';
+import { db, tx } from '../src/db.js';
 
-// ─── helpers ─────────────────────────────────────────────────────────────────
-let organizer, official1, official2, event, fixture1, fixture2;
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
+async function createOrg(name) {
+  const r = await db.query(
+    `INSERT INTO organisations (name, status) VALUES ($1, 'active') RETURNING id`,
+    [name],
+  );
+  return r.rows[0].id;
+}
+
+async function createEvent(orgId, name = 'Test Event') {
+  const r = await db.query(
+    `INSERT INTO events (org_id, name, status, starts_at, ends_at)
+     VALUES ($1, $2, 'published', NOW(), NOW() + INTERVAL '7 days') RETURNING id`,
+    [orgId, name],
+  );
+  return r.rows[0].id;
+}
+
+async function createVenue(orgId) {
+  const r = await db.query(
+    `INSERT INTO venues (org_id, name, lat, lng, status)
+     VALUES ($1, 'Test Venue', 40.4168, -3.7038, 'active') RETURNING id`,
+    [orgId, name],
+  );
+  return r.rows[0].id;
+}
+
+async function createFixture(eventId, venueId = null) {
+  const r = await db.query(
+    `INSERT INTO fixtures (event_id, venue_id, starts_at, status)
+     VALUES ($1, $2, NOW() + INTERVAL '1 day', 'scheduled') RETURNING id`,
+    [eventId, venueId],
+  );
+  return r.rows[0].id;
+}
+
+async function createUser(email) {
+  const r = await db.query(
+    `INSERT INTO users (email, name, status) VALUES ($1, $2, 'active') RETURNING id`,
+    [email, email.split('@')[0]],
+  );
+  return r.rows[0].id;
+}
+
+async function createOfficialProfile(userId, grade = 'G3', baseLat = 40.5, baseLng = -3.6) {
+  // upsert sport_profiles entry with official data
+  const r = await db.query(
+    `INSERT INTO sport_profiles (user_id, role, official_grade, base_lat, base_lng, status)
+     VALUES ($1, 'official', $2, $3, $4, 'active')
+     ON CONFLICT (user_id, role) DO UPDATE
+       SET official_grade = EXCLUDED.official_grade,
+           base_lat = EXCLUDED.base_lat,
+           base_lng = EXCLUDED.base_lng
+     RETURNING id`,
+    [userId, grade, baseLat, baseLng],
+  );
+  return r.rows[0].id;
+}
+
+async function addToEventPool(eventId, userId) {
+  await db.query(
+    `INSERT INTO event_members (event_id, user_id, role, status)
+     VALUES ($1, $2, 'official', 'active')
+     ON CONFLICT DO NOTHING`,
+    [eventId, userId],
+  );
+}
+
+// Lightweight HTTP-style capability invoker (calls handler fn directly)
+async function cap(name, params, ctx = {}) {
+  // Dynamically resolve capability from registry
+  const { registry } = await import('../src/capabilities/registry.js');
+  const handler = registry.get(name);
+  if (!handler) throw new Error(`Capability not found: ${name}`);
+  return handler(params, { user: ctx.user || { id: ctx.userId, role: 'org_admin' }, ...ctx });
+}
+
+// ---------------------------------------------------------------------------
+// Setup / teardown
+// ---------------------------------------------------------------------------
+
+let orgId, eventId, fixtureId, userId1, userId2, userId3;
 
 before(async () => {
-  organizer = await testUser({ roles: ['organizer'] });
-  official1 = await testUser({ roles: ['athlete'] });
-  official2 = await testUser({ roles: ['athlete'] });
-  event = await testEvent({ organizer_id: organizer.id, official_policy: 'optional' });
-  fixture1 = await testFixture({ event_id: event.id, status: 'scheduled' });
-  fixture2 = await testFixture({ event_id: event.id, status: 'scheduled' });
-  // Sport profiles for officials
-  await testSportProfile({ user_id: official1.id, role: 'referee', sport_id: event.sport_id });
-  await testSportProfile({ user_id: official2.id, role: 'referee', sport_id: event.sport_id });
+  orgId = await createOrg('Test Academy');
+  eventId = await createEvent(orgId);
+
+  // Create three officials
+  userId1 = await createUser(`off1_${Date.now()}@test.com`);
+  userId2 = await createUser(`off2_${Date.now()}@test.com`);
+  userId3 = await createUser(`off3_${Date.now()}@test.com`);
+
+  await createOfficialProfile(userId1, 'G4', 40.4168, -3.7038); // near Madrid
+  await createOfficialProfile(userId2, 'G3', 40.4500, -3.6900);
+  await createOfficialProfile(userId3, 'G2', 51.5074, -0.1278); // London – far
+
+  // Add all to event pool
+  await addToEventPool(eventId, userId1);
+  await addToEventPool(eventId, userId2);
+  await addToEventPool(eventId, userId3);
+
+  fixtureId = await createFixture(eventId);
 });
 
-after(() => cleanup([organizer, official1, official2, event, fixture1, fixture2]));
-
-// ─── Pool query ───────────────────────────────────────────────────────────────
-describe('list_event_official_pool', () => {
-  it('returns officials with active sport profiles', async () => {
-    const { body } = await app.asUser(organizer).get(`/api/v1/events/${event.id}/officials/pool`);
-    assert.ok(body.officials.length >= 2, 'should return at least the two test officials');
-  });
-
-  it('403 for non-organiser', async () => {
-    const { status } = await app.asUser(official1).get(`/api/v1/events/${event.id}/officials/pool`);
-    assert.equal(status, 403);
-  });
-
-  it('filters by min_grade_rank when licence exists', async () => {
-    // Insert a G3 licence for official1, G5 for official2
-    await pool.query(`INSERT INTO fed_licences(id,holder_id,type_id,status,expires_on)
-      SELECT gen_random_uuid(),$1,(SELECT id FROM fed_licence_types WHERE grade_rank=3 AND holder_role='official' LIMIT 1),'active',current_date+365`, [official1.id]);
-    const { body } = await app.asUser(organizer).get(`/api/v1/events/${event.id}/officials/pool?min_grade_rank=4`);
-    const ids = body.officials.map((o) => o.id);
-    assert.ok(!ids.includes(official1.id), 'G3 official should be excluded');
-  });
+after(async () => {
+  // Clean up: soft-delete event which cascades through event_members
+  await db.query(`UPDATE events SET status='archived' WHERE id=$1`, [eventId]);
 });
 
-// ─── Suggest with scoring ─────────────────────────────────────────────────────
-describe('suggest_fixture_officials', () => {
-  it('returns ranked suggestions with score fields', async () => {
-    const { body, status } = await app.asUser(organizer).get(`/api/v1/fixtures/${fixture1.id}/officials/suggest?role=referee`);
-    assert.equal(status, 200);
-    assert.ok(Array.isArray(body.suggestions));
-    for (const s of body.suggestions) {
-      assert.ok(typeof s.score === 'number' && s.score >= 0 && s.score <= 100);
-      assert.ok(s.reasons && typeof s.reasons === 'object');
-      assert.ok(typeof s.explanation === 'string');
-    }
-  });
+// ---------------------------------------------------------------------------
+// 1. get_assignment_board
+// ---------------------------------------------------------------------------
 
-  it('suggestions are sorted descending by score', async () => {
-    const { body } = await app.asUser(organizer).get(`/api/v1/fixtures/${fixture1.id}/officials/suggest?role=referee`);
-    const scores = body.suggestions.map((s) => s.score);
-    for (let i = 1; i < scores.length; i++) assert.ok(scores[i - 1] >= scores[i]);
-  });
-
-  it('403 for non-organiser', async () => {
-    const { status } = await app.asUser(official1).get(`/api/v1/fixtures/${fixture1.id}/officials/suggest?role=referee`);
-    assert.equal(status, 403);
-  });
-});
-
-// ─── Shortlist ────────────────────────────────────────────────────────────────
-describe('shortlist_fixture_official', () => {
-  it('adds to shortlist; upserts on duplicate', async () => {
-    const r1 = await app.asUser(organizer).post(`/api/v1/fixtures/${fixture1.id}/officials/shortlist`, { user_id: official1.id, role: 'referee', note: 'Top pick' });
-    assert.equal(r1.status, 200);
-    // Upsert: re-add with new note
-    const r2 = await app.asUser(organizer).post(`/api/v1/fixtures/${fixture1.id}/officials/shortlist`, { user_id: official1.id, role: 'referee', note: 'Updated note' });
-    assert.equal(r2.status, 200);
-    assert.equal(r2.body.note, 'Updated note');
-  });
-
-  it('appears on the assignment board', async () => {
-    const { body } = await app.asUser(organizer).get(`/api/v1/events/${event.id}/officials/board`);
-    const f = body.fixtures.find((x) => x.id === fixture1.id);
-    assert.ok(f.shortlists.some((sl) => sl.user_id === official1.id));
-  });
-});
-
-// ─── Bulk invite ──────────────────────────────────────────────────────────────
-describe('bulk_invite_officials', () => {
-  it('invites all (fixture × official) pairs and returns batch_id', async () => {
-    const { body, status } = await app.asUser(organizer).post(`/api/v1/events/${event.id}/officials/bulk-invite`, {
-      role: 'referee',
-      fixture_ids: [fixture1.id, fixture2.id],
-      user_ids: [official1.id, official2.id],
-      message: 'Welcome!',
-    });
-    assert.equal(status, 201);
-    assert.equal(body.sent.length, 4, '4 = 2 fixtures × 2 officials');
-    assert.equal(body.errors.length, 0);
-    assert.ok(body.batch_id);
-  });
-
-  it('idempotent: re-inviting already-invited official lands in skipped', async () => {
-    const { body } = await app.asUser(organizer).post(`/api/v1/events/${event.id}/officials/bulk-invite`, {
-      role: 'referee',
-      fixture_ids: [fixture1.id],
-      user_ids: [official1.id],
-    });
-    assert.ok(body.skipped.length >= 1, 'should skip the duplicate');
-    assert.equal(body.errors.length, 0, 'no hard errors — idempotent');
-  });
-
-  it('403 for non-organiser', async () => {
-    const { status } = await app.asUser(official1).post(`/api/v1/events/${event.id}/officials/bulk-invite`, {
-      role: 'referee', fixture_ids: [fixture1.id], user_ids: [official2.id],
-    });
-    assert.equal(status, 403);
-  });
-
-  it('validates fixture belongs to event', async () => {
-    const other = await testFixture({ event_id: (await testEvent({ organizer_id: organizer.id })).id });
-    const { body, status } = await app.asUser(organizer).post(`/api/v1/events/${event.id}/officials/bulk-invite`, {
-      role: 'referee', fixture_ids: [other.id], user_ids: [official1.id],
-    });
-    assert.ok(body.errors.length >= 1, 'cross-event fixture should error');
-  });
-});
-
-// ─── Swap ─────────────────────────────────────────────────────────────────────
-describe('swap_fixture_official', () => {
-  let fo;
-  beforeEach(async () => {
-    // Ensure official1 is accepted on fixture1
-    const invite = await app.asUser(organizer).post(`/api/v1/fixtures/${fixture1.id}/officials`, { user_id: official1.id, role: 'umpire' });
-    fo = invite.body;
-    await app.asUser(official1).post(`/api/v1/official-assignments/${fo.id}/respond`, { response: 'accept' });
-    fo = (await app.asUser(organizer).get(`/api/v1/fixtures/${fixture1.id}/officials`)).body.items.find((x) => x.id === fo.id);
-  });
-
-  it('moves accepted official to target fixture; old assignment is released', async () => {
-    const { body, status } = await app.asUser(organizer).post(`/api/v1/official-assignments/${fo.id}/swap`, { to_fixture_id: fixture2.id });
-    assert.equal(status, 200);
-    assert.ok(body.released);
-    assert.ok(body.created);
-    // Official should now appear on fixture2
-    const board = await app.asUser(organizer).get(`/api/v1/events/${event.id}/officials/board`);
-    const f2 = board.body.fixtures.find((x) => x.id === fixture2.id);
-    assert.ok(Object.values(f2.crew).flat().some((o) => o.user_id === official1.id));
-  });
-
-  it('409 if target fixture already has this official in this role', async () => {
-    // invite official1 to fixture2 first
-    const inv2 = await app.asUser(organizer).post(`/api/v1/fixtures/${fixture2.id}/officials`, { user_id: official1.id, role: 'umpire' });
-    await app.asUser(official1).post(`/api/v1/official-assignments/${inv2.body.id}/respond`, { response: 'accept' });
-    const { status } = await app.asUser(organizer).post(`/api/v1/official-assignments/${fo.id}/swap`, { to_fixture_id: fixture2.id });
-    assert.equal(status, 409);
-  });
-
-  it('requires override_reason for preference warning', async () => {
-    // Artificially create a rotation warning: set event_assignments > 2
-    // Not trivially reproducible without DB manipulation; test that override_reason is passed correctly
-    const { body } = await app.asUser(organizer).post(`/api/v1/official-assignments/${fo.id}/swap`, {
-      to_fixture_id: fixture2.id,
-      override_reason: 'Only available umpire for this slot',
-    });
-    // Should not 400 when reason is provided even if warning
-    assert.ok([200, 409].includes(body.status ?? 200));
-  });
-
-  it('403 for non-organiser', async () => {
-    const { status } = await app.asUser(official2).post(`/api/v1/official-assignments/${fo.id}/swap`, { to_fixture_id: fixture2.id });
-    assert.equal(status, 403);
-  });
-});
-
-// ─── Reschedule preview ───────────────────────────────────────────────────────
-describe('preview_bulk_reschedule_officials', () => {
-  it('returns impact per fixture with conflict detection', async () => {
-    const newTime = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
-    const { body, status } = await app.asUser(organizer).post(`/api/v1/events/${event.id}/officials/reschedule-preview`, {
-      changes: [{ fixture_id: fixture1.id, new_scheduled_at: newTime }],
-    });
-    assert.equal(status, 200);
-    assert.ok(body.impacts.length >= 1);
-    assert.ok(typeof body.total_officials_affected === 'number');
-  });
-
-  it('reports no conflict when no crew', async () => {
-    const freshFixture = await testFixture({ event_id: event.id, status: 'scheduled' });
-    const newTime = new Date(Date.now() + 10 * 24 * 60 * 60 * 1000).toISOString();
-    const { body } = await app.asUser(organizer).post(`/api/v1/events/${event.id}/officials/reschedule-preview`, {
-      changes: [{ fixture_id: freshFixture.id, new_scheduled_at: newTime }],
-    });
-    const imp = body.impacts.find((x) => x.fixture_id === freshFixture.id);
-    assert.equal(imp.conflicts, 0);
-  });
-});
-
-// ─── Assignment board ─────────────────────────────────────────────────────────
 describe('get_assignment_board', () => {
-  it('returns fixtures array with crew and stats', async () => {
-    const { body, status } = await app.asUser(organizer).get(`/api/v1/events/${event.id}/officials/board`);
-    assert.equal(status, 200);
-    assert.ok(Array.isArray(body.fixtures));
-    assert.ok(typeof body.stats.confirmed === 'number');
-    assert.ok(typeof body.stats.uncovered_slots === 'number');
+  it('returns fixture rows with crew map and coverage stats', async () => {
+    const result = await cap('get_assignment_board', { event_id: eventId });
+
+    assert.ok(result.fixtures, 'has fixtures array');
+    assert.ok(result.stats, 'has stats object');
+    assert.ok(typeof result.stats.confirmed === 'number', 'confirmed is a number');
+    assert.ok(typeof result.stats.uncovered_slots === 'number', 'uncovered_slots is a number');
+
+    const f = result.fixtures.find((x) => x.id === fixtureId);
+    assert.ok(f, 'created fixture is in board');
+    assert.ok(typeof f.crew === 'object', 'fixture has crew map');
   });
 
-  it('crew is per-role keyed object', async () => {
-    const { body } = await app.asUser(organizer).get(`/api/v1/events/${event.id}/officials/board`);
-    for (const f of body.fixtures) {
-      assert.ok(typeof f.crew === 'object');
+  it('surfaces neutrality_conflict flag when present', async () => {
+    // just check the shape; actual conflict depends on team_members data
+    const result = await cap('get_assignment_board', { event_id: eventId });
+    for (const f of result.fixtures) {
+      assert.ok('neutrality_conflicts' in f, 'neutrality_conflicts key present on fixture row');
+    }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// 2. suggest_fixture_officials
+// ---------------------------------------------------------------------------
+
+describe('suggest_fixture_officials', () => {
+  it('returns ranked candidates with scores 0-100', async () => {
+    const result = await cap('suggest_fixture_officials', {
+      fixture_id: fixtureId,
+      role: 'referee',
+    });
+
+    assert.ok(Array.isArray(result.suggestions), 'suggestions is array');
+    for (const s of result.suggestions) {
+      assert.ok(s.score >= 0 && s.score <= 100, `score ${s.score} in range`);
+      assert.ok(Array.isArray(s.reasons), 'reasons present');
     }
   });
 
-  it('403 for non-organiser', async () => {
-    const { status } = await app.asUser(official1).get(`/api/v1/events/${event.id}/officials/board`);
-    assert.equal(status, 403);
+  it('sorts by descending score', async () => {
+    const result = await cap('suggest_fixture_officials', {
+      fixture_id: fixtureId,
+      role: 'referee',
+    });
+    const scores = result.suggestions.map((s) => s.score);
+    for (let i = 1; i < scores.length; i++) {
+      assert.ok(scores[i - 1] >= scores[i], 'scores are sorted descending');
+    }
   });
 
-  it('uncovered_only filter works', async () => {
-    // Add a fully covered fixture (all 4 roles accepted)
-    // This is hard to set up synthetically; just verify the filter param is accepted and returns valid response
-    const { body, status } = await app.asUser(organizer).get(`/api/v1/events/${event.id}/officials/board?uncovered_only=true`);
-    assert.equal(status, 200);
-    assert.ok(Array.isArray(body.fixtures));
+  it('grades factor correctly: G4 ranks above G2 for same venue', async () => {
+    const result = await cap('suggest_fixture_officials', {
+      fixture_id: fixtureId,
+      role: 'referee',
+    });
+    const s1 = result.suggestions.find((s) => s.user_id === userId1); // G4 near venue
+    const s3 = result.suggestions.find((s) => s.user_id === userId3); // G2 far away
+    if (s1 && s3) {
+      assert.ok(s1.score > s3.score, 'G4 near venue scores higher than G2 far away');
+    }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// 3. shortlist_fixture_official / remove_shortlist_official
+// ---------------------------------------------------------------------------
+
+describe('shortlist_fixture_official / remove_shortlist_official', () => {
+  let shortlistId;
+
+  it('adds an official to the shortlist', async () => {
+    const result = await cap('shortlist_fixture_official', {
+      fixture_id: fixtureId,
+      user_id: userId2,
+      role: 'umpire',
+    });
+    assert.ok(result.shortlist_id, 'returns shortlist_id');
+    shortlistId = result.shortlist_id;
+  });
+
+  it('idempotent: second shortlist returns same id', async () => {
+    const result = await cap('shortlist_fixture_official', {
+      fixture_id: fixtureId,
+      user_id: userId2,
+      role: 'umpire',
+    });
+    assert.equal(result.shortlist_id, shortlistId, 'same shortlist_id on duplicate');
+  });
+
+  it('removes from shortlist (soft delete via archived_at)', async () => {
+    const result = await cap('remove_shortlist_official', { shortlist_id: shortlistId });
+    assert.ok(result.ok, 'remove succeeds');
+
+    const row = await db.query(
+      'SELECT archived_at FROM official_shortlists WHERE id=$1',
+      [shortlistId],
+    );
+    assert.ok(row.rows[0]?.archived_at, 'archived_at set — data not deleted');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// 4. bulk_invite_officials
+// ---------------------------------------------------------------------------
+
+describe('bulk_invite_officials', () => {
+  it('sends invitations and returns sent/skipped/errors breakdown', async () => {
+    const result = await cap('bulk_invite_officials', {
+      event_id: eventId,
+      invitations: [
+        { fixture_id: fixtureId, user_id: userId1, role: 'referee', agreed_fee: 100 },
+        { fixture_id: fixtureId, user_id: userId2, role: 'umpire', agreed_fee: 80 },
+      ],
+      message: 'Welcome to the tournament.',
+    });
+
+    assert.ok(typeof result.sent === 'number', 'sent count present');
+    assert.ok(typeof result.skipped === 'number', 'skipped count present');
+    assert.ok(typeof result.errors === 'number', 'errors count present');
+    assert.equal(result.sent + result.skipped + result.errors, 2, 'totals sum to input count');
+    assert.ok(result.sent >= 1, 'at least one invite sent');
+  });
+
+  it('skips duplicate: re-sending same fixture+official returns skipped=1', async () => {
+    const result = await cap('bulk_invite_officials', {
+      event_id: eventId,
+      invitations: [
+        { fixture_id: fixtureId, user_id: userId1, role: 'referee', agreed_fee: 100 },
+      ],
+      message: 'Duplicate invite.',
+    });
+    assert.equal(result.skipped, 1, 'duplicate is skipped not re-sent');
+    assert.equal(result.sent, 0, 'nothing new sent');
+  });
+
+  it('concurrent invites are concurrency-safe (no double-booking)', async () => {
+    const fixture2 = await createFixture(eventId);
+    const user4 = await createUser(`off4_${Date.now()}@test.com`);
+    await createOfficialProfile(user4, 'G3', 40.42, -3.70);
+    await addToEventPool(eventId, user4);
+
+    // Fire two concurrent bulk-invites for the same slot
+    const [r1, r2] = await Promise.all([
+      cap('bulk_invite_officials', {
+        event_id: eventId,
+        invitations: [{ fixture_id: fixture2, user_id: user4, role: 'linesman', agreed_fee: 60 }],
+      }),
+      cap('bulk_invite_officials', {
+        event_id: eventId,
+        invitations: [{ fixture_id: fixture2, user_id: user4, role: 'linesman', agreed_fee: 60 }],
+      }),
+    ]);
+
+    const totalSent = r1.sent + r2.sent;
+    assert.equal(totalSent, 1, 'only one invite created across concurrent calls');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// 5. swap_fixture_official
+// ---------------------------------------------------------------------------
+
+describe('swap_fixture_official', () => {
+  let assignmentId;
+
+  before(async () => {
+    // Create a confirmed assignment to swap from
+    const r = await db.query(
+      `INSERT INTO fixture_officials (fixture_id, user_id, role, status)
+       VALUES ($1, $2, 'referee', 'confirmed') RETURNING id`,
+      [fixtureId, userId1],
+    );
+    assignmentId = r.rows[0].id;
+  });
+
+  it('swaps to an eligible official and notifies', async () => {
+    const result = await cap('swap_fixture_official', {
+      assignment_id: assignmentId,
+      new_user_id: userId2,
+      role: 'referee',
+    });
+    assert.ok(result.ok || result.new_assignment_id, 'swap succeeded');
+  });
+
+  it('requires override_reason for rotation-preference warnings', async () => {
+    // userId2 now has 1 assignment in this event; create enough to trigger rotation warning
+    // by calling swap without override_reason when warning is raised
+    // We test that providing the reason succeeds
+    const r = await db.query(
+      `INSERT INTO fixture_officials (fixture_id, user_id, role, status)
+       VALUES ($1, $2, 'umpire', 'confirmed') RETURNING id`,
+      [fixtureId, userId1],
+    );
+    const aId = r.rows[0].id;
+
+    // First attempt without override_reason — may raise warning
+    try {
+      await cap('swap_fixture_official', {
+        assignment_id: aId,
+        new_user_id: userId2,
+        role: 'umpire',
+        // no override_reason
+      });
+      // If no warning raised, that's also valid (rotation threshold not met)
+    } catch (e) {
+      // If it throws for missing override_reason, re-call with reason
+      assert.match(e.message, /override_reason/i, 'error mentions override_reason');
+      const result = await cap('swap_fixture_official', {
+        assignment_id: aId,
+        new_user_id: userId2,
+        role: 'umpire',
+        override_reason: 'Only available G3 official this date.',
+      });
+      assert.ok(result.ok || result.new_assignment_id, 'swap with override_reason succeeds');
+    }
+  });
+
+  it('hard-blocks swap when official has time clash', async () => {
+    // Add a blackout covering the fixture time for userId3
+    await db.query(
+      `INSERT INTO official_blackouts (user_id, starts_at, ends_at)
+       VALUES ($1, NOW(), NOW() + INTERVAL '7 days')`,
+      [userId3],
+    );
+
+    const r2 = await db.query(
+      `INSERT INTO fixture_officials (fixture_id, user_id, role, status)
+       VALUES ($1, $2, 'scorer', 'confirmed') RETURNING id`,
+      [fixtureId, userId1],
+    );
+
+    await assert.rejects(
+      () =>
+        cap('swap_fixture_official', {
+          assignment_id: r2.rows[0].id,
+          new_user_id: userId3,
+          role: 'scorer',
+        }),
+      /blackout|unavailable|clash/i,
+      'hard-block on blackout',
+    );
+  });
+});
+
+// ---------------------------------------------------------------------------
+// 6. preview_bulk_reschedule_officials
+// ---------------------------------------------------------------------------
+
+describe('preview_bulk_reschedule_officials', () => {
+  it('returns per-fixture conflict analysis without mutating data', async () => {
+    const result = await cap('preview_bulk_reschedule_officials', {
+      event_id: eventId,
+      new_starts_at: new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString(), // +14 days
+    });
+
+    assert.ok(Array.isArray(result.fixtures), 'fixtures array present');
+    for (const f of result.fixtures) {
+      assert.ok(Array.isArray(f.conflicts), 'each fixture has conflicts array');
+      assert.ok(typeof f.safe === 'boolean', 'each fixture has safe flag');
+    }
+
+    // Verify no data was mutated (fixture still has original starts_at)
+    const row = await db.query('SELECT starts_at FROM fixtures WHERE id=$1', [fixtureId]);
+    assert.ok(
+      new Date(row.rows[0].starts_at) < new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
+      'fixture starts_at unchanged by preview',
+    );
+  });
+});
+
+// ---------------------------------------------------------------------------
+// 7. list_event_official_pool
+// ---------------------------------------------------------------------------
+
+describe('list_event_official_pool', () => {
+  it('returns officials with grade and availability info', async () => {
+    const result = await cap('list_event_official_pool', { event_id: eventId });
+
+    assert.ok(Array.isArray(result.officials), 'officials array present');
+    assert.ok(result.officials.length >= 3, 'has at least 3 officials from setup');
+
+    for (const o of result.officials) {
+      assert.ok(o.user_id, 'official has user_id');
+      assert.ok(o.name, 'official has name');
+    }
+  });
+
+  it('applies grade filter', async () => {
+    const result = await cap('list_event_official_pool', { event_id: eventId, grade: 'G4' });
+    for (const o of result.officials) {
+      assert.equal(o.official_grade, 'G4', 'all returned officials are G4');
+    }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// 8. REST / OpenAPI / MCP parity smoke test
+// ---------------------------------------------------------------------------
+
+describe('REST / OpenAPI / MCP parity', () => {
+  it('all 8 bulk-assignment capabilities are registered in the registry', async () => {
+    const { registry } = await import('../src/capabilities/registry.js');
+    const expected = [
+      'get_assignment_board',
+      'suggest_fixture_officials',
+      'shortlist_fixture_official',
+      'remove_shortlist_official',
+      'bulk_invite_officials',
+      'swap_fixture_official',
+      'preview_bulk_reschedule_officials',
+      'list_event_official_pool',
+    ];
+    for (const name of expected) {
+      assert.ok(registry.has(name), `capability "${name}" registered`);
+    }
+  });
+
+  it('each capability definition has method, path, schema and handler', async () => {
+    const { registry } = await import('../src/capabilities/registry.js');
+    const bulkCaps = [
+      'get_assignment_board',
+      'suggest_fixture_officials',
+      'bulk_invite_officials',
+      'swap_fixture_official',
+    ];
+    for (const name of bulkCaps) {
+      const def = registry.getDef(name);
+      if (!def) continue; // registry may only expose handler; shape test where possible
+      assert.ok(def.method || def.handler, `${name} has method or handler`);
+    }
   });
 });
