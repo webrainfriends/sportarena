@@ -9,6 +9,7 @@ import { roleLabel } from '../roles';
 import { workspaceOf } from './more-catalog';
 import { HScroll } from '../pickers';
 import { SetupCard } from './setup';
+import { ResidencyBanner } from './data-residency';
 import { c, day, when } from '../theme';
 import { t } from '../i18n';
 import { actionLabel, hintText, statLabel } from '../ws-text';
@@ -196,6 +197,7 @@ export function RoleHome() {
         )}
         <View style={{ marginTop: 14 }}><Context ws={ws} /></View>
         {venueHome ? <View style={{ marginTop: 14 }}><VenueHub /></View> : <>
+        <ResidencyBanner />
         {athleteHome ? null : <SetupCard />}
         {eventHome ? (
           <View style={{ marginTop: 14 }}><EventTowerHome tower={d.tower} push={push} goTab={goTab} /></View>

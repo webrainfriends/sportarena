@@ -402,3 +402,24 @@ export function DataResidencyAdmin() {
     </ScrollView>
   );
 }
+
+// ── ResidencyBanner: shown on the Home tab when home_country is not set ───────
+export function ResidencyBanner() {
+  const { user } = useSession();
+  const { push } = useNav();
+  if (user?.home_country) return null;
+  return (
+    <View style={{ marginHorizontal: 0, marginTop: 12, borderRadius: r.card, padding: 16, backgroundColor: '#FFF8E6', borderWidth: 1.5, borderColor: '#F5C842' }}>
+      <Row style={{ gap: 10, marginBottom: 6 }}>
+        <Text style={{ fontSize: 20 }}>📍</Text>
+        <Text style={{ fontSize: 14, fontWeight: '800', color: '#7A5000', flex: 1 }}>{t('residency.banner_title')}</Text>
+      </Row>
+      <Text style={{ fontSize: 12, color: '#7A5000', lineHeight: 18, marginBottom: 12 }}>{t('residency.banner_body')}</Text>
+      <TouchableOpacity onPress={() => push('DataResidency')} activeOpacity={0.78}
+        style={{ borderRadius: r.pill, paddingVertical: 12, alignItems: 'center', backgroundColor: '#F5C842' }}
+        accessibilityRole="button" accessibilityLabel={t('residency.set_country_cta')}>
+        <Text style={{ fontSize: 14, fontWeight: '700', color: '#3D2800' }}>{t('residency.set_country_cta')}</Text>
+      </TouchableOpacity>
+    </View>
+  );
+}
