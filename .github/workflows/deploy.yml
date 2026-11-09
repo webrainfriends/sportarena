@@ -280,7 +280,7 @@ jobs:
             echo "== whatsapp gateway (OpenWA)"; sudo docker logs --tail 15 sportarena-openwa 2>&1 | sed -E "s/(api[-_ ]?key[^ ]*[ :=]+)[^ ]+/\1***/I" | tail -15 || echo "openwa: not running"
             echo "== api log (last 25 lines)"; pm2 logs sportarena-api --lines 25 --nostream 2>&1 | tail -30
             echo "== master key file"; ls -l /var/lib/sportarena 2>&1
-            echo "== last deploy error"; cat /tmp/sportarena-deploy-error.log 2>&1 || true
+            echo "== last deploy error"; sed 's/^::error::/ERROR: /' /tmp/sportarena-deploy-error.log 2>/dev/null || echo "(none)"
             echo "== nginx error"; cat /tmp/sportarena-nginx-error.log 2>&1 || true
             echo "== rejected nginx site"; cat /tmp/sportarena-site.rejected 2>&1 || true
 
