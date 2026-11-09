@@ -70,7 +70,11 @@ export default function Auth({ intent, initialMode, onClose } = {}) {
   }, [f.country, mode]);
 
   const saveCountryAfterSignIn = async (country) => {
-    if (!country) return;
+    if (!country) {
+      // No country could be inferred — send to DataResidency screen to pick it
+      push('DataResidency');
+      return;
+    }
     try {
       await api.patch('/me/home-country', { home_country: country });
       const preview = countryPreview ?? await api.get('/data-residency/preview', { country });
@@ -131,6 +135,7 @@ export default function Auth({ intent, initialMode, onClose } = {}) {
         await signIn(await api.post('/auth/login/mfa', { mfa_token: mfaToken, code: (f.mfa ?? '').trim() }));
         return;
       }
+      if (mode === 'register' && !f.country) { setErr(t('residency.country_required')); setBusy(false); return; }
       const res = mode === 'login'
         ? await api.post('/auth/login', { email: f.email, password: f.password })
         : await api.post('/auth/register', { handle: (f.handle ?? '').toLowerCase(), display_name: f.display_name, email: f.email, password: f.password, roles: f.roles.length ? f.roles : ['athlete'], phone: f.phone || undefined, full_name: f.full_name || undefined });
@@ -219,7 +224,7 @@ export default function Auth({ intent, initialMode, onClose } = {}) {
               <Field label={t('auth.full_name')} value={f.full_name} onChangeText={set('full_name')} />
               <Field label={t('auth.phone')} value={f.phone} onChangeText={set('phone')} keyboardType="phone-pad" />
             </View>
-            <CountryPicker label={t('residency.country_label')} value={f.country ?? ''} onChange={set('country')} optional hint={f.country ? (countryPreview === null ? t('residency.preview_loading') : countryPreview?.supported ? t('residency.supported_banner') : t('residency.unsupported_banner')) : ''} />
+            <CountryPicker label={t('residency.country_label')} value={f.country ?? ''} onChange={set('country')} hint={f.country ? (countryPreview === null ? t('residency.preview_loading') : countryPreview?.supported ? t('residency.supported_banner') : t('residency.unsupported_banner')) : t('residency.country_required_hint')} />
           </>}
           {err ? <T color={c.red} weight="600" size={13}>{err}</T> : null}
           <Btn title={{ login: t('auth.login'), register: t('auth.btn_register'), mfa: t('auth.btn_mfa'), forgot: t('auth.btn_forgot'), reset: t('auth.btn_reset') }[mode]} onPress={submit} loading={busy} />
