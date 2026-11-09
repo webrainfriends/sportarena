@@ -16303,7 +16303,6 @@ export default {
   'oi.inbox.invoice_queried': 'The organiser has a question about your invoice.', // reviewed: false
   'oi.inbox.expense_approved_batch_prompt': '{count} expenses approved — create a reimbursement batch.', // reviewed: false
   'oi.inbox.payout_complete': 'Your invoice has been paid.', // reviewed: false
-};
   'nav.title.OfficialPayoutAccount': 'ادائیگی اکاؤنٹ',
   "opa.screen_title": "Payout Account",
   "opa.screen_subtitle": "Set up how and when you receive your officiating fees.",
