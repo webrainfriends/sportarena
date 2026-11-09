@@ -5,6 +5,11 @@ import { t } from '../i18n';
 import { useNav } from '../nav';
 import { useSession } from '../session';
 import { api } from '../api';
+import { CountryPicker } from '../country-picker';
+import { locale, deviceZone } from '../locale';
+
+const TZ_COUNTRY_DR = { 'Asia/Kolkata': 'IN', 'Asia/Calcutta': 'IN', 'Asia/Colombo': 'LK', 'Asia/Dubai': 'AE', 'Asia/Singapore': 'SG', 'Asia/Kuala_Lumpur': 'MY', 'Asia/Bangkok': 'TH', 'America/New_York': 'US', 'America/Los_Angeles': 'US', 'America/Chicago': 'US', 'America/Toronto': 'CA', 'Europe/London': 'GB', 'Australia/Sydney': 'AU' };
+const inferCountry = () => { try { const reg = new Intl.Locale(locale).region; if (reg && /^[A-Z]{2}$/.test(reg)) return reg; } catch {} return TZ_COUNTRY_DR[deviceZone] ?? ''; };
 
 // ── shared primitives ──────────────────────────────────────────────────────────
 const Row = ({ children, style }) => <View style={[{ flexDirection: 'row', alignItems: 'center' }, style]}>{children}</View>;
@@ -36,10 +41,34 @@ export function DataResidency() {
   const { back, push } = useNav();
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [pickCountry, setPickCountry] = useState('');
+  const [preview, setPreview] = useState(null);
+  const [savingCountry, setSavingCountry] = useState(false);
 
   useEffect(() => {
-    api('GET', '/data-residency/me').then(setData).finally(() => setLoading(false));
+    api('GET', '/data-residency/me').then((d) => { setData(d); if (!d?.home_country) setPickCountry(inferCountry()); }).finally(() => setLoading(false));
   }, []);
+
+  useEffect(() => {
+    if (!pickCountry) { setPreview(null); return; }
+    let cancelled = false;
+    const timer = setTimeout(() => {
+      api('GET', '/data-residency/preview', { country: pickCountry }).then((r) => { if (!cancelled) setPreview(r); }).catch(() => {});
+    }, 400);
+    return () => { cancelled = true; clearTimeout(timer); };
+  }, [pickCountry]);
+
+  const saveCountry = async () => {
+    if (!pickCountry) return;
+    setSavingCountry(true);
+    try {
+      await api('PATCH', '/me/home-country', { home_country: pickCountry });
+      const p = preview ?? await api('GET', '/data-residency/preview', { country: pickCountry });
+      if (!p?.supported) { push('DataResidencyConsent', { country: pickCountry }); return; }
+      const d = await api('GET', '/data-residency/me');
+      setData(d);
+    } catch (e) { /* show nothing, user can retry */ } finally { setSavingCountry(false); }
+  };
 
   if (loading) return <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: c.bg }}><ActivityIndicator color={c.pink} /></View>;
 
@@ -71,8 +100,25 @@ export function DataResidency() {
               : <Chip label={t('residency.status.in_country')} bg="rgba(95,211,154,0.25)" color="#fff" />}
           </Row>
         </View>
-      ) : (
+      ) : data?.home_country ? (
         <Card><Text style={{ color: c.mute, fontSize: 13 }}>{t('residency.no_assignment')}</Text></Card>
+      ) : (
+        <Card style={{ gap: 14 }}>
+          <Text style={{ fontSize: 17, fontWeight: '800', color: c.ink }}>{t('residency.set_country_title')}</Text>
+          <Text style={{ fontSize: 13, color: c.mute, lineHeight: 20 }}>{t('residency.set_country_body')}</Text>
+          <CountryPicker label={t('residency.country_label')} value={pickCountry} onChange={setPickCountry} />
+          {pickCountry && preview !== null ? (
+            <View style={{ borderRadius: 10, padding: 12, backgroundColor: preview?.supported ? 'rgba(95,211,154,0.18)' : 'rgba(255,180,0,0.18)' }}>
+              <Text style={{ fontSize: 13, fontWeight: '700', color: preview?.supported ? '#2d7a4f' : '#8a5c00' }}>{preview?.supported ? t('residency.supported_banner') : t('residency.unsupported_banner')}</Text>
+            </View>
+          ) : pickCountry ? (
+            <Text style={{ fontSize: 12, color: c.mute }}>{t('residency.preview_loading')}</Text>
+          ) : null}
+          <Btn label={t('residency.set_country_cta')} onPress={saveCountry} disabled={!pickCountry || savingCountry} />
+          <TouchableOpacity onPress={back} style={{ alignItems: 'center', paddingVertical: 8 }}>
+            <Text style={{ fontSize: 13, color: c.mute, fontWeight: '600' }}>{t('residency.set_country_skip')}</Text>
+          </TouchableOpacity>
+        </Card>
       )}
 
       <Row style={{ gap: 10 }}>

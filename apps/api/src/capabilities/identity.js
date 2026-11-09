@@ -114,7 +114,7 @@ cap({
     await audit(null, user.id, 'read_pii', 'users', user.id);
     return {
       id: row.id, handle: row.handle, display_name: row.display_name, roles: row.roles, bio: row.bio,
-      avatar_emoji: row.avatar_emoji, avatar_color: row.avatar_color, avatar_url: row.avatar_url, avatar_cutout: row.avatar_cutout, default_role: resolveDefaultRole(row.roles, row.default_role), access_status: row.access_status, language: row.language, created_at: row.created_at,
+      avatar_emoji: row.avatar_emoji, avatar_color: row.avatar_color, avatar_url: row.avatar_url, avatar_cutout: row.avatar_cutout, default_role: resolveDefaultRole(row.roles, row.default_role), access_status: row.access_status, language: row.language, home_country: row.home_country ?? null, created_at: row.created_at,
       email: decryptFields(row, 'users', ['email']).email, ...decryptFields(row, 'users', PII),
     };
   },

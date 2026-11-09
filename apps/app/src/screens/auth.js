@@ -3,6 +3,7 @@ import { Platform, Pressable, Text, View } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { api } from '../api';
 import { useSession } from '../session';
+import { useNav } from '../nav';
 import { Btn, Card, Chip, Field, Screen, Sheet, T } from '../ui';
 import { c, grad, fam } from '../theme';
 import { ROLES } from '../roles';
@@ -13,6 +14,8 @@ import { OrgSsoButton, SsoFinish } from '../sso';
 import { Logo } from '../logo';
 import { Wordmark } from '../wordmark';
 import { t } from '../i18n';
+import { CountryPicker } from '../country-picker';
+import { locale, deviceZone } from '../locale';
 
 
 const DEMOS = [['aarav', 'Aarav · Athlete'], ['kavya_events', 'Kavya · Organizer'], ['arena_one', 'Arena One · Venue'], ['volt_drink', 'Volt · Sponsor'], ['dr_rhea', 'Dr Rhea · Doctor']];
@@ -20,10 +23,16 @@ const DEMOS = [['aarav', 'Aarav · Athlete'], ['kavya_events', 'Kavya · Organiz
 // `intent` (from the public marketplace) says what the visitor came to do, so the sign-in feels guided and returns them to it.
 const INTENT_ROLE = { advertise: 'sponsor' };
 
+const TZ_COUNTRY = { 'Asia/Kolkata': 'IN', 'Asia/Calcutta': 'IN', 'Asia/Colombo': 'LK', 'Asia/Dubai': 'AE', 'Asia/Singapore': 'SG', 'Asia/Kuala_Lumpur': 'MY', 'Asia/Bangkok': 'TH', 'America/New_York': 'US', 'America/Los_Angeles': 'US', 'America/Chicago': 'US', 'America/Toronto': 'CA', 'Europe/London': 'GB', 'Australia/Sydney': 'AU' };
+const inferDeviceCountry = () => { try { const reg = new Intl.Locale(locale).region; if (reg && /^[A-Z]{2}$/.test(reg)) return reg; } catch {} return TZ_COUNTRY[deviceZone] ?? null; };
+
 export default function Auth({ intent, initialMode, onClose } = {}) {
   const { signIn } = useSession();
+  const { push } = useNav();
   const [mode, setMode] = useState(initialMode ?? 'login');
-  const [f, setF] = useState({ roles: [INTENT_ROLE[intent?.action] ?? 'athlete'] });
+  const deviceCountry = React.useMemo(inferDeviceCountry, []);
+  const [f, setF] = useState({ roles: [INTENT_ROLE[intent?.action] ?? 'athlete'], country: deviceCountry ?? '' });
+  const [countryPreview, setCountryPreview] = useState(null);
   const copy = intent ? INTENT_COPY[intent.action] : null;
   const [err, setErr] = useState(null);
   const [busy, setBusy] = useState(false);
@@ -50,13 +59,33 @@ export default function Auth({ intent, initialMode, onClose } = {}) {
   const set = (k) => (v) => setF((p) => ({ ...p, [k]: v }));
   const toggle = (r) => setF((p) => ({ ...p, roles: p.roles.includes(r) ? p.roles.filter((x) => x !== r) : [...p.roles, r] }));
 
+  // Fetch residency preview when country changes in registration form
+  useEffect(() => {
+    if (mode !== 'register' || !f.country) { setCountryPreview(null); return; }
+    let cancelled = false;
+    const timer = setTimeout(() => {
+      api.get('/data-residency/preview', { country: f.country }).then((r) => { if (!cancelled) setCountryPreview(r); }).catch(() => {});
+    }, 400);
+    return () => { cancelled = true; clearTimeout(timer); };
+  }, [f.country, mode]);
+
+  const saveCountryAfterSignIn = async (country) => {
+    if (!country) return;
+    try {
+      await api.patch('/me/home-country', { home_country: country });
+      const preview = countryPreview ?? await api.get('/data-residency/preview', { country });
+      if (!preview?.supported) push('DataResidencyConsent', { country });
+    } catch { /* non-fatal */ }
+  };
+
   const withGoogle = async (credential) => {
     setBusy(true); setErr(null); setInfo(null);
     try {
       const res = await api.post('/auth/google', { credential, require_role: true });
-      if (res.needs_role) { setPending({ kind: 'google', credential }); return; }
+      if (res.needs_role) { setPending({ kind: 'google', credential, suggested_country: res.suggested_country }); return; }
       if (res.mfa_required) { setMfaToken(res.mfa_token); setF((p) => ({ ...p, mfa: '' })); setMode('mfa'); return; }
       await signIn(res);
+      await saveCountryAfterSignIn(res.suggested_country || deviceCountry);
     } catch (e) { setErr(e.message); } finally { setBusy(false); }
   };
 
@@ -67,6 +96,7 @@ export default function Auth({ intent, initialMode, onClose } = {}) {
       if (res.needs_role) { setPending({ kind: 'apple', credential, name, nonce }); return; }
       if (res.mfa_required) { setMfaToken(res.mfa_token); setF((p) => ({ ...p, mfa: '' })); setMode('mfa'); return; }
       await signIn(res);
+      await saveCountryAfterSignIn(deviceCountry);
     } catch (e) { setErr(e.message); } finally { setBusy(false); }
   };
 
@@ -81,6 +111,7 @@ export default function Auth({ intent, initialMode, onClose } = {}) {
       setPending(null);
       if (res.mfa_required) { setMfaToken(res.mfa_token); setF((p) => ({ ...p, mfa: '' })); setMode('mfa'); return; }
       await signIn(res);
+      await saveCountryAfterSignIn((pending?.suggested_country) || deviceCountry);
     } catch (e) { setErr(e.message); } finally { setBusy(false); }
   };
   const togglePick = (r) => setPickRoles((p) => (p.includes(r) ? p.filter((x) => x !== r) : [...p, r]));
@@ -105,6 +136,7 @@ export default function Auth({ intent, initialMode, onClose } = {}) {
         : await api.post('/auth/register', { handle: (f.handle ?? '').toLowerCase(), display_name: f.display_name, email: f.email, password: f.password, roles: f.roles.length ? f.roles : ['athlete'], phone: f.phone || undefined, full_name: f.full_name || undefined });
       if (res.mfa_required) { setMfaToken(res.mfa_token); setF((p) => ({ ...p, mfa: '', password: '' })); setMode('mfa'); return; }
       await signIn(res);
+      if (mode === 'register') await saveCountryAfterSignIn(f.country);
     } catch (e) {
       setErr(e.message);
       if (mode === 'mfa' && /sign in again|expired/i.test(e.message)) { setMode('login'); setMfaToken(null); }
@@ -187,6 +219,7 @@ export default function Auth({ intent, initialMode, onClose } = {}) {
               <Field label={t('auth.full_name')} value={f.full_name} onChangeText={set('full_name')} />
               <Field label={t('auth.phone')} value={f.phone} onChangeText={set('phone')} keyboardType="phone-pad" />
             </View>
+            <CountryPicker label={t('residency.country_label')} value={f.country ?? ''} onChange={set('country')} optional hint={f.country ? (countryPreview === null ? t('residency.preview_loading') : countryPreview?.supported ? t('residency.supported_banner') : t('residency.unsupported_banner')) : ''} />
           </>}
           {err ? <T color={c.red} weight="600" size={13}>{err}</T> : null}
           <Btn title={{ login: t('auth.login'), register: t('auth.btn_register'), mfa: t('auth.btn_mfa'), forgot: t('auth.btn_forgot'), reset: t('auth.btn_reset') }[mode]} onPress={submit} loading={busy} />

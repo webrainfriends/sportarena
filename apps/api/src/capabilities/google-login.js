@@ -39,8 +39,9 @@ cap({
     try { claims = await googleVerifier.verify(i.credential); } catch { throw unauthorized('Google sign-in could not be verified. Please try again.'); }
     const email = String(claims.email ?? '').toLowerCase();
     if (!claims.sub || !email || claims.email_verified !== true) throw unauthorized('Your Google account has no verified email address.');
-
-    return socialSignIn({ provider: 'google', sub: claims.sub, email, name: claims.name, meta, roles: i.roles, requireRole: i.require_role });
+    const suggestedCountry = (() => { try { const r = new Intl.Locale(claims.locale ?? '').region; return r && /^[A-Z]{2}$/.test(r) ? r : null; } catch { return null; } })();
+    const result = await socialSignIn({ provider: 'google', sub: claims.sub, email, name: claims.name, meta, roles: i.roles, requireRole: i.require_role });
+    return suggestedCountry ? { ...result, suggested_country: suggestedCountry } : result;
   },
 });
 
