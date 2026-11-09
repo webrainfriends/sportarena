@@ -295,7 +295,7 @@ cap({
 // ------------------------------------------------------------------ quote calculator
 cap({
   name: 'calculate_quote', method: 'POST', path: '/official-profiles/:profileId/rate-cards/:id/quote', tag: TAG,
-  summary: 'Calculate an indicative fee breakdown for an event using an official's published rate card. Returns base fee, premiums, travel, overtime and deposit breakdown.',
+  summary: `Calculate an indicative fee breakdown for an event using an official's published rate card. Returns base fee, premiums, travel, overtime and deposit breakdown.`,
   input: z.object({
     profileId: id,
     id,
