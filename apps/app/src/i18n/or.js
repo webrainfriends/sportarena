@@ -896,10 +896,8 @@ export default {
   'nav.title.MyAccreditations': 'ମୋର ବ୍ୟାଜ୍',
   'nav.title.OfficialsDevelopment': 'ଅଧିକାରୀ ବିକାଶ',
   'nav.title.OfficialAssessment': 'Assessment',
-  'crew.completeness_label': 'Crew completeness',
   'crew.ready': 'All required roles filled',
   'crew.incomplete': 'Some required roles are not yet filled',
-  'crew.missing_roles': 'Missing: {roles}',
   'crew.unfilled_role': 'Required · not yet filled',
   'crew.unfilled_title': 'Unfilled required roles',
   'crew.you': 'You',
@@ -920,7 +918,6 @@ export default {
   'crew.select_person': 'Select replacement official',
   'crew.user_id_placeholder': 'Enter official user ID',
   'crew.duties_label': 'Assigned duties',
-  'crew.duties_placeholder': 'e.g. Chief Referee, AR – Home side',
   'crew.reason': 'Reason',
   'crew.reason_placeholder': 'Reason for emergency substitution',
   'crew.reason_required': 'Please give a reason for the substitution',
@@ -940,7 +937,6 @@ export default {
   'crew.substituted_alert': '{name} ({role}) was substituted',
   'crew.requirements_title': 'Crew requirements',
   'crew.broadcast_sent': 'Message sent to crew',
-  'crew.pinned': 'Pinned',
   'nav.title.AssessmentEditor': 'ମୂଲ୍ୟାୟନ ରିପୋର୍ଟ',
   'nav.title.MediaWorkspace': 'ମିଡିଆ ଓ ପ୍ରସାରଣ',
   'nav.title.Federations': 'ମହାସଂଘଗୁଡ଼ିକ',
@@ -4273,7 +4269,6 @@ export default {
   "tpart.callback": "କଲବ୍ୟାକ୍ ଠିକଣା",
   "tpart.done": "ହୋଇଗଲା",
   "tbook.country_needed": "ସଠିକ ପାର୍ଟନର ଖୋଜିବା ପାଇଁ ଗନ୍ତବ୍ୟର ଦେଶ ବାଛନ୍ତୁ।",
-  'community.title': 'ସମ୍ପ୍ରଦାୟ',
   'community.discover': 'ଖୋଜନ୍ତୁ',
   'community.mine': 'ମୋ ସମ୍ପ୍ରଦାୟ',
   'community.invitations': 'ନିମନ୍ତ୍ରଣ',
@@ -10154,20 +10149,7 @@ export default {
   'cEdu.mnt.status.paused': 'ବିରତ',
   'cEdu.mnt.status.ended': 'ଶେଷ',
   'cEdu.obs.title': 'ପର୍ଯ୍ୟବେକ୍ଷଣ',
-  'cEdu.obs.new': 'ପର୍ଯ୍ୟବେକ୍ଷଣ ଯୋଗ',
-  'cEdu.obs.f.coachId': 'କୋଚ',
-  'cEdu.obs.f.sessionDate': 'ଅଧିବେଶନ ତାରିଖ',
-  'cEdu.obs.f.context': 'ପ୍ରସଙ୍ଗ',
-  'cEdu.obs.f.pillar': 'ସ୍ତଂଭ',
-  'cEdu.obs.f.overallRating': 'ସାମଗ୍ରିକ ରେଟିଂ',
-  'cEdu.obs.f.strengths': 'ଶକ୍ତି',
-  'cEdu.obs.f.development': 'ବିକାଶ',
   'cEdu.obs.release': 'କୋଚଙ୍କୁ ମୁକ୍ତ',
-  'cEdu.plan.title': 'ବିକାଶ ଯୋଜନା',
-  'cEdu.plan.new': 'ଯୋଜନା ଯୋଗ',
-  'cEdu.plan.f.focus': 'ଧ୍ୟାନ',
-  'cEdu.plan.f.target': 'ଲକ୍ଷ୍ୟ ତାରିଖ',
-  'cEdu.plan.f.actions': 'କାର୍ଯ୍ୟ',
   'cEdu.pillar.technical': 'ଯାନ୍ତ୍ରିକ',
   'cEdu.pillar.tactical': 'କୌଶଳ',
   'cEdu.pillar.physical': 'ଶାରୀରିକ',
@@ -12679,7 +12661,6 @@ export default {
   'psf.programme.paraToggleHint': 'କେବଳ ପାରା ଆଥ୍ଲେଟ ଉପକରଣ, ପରିବହନ ଏବଂ ତାଲିମ ଖର୍ଚ ପାଇଁ',
   'psf.programme.costCategories': 'ଯୋଗ୍ୟ ଖର୍ଚ ବର୍ଗ',
   'psf.programme.privacyNote': 'ଆଥ୍ଲେଟଙ୍କ ଚିକିତ୍ସା ଏବଂ ବର୍ଗୀକରଣ ରେକର୍ଡ ପ୍ରାୟୋଜକଙ୍କୁ ଦେଖାଯିବ ନାହିଁ।',
-  'psf.need.paraType': 'ପାରା ସ୍ପୋର୍ଟ ଆବଶ୍ୟକତା ପ୍ରକାର',
   'psf.need.privacyNote': 'ଆପଣଙ୍କ ଚିକିତ୍ସା ରେକର୍ଡ ପ୍ରାୟୋଜକଙ୍କ ସହ ଅଂଶୀଦାର ହେବ ନାହିଁ',
   'psf.need.specialisedEquipment': 'ବିଶେଷ ଉପକରଣ',
   'psf.need.accessibleTransport': 'ସୁଲଭ ପରିବହନ',
@@ -13719,25 +13700,6 @@ export default {
   'para.comm.sign_language': 'Sign language',
   'para.comm.augmentative_communication': 'Augmentative communication',
   'para.comm.simplified_language': 'Simplified language',
-  'account.appearance': 'Appearance',
-  'account.language': 'Language & region',
-  'account.theme.light': 'Light',
-  'account.theme.dark': 'Dark',
-  'account.search_language': 'Search language or country',
-  'account.your_choice': 'Your choice',
-  'account.format_note': 'Dates, times, numbers and currency follow this and your time zone.',
-  'common.cancel': 'Cancel',
-  'common.close': 'Close',
-  'common.back': 'Back',
-  'common.next': 'Next',
-  'common.loading': 'Loading…',
-  'common.retry': 'Try again',
-  'common.done': 'Done',
-  'error.network': 'No connection. Check your network and try again.',
-  'nav.search': 'Search',
-  'nav.bookings': 'Bookings',
-  'nav.account': 'Account',
-  'transport.boardEmpty': 'No transport runs active right now.',
   'wizard.season.type': 'Season type',
   'wizard.season.dates': 'Season dates',
   'wizard.season.reg_window': 'Registration window (optional)',
@@ -13774,7 +13736,6 @@ export default {
   'wizard.team.public_sub': 'Other platform users can find and follow the team',
   'wizard.goal.what': 'What do you want to achieve?',
   'wizard.goal.kind': 'Kind of goal',
-  'wizard.goal.target': 'Target number (optional)',
   'wizard.goal.milestones': 'Milestones (optional)',
   'wizard.goal.review_date': 'First review date (optional)',
   'wizard.goal.cadence': 'Review cadence',
@@ -13793,10 +13754,10 @@ export default {
   'coach.sport.wizard.step3Sub': 'Help academies and athletes find you for exactly what you do best.',
   'coach.sport.wizard.step4Title': 'Your coaching career',
   'coach.sport.wizard.step4Sub': 'Your background builds trust with elite programmes and national academies.',
-  'coach.sport.wizard.step5Title': { value: 'Availability', reviewed: false },
-  'coach.sport.wizard.step5Sub': { value: 'Set your schedule, capacity and location. Add rate cards from your coaching workbench after completing this profile.', reviewed: false },
-  'coach.sport.wizard.rateCardNudgeTitle': { value: 'Set your rates after this step', reviewed: false },
-  'coach.sport.wizard.rateCardNudgeSub': { value: 'Create rate cards — per hour, per session, group packages, subscriptions — from the Rate cards section in your coaching workbench.', reviewed: false },
+  'coach.sport.wizard.step5Title': 'Availability',
+  'coach.sport.wizard.step5Sub': 'Set your schedule, capacity and location. Add rate cards from your coaching workbench after completing this profile.',
+  'coach.sport.wizard.rateCardNudgeTitle': 'Set your rates after this step',
+  'coach.sport.wizard.rateCardNudgeSub': 'Create rate cards — per hour, per session, group packages, subscriptions — from the Rate cards section in your coaching workbench.',
   'coach.sport.wizard.stepOf': 'Step {step} of {total}',
   'coach.sport.wizard.continue': 'Continue',
   'coach.sport.wizard.back': 'Back',
@@ -15218,8 +15179,6 @@ export default {
   // Injury episode & RTP
   'inj.episode_title': 'ଆଘାତ ଘଟଣା', // machine-drafted
   'inj.open_episode': 'ଘଟଣା ଖୋଲନ୍ତୁ', // machine-drafted
-  'inj.new_episode': 'ନୂତନ ଆଘାତ ଘଟଣା', // machine-drafted
-  'inj.episode_ref': 'ଘଟଣା ରେଫରେନ୍ସ', // machine-drafted
   'inj.status.active': 'ସକ୍ରିୟ', // machine-drafted
   'inj.status.rehabilitation': 'ପୁନର୍ବାସ', // machine-drafted
   'inj.status.restricted_training': 'ସୀମିତ ତାଲିମ', // machine-drafted
@@ -15231,7 +15190,6 @@ export default {
   'inj.mechanism': 'ପ୍ରଣାଳୀ', // machine-drafted
   'inj.severity': 'ଗୁରୁତ୍ୱ', // machine-drafted
   'inj.expected_return': 'ଆଶା ଫେରିବା', // machine-drafted
-  'inj.actual_return': 'ବାସ୍ତବ ଫେରିବା', // machine-drafted
   'inj.occurred_on': 'ଆଘାତ ତାରିଖ', // machine-drafted
   'inj.is_recurrence': 'ପୁନରାବୃତ୍ତି', // machine-drafted
   'inj.athlete_phase.recovery': 'ସୁସ୍ଥ ହେବା', // machine-drafted
@@ -15249,8 +15207,6 @@ export default {
   'rtp.issue_rtp': 'ଖେଳକୁ ଫେରିବାର ଅନୁମତି ଦିଅନ୍ତୁ', // machine-drafted
   'rtp.load_restrictions': 'ଲୋଡ ସୀମାବଦ୍ଧତା', // machine-drafted
   'rtp.coach_view_notice': 'କୋଚ୍ ଶୁଧୁ ଛାଡ ସ୍ଥିତି ଏବଂ ଲୋଡ ସୀମାବଦ୍ଧତା ଦେଖନ୍ତି — କୌଣସି ଚିକିତ୍ସା ବିବରଣ ବଣ୍ଟା ହୁଏ ନାହିଁ।', // machine-drafted
-  'rtp.approval_valid_until': 'ପର୍ଯ୍ୟନ୍ତ ବୈଧ', // machine-drafted
-  'rtp.mark_achieved': 'ହାସଲ ଭାବରେ ଚିହ୍ନ ଦିଅନ୍ତୁ', // machine-drafted
 
   // earnings & seller-onboarding (machine-drafted, reviewed: false)
   'earnings.title': 'Earnings',
@@ -16736,4 +16692,5 @@ export default {
   'ora.err_tiers': "Add at least 2 volume tiers", /* reviewed: false */
   'ora.err_fee': "Enter the fee amount", /* reviewed: false */
   'ora.err_date': "Set an effective from date", /* reviewed: false */
+  'calendarSync.tentativeHint': 'ଆମନ୍ତ୍ରିତ ଅଧିକାରୀ ନିଯୁକ୍ତିଗୁଡ଼ିକ ଆପଣଙ୍କ କ୍ୟାଲେଣ୍ଡରରେ ଅସ୍ଥାୟୀ ଭାବରେ ଦେଖାଯିବ।',
 };

@@ -168,8 +168,14 @@ async function renderFeed(feed) {
     const startMs = Date.parse(x.starts_at);
     const endMs = allDay ? Date.parse(String(x.ends_at).slice(0, 10)) + DAY : Date.parse(x.ends_at);
     const shown = feed.detail === 'full' && x.kind !== 'health';
+    const cancelled = x.status === 'cancelled' || x.status === 'declined';
+    const tentative = !cancelled && x.status === 'awaiting_response';
     return { uid: createHash('sha256').update(`${x.source_type}|${x.source_id}`).digest('hex').slice(0, 32), startMs, endMs, allDay,
-      summary: shown ? x.title : 'Busy', description: shown ? x.context ?? undefined : undefined, cancelled: x.status === 'cancelled' || x.status === 'declined' };
+      summary: shown ? x.title : 'Busy', description: shown ? x.context ?? undefined : undefined,
+      cancelled, tentative,
+      sequence: typeof x.version === 'number' ? x.version : 0,
+      lastModifiedMs: x.updated_at ? Date.parse(x.updated_at) : undefined,
+      createdMs: x.created_at ? Date.parse(x.created_at) : undefined };
   });
   return { ics: writeIcs({ name: 'Sportarena', tz, events }), count: events.length };
 }

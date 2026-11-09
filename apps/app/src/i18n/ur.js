@@ -903,10 +903,8 @@ export default {
   'nav.title.MyAccreditations': 'میرے بیجز',
   'nav.title.OfficialsDevelopment': 'منصفین کی ترقی',
   'nav.title.OfficialAssessment': 'Assessment',
-  'crew.completeness_label': 'Crew completeness',
   'crew.ready': 'All required roles filled',
   'crew.incomplete': 'Some required roles are not yet filled',
-  'crew.missing_roles': 'Missing: {roles}',
   'crew.unfilled_role': 'Required · not yet filled',
   'crew.unfilled_title': 'Unfilled required roles',
   'crew.you': 'You',
@@ -927,7 +925,6 @@ export default {
   'crew.select_person': 'Select replacement official',
   'crew.user_id_placeholder': 'Enter official user ID',
   'crew.duties_label': 'Assigned duties',
-  'crew.duties_placeholder': 'e.g. Chief Referee, AR – Home side',
   'crew.reason': 'Reason',
   'crew.reason_placeholder': 'Reason for emergency substitution',
   'crew.reason_required': 'Please give a reason for the substitution',
@@ -947,7 +944,6 @@ export default {
   'crew.substituted_alert': '{name} ({role}) was substituted',
   'crew.requirements_title': 'Crew requirements',
   'crew.broadcast_sent': 'Message sent to crew',
-  'crew.pinned': 'Pinned',
   'nav.title.AssessmentEditor': 'تشخیصی رپورٹ',
   'nav.title.MediaWorkspace': 'میڈیا اور نشریات',
   'nav.title.Federations': 'فیڈریشنز',
@@ -4280,7 +4276,6 @@ export default {
   "tpart.callback": "کال بیک پتہ",
   "tpart.done": "ہو گیا",
   "tbook.country_needed": "درست پارٹنرز تلاش کرنے کے لیے منزل کا ملک منتخب کریں۔",
-  'community.title': 'کمیونٹیز',
   'community.discover': 'دریافت کریں',
   'community.mine': 'میری کمیونٹیز',
   'community.invitations': 'دعوتیں',
@@ -10161,20 +10156,7 @@ export default {
   'cEdu.mnt.status.paused': 'روکا',
   'cEdu.mnt.status.ended': 'ختم',
   'cEdu.obs.title': 'مشاہدات',
-  'cEdu.obs.new': 'مشاہدہ شامل',
-  'cEdu.obs.f.coachId': 'کوچ',
-  'cEdu.obs.f.sessionDate': 'سیشن تاریخ',
-  'cEdu.obs.f.context': 'سیاق',
-  'cEdu.obs.f.pillar': 'ستون',
-  'cEdu.obs.f.overallRating': 'مجموعی درجہ',
-  'cEdu.obs.f.strengths': 'طاقتیں',
-  'cEdu.obs.f.development': 'ترقی',
   'cEdu.obs.release': 'کوچ کو جاری کریں',
-  'cEdu.plan.title': 'ترقیاتی منصوبے',
-  'cEdu.plan.new': 'منصوبہ شامل',
-  'cEdu.plan.f.focus': 'توجہ',
-  'cEdu.plan.f.target': 'ہدف تاریخ',
-  'cEdu.plan.f.actions': 'اقدامات',
   'cEdu.pillar.technical': 'تکنیکی',
   'cEdu.pillar.tactical': 'حکمت عملی',
   'cEdu.pillar.physical': 'جسمانی',
@@ -12686,7 +12668,6 @@ export default {
   'psf.programme.paraToggleHint': 'صرف پیرا ایتھلیٹ آلات، نقل و حمل اور تربیتی اخراجات کے لیے',
   'psf.programme.costCategories': 'اہل لاگت کے زمرے',
   'psf.programme.privacyNote': 'ایتھلیٹس کے طبی اور درجہ بندی کے ریکارڈ اسپانسرز کو نہیں دکھائے جائیں گے۔',
-  'psf.need.paraType': 'پیرا اسپورٹ ضرورت کی قسم',
   'psf.need.privacyNote': 'آپ کے طبی ریکارڈ اسپانسرز کے ساتھ شیئر نہیں کیے جائیں گے',
   'psf.need.specialisedEquipment': 'خصوصی آلات',
   'psf.need.accessibleTransport': 'قابل رسائی نقل و حمل',
@@ -13726,25 +13707,6 @@ export default {
   'para.comm.sign_language': 'Sign language',
   'para.comm.augmentative_communication': 'Augmentative communication',
   'para.comm.simplified_language': 'Simplified language',
-  'account.appearance': 'Appearance',
-  'account.language': 'Language & region',
-  'account.theme.light': 'Light',
-  'account.theme.dark': 'Dark',
-  'account.search_language': 'Search language or country',
-  'account.your_choice': 'Your choice',
-  'account.format_note': 'Dates, times, numbers and currency follow this and your time zone.',
-  'common.cancel': 'Cancel',
-  'common.close': 'Close',
-  'common.back': 'Back',
-  'common.next': 'Next',
-  'common.loading': 'Loading…',
-  'common.retry': 'Try again',
-  'common.done': 'Done',
-  'error.network': 'No connection. Check your network and try again.',
-  'nav.search': 'Search',
-  'nav.bookings': 'Bookings',
-  'nav.account': 'Account',
-  'transport.boardEmpty': 'No transport runs active right now.',
   'wizard.season.type': 'Season type',
   'wizard.season.dates': 'Season dates',
   'wizard.season.reg_window': 'Registration window (optional)',
@@ -13781,7 +13743,6 @@ export default {
   'wizard.team.public_sub': 'Other platform users can find and follow the team',
   'wizard.goal.what': 'What do you want to achieve?',
   'wizard.goal.kind': 'Kind of goal',
-  'wizard.goal.target': 'Target number (optional)',
   'wizard.goal.milestones': 'Milestones (optional)',
   'wizard.goal.review_date': 'First review date (optional)',
   'wizard.goal.cadence': 'Review cadence',
@@ -13800,10 +13761,10 @@ export default {
   'coach.sport.wizard.step3Sub': 'Help academies and athletes find you for exactly what you do best.',
   'coach.sport.wizard.step4Title': 'Your coaching career',
   'coach.sport.wizard.step4Sub': 'Your background builds trust with elite programmes and national academies.',
-  'coach.sport.wizard.step5Title': { value: 'Availability', reviewed: false },
-  'coach.sport.wizard.step5Sub': { value: 'Set your schedule, capacity and location. Add rate cards from your coaching workbench after completing this profile.', reviewed: false },
-  'coach.sport.wizard.rateCardNudgeTitle': { value: 'Set your rates after this step', reviewed: false },
-  'coach.sport.wizard.rateCardNudgeSub': { value: 'Create rate cards — per hour, per session, group packages, subscriptions — from the Rate cards section in your coaching workbench.', reviewed: false },
+  'coach.sport.wizard.step5Title': 'Availability',
+  'coach.sport.wizard.step5Sub': 'Set your schedule, capacity and location. Add rate cards from your coaching workbench after completing this profile.',
+  'coach.sport.wizard.rateCardNudgeTitle': 'Set your rates after this step',
+  'coach.sport.wizard.rateCardNudgeSub': 'Create rate cards — per hour, per session, group packages, subscriptions — from the Rate cards section in your coaching workbench.',
   'coach.sport.wizard.stepOf': 'Step {step} of {total}',
   'coach.sport.wizard.continue': 'Continue',
   'coach.sport.wizard.back': 'Back',
@@ -15225,8 +15186,6 @@ export default {
   // Injury episode & RTP
   'inj.episode_title': 'چوٹ کا واقعہ', // machine-drafted
   'inj.open_episode': 'واقعہ کھولیں', // machine-drafted
-  'inj.new_episode': 'نئی چوٹ کا واقعہ', // machine-drafted
-  'inj.episode_ref': 'واقعہ حوالہ', // machine-drafted
   'inj.status.active': 'فعال', // machine-drafted
   'inj.status.rehabilitation': 'بحالی', // machine-drafted
   'inj.status.restricted_training': 'محدود تربیت', // machine-drafted
@@ -15238,7 +15197,6 @@ export default {
   'inj.mechanism': 'طریقہ کار', // machine-drafted
   'inj.severity': 'شدت', // machine-drafted
   'inj.expected_return': 'متوقع واپسی', // machine-drafted
-  'inj.actual_return': 'حقیقی واپسی', // machine-drafted
   'inj.occurred_on': 'چوٹ کی تاریخ', // machine-drafted
   'inj.is_recurrence': 'دوبارہ واقعہ', // machine-drafted
   'inj.athlete_phase.recovery': 'صحت یابی', // machine-drafted
@@ -15256,8 +15214,6 @@ export default {
   'rtp.issue_rtp': 'کھیل پر واپسی کی اجازت دیں', // machine-drafted
   'rtp.load_restrictions': 'بوجھ کی پابندیاں', // machine-drafted
   'rtp.coach_view_notice': 'کوچز صرف منظوری کی حالت اور بوجھ کی پابندیاں دیکھتے ہیں — کوئی طبی تفصیل کبھی شیئر نہیں کی جاتی۔', // machine-drafted
-  'rtp.approval_valid_until': 'تک درست', // machine-drafted
-  'rtp.mark_achieved': 'حاصل کے طور پر نشان زد کریں', // machine-drafted
 
   // earnings & seller-onboarding (machine-drafted, reviewed: false)
   'earnings.title': 'Earnings',
@@ -16744,4 +16700,5 @@ export default {
   'ora.err_tiers': "Add at least 2 volume tiers", /* reviewed: false */
   'ora.err_fee': "Enter the fee amount", /* reviewed: false */
   'ora.err_date': "Set an effective from date", /* reviewed: false */
+  'calendarSync.tentativeHint': 'مدعو سرکاری تقرریاں آپ کے کیلنڈر میں عارضی کے طور پر دکھائی دیں گی۔',
 };

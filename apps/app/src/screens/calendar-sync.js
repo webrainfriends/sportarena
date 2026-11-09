@@ -10,6 +10,7 @@ import { Counter } from '../pickers';
 import { c } from '../theme';
 import { localDate, localHHMM, localToIso, todayIn, addDays, WEEKDAYS, timeIn } from '../vtime';
 import { locale } from '../locale';
+import { t } from '../i18n';
 
 const deviceTz = (() => { try { return Intl.DateTimeFormat().resolvedOptions().timeZone; } catch { return 'UTC'; } })();
 const FEED_KINDS = [['match', 'Matches'], ['team', 'Team'], ['event', 'Events'], ['training', 'Coaching'], ['venue', 'Venues'], ['duty', 'Duty'], ['recovery', 'Recovery'], ['health', 'Health (shown as Busy)']];
@@ -91,6 +92,7 @@ function Subscribe({ data, athleteId, reload, onChanged }) {
           <T size={13} color={c.mute}>Add a private link to Apple Calendar, Google Calendar or Outlook. It refreshes by itself. You can switch it off at any time.</T>
           <T weight="800" size={13}>WHAT IT CARRIES</T>
           <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>{FEED_KINDS.map(([k, l]) => <Chip key={k} label={l} active={kinds.includes(k)} onPress={() => toggle(k)} />)}</View>
+          {kinds.includes('duty') ? <T size={12} color={c.mute}>{t('calendarSync.tentativeHint')}</T> : null}
           <T weight="800" size={13}>HOW MUCH IT SHOWS</T>
           <Seg options={[{ value: 'busy', label: 'Busy only' }, { value: 'full', label: 'Full details' }]} value={detail} onChange={setDetail} color={c.pink} />
           <Field label="Name (optional)" value={label} onChangeText={setLabel} placeholder="My phone" maxLength={60} />

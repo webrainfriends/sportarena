@@ -202,7 +202,7 @@ function fold(line) {
   return parts.join('\r\n ');
 }
 
-/** events: [{ uid, startMs, endMs, allDay, summary, description?, cancelled? }] -> RFC 5545 text. */
+/** events: [{ uid, startMs, endMs, allDay, summary, description?, cancelled?, tentative?, sequence?, lastModifiedMs?, createdMs? }] -> RFC 5545 text. */
 export function writeIcs({ name, tz, events, now = Date.now() }) {
   const lines = ['BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//Sportarena//Calendar//EN', 'CALSCALE:GREGORIAN', 'METHOD:PUBLISH', `X-WR-CALNAME:${esc(name)}`, `X-WR-TIMEZONE:${tz}`, 'REFRESH-INTERVAL;VALUE=DURATION:PT1H', 'X-PUBLISHED-TTL:PT1H'];
   for (const e of events) {
@@ -211,7 +211,11 @@ export function writeIcs({ name, tz, events, now = Date.now() }) {
     else lines.push(`DTSTART:${stamp(e.startMs)}`, `DTEND:${stamp(e.endMs)}`);
     lines.push(`SUMMARY:${esc(e.summary)}`);
     if (e.description) lines.push(`DESCRIPTION:${esc(e.description)}`);
-    lines.push(`STATUS:${e.cancelled ? 'CANCELLED' : 'CONFIRMED'}`, 'TRANSP:OPAQUE', 'END:VEVENT');
+    lines.push(`STATUS:${e.cancelled ? 'CANCELLED' : e.tentative ? 'TENTATIVE' : 'CONFIRMED'}`);
+    if (typeof e.sequence === 'number') lines.push(`SEQUENCE:${e.sequence}`);
+    if (e.lastModifiedMs) lines.push(`LAST-MODIFIED:${stamp(e.lastModifiedMs)}`);
+    if (e.createdMs) lines.push(`CREATED:${stamp(e.createdMs)}`);
+    lines.push('TRANSP:OPAQUE', 'END:VEVENT');
   }
   lines.push('END:VCALENDAR');
   return `${lines.map(fold).join('\r\n')}\r\n`;

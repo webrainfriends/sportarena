@@ -896,10 +896,8 @@ export default {
   'nav.title.MyAccreditations': 'ನನ್ನ ಬ್ಯಾಡ್ಜ್‌ಗಳು',
   'nav.title.OfficialsDevelopment': 'ಅಧಿಕಾರಿ ಅಭಿವೃದ್ಧಿ',
   'nav.title.OfficialAssessment': 'Assessment',
-  'crew.completeness_label': 'Crew completeness',
   'crew.ready': 'All required roles filled',
   'crew.incomplete': 'Some required roles are not yet filled',
-  'crew.missing_roles': 'Missing: {roles}',
   'crew.unfilled_role': 'Required · not yet filled',
   'crew.unfilled_title': 'Unfilled required roles',
   'crew.you': 'You',
@@ -920,7 +918,6 @@ export default {
   'crew.select_person': 'Select replacement official',
   'crew.user_id_placeholder': 'Enter official user ID',
   'crew.duties_label': 'Assigned duties',
-  'crew.duties_placeholder': 'e.g. Chief Referee, AR – Home side',
   'crew.reason': 'Reason',
   'crew.reason_placeholder': 'Reason for emergency substitution',
   'crew.reason_required': 'Please give a reason for the substitution',
@@ -940,7 +937,6 @@ export default {
   'crew.substituted_alert': '{name} ({role}) was substituted',
   'crew.requirements_title': 'Crew requirements',
   'crew.broadcast_sent': 'Message sent to crew',
-  'crew.pinned': 'Pinned',
   'nav.title.AssessmentEditor': 'ಮೌಲ್ಯಮಾಪನ ವರದಿ',
   'nav.title.MediaWorkspace': 'ಮಾಧ್ಯಮ ಮತ್ತು ಪ್ರಸಾರ',
   'nav.title.Federations': 'ಒಕ್ಕೂಟಗಳು',
@@ -4273,7 +4269,6 @@ export default {
   "tpart.callback": "ಕಾಲ್‌ಬ್ಯಾಕ್ ವಿಳಾಸ",
   "tpart.done": "ಮುಗಿದಿದೆ",
   "tbook.country_needed": "ಸರಿಯಾದ ಪಾರ್ಟ್ನರ್‌ಗಳನ್ನು ಹುಡುಕಲು ಗಮ್ಯಸ್ಥಾನದ ದೇಶವನ್ನು ಆಯ್ಕೆಮಾಡಿ.",
-  'community.title': 'ಸಮುದಾಯಗಳು',
   'community.discover': 'ಹುಡುಕಿ',
   'community.mine': 'ನನ್ನ ಸಮುದಾಯಗಳು',
   'community.invitations': 'ಆಹ್ವಾನಗಳು',
@@ -10154,20 +10149,7 @@ export default {
   'cEdu.mnt.status.paused': 'ತಡೆಹಿಡಿದಿದೆ',
   'cEdu.mnt.status.ended': 'ಮುಗಿದಿದೆ',
   'cEdu.obs.title': 'ವೀಕ್ಷಣೆಗಳು',
-  'cEdu.obs.new': 'ವೀಕ್ಷಣೆ ಸೇರಿಸಿ',
-  'cEdu.obs.f.coachId': 'ತರಬೇತಿದಾರ',
-  'cEdu.obs.f.sessionDate': 'ಸೆಷನ್ ದಿನಾಂಕ',
-  'cEdu.obs.f.context': 'ಸಂದರ್ಭ',
-  'cEdu.obs.f.pillar': 'ಸ್ತಂಭ',
-  'cEdu.obs.f.overallRating': 'ಒಟ್ಟಾರೆ ರೇಟಿಂಗ್',
-  'cEdu.obs.f.strengths': 'ಶಕ್ತಿಗಳು',
-  'cEdu.obs.f.development': 'ಅಭಿವೃದ್ಧಿ',
   'cEdu.obs.release': 'ತರಬೇತಿದಾರರಿಗೆ ಬಿಡುಗಡೆ',
-  'cEdu.plan.title': 'ಅಭಿವೃದ್ಧಿ ಯೋಜನೆಗಳು',
-  'cEdu.plan.new': 'ಯೋಜನೆ ಸೇರಿಸಿ',
-  'cEdu.plan.f.focus': 'ಗಮನ',
-  'cEdu.plan.f.target': 'ಗುರಿ ದಿನಾಂಕ',
-  'cEdu.plan.f.actions': 'ಕ್ರಮಗಳು',
   'cEdu.pillar.technical': 'ತಾಂತ್ರಿಕ',
   'cEdu.pillar.tactical': 'ಕಾರ್ಯತಂತ್ರ',
   'cEdu.pillar.physical': 'ದೈಹಿಕ',
@@ -12679,7 +12661,6 @@ export default {
   'psf.programme.paraToggleHint': 'ಪ್ಯಾರಾ ಅಥ್ಲೀಟ್ ಸಲಕರಣೆ, ಸಾರಿಗೆ ಮತ್ತು ತರಬೇತಿ ವೆಚ್ಚಗಳಿಗೆ ಮಾತ್ರ',
   'psf.programme.costCategories': 'ಅರ್ಹ ವೆಚ್ಚ ವರ್ಗಗಳು',
   'psf.programme.privacyNote': 'ಅಥ್ಲೀಟ್‌ಗಳ ವೈದ್ಯಕೀಯ ಮತ್ತು ವರ್ಗೀಕರಣ ದಾಖಲೆಗಳನ್ನು ಪ್ರಾಯೋಜಕರಿಗೆ ತೋರಿಸಲಾಗುವುದಿಲ್ಲ.',
-  'psf.need.paraType': 'ಪ್ಯಾರಾ ಸ್ಪೋರ್ಟ್ ಅಗತ್ಯ ಪ್ರಕಾರ',
   'psf.need.privacyNote': 'ನಿಮ್ಮ ವೈದ್ಯಕೀಯ ದಾಖಲೆಗಳನ್ನು ಪ್ರಾಯೋಜಕರೊಂದಿಗೆ ಹಂಚಿಕೊಳ್ಳಲಾಗುವುದಿಲ್ಲ',
   'psf.need.specialisedEquipment': 'ವಿಶೇಷ ಸಲಕರಣೆಗಳು',
   'psf.need.accessibleTransport': 'ಪ್ರವೇಶಯೋಗ್ಯ ಸಾರಿಗೆ',
@@ -13719,25 +13700,6 @@ export default {
   'para.comm.sign_language': 'Sign language',
   'para.comm.augmentative_communication': 'Augmentative communication',
   'para.comm.simplified_language': 'Simplified language',
-  'account.appearance': 'Appearance',
-  'account.language': 'Language & region',
-  'account.theme.light': 'Light',
-  'account.theme.dark': 'Dark',
-  'account.search_language': 'Search language or country',
-  'account.your_choice': 'Your choice',
-  'account.format_note': 'Dates, times, numbers and currency follow this and your time zone.',
-  'common.cancel': 'Cancel',
-  'common.close': 'Close',
-  'common.back': 'Back',
-  'common.next': 'Next',
-  'common.loading': 'Loading…',
-  'common.retry': 'Try again',
-  'common.done': 'Done',
-  'error.network': 'No connection. Check your network and try again.',
-  'nav.search': 'Search',
-  'nav.bookings': 'Bookings',
-  'nav.account': 'Account',
-  'transport.boardEmpty': 'No transport runs active right now.',
   'wizard.season.type': 'Season type',
   'wizard.season.dates': 'Season dates',
   'wizard.season.reg_window': 'Registration window (optional)',
@@ -13774,7 +13736,6 @@ export default {
   'wizard.team.public_sub': 'Other platform users can find and follow the team',
   'wizard.goal.what': 'What do you want to achieve?',
   'wizard.goal.kind': 'Kind of goal',
-  'wizard.goal.target': 'Target number (optional)',
   'wizard.goal.milestones': 'Milestones (optional)',
   'wizard.goal.review_date': 'First review date (optional)',
   'wizard.goal.cadence': 'Review cadence',
@@ -13793,10 +13754,10 @@ export default {
   'coach.sport.wizard.step3Sub': 'Help academies and athletes find you for exactly what you do best.',
   'coach.sport.wizard.step4Title': 'Your coaching career',
   'coach.sport.wizard.step4Sub': 'Your background builds trust with elite programmes and national academies.',
-  'coach.sport.wizard.step5Title': { value: 'Availability', reviewed: false },
-  'coach.sport.wizard.step5Sub': { value: 'Set your schedule, capacity and location. Add rate cards from your coaching workbench after completing this profile.', reviewed: false },
-  'coach.sport.wizard.rateCardNudgeTitle': { value: 'Set your rates after this step', reviewed: false },
-  'coach.sport.wizard.rateCardNudgeSub': { value: 'Create rate cards — per hour, per session, group packages, subscriptions — from the Rate cards section in your coaching workbench.', reviewed: false },
+  'coach.sport.wizard.step5Title': 'Availability',
+  'coach.sport.wizard.step5Sub': 'Set your schedule, capacity and location. Add rate cards from your coaching workbench after completing this profile.',
+  'coach.sport.wizard.rateCardNudgeTitle': 'Set your rates after this step',
+  'coach.sport.wizard.rateCardNudgeSub': 'Create rate cards — per hour, per session, group packages, subscriptions — from the Rate cards section in your coaching workbench.',
   'coach.sport.wizard.stepOf': 'Step {step} of {total}',
   'coach.sport.wizard.continue': 'Continue',
   'coach.sport.wizard.back': 'Back',
@@ -15217,8 +15178,6 @@ export default {
   // Injury episode & RTP
   'inj.episode_title': 'ಗಾಯದ ಘಟನೆ', // machine-drafted
   'inj.open_episode': 'ಘಟನೆ ತೆರೆಯಿರಿ', // machine-drafted
-  'inj.new_episode': 'ಹೊಸ ಗಾಯದ ಘಟನೆ', // machine-drafted
-  'inj.episode_ref': 'ಘಟನೆ ಉಲ್ಲೇಖ', // machine-drafted
   'inj.status.active': 'ಸಕ್ರಿಯ', // machine-drafted
   'inj.status.rehabilitation': 'ಪುನರ್ವಸತಿ', // machine-drafted
   'inj.status.restricted_training': 'ನಿರ್ಬಂಧಿತ ತರಬೇತಿ', // machine-drafted
@@ -15230,7 +15189,6 @@ export default {
   'inj.mechanism': 'ಕಾರ್ಯವಿಧಾನ', // machine-drafted
   'inj.severity': 'ತೀವ್ರತೆ', // machine-drafted
   'inj.expected_return': 'ನಿರೀಕ್ಷಿತ ಮರಳುವಿಕೆ', // machine-drafted
-  'inj.actual_return': 'ನಿಜವಾದ ಮರಳುವಿಕೆ', // machine-drafted
   'inj.occurred_on': 'ಗಾಯದ ದಿನಾಂಕ', // machine-drafted
   'inj.is_recurrence': 'ಮರುಕಳಿಕೆ', // machine-drafted
   'inj.athlete_phase.recovery': 'ಚೇತರಿಕೆ', // machine-drafted
@@ -15248,8 +15206,6 @@ export default {
   'rtp.issue_rtp': 'ಆಟಕ್ಕೆ ಮರಳಲು ಅನುಮತಿ ನೀಡಿ', // machine-drafted
   'rtp.load_restrictions': 'ಲೋಡ್ ನಿರ್ಬಂಧಗಳು', // machine-drafted
   'rtp.coach_view_notice': 'ಕೋಚ್‌ಗಳು ಕ್ಲಿಯರೆನ್ಸ್ ಸ್ಥಿತಿ ಮತ್ತು ಲೋಡ್ ನಿರ್ಬಂಧಗಳನ್ನು ಮಾತ್ರ ನೋಡುತ್ತಾರೆ — ಯಾವುದೇ ವೈದ್ಯಕೀಯ ವಿವರ ಹಂಚಿಕೊಳ್ಳಲಾಗುವುದಿಲ್ಲ.', // machine-drafted
-  'rtp.approval_valid_until': 'ವರೆಗೆ ಮಾನ್ಯ', // machine-drafted
-  'rtp.mark_achieved': 'ಸಾಧಿಸಲಾಗಿದೆ ಎಂದು ಗುರುತಿಸಿ', // machine-drafted
 
   // earnings & seller-onboarding (machine-drafted, reviewed: false)
   'earnings.title': 'Earnings',
@@ -16735,4 +16691,5 @@ export default {
   'ora.err_tiers': "Add at least 2 volume tiers", /* reviewed: false */
   'ora.err_fee': "Enter the fee amount", /* reviewed: false */
   'ora.err_date': "Set an effective from date", /* reviewed: false */
+  'calendarSync.tentativeHint': 'ಆಹ್ವಾನಿಸಲಾದ ಅಧಿಕಾರಿ ನಿಯೋಜನೆಗಳು ನಿಮ್ಮ ಕ್ಯಾಲೆಂಡರ್‌ನಲ್ಲಿ ತಾತ್ಕಾಲಿಕವಾಗಿ ಕಾಣಿಸುತ್ತವೆ.',
 };

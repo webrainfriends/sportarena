@@ -302,3 +302,56 @@ test('every calendar capability is on REST, OpenAPI and MCP', async () => {
   const spec = (await call('GET', '/openapi.json')).body;
   assert.ok(spec.paths['/me/calendar-feeds'] && spec.paths['/me/schedule-conflicts'] && spec.paths['/me/blocks/{id}']);
 });
+
+test('official assignment ICS status: invited → TENTATIVE, accepted → CONFIRMED, rescheduled fixture bumps SEQUENCE', async () => {
+  const org = await signup(['organizer']), official = await signup(['referee']);
+  const ev = (await call('POST', '/events', { token: org.token, body: { name: 'ICS Cup', sport: 'football', kind: 'league', starts_on: at(2, 0).slice(0, 10), ends_on: at(2, 0).slice(0, 10) } })).body;
+  const mk = async (name) => (await call('POST', '/teams', { token: org.token, body: { name: `${name} ICS${Math.random().toString(36).slice(2,5)}`, sport: 'football' } })).body.id;
+  const [home, away] = [await mk('Home'), await mk('Away')];
+  const { rows: [fx] } = await pool.query(`INSERT INTO fixtures(event_id, home_team_id, away_team_id, scheduled_at, status, duration_min) VALUES ($1,$2,$3,$4,'scheduled',90) RETURNING id`, [ev.id, home, away, at(3, 14)]);
+  await pool.query(`INSERT INTO fixture_officials(fixture_id, user_id, role, status) VALUES ($1,$2,'referee','invited')`, [fx.id, official.id]);
+
+  // invited assignment → STATUS:TENTATIVE in the subscription feed
+  const feedResp = await call('POST', '/me/calendar-feeds', { token: official.token, body: { kinds: ['duty'], detail: 'full' } });
+  assert.equal(feedResp.status, 201, JSON.stringify(feedResp.body));
+  const icsResp = await call('GET', `/calendar/feed/${feedResp.body.token}.ics`);
+  assert.equal(icsResp.status, 200);
+  assert.ok(icsResp.text.includes('STATUS:TENTATIVE'), 'invited assignment must be TENTATIVE');
+  assert.ok(!icsResp.text.includes('STATUS:CONFIRMED'), 'must not be CONFIRMED while still invited');
+
+  // accept the invitation → STATUS:CONFIRMED
+  await pool.query(`UPDATE fixture_officials SET status='accepted' WHERE fixture_id=$1 AND user_id=$2`, [fx.id, official.id]);
+  const icsResp2 = await call('GET', `/calendar/feed/${feedResp.body.token}.ics`);
+  assert.ok(icsResp2.text.includes('STATUS:CONFIRMED'), 'accepted assignment must be CONFIRMED');
+  assert.ok(!icsResp2.text.includes('STATUS:TENTATIVE'), 'must not still be TENTATIVE after acceptance');
+
+  // reschedule the fixture (bump version) → SEQUENCE increments in the ICS
+  await pool.query(`UPDATE fixtures SET scheduled_at=$1, version=version+1, updated_at=now() WHERE id=$2`, [at(4, 15), fx.id]);
+  const icsResp3 = await call('GET', `/calendar/feed/${feedResp.body.token}.ics`);
+  assert.ok(icsResp3.text.includes('SEQUENCE:1'), 'rescheduled fixture must have SEQUENCE:1');
+  assert.ok(icsResp3.text.includes('LAST-MODIFIED:'), 'rescheduled fixture must carry LAST-MODIFIED');
+
+  // cancel the fixture → the official assignment is removed from the schedule (status IN ('invited','accepted') filter) so it disappears from the feed
+  await pool.query(`UPDATE fixtures SET status='cancelled' WHERE id=$1`, [fx.id]);
+  await pool.query(`UPDATE fixture_officials SET status='cancelled' WHERE fixture_id=$1`, [fx.id]);
+  const icsResp4 = await call('GET', `/calendar/feed/${feedResp.body.token}.ics`);
+  // A cancelled official assignment is no longer in the query scope, so the event disappears entirely from the feed
+  assert.ok(!icsResp4.text.includes('STATUS:CONFIRMED') && !icsResp4.text.includes('STATUS:TENTATIVE'), 'cancelled official assignment must not appear as active in the feed');
+});
+
+test('busy-only feed never leaks opponent names or personal details for official duty items', async () => {
+  const org = await signup(['organizer']), official = await signup(['referee']);
+  const ev = (await call('POST', '/events', { token: org.token, body: { name: 'PII League', sport: 'football', kind: 'league', starts_on: at(5, 0).slice(0, 10), ends_on: at(5, 0).slice(0, 10) } })).body;
+  const mk = async (name) => (await call('POST', '/teams', { token: org.token, body: { name, sport: 'football' } })).body.id;
+  const [home, away] = [await mk('HomeTeamPII'), await mk('AwayTeamPII')];
+  const { rows: [fx] } = await pool.query(`INSERT INTO fixtures(event_id, home_team_id, away_team_id, scheduled_at, status, duration_min) VALUES ($1,$2,$3,$4,'scheduled',90) RETURNING id`, [ev.id, home, away, at(5, 14)]);
+  await pool.query(`INSERT INTO fixture_officials(fixture_id, user_id, role, status) VALUES ($1,$2,'referee','accepted')`, [fx.id, official.id]);
+
+  const feedResp = await call('POST', '/me/calendar-feeds', { token: official.token, body: { kinds: ['duty'], detail: 'busy' } });
+  assert.equal(feedResp.status, 201);
+  const icsResp = await call('GET', `/calendar/feed/${feedResp.body.token}.ics`);
+  assert.equal(icsResp.status, 200);
+  assert.ok(!icsResp.text.includes('HomeTeamPII'), 'busy feed must not leak home team name');
+  assert.ok(!icsResp.text.includes('AwayTeamPII'), 'busy feed must not leak away team name');
+  assert.ok(icsResp.text.includes('SUMMARY:Busy'), 'busy feed must only say Busy');
+});
