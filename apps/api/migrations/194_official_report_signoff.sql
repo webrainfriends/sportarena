@@ -80,7 +80,5 @@ UPDATE official_reports r
   FROM fixtures f
  WHERE r.fixture_id = f.id AND r.event_id IS NULL;
 
-UPDATE official_reports r
-   SET competition_id = f.competition_id
-  FROM fixtures f
- WHERE r.fixture_id = f.id AND r.competition_id IS NULL AND f.competition_id IS NOT NULL;
+-- competition_id backfill omitted: neither fixtures nor events carries competition_id;
+-- existing rows remain NULL and will be populated as reports are filed going forward.
