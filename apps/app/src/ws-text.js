@@ -1,7 +1,7 @@
 // The role workspace and the setup checklist come from the API with English text and a stable `key`. Translate by key here, and fall back to the
 // server's own text for any key without a translation, so a new server item is never blank. (Server error/notification codes are a later batch.)
 import { t } from './i18n';
-import { hasKey } from './i18n/catalogue';
+import { hasKey } from './i18n/core';
 import { roleLabel } from './roles';
 
 const pick = (key, params, fallback) => (hasKey(key) ? t(key, params) : fallback);

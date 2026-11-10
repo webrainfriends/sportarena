@@ -14,7 +14,7 @@ import { saveExport } from '../open-file';
 import { Btn, Card, ErrorBox, T, Tag } from '../ui';
 import { c } from '../theme';
 import { t, language } from '../i18n';
-import { hasKey } from '../i18n/catalogue';
+import { hasKey } from '../i18n/core';
 
 const pick = (key, fallback) => (hasKey(key) ? t(key) : fallback);
 const stepTitle = (s) => pick(`guide.${s.id}.title`, s.title);
