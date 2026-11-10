@@ -96,7 +96,7 @@ function Today({ h, reload, go, tz }) {
       ['📅', t('off.qa.assignments'), t('off.qa.this_week', { n: h.stats.this_week }), () => go('OfficialsHome', { tab: 'calendar' })],
       ['📨', t('off.qa.requests'), h.stats.pending ? t('off.qa.to_answer', { n: h.stats.pending }) : t('off.qa.none_waiting'), () => go('OfficialsHome', { tab: 'today' })],
       ['🕒', t('off.qa.availability'), null, () => go('OfficialsHome', { tab: 'availability' })],
-      ['🎛️', t('off.qa.console'), h.next ? `${h.next.home_name ?? 'TBD'} v ${h.next.away_name ?? 'TBD'}` : t('off.qa.no_assignment'), h.next ? () => go('MatchCentre', { id: h.next.fixture_id }) : null],
+      ['🎛️', t('off.qa.console'), h.next ? `${h.next.home_name ?? 'TBD'} v ${h.next.away_name ?? 'TBD'}` : t('off.qa.no_assignment'), h.next ? () => go('OfficialsConsole', { id: h.next.fixture_id }) : null],
     ]],
     [t('off.qa.rules'), [
       ['📖', t('off.qa.rulebook'), null, () => go('OfficialsHome', { tab: 'rules' })],
@@ -125,7 +125,7 @@ function Today({ h, reload, go, tz }) {
             <Assignment key={a.id} a={a} tz={tz} prominent onOpen={() => go('OfficialMatch', { id: a.fixture_id })}>
               <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 4 }}>
                 <Btn title="Briefing & checks" onPress={() => go('OfficialMatch', { id: a.fixture_id })} style={{ minHeight: 48 }} />
-                <Btn title="Open live console" color={c.violet} onPress={() => go('MatchCentre', { id: a.fixture_id })} style={{ minHeight: 48 }} />
+                <Btn title="Open live console" color={c.violet} onPress={() => go('OfficialsConsole', { id: a.fixture_id })} style={{ minHeight: 48 }} />
                 <Btn title={t('crew.btn_crew_hub')} color={c.mintSoft} onPress={() => go('OfficialCrewHub', { fixtureId: a.fixture_id })} style={{ minHeight: 48 }} />
               </View>
             </Assignment>
@@ -764,7 +764,7 @@ export function OfficialMatch({ id, report: openReport }) {
   const actions = (
     <Section title="Match day" color={c.sun}>
       <View style={{ gap: 8 }}>
-        {live ? <Btn title="🎛️ Open the live console" onPress={() => go('MatchCentre', { id })} style={{ minHeight: 56 }} /> : null}
+        {live ? <Btn title="🎛️ Open the live console" onPress={() => go('OfficialsConsole', { id })} style={{ minHeight: 56 }} /> : null}
         <Btn title="📝 Result & sign-off (score sheet)" color={c.violet} onPress={() => go('ScoreSheet', { id })} style={{ minHeight: 56 }} />
         <Btn title={t('or.file_report_btn')} color={c.paper} ink={c.ink} onPress={() => setRep(true)} style={{ minHeight: 56 }} />
         <Btn title={t('or.file_full_report_btn')} color={c.pinkSoft} ink={c.pink} onPress={() => go('OfficialReportWizard', { fixtureId: id })} style={{ minHeight: 56 }} />

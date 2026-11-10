@@ -84,8 +84,8 @@ CREATE TABLE IF NOT EXISTS rule_ai_escalations (
   reason                  text        NOT NULL,
   -- routing: escalation goes to the event organiser by default
   event_id                uuid        NOT NULL REFERENCES events(id),
-  -- optionally routed to an assessor/federation body
-  routed_to_body_id       uuid        REFERENCES governing_bodies(id),
+  -- optionally routed to an assessor/federation body (FK deferred until official_bodies table ships)
+  routed_to_body_id       uuid,
   status                  text        NOT NULL DEFAULT 'open'
                                       CHECK (status IN ('open','resolved','withdrawn')),
   resolved_by             uuid        REFERENCES users(id),
@@ -102,9 +102,7 @@ CREATE INDEX IF NOT EXISTS rule_ai_esc_session
   ON rule_ai_escalations(session_id);
 CREATE INDEX IF NOT EXISTS rule_ai_esc_raised
   ON rule_ai_escalations(raised_by);
-CREATE INDEX IF NOT EXISTS rule_ai_esc_body
-  ON rule_ai_escalations(routed_to_body_id)
-  WHERE routed_to_body_id IS NOT NULL;
+-- rule_ai_esc_body index deferred until official_bodies table ships
 CREATE INDEX IF NOT EXISTS rule_ai_esc_created
   ON rule_ai_escalations(created_at DESC);
 
