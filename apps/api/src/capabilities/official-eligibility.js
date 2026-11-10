@@ -19,8 +19,25 @@ import { activeSportingSanction } from '../integrity.js';
 import { blocksOn, BLOCKING_KINDS } from '../discipline.js';
 import { serviceFor } from '../discipline-live.js';
 import { gate as complianceGate, hasObligations } from '../compliance.js';
-import { ASSIGNMENT_SQL } from '../officials.js';
-import { openCase } from '../cases.js';
+import { ASSIGNMENT_SQL, officialAgeOn } from '../officials.js';
+import { slaDue } from '../cases.js';
+
+/**
+ * Open an eligibility appeal as a canonical support case (the same cases / case_messages / case_events / case_links records every
+ * other appeal uses), so it appears in the requester's cases and follows the usual response times. The grounds are the first message,
+ * encrypted like any case message. The case is linked to the fixture; nothing is stored in a second place.
+ */
+async function openAppealCase(c, { userId, fixtureId, foId, grounds, note }) {
+  const due = slaDue('normal');
+  const row = (await c.query(
+    `INSERT INTO cases(kind, category, priority, subject, requester_id, contact_channel, details, routed_to, first_response_due, resolution_due)
+     VALUES ('support','events','normal',$1,$2,'in_app',$3,'platform',$4,$5) RETURNING id, case_no, status`,
+    ['Official eligibility appeal', userId, JSON.stringify({ kind: 'official_eligibility_appeal', fixture_official_id: foId }), due.first, due.resolution])).rows[0];
+  await c.query('INSERT INTO case_links(case_id, entity_type, entity_id) VALUES ($1,$2,$3)', [row.id, 'fixture', fixtureId]);
+  await c.query('INSERT INTO case_messages(case_id, author_id, visibility, kind, body_enc) VALUES ($1,$2,$3,$4,$5)', [row.id, userId, 'public', 'message', encrypt(note ? `${grounds}\n\n${note}` : grounds, 'case_messages.body')]);
+  await c.query('INSERT INTO case_events(case_id, actor_id, action, from_status, to_status, reason, data, visibility) VALUES ($1,$2,$3,$4,$5,$6,$7,$8)', [row.id, userId, 'open', null, 'open', null, JSON.stringify({ fixture_official_id: foId }), 'public']);
+  return row;
+}
 
 const TAG = 'Official eligibility';
 const txt = (n) => z.string().trim().max(n);
@@ -32,7 +49,7 @@ const today = () => new Date().toISOString().slice(0, 10);
 /** Load a fixture official row, confirming the caller is either the official or the event organiser. */
 async function loadAssignment(c, assignmentId, user, { lock = false, requireOrg = false } = {}) {
   const sql = lock ? 'FOR UPDATE' : '';
-  const fo = (await c.query(`SELECT fo.*, f.event_id, f.sport_id AS f_sport_id, f.scheduled_at, f.duration_min, e.sport_id, e.official_policy, e.official_min_grade_rank, e.official_min_age, e.official_training_required, e.official_safeguarding_required, e.official_neutrality_required, e.official_conflict_declaration_required, e.organizer_id FROM fixture_officials fo JOIN fixtures f ON f.id=fo.fixture_id JOIN events e ON e.id=f.event_id WHERE fo.id=$1 ${sql}`, [assignmentId])).rows[0];
+  const fo = (await c.query(`SELECT fo.*, f.event_id, f.scheduled_at, f.duration_min, e.sport_id, e.official_policy, e.official_min_grade_rank, e.official_min_age, e.official_training_required, e.official_safeguarding_required, e.official_neutrality_required, e.official_conflict_declaration_required, e.organizer_id FROM fixture_officials fo JOIN fixtures f ON f.id=fo.fixture_id JOIN events e ON e.id=f.event_id WHERE fo.id=$1 ${sql}`, [assignmentId])).rows[0];
   if (!fo) throw notFound('Official assignment');
   const isOfficial = fo.user_id === user.id;
   const isOrg = fo.organizer_id === user.id || hasRole(user, 'admin');
@@ -120,10 +137,9 @@ async function evaluateEligibility(c, fo) {
   await factor('min_age', 'Minimum age', async () => {
     const minAge = fo.official_min_age;
     if (!minAge) return { state: 'eligible', detail: 'No minimum age set' };
-    const dob = (await c.query("SELECT birth_date FROM profiles WHERE user_id=$1", [userId])).rows[0]?.birth_date;
-    if (!dob) return { state: 'pending', detail: 'Date of birth not on record' };
-    const age = Math.floor((new Date(day) - new Date(dob)) / (365.25 * 864e5));
-    return age >= minAge ? { state: 'eligible' } : { state: 'ineligible', detail: `Must be at least ${minAge} years old (record shows ${age})` };
+    const age = await officialAgeOn(c, userId, day);
+    if (age == null) return { state: 'pending', detail: 'Date of birth not on record' };
+    return age >= minAge ? { state: 'eligible' } : { state: 'ineligible', detail: `Must be at least ${minAge} years old` };   // the age itself is not shown to whoever reads the evaluation
   });
 
   // 5. Training certificates
@@ -317,14 +333,10 @@ cap({
       // Verify there is actually a blocking factor
       const { eligible } = await evaluateEligibility(c, fo);
       if (eligible) throw conflict('No blocking eligibility factors to appeal', { code: 'already_eligible' });
-      const caseRow = await openCase(c, {
-        kind: 'official_eligibility_appeal', subject_type: 'fixture_official', subject_id: fo.id,
-        opened_by: user.id, assigned_to: fo.organizer_id,
-        title: 'Eligibility appeal', body_enc: encrypt(i.grounds, 'official_eligibility_appeal.grounds'),
-      });
+      const caseRow = await openAppealCase(c, { userId: user.id, fixtureId: fo.fixture_id, foId: fo.id, grounds: i.grounds, note: i.supporting_note });
       await audit(c, user.id, 'appeal_eligibility_decision', 'fixture_officials', fo.id);
       await notify(c, fo.organizer_id, { kind: 'official_eligibility', title: 'Official submitted an eligibility appeal', body: `Review the appeal in the Officials Eligibility panel.`, data: { assignment_id: fo.id, case_id: caseRow.id } });
-      return { case_id: caseRow.id, status: 'open' };
+      return { case_id: caseRow.id, case_no: caseRow.case_no, status: 'open' };
     });
   },
 });

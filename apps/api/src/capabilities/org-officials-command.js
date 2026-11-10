@@ -214,7 +214,7 @@ cap({
         row = (await c.query(
           `INSERT INTO org_official_rosters(organisation_id, user_id, sport_id, invited_by, notes_enc)
            VALUES ($1,$2,$3,$4,$5) RETURNING *`,
-          [i.id, i.user_id, i.sport_id ?? null, user.id, i.notes ? encrypt(i.notes) : null],
+          [i.id, i.user_id, i.sport_id ?? null, user.id, i.notes ? encrypt(i.notes, 'org_official_rosters.notes') : null],
         )).rows[0];
       } catch (e) {
         if (e.code === '23505') throw conflict('This official is already in your roster for that sport');
@@ -249,18 +249,17 @@ cap({
         const spArgs = i.sport_id ? [userId, i.sport_id] : [userId];
         const prof = (await c.query(`SELECT 1 FROM active_sport_profiles WHERE user_id=$1 AND role='referee' ${sportFilter} LIMIT 1`, spArgs)).rows[0];
         if (!prof) { results.push({ user_id: userId, result: 'no_profile' }); continue; }
-        try {
+        {
+          // ON CONFLICT DO NOTHING: catching a unique violation would leave the transaction aborted and fail every later row
           const row = (await c.query(
             `INSERT INTO org_official_rosters(organisation_id,user_id,sport_id,invited_by,notes_enc)
-             VALUES($1,$2,$3,$4,$5) RETURNING id`,
-            [i.id, userId, i.sport_id ?? null, user.id, i.notes ? encrypt(i.notes) : null],
+             VALUES($1,$2,$3,$4,$5) ON CONFLICT DO NOTHING RETURNING id`,
+            [i.id, userId, i.sport_id ?? null, user.id, i.notes ? encrypt(i.notes, 'org_official_rosters.notes') : null],
           )).rows[0];
+          if (!row) { results.push({ user_id: userId, result: 'duplicate' }); continue; }
           await c.query(`INSERT INTO org_official_roster_history(roster_id,actor_id,from_status,to_status) VALUES($1,$2,'none','invited')`, [row.id, user.id]);
           await notify(c, userId, { kind: 'org_official_invite', title: `Invitation from ${org.name}`, body: `${org.name} has invited you to their official panel.`, data: { roster_id: row.id, organisation_id: i.id } });
           results.push({ user_id: userId, result: 'invited', roster_id: row.id });
-        } catch (e) {
-          if (e.code === '23505') results.push({ user_id: userId, result: 'duplicate' });
-          else throw e;
         }
       }
       await audit(c, user.id, 'bulk_invite_org_officials', 'org_official_rosters', i.id);
@@ -285,7 +284,7 @@ cap({
       await c.query(
         `INSERT INTO org_official_roster_history(roster_id,actor_id,from_status,to_status,reason_enc)
          VALUES($1,$2,'invited',$3,$4)`,
-        [i.id, user.id, to, i.reason ? encrypt(i.reason) : null],
+        [i.id, user.id, to, i.reason ? encrypt(i.reason, 'org_official_roster_history.reason') : null],
       );
       const org = (await c.query('SELECT name, id FROM organisations WHERE id=$1', [row.organisation_id])).rows[0];
       await notify(c, row.invited_by, { kind: 'org_official_response', title: i.response === 'accept' ? 'Official joined panel' : 'Official declined', body: `${user.display_name ?? 'An official'} ${i.response === 'accept' ? 'accepted' : 'declined'} the invitation to ${org?.name ?? 'your'} panel.`, data: { roster_id: i.id, organisation_id: row.organisation_id } });
@@ -308,7 +307,7 @@ cap({
       await c.query(`UPDATE org_official_rosters SET status='suspended', suspended_at=now(), suspended_by=$2 WHERE id=$1`, [i.id, user.id]);
       await c.query(
         `INSERT INTO org_official_roster_history(roster_id,actor_id,from_status,to_status,reason_enc) VALUES($1,$2,'active','suspended',$3)`,
-        [i.id, user.id, encrypt(i.reason)],
+        [i.id, user.id, encrypt(i.reason, 'org_official_roster_history.reason')],
       );
       await notify(c, row.user_id, { kind: 'org_official_suspended', title: 'Panel status changed', body: 'Your status on this organisation\'s official panel has been suspended.', data: { roster_id: i.id, organisation_id: row.organisation_id } });
       await audit(c, user.id, 'suspend_org_official', 'org_official_rosters', i.id);
@@ -331,7 +330,7 @@ cap({
       await c.query(`UPDATE org_official_rosters SET status='active', suspended_at=null, suspended_by=null WHERE id=$1`, [i.id]);
       await c.query(
         `INSERT INTO org_official_roster_history(roster_id,actor_id,from_status,to_status,reason_enc) VALUES($1,$2,'suspended','active',$3)`,
-        [i.id, user.id, i.reason ? encrypt(i.reason) : null],
+        [i.id, user.id, i.reason ? encrypt(i.reason, 'org_official_roster_history.reason') : null],
       );
       await notify(c, row.user_id, { kind: 'org_official_reinstated', title: 'Panel status restored', body: 'You have been reinstated on the official panel.', data: { roster_id: i.id, organisation_id: row.organisation_id } });
       await audit(c, user.id, 'reinstate_org_official', 'org_official_rosters', i.id);
@@ -354,11 +353,11 @@ cap({
       const from = row.status;
       await c.query(
         `UPDATE org_official_rosters SET status='removed', removed_at=now(), removed_by=$2, removal_reason=$3 WHERE id=$1`,
-        [i.id, user.id, encrypt(i.reason)],
+        [i.id, user.id, encrypt(i.reason, 'org_official_roster_history.reason')],
       );
       await c.query(
         `INSERT INTO org_official_roster_history(roster_id,actor_id,from_status,to_status,reason_enc) VALUES($1,$2,$3,'removed',$4)`,
-        [i.id, user.id, from, encrypt(i.reason)],
+        [i.id, user.id, from, encrypt(i.reason, 'org_official_roster_history.reason')],
       );
       await audit(c, user.id, 'remove_org_official', 'org_official_rosters', i.id);
       return (await c.query('SELECT * FROM org_official_rosters WHERE id=$1', [i.id])).rows[0];
@@ -466,8 +465,8 @@ cap({
   async handler({ user }, i) {
     await getOrg(user, i.id);
     const windowEnd = new Date(Date.now() + i.days * DAY).toISOString();
-    const sportFilter = i.sport_id ? 'AND r.sport_id=$3' : '';
-    const args = [i.id, windowEnd, ...(i.sport_id ? [i.sport_id] : [])];
+    const sportFilter = i.sport_id ? 'AND r.sport_id=$2' : '';
+    const args = [i.id, ...(i.sport_id ? [i.sport_id] : [])];
 
     const officials = await many(
       `SELECT r.user_id, r.id AS roster_id, u.display_name, u.avatar_url,
@@ -483,7 +482,7 @@ cap({
     const result = [];
     for (const off of officials) {
       const days = await many(
-        `SELECT date_trunc('day', f.scheduled_at AT TIME ZONE COALESCE($3,'UTC')) AS day,
+        `SELECT date_trunc('day', f.scheduled_at AT TIME ZONE $3::text) AS day,
                 count(fo.id)::int AS cnt
            FROM fixture_officials fo
            JOIN fixtures f ON f.id=fo.fixture_id
@@ -513,14 +512,15 @@ cap({
       `SELECT f.id, f.scheduled_at, f.duration_min, f.status AS fixture_status,
               ev.id AS event_id, ev.name AS event_name, ev.sport_id,
               sp.name AS sport_name, sp.emoji AS sport_emoji,
-              f.venue_id, v.name AS venue_name,
+              res.venue_id, v.name AS venue_name,
               home.name AS home_name, away.name AS away_name,
               (SELECT json_agg(json_build_object('role',fo2.role,'status',fo2.status))
                  FROM fixture_officials fo2 WHERE fo2.fixture_id=f.id AND fo2.status='accepted') AS accepted_crew
          FROM fixtures f
          JOIN events ev ON ev.id=f.event_id
          JOIN sports sp ON sp.id=ev.sport_id
-         LEFT JOIN venues v ON v.id=f.venue_id
+         LEFT JOIN resources res ON res.id=f.resource_id
+         LEFT JOIN venues v ON v.id=res.venue_id
          LEFT JOIN teams home ON home.id=f.home_team_id
          LEFT JOIN teams away ON away.id=f.away_team_id
         WHERE ev.organisation_id=$1
@@ -560,7 +560,7 @@ cap({
       const msgRow = (await c.query(
         `INSERT INTO org_official_messages(organisation_id,sent_by,subject,body_enc,sport_id,recipient_filter,recipient_count)
          VALUES($1,$2,$3,$4,$5,$6,$7) RETURNING *`,
-        [i.id, user.id, i.subject, encrypt(i.body), i.sport_id ?? null, JSON.stringify(i.recipient_filter ?? {}), recipients.rowCount],
+        [i.id, user.id, i.subject, encrypt(i.body, 'org_official_messages.body'), i.sport_id ?? null, JSON.stringify(i.recipient_filter ?? {}), recipients.rowCount],
       )).rows[0];
       const org = (await c.query('SELECT name FROM organisations WHERE id=$1', [i.id])).rows[0];
       for (const { user_id } of recipients.rows) {
@@ -629,7 +629,7 @@ cap({
   name: 'export_org_official_roster', method: 'GET', path: '/organisations/:id/officials/roster/export', tag: TAG,
   summary: 'Download the roster as CSV: name, sports, grade, licence expiry, verification status, assignments year-to-date. PII (addresses, tax, payout) is never included. Audit-logged.',
   input: z.object({ id, sport_id: id.optional() }),
-  async handler({ user }, i, { res }) {
+  async handler({ user }, i) {
     await getOrg(user, i.id);
     await requireOwnerAdmin(user, i.id);
     const sportFilter = i.sport_id ? 'AND r.sport_id=$2' : '';
@@ -670,9 +670,8 @@ cap({
     }
     const org = await one('SELECT name FROM organisations WHERE id=$1', [i.id]);
     await audit(pool, user.id, 'export_org_official_roster', 'org_official_rosters', i.id);
-    const csv = toCsv(rows);
-    res.setHeader('Content-Type', 'text/csv');
-    res.setHeader('Content-Disposition', `attachment; filename="officials-${org?.name?.replace(/\s+/g, '-').toLowerCase()}-${new Date().toISOString().slice(0, 10)}.csv"`);
-    res.end(csv);
+    const cols = ['name', 'sport', 'status', 'grade', 'licence_body', 'licence_expires', 'verification', 'assignments_ytd', 'joined'];
+    const slug = String(org?.name ?? 'organisation').replace(/\s+/g, '-').toLowerCase();
+    return { filename: `officials-${slug}-${new Date().toISOString().slice(0, 10)}.csv`, rows: rows.length, csv: toCsv(cols, rows) };
   },
 });
