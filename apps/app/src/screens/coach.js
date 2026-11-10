@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Platform, ScrollView, TouchableOpacity, View } from 'react-native';
+import { Alert, Modal, Platform, Pressable, ScrollView, View } from 'react-native';
 import { api } from '../api';
 import { useLoad } from '../hooks';
 import { useSession } from '../session';
@@ -40,6 +40,11 @@ const sessionFields = [
 const KIND_ICON = { video: '🎬', document: '📄', image: '🖼️', link: '🔗' };
 const fmtBytes = (b) => b > 1e9 ? `${(b / 1e9).toFixed(1)} GB` : b > 1e6 ? `${(b / 1e6).toFixed(0)} MB` : `${Math.round(b / 1024)} KB`;
 
+function confirmRemove(msg, onConfirm) {
+  if (Platform.OS === 'web') { if (window.confirm(msg)) onConfirm(); }
+  else Alert.alert(msg, undefined, [{ text: t('common.cancel'), style: 'cancel' }, { text: t('sm.remove'), style: 'destructive', onPress: onConfirm }]);
+}
+
 function SessionResourcesSheet({ session, isCoach, visible, onClose }) {
   const { toast } = useSession();
   const media = useLoad(() => visible && session ? api.get(`/training-sessions/${session.id}/media`) : null, [visible, session?.id]);
@@ -47,11 +52,10 @@ function SessionResourcesSheet({ session, isCoach, visible, onClose }) {
   const kpi = media.data?.kpi;
   const [adding, setAdding] = useState(null); // 'link'
 
-  const remove = async (id) => {
-    if (!confirm(t('sm.remove_confirm'))) return;
+  const remove = (id) => confirmRemove(t('sm.remove_confirm'), async () => {
     try { await api.delete(`/session-media/${id}`); toast(t('sm.removed')); media.reload(); }
     catch (e) { toast('' + e.message); }
-  };
+  });
 
   const toggleRelease = async (item) => {
     try { await api.patch(`/session-media/${item.id}`, { released: !item.released }); media.reload(); }
@@ -66,11 +70,9 @@ function SessionResourcesSheet({ session, isCoach, visible, onClose }) {
         result = await getDocumentAsync({ type: ['application/pdf', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', 'text/csv'], copyToCacheDirectory: true });
         if (result.canceled) return;
         const asset = result.assets[0];
-        const size = asset.size ?? 0;
-        if (size > 50 * 1024 * 1024) { toast(t('sm.size_limit_doc')); return; }
-        const name = encodeURIComponent(asset.name ?? 'document');
+        if ((asset.size ?? 0) > 50 * 1024 * 1024) { toast(t('sm.size_limit_doc')); return; }
         toast(t('sm.upload_progress'));
-        await api.upload(`/training-sessions/${session.id}/media?name=${name}`, asset.uri, asset.mimeType ?? 'application/octet-stream');
+        await api.upload(`/training-sessions/${session.id}/media?name=${encodeURIComponent(asset.name ?? 'document')}`, asset.uri, asset.mimeType ?? 'application/octet-stream');
       } else {
         const { launchImageLibraryAsync, MediaTypeOptions } = await import('expo-image-picker');
         const isVideo = kind === 'video';
@@ -79,61 +81,74 @@ function SessionResourcesSheet({ session, isCoach, visible, onClose }) {
         const asset = result.assets[0];
         const sizeLimit = isVideo ? 500 * 1024 * 1024 : 10 * 1024 * 1024;
         if (asset.fileSize && asset.fileSize > sizeLimit) { toast(isVideo ? t('sm.size_limit_video') : t('sm.size_limit_image')); return; }
-        const fileName = asset.fileName ?? (isVideo ? 'video.mp4' : 'image.jpg');
-        const name = encodeURIComponent(fileName);
         toast(t('sm.upload_progress'));
-        await api.upload(`/training-sessions/${session.id}/media?name=${name}`, asset.uri, asset.type === 'video' ? 'video/mp4' : 'image/jpeg');
+        await api.upload(`/training-sessions/${session.id}/media?name=${encodeURIComponent(asset.fileName ?? (isVideo ? 'video.mp4' : 'image.jpg'))}`, asset.uri, asset.type === 'video' ? 'video/mp4' : 'image/jpeg');
       }
       toast(t('sm.uploaded'));
       media.reload();
     } catch (e) { toast(t('sm.upload_error')); }
   };
 
-  if (!visible) return null;
-
   return (
-    <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, justifyContent: 'flex-end' }}>
-      <View style={{ backgroundColor: c.bg, borderTopLeftRadius: 20, borderTopRightRadius: 20, maxHeight: '90%' }}>
-        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 16, borderBottomWidth: 1, borderBottomColor: c.line }}>
-          <T weight="700" size={16}>{t('sm.title')}</T>
-          {kpi ? <T size={12} color={c.mute}>{t('sm.kpi.count', { n: kpi.count })} · {fmtBytes(kpi.total_bytes)}</T> : null}
-          <TouchableOpacity onPress={onClose}><T size={18} color={c.mute}>✕</T></TouchableOpacity>
+    <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
+      <Pressable style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.45)' }} onPress={onClose} />
+      <View style={{ backgroundColor: c.paper, borderTopLeftRadius: 24, borderTopRightRadius: 24, maxHeight: '88%', marginTop: -24 }}>
+        {/* drag handle */}
+        <View style={{ alignItems: 'center', paddingTop: 10, paddingBottom: 2 }}>
+          <View style={{ width: 36, height: 4, borderRadius: 2, backgroundColor: c.line }} />
         </View>
+        {/* header */}
+        <View style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 18, paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: c.line }}>
+          <View style={{ flex: 1 }}>
+            <T weight="700" size={17} color={c.ink}>{t('sm.title')}</T>
+            {kpi && kpi.count > 0 ? <T size={12} color={c.mute} style={{ marginTop: 1 }}>{kpi.count} item{kpi.count !== 1 ? 's' : ''} · {fmtBytes(kpi.total_bytes)}{kpi.video_hours > 0 ? ` · ${kpi.video_hours}h video` : ''}</T> : null}
+          </View>
+          <Pressable onPress={onClose} hitSlop={10} accessibilityLabel={t('common.close')}
+            style={{ width: 32, height: 32, borderRadius: 16, backgroundColor: c.line, alignItems: 'center', justifyContent: 'center' }}>
+            <T size={14} color={c.mute} weight="700">✕</T>
+          </Pressable>
+        </View>
+        {/* upload action bar — coach only */}
         {isCoach ? (
-          <View style={{ flexDirection: 'row', gap: 8, padding: 12, flexWrap: 'wrap', borderBottomWidth: 1, borderBottomColor: c.line }}>
+          <View style={{ flexDirection: 'row', gap: 8, paddingHorizontal: 14, paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: c.line, flexWrap: 'wrap' }}>
             <Btn small title={t('sm.add_video')} onPress={() => pickAndUpload('video')} />
-            <Btn small title={t('sm.add_doc')} color={c.paper} ink={c.ink} onPress={() => pickAndUpload('document')} />
-            <Btn small title={t('sm.add_image')} color={c.paper} ink={c.ink} onPress={() => pickAndUpload('image')} />
-            <Btn small title={t('sm.add_link')} color={c.paper} ink={c.ink} onPress={() => setAdding('link')} />
+            <Btn small title={t('sm.add_doc')} color={c.violetSoft} ink={c.ink} onPress={() => pickAndUpload('document')} />
+            <Btn small title={t('sm.add_image')} color={c.violetSoft} ink={c.ink} onPress={() => pickAndUpload('image')} />
+            <Btn small title={t('sm.add_link')} color={c.violetSoft} ink={c.ink} onPress={() => setAdding('link')} />
           </View>
         ) : null}
-        <ScrollView style={{ flex: 1 }} contentContainerStyle={{ padding: 12 }}>
+        {/* resource list */}
+        <ScrollView style={{ flex: 1 }} contentContainerStyle={{ padding: 14, gap: 10 }}>
           {media.loading && !media.data ? <Loading /> : media.error ? <ErrorBox error={media.error} onRetry={media.reload} /> : !items.length ? (
             <Empty emoji="📎" title={t('sm.empty')} sub={isCoach ? t('sm.empty_sub') : undefined} />
           ) : items.map((item) => (
-            <Card key={item.id} style={{ marginBottom: 8 }}>
-              <View style={{ flexDirection: 'row', gap: 10, alignItems: 'flex-start' }}>
-                <T size={22}>{KIND_ICON[item.kind]}</T>
-                <View style={{ flex: 1 }}>
-                  <T weight="700" size={13}>{item.original_name ?? item.link_url ?? t(`sm.kind.${item.kind}`)}</T>
+            <Card key={item.id}>
+              <View style={{ flexDirection: 'row', gap: 12, alignItems: 'flex-start' }}>
+                <View style={{ width: 42, height: 42, borderRadius: 10, backgroundColor: c.pinkSoft, alignItems: 'center', justifyContent: 'center' }}>
+                  <T size={20}>{KIND_ICON[item.kind]}</T>
+                </View>
+                <View style={{ flex: 1, gap: 2 }}>
+                  <T weight="700" size={13} color={c.ink} numberOfLines={2}>{item.original_name ?? item.link_url ?? t(`sm.kind.${item.kind}`)}</T>
                   {item.caption ? <T size={12} color={c.mute}>{item.caption}</T> : null}
-                  <T size={11} color={c.mute}>{item.kind === 'link' ? (item.link_provider ?? 'link') : (item.size_bytes ? fmtBytes(item.size_bytes) : '')} · {item.released ? t('sm.released') : t('sm.hold')}</T>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 2 }}>
+                    {item.size_bytes ? <T size={11} color={c.mute}>{fmtBytes(item.size_bytes)}</T> : null}
+                    {item.link_provider && item.link_provider !== 'other' ? <T size={11} color={c.mute}>{t(`sm.link.provider.${item.link_provider}`)}</T> : null}
+                    <Tag label={item.released ? t('sm.released') : t('sm.hold')} color={item.released ? c.limeSoft : c.sunSoft} />
+                  </View>
                 </View>
               </View>
-              <View style={{ flexDirection: 'row', gap: 8, marginTop: 8, flexWrap: 'wrap' }}>
+              <View style={{ flexDirection: 'row', gap: 8, marginTop: 10, flexWrap: 'wrap' }}>
                 {item.download_url ? (
                   <Btn small title={item.kind === 'video' ? t('sm.play') : t('sm.download')} onPress={() => {
                     if (Platform.OS === 'web') { window.open(`/api/v1${item.download_url}`, '_blank'); }
                     else { toast('Opening…'); }
                   }} />
                 ) : item.link_url ? (
-                  <Btn small title={t('sm.play')} onPress={() => {
-                    if (Platform.OS === 'web') { window.open(item.link_url, '_blank'); }
-                  }} />
+                  <Btn small title={t('sm.play')} onPress={() => { if (Platform.OS === 'web') window.open(item.link_url, '_blank'); }} />
                 ) : null}
                 {isCoach ? <>
-                  <Btn small title={item.released ? t('sm.hold') : t('sm.release')} color={c.paper} ink={c.ink} onPress={() => toggleRelease(item)} />
-                  <Btn small title={t('sm.remove')} color={c.paper} ink={c.ink} onPress={() => remove(item.id)} />
+                  <Btn small title={item.released ? t('sm.hold') : t('sm.release')} color={c.violetSoft} ink={c.ink} onPress={() => toggleRelease(item)} />
+                  <Btn small title={t('sm.remove')} color={c.violetSoft} ink={c.red} onPress={() => remove(item.id)} />
                 </> : null}
               </View>
             </Card>
@@ -151,7 +166,7 @@ function SessionResourcesSheet({ session, isCoach, visible, onClose }) {
             }} />
         ) : null}
       </View>
-    </View>
+    </Modal>
   );
 }
 
