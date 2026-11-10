@@ -2,7 +2,7 @@
 // left out unless the caller already put it in the view; an athlete's copy is built from the frozen shared version. pdfkit with the shared font helper.
 import PDFDocument from 'pdfkit';
 import { fonts, assertGlyphs } from './render.js';
-import { drawWordmark } from './brand-font.js';
+import { drawWordmark, ICON } from './brand-font.js';
 
 const PILLAR = { technical: 'Technical', tactical: 'Tactical', physical: 'Physical', mental: 'Mental', behaviour: 'Behaviour', lifestyle: 'Lifestyle', other: 'Other' };
 const STATUS = { draft: 'Draft', shared: 'Shared', responded: 'Responded', closed: 'Closed' };
@@ -32,8 +32,8 @@ export async function renderEvaluation(ev, { generatedAt = new Date(), sections 
   const bar = (x, y, w, pct, color) => { doc.rect(x, y, w, 6).fill('#E5E7EF'); if (pct != null) doc.rect(x, y, Math.max(1, (w * Math.min(100, Math.max(0, pct))) / 100), 6).fill(color); };
 
   doc.rect(0, 0, doc.page.width, 8).fill(accent);
-  try { drawWordmark(doc, left, 22, { size: 13 }); } catch { /* decoration only */ }
-  t('gotmygame.com', { x: left, y: 24, size: 8, color: mute, align: 'right', lineBreak: false });
+  try { doc.image(ICON, left, 16, { height: 28, width: 28 }); } catch { /* decoration */ }
+  try { drawWordmark(doc, left + 34, 22, { size: 13 }); } catch { /* decoration */ }
   doc.y = 52;
   t('EVALUATION', { bold: true, size: 8.5, color: accent });
   t(ev.title, { bold: true, size: 18 });

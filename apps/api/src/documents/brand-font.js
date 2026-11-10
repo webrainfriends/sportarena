@@ -3,6 +3,7 @@ import { fileURLToPath } from 'node:url';
 
 const file = (f) => fileURLToPath(new URL(`../../assets/brand/${f}`, import.meta.url));
 export const WORDMARK = { name: file('wordmark.png'), nameRatio: 1651 / 339, tagline: file('wordmark-tagline.png'), taglineRatio: 1676 / 518 };
+export const ICON = file('icon.png'); // square gmG mark — use in compact header slots
 
 /**
  * Draws "GotMyGame" with its top-left at (x, y) and leaves doc.y just below it. `size` is roughly the letter height in points

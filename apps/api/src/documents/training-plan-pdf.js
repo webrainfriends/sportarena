@@ -3,7 +3,7 @@
 // columns are omitted and the document says so.
 import PDFDocument from 'pdfkit';
 import { fonts, assertGlyphs } from './render.js';
-import { drawWordmark } from './brand-font.js';
+import { drawWordmark, ICON } from './brand-font.js';
 
 const fmtDist = (m) => (m >= 1000 ? `${Math.round(m / 10) / 100} km` : `${m} m`);
 const fmtTime = (s) => (s >= 60 ? `${Math.floor(s / 60)}:${String(Math.round(s % 60)).padStart(2, '0')} min` : `${s} s`);
@@ -48,8 +48,8 @@ export async function renderTrainingPlan(plan, { generatedAt = new Date() } = {}
 
   // ── Header strip ──────────────────────────────────────────────────────────
   doc.rect(0, 0, doc.page.width, 8).fill(accent);
-  try { drawWordmark(doc, left, 22, { size: 13 }); } catch { /* decoration only — missing asset must not block the document */ }
-  t('gotmygame.com', { x: left, y: 24, size: 8, color: mute, align: 'right', lineBreak: false });
+  try { doc.image(ICON, left, 16, { height: 28, width: 28 }); } catch { /* decoration */ }
+  try { drawWordmark(doc, left + 34, 22, { size: 13 }); } catch { /* decoration */ }
   doc.y = 52;
   t('TRAINING PLAN', { bold: true, size: 8.5, color: accent });
   t(plan.title, { bold: true, size: 18 });
