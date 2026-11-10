@@ -423,7 +423,7 @@ cap({
         await onFixtureChanged(c, ev, f, { kind: 'cancelled' }, user);   // tickets that only admit to this match become refund_due
         for (const fo of open) {
           await closeOfficial(c, fo, user.id, 'cancelled', 'Fixture cancelled');
-          await notify(c, fo.user_id, { kind: 'official_assignment', title: 'Fixture cancelled', body: `Your ${fo.role} assignment for ${ev.name} was cancelled.`, data: { fixture_id: f.id, official_id: fo.id } });
+          await notify(c, fo.user_id, { kind: 'official_assignment', title: 'Fixture cancelled', body: `Your ${fo.role} assignment for ${ev.name} was cancelled. That time is free in your calendar again.`, data: { fixture_id: f.id, official_id: fo.id, slot_released: true } });
         }
         return out;
       }
@@ -455,7 +455,7 @@ cap({
 export async function inviteOfficial(c, user, ev, fixture, userId, role) {
   if (!OFFICIAL_ROLES.includes(role)) throw badRequest('Unknown official role');
   await lockOfficial(c, userId);
-  await assertOfficialEligible(c, { event: ev, fixtureId: fixture.id, userId, role, start: fixture.scheduled_at, durationMin: fixture.duration_min });
+  await assertOfficialEligible(c, { event: ev, fixtureId: fixture.id, userId, role, start: fixture.scheduled_at, durationMin: fixture.duration_min, mode: 'invite' });
   const dup = await c.query("SELECT 1 FROM fixture_officials WHERE fixture_id=$1 AND user_id=$2 AND role=$3 AND status IN ('invited','accepted')", [fixture.id, userId, role]);
   if (dup.rowCount) throw conflict('That person already has this role on the fixture');
   const fo = (await c.query("INSERT INTO fixture_officials(fixture_id, user_id, role, requested_by) VALUES ($1,$2,$3,$4) RETURNING *", [fixture.id, userId, role, user.id])).rows[0];

@@ -233,7 +233,8 @@ function SuggestSheet({ fixtureId, roleVal, fixtureName, onInvite, onShortlist, 
                   <T weight="700">{s.display_name}</T>
                   <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 4 }}>
                     {s.grade_name ? <Chip label={s.grade_name} color={c.pinkSoft} small /> : null}
-                    {s.dist_km != null ? <Chip label={`${s.dist_km} km`} color={c.cyanSoft} small /> : null}
+                    {s.dist_band && s.dist_band !== 'unknown' ? <Chip label={t(`oav.band.${s.dist_band}`)} color={c.cyanSoft} small /> : null}
+                    {s.availability_state && s.availability_state !== 'unknown' ? <Chip label={t(`oav.state.${s.availability_state}`)} color={s.availability_state === 'available' ? c.mintSoft : s.availability_state === 'unavailable' ? c.redSoft : c.sunSoft} small /> : null}
                     {s.has_conflict ? <Chip label="⚠️ Neutrality" color={c.orangeSoft} small /> : <Chip label="Neutral ✓" color={c.mintSoft} small />}
                   </View>
                   <T size={11} color={c.mute} numberOfLines={3}>{s.explanation}</T>

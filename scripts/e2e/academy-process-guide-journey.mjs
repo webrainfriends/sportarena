@@ -140,6 +140,7 @@ try {
   const inOrg = async (p, fn) => { await navTo(p, 'Org', { id: org.id }); await fn(); };
   // where each step is photographed: the same screen its "Open this screen" button reaches
   const SCENES = {
+    officials_availability: async (p) => { await navTo(p, 'OfficialsHome', { tab: 'availability' }); },
     create: async (p) => { await navTo(p, 'Orgs'); },
     venues: (p) => inOrg(p, () => click(p, 'Teams, events & venues')),
     staff: (p) => inOrg(p, () => click(p, 'People')),

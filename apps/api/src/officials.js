@@ -3,6 +3,7 @@
 // association neutrality, and undecided conflict-of-interest blocks. Each new check respects event policy fields
 // and skips gracefully when the policy is not configured, so existing fixtures are unaffected.
 import { badRequest, conflict } from './errors.js';
+import { assess } from './official-availability.js';
 import { activeSportingSanction } from './integrity.js';
 import { blocksOn, BLOCKING_KINDS } from './discipline.js';
 import { serviceFor } from './discipline-live.js';
@@ -55,9 +56,14 @@ function travelMinutes(distKm) {
  * Sport profile, the event's credential policy, time off, and no overlap (incl. the official's reporting time and venue-
  * aware travel buffer) with other confirmed work.
  * `event` is the events row; `checkClash=false` skips only the time rules (used when creating before a time is fixed).
- * Returns clash detail object when a travel gap conflict is found (for recording in official_clash_exceptions).
+ * The official's own time is read through official-availability.js (#994): time off of every kind (one-off, repeating, public holiday)
+ * always holds. `mode: 'invite'` also enforces the limits the official set for new requests (refused hours, notice, daily / weekly /
+ * consecutive-day caps, one tentative request per slot); accepting, re-timing and emergency cover do not, because the official or an
+ * agreed match is already involved. Refusals carry `details.code`, never a reason, a note or a place.
+ * Throws with code `travel_gap` when a travel gap conflict is found (for recording in official_clash_exceptions).
+ * Returns the availability assessment for the slot.
  */
-export async function assertOfficialEligible(c, { event, sportId, fixtureId, userId, role, start, durationMin, reportingMin = 30, checkClash = true }) {
+export async function assertOfficialEligible(c, { event, sportId, fixtureId, userId, role, start, durationMin, reportingMin = 30, checkClash = true, mode = 'hard' }) {
   const sport = sportId ?? event?.sport_id;
   if (role !== 'scorer') {
     const ok = await c.query("SELECT 1 FROM active_sport_profiles WHERE user_id=$1 AND role='referee' AND sport_id=$2", [userId, sport]);
@@ -137,16 +143,15 @@ export async function assertOfficialEligible(c, { event, sportId, fixtureId, use
   const prefs = (await c.query('SELECT buffer_min FROM official_prefs WHERE user_id=$1', [userId])).rows[0];
   const bufMs = (prefs?.buffer_min ?? 0) * 60000;
 
-  // Blackout / time-off check
-  const off = await c.query(
-    "SELECT 1 FROM official_availability WHERE user_id=$1 AND kind='blackout' AND archived_at IS NULL AND starts_at < $3 AND ends_at > $2 LIMIT 1",
-    [userId, new Date(arriveMs).toISOString(), new Date(endMs + bufMs).toISOString()]);
-  if (off.rowCount) throw conflict('That official has marked this time as unavailable');
+  // The official's own time: time off of every kind, their gap between matches, and (for a new request) their stated limits.
+  const own = await assess(c, { userId, start, durationMin, fixtureId: fixtureId ?? null, leadMin: reportingMin });
+  const stop = own.hard[0] ?? (mode === 'invite' ? own.soft[0] : null);
+  if (stop) throw conflict(stop.message, { code: stop.code });
 
   // Direct overlap clash (using timestamptz arithmetic; DST-safe because Postgres operates in UTC for timestamptz)
   const clash = await c.query(
     `SELECT fo.id AS fo_id, f.id AS clash_fixture_id, f.scheduled_at, f.duration_min,
-            ve.id AS venue_id, ve.lat, ve.lng, ve.name AS venue_name, ve.city AS venue_city
+            ve.id AS venue_id, ve.latitude AS lat, ve.longitude AS lng, ve.name AS venue_name, ve.city AS venue_city
        FROM fixtures f
        LEFT JOIN resources r ON r.id = f.resource_id
        LEFT JOIN venues ve ON ve.id = r.venue_id
@@ -172,25 +177,25 @@ export async function assertOfficialEligible(c, { event, sportId, fixtureId, use
 
   const nearby = await c.query(
     `SELECT f.id AS clash_fixture_id, f.scheduled_at, f.duration_min,
-            ve.id AS venue_id, ve.lat, ve.lng, ve.name AS venue_name, ve.city AS venue_city
+            ve.id AS venue_id, ve.latitude AS lat, ve.longitude AS lng, ve.name AS venue_name, ve.city AS venue_city
        FROM fixtures f
        LEFT JOIN resources r ON r.id = f.resource_id
        LEFT JOIN venues ve ON ve.id = r.venue_id
       WHERE f.status IN ('scheduled','live')
-        AND ($3::uuid IS NULL OR f.id <> $3)
+        AND ($2::uuid IS NULL OR f.id <> $2)
         AND (
           f.referee_id = $1
           OR EXISTS (SELECT 1 FROM fixture_officials fo2 WHERE fo2.fixture_id = f.id AND fo2.user_id = $1 AND fo2.status = 'accepted')
         )
-        AND f.scheduled_at < $5::timestamptz
-        AND (f.scheduled_at + f.duration_min * interval '1 minute') > $4::timestamptz
-        AND ve.lat IS NOT NULL AND ve.lng IS NOT NULL`,
-    [userId, sport, fixtureId ?? null, windowStart, windowEnd]);
+        AND f.scheduled_at < $4::timestamptz
+        AND (f.scheduled_at + f.duration_min * interval '1 minute') > $3::timestamptz
+        AND ve.latitude IS NOT NULL AND ve.longitude IS NOT NULL`,
+    [userId, fixtureId ?? null, windowStart, windowEnd]);
 
   // Fetch the target fixture's venue for distance comparison
   const targetVenue = fixtureId
     ? (await c.query(
-        `SELECT ve.id, ve.lat, ve.lng FROM fixtures f LEFT JOIN resources r ON r.id=f.resource_id LEFT JOIN venues ve ON ve.id=r.venue_id WHERE f.id=$1`,
+        `SELECT ve.id, ve.latitude AS lat, ve.longitude AS lng FROM fixtures f LEFT JOIN resources r ON r.id=f.resource_id LEFT JOIN venues ve ON ve.id=r.venue_id WHERE f.id=$1`,
         [fixtureId])).rows[0]
     : null;
 
@@ -223,7 +228,7 @@ export async function assertOfficialEligible(c, { event, sportId, fixtureId, use
     }
   }
 
-  return null;
+  return own;
 }
 
 /** Record that a clash check was deliberately bypassed (emergency substitute, organiser override). */
@@ -258,6 +263,6 @@ export { OPEN };
 export const ASSIGNMENT_SQL = `
   SELECT fo.id, fo.fixture_id, fo.role, CASE WHEN fo.status='accepted' AND f.status='completed' THEN 'completed' ELSE fo.status END AS status, fo.status = 'accepted' AS confirmed, fo.needs_ack, fo.reason, fo.created_at AS requested_at, fo.fee_minor::float8 AS fee_minor, fo.fee_currency, fo.pay_status, fo.pay_confirmed_at, fo.reporting_min, fo.locked_at, fo.locked_by, fo.lock_reason, f.scheduled_at, f.duration_min, f.status AS fixture_status, f.round,
          e.id AS event_id, e.name AS event_name, e.official_policy, s.id AS sport_id, s.slug AS sport_slug, s.name AS sport_name, s.emoji AS sport_emoji,
-         h.name AS home_name, a.name AS away_name, r.name AS resource_name, ve.name AS venue_name, ve.city AS venue_city, ve.timezone AS venue_timezone
+         h.name AS home_name, a.name AS away_name, r.name AS resource_name, ve.id AS venue_id, ve.name AS venue_name, ve.city AS venue_city, ve.timezone AS venue_timezone
     FROM fixture_officials fo JOIN fixtures f ON f.id=fo.fixture_id JOIN events e ON e.id=f.event_id JOIN sports s ON s.id=e.sport_id
     LEFT JOIN teams h ON h.id=f.home_team_id LEFT JOIN teams a ON a.id=f.away_team_id LEFT JOIN resources r ON r.id=f.resource_id LEFT JOIN venues ve ON ve.id=r.venue_id`;

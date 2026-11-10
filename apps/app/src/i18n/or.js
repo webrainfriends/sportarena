@@ -16791,6 +16791,491 @@ export default {
   'rule_ai.ai_note': 'Explained by AI from the cited sections above.', // reviewed: false
   'rule_ai.no_open_escalations': 'No open escalations.', // reviewed: false
   'rule_ai.no_escalations': 'No escalations.', // reviewed: false
+  "more.health_own_sub": "Your recovery, records & fit to play", // reviewed: false
+  "posapp.title": "Application", // reviewed: false
+  "posapp.view": "View application", // reviewed: false
+  "posapp.view_a11y": "View the full application for {title}", // reviewed: false
+  "posapp.pdf": "Download PDF", // reviewed: false
+  "posapp.pdf_a11y": "Download the submitted application as a PDF", // reviewed: false
+  "posapp.submitted": "Submitted {d}", // reviewed: false
+  "posapp.as_posted": "As posted", // reviewed: false
+  "posapp.m_posted": "Posted fee", // reviewed: false
+  "posapp.m_stall_fee": "Stall fee", // reviewed: false
+  "posapp.m_yours": "Your fee", // reviewed: false
+  "posapp.m_docs": "Documents", // reviewed: false
+  "posapp.m_contract": "Contract", // reviewed: false
+  "posapp.contract.none": "Not issued", // reviewed: false
+  "posapp.contract.pending": "To sign", // reviewed: false
+  "posapp.contract.signed": "Signed", // reviewed: false
+  "posapp.contract.declined": "Declined", // reviewed: false
+  "posapp.progress_a11y": "Progress: {step}", // reviewed: false
+  "posapp.step.applied": "Applied", // reviewed: false
+  "posapp.step.contract_sent": "Contract to sign", // reviewed: false
+  "posapp.step.accepted": "Confirmed", // reviewed: false
+  "posapp.step.completed": "Completed", // reviewed: false
+  "posapp.sec.parties": "Parties", // reviewed: false
+  "posapp.sec.statement": "Cover statement", // reviewed: false
+  "posapp.sec.strengths": "What you bring", // reviewed: false
+  "posapp.sec.experience": "Experience", // reviewed: false
+  "posapp.sec.credentials": "Credentials", // reviewed: false
+  "posapp.sec.stall": "Stall details", // reviewed: false
+  "posapp.sec.logistics": "Availability & logistics", // reviewed: false
+  "posapp.sec.additional": "Additional information", // reviewed: false
+  "posapp.sec.documents": "Supporting documents ({n})", // reviewed: false
+  "posapp.sec.timeline": "Progress", // reviewed: false
+  "posapp.applicant": "Applicant", // reviewed: false
+  "posapp.organiser": "Organiser", // reviewed: false
+  "posapp.position": "Position", // reviewed: false
+  "posapp.requirements": "Requirements set by the organiser", // reviewed: false
+  "posapp.no_statement": "No cover statement was sent with this application.", // reviewed: false
+  "posapp.no_docs": "No documents have been added yet.", // reviewed: false
+  "posapp.manage_docs": "Add or manage", // reviewed: false
+  "posapp.yes": "Yes", // reviewed: false
+  "posapp.no": "No", // reviewed: false
+  "posapp.f.strengths": "Key strengths", // reviewed: false
+  "posapp.f.experience_level": "Experience level", // reviewed: false
+  "posapp.f.years_active": "Years in this role", // reviewed: false
+  "posapp.f.has_qualification": "Holds a valid licence or certification", // reviewed: false
+  "posapp.f.qualification_body": "Issuing body", // reviewed: false
+  "posapp.f.qualification_level": "Grade, badge or licence level", // reviewed: false
+  "posapp.f.qualification_ref": "Licence reference", // reviewed: false
+  "posapp.f.qualification_expires": "Expires on", // reviewed: false
+  "posapp.f.stall_name": "Trading or stall name", // reviewed: false
+  "posapp.f.product_category": "Category", // reviewed: false
+  "posapp.f.products_desc": "What is sold", // reviewed: false
+  "posapp.f.stall_width_m": "Stall width", // reviewed: false
+  "posapp.f.power_needed": "Power needed at the stall", // reviewed: false
+  "posapp.f.power_amps": "Power requirement", // reviewed: false
+  "posapp.f.food_cert": "Food safety certificate", // reviewed: false
+  "posapp.f.confirms_dates": "Available for all event dates", // reviewed: false
+  "posapp.f.transport": "Getting there", // reviewed: false
+  "posapp.f.accommodation_needed": "Accommodation needed", // reviewed: false
+  "posapp.f.additional": "Anything else for the organiser", // reviewed: false
+  "posapp.v.experience_level.first_time": "First time in this role", // reviewed: false
+  "posapp.v.experience_level.some": "Some experience", // reviewed: false
+  "posapp.v.experience_level.experienced": "Experienced", // reviewed: false
+  "posapp.v.experience_level.expert": "Expert", // reviewed: false
+  "posapp.v.transport.own_vehicle": "Own vehicle", // reviewed: false
+  "posapp.v.transport.public_transport": "Public transport", // reviewed: false
+  "posapp.v.transport.any": "Either", // reviewed: false
+  "posapp.v.product_category.retail": "Retail", // reviewed: false
+  "posapp.v.product_category.food": "Food", // reviewed: false
+  "posapp.v.product_category.beverage": "Beverage", // reviewed: false
+  "posapp.v.product_category.services": "Services", // reviewed: false
+  "posapp.kind.licence": "Licence", // reviewed: false
+  "posapp.kind.certificate": "Certificate", // reviewed: false
+  "posapp.kind.insurance": "Insurance", // reviewed: false
+  "posapp.kind.identity": "Identity", // reviewed: false
+  "posapp.kind.food_safety": "Food safety", // reviewed: false
+  "posapp.kind.price_list": "Menu or price list", // reviewed: false
+  "posapp.kind.brief": "Brief", // reviewed: false
+  "posapp.kind.other": "Other", // reviewed: false
+  "posapp.docs.title": "Documents", // reviewed: false
+  "posapp.docs.intro": "Share licences, certificates, insurance, menus and briefs with the other side. PDF or photo, up to {mb} MB each. Only you and the other party can open them, files are encrypted, and removing one only hides it.", // reviewed: false
+  "posapp.docs.m_files": "On file", // reviewed: false
+  "posapp.docs.m_left": "Places left", // reviewed: false
+  "posapp.docs.m_size": "Total size", // reviewed: false
+  "posapp.docs.add_title": "Add documents", // reviewed: false
+  "posapp.docs.kind": "Document type", // reviewed: false
+  "posapp.docs.name": "Name", // reviewed: false
+  "posapp.docs.name_ph": "Optional — used when you add a single file", // reviewed: false
+  "posapp.docs.choose": "Choose files", // reviewed: false
+  "posapp.docs.choose_hint": "You can pick several files at once. Each one is sent and checked separately.", // reviewed: false
+  "posapp.docs.untitled": "Document", // reviewed: false
+  "posapp.docs.waiting": "Waiting", // reviewed: false
+  "posapp.docs.sending": "Sending", // reviewed: false
+  "posapp.docs.sent": "Shared", // reviewed: false
+  "posapp.docs.failed": "Not sent", // reviewed: false
+  "posapp.docs.too_big": "Over the {mb} MB limit", // reviewed: false
+  "posapp.docs.shared": "{n} shared", // reviewed: false
+  "posapp.docs.uploading": "Sending your files…", // reviewed: false
+  "posapp.docs.saved_note": "Everything listed is saved.", // reviewed: false
+  "posapp.docs.done_a11y": "Done, close documents", // reviewed: false
+  "posapp.docs.on_file": "On this application ({n})", // reviewed: false
+  "posapp.docs.by_you": "you", // reviewed: false
+  "posapp.docs.open": "Open", // reviewed: false
+  "posapp.docs.remove": "Remove", // reviewed: false
+  "posapp.docs.none": "No documents yet", // reviewed: false
+  "posapp.docs.none_sub": "Add the first one for the other side to read.", // reviewed: false
+  "rulebook.official": "Official book ↗", // reviewed: false
+  "rulebook.official_home": "Governing body site ↗", // reviewed: false
+  "rulebook.official_a11y": "Open the official rules published by {body}", // reviewed: false
+  "rulebook.depth_handbook": "Officials' handbook", // reviewed: false
+  "rulebook.depth_summary": "Summary only", // reviewed: false
+  "rulebook.n_rules": "{n} rules", // reviewed: false
+  "rulebook.link_down": "Official site not answering", // reviewed: false
+  "rulebook.link_down_sub": "We could not reach the official publication of {body} just now, so no link is offered. Ask the governing body for its current edition.", // reviewed: false
+  "rulebook.points": "Decision points for officials", // reviewed: false
+  "opw.f.country_legacy": "On file: {v}. Pick the country to replace it.", // reviewed: false
+  "opw.rates.m_active": "Active cards", // reviewed: false
+  "opw.rates.m_draft": "Drafts", // reviewed: false
+  "opw.rates.m_sports": "Sports priced", // reviewed: false
+  "opw.rates.card": "Rate card", // reviewed: false
+  "opw.rates.edit_a11y": "Edit rate card {name}", // reviewed: false
+  "opw.rates.st_active": "Active", // reviewed: false
+  "opw.rates.st_draft": "Draft", // reviewed: false
+  "opw.rates.empty": "No rate cards yet", // reviewed: false
+  "opw.rates.empty_sub": "Set your fee per match, hour, session or day, with weekend, holiday and travel terms. Organisers see active cards when they ask for you.", // reviewed: false
+  "opw.rates.new": "Create a rate card", // reviewed: false
+  "opw.rates.manage": "Manage all rate cards", // reviewed: false
+  "opw.rates.return_note": "Rate cards open on their own page. Your place in this set-up is saved, so you come back to this step.", // reviewed: false
+  "off.next_match": "Next match", // reviewed: false
+  "off.qa.title": "Quick actions", // reviewed: false
+  "off.qa.matchday": "Match day", // reviewed: false
+  "off.qa.rules": "Rules & conduct", // reviewed: false
+  "off.qa.career": "Career & standing", // reviewed: false
+  "off.qa.money": "Fees & money", // reviewed: false
+  "off.qa.assignments": "My assignments", // reviewed: false
+  "off.qa.this_week": "{n} this week", // reviewed: false
+  "off.qa.requests": "Pending requests", // reviewed: false
+  "off.qa.to_answer": "{n} to answer", // reviewed: false
+  "off.qa.none_waiting": "Nothing waiting", // reviewed: false
+  "off.qa.availability": "My availability", // reviewed: false
+  "off.qa.console": "Match-day console", // reviewed: false
+  "off.qa.no_assignment": "No upcoming assignment", // reviewed: false
+  "off.qa.rulebook": "Rules & interpretations", // reviewed: false
+  "off.qa.history": "Officiating history", // reviewed: false
+  "off.qa.completed": "{n} completed this season", // reviewed: false
+  "off.qa.grade": "Grade, assessments & CPD", // reviewed: false
+  "off.qa.verification": "Verification & renewal", // reviewed: false
+  "off.qa.opportunities": "Opportunities", // reviewed: false
+  "off.qa.earnings": "Earnings & fees", // reviewed: false
+  "off.qa.invoices": "Invoices & expenses", // reviewed: false
+  "off.qa.payout": "Payout account", // reviewed: false
+  "off.qa.tax": "Tax & reports", // reviewed: false
+  "off.setup.kicker": "Referee set-up", // reviewed: false
+  "off.setup.title": "{done} of {total} steps complete", // reviewed: false
+  "off.setup.complete": "You are set up to be asked and paid", // reviewed: false
+  "off.setup.continue": "Continue set-up", // reviewed: false
+  "off.setup.continue_a11y": "Continue the next set-up step", // reviewed: false
+  "off.setup.review": "Review", // reviewed: false
+  "off.setup.hide": "Hide", // reviewed: false
+  "off.setup.done": "Done", // reviewed: false
+  "off.setup.in_progress": "In progress", // reviewed: false
+  "off.setup.todo": "To do", // reviewed: false
+  "off.setup.sport": "Add a sport you officiate", // reviewed: false
+  "off.setup.sport_sub": "So organisers can find and ask you", // reviewed: false
+  "off.setup.profile": "Official profile", // reviewed: false
+  "off.setup.profile_sub": "Experience, credentials, references and privacy", // reviewed: false
+  "off.setup.profile_pct": "{pct}% complete — pick up where you left off", // reviewed: false
+  "off.setup.rates": "Rate cards", // reviewed: false
+  "off.setup.rates_sub": "Your fee per match, hour, session or day", // reviewed: false
+  "off.setup.rates_n": "{n} active · {d} in draft", // reviewed: false
+  "off.setup.payout": "Payout account", // reviewed: false
+  "off.setup.payout_sub": "Where your fees are paid, with identity checks", // reviewed: false
+  "off.setup.tax": "Tax profile", // reviewed: false
+  "off.setup.tax_sub": "Tax country, registration, invoices and reports", // reviewed: false
+  "off.setup.verification": "Verification", // reviewed: false
+  "off.setup.verification_sub": "A verified badge that competitions can rely on", // reviewed: false
+  "residency.policy_chip": "Policy v{v}", // reviewed: false
+  "residency.admin.badge": "Platform admin", // reviewed: false
+  "residency.admin.none": "No active countries yet.", // reviewed: false
+  "rc.catalog_count": "{n} rate cards on file", // reviewed: false,
+  'nav.title.OfficialsConsole': 'ସିଧାସଳଖ ଅଧିକାରୀ କନ୍ସୋଲ',
+  'oc.pre_match': 'ମ୍ୟାଚ ପୂର୍ବରୁ',
+  'oc.live': 'ସିଧାସଳଖ',
+  'oc.post_match': 'ମ୍ୟାଚ ପରେ',
+  'oc.live_badge': 'ସିଧାସଳଖ',
+  'oc.paused_badge': 'ବିରତ',
+  'oc.extra_time': 'ଅତିରିକ୍ତ ସମୟ',
+  'oc.shootout': 'ପେନାଲ୍ଟି ଶୁଟ-ଆଉଟ',
+  'oc.period': 'ପର୍ଯ୍ୟାୟ',
+  'oc.already_ended': 'ପୂର୍ଣ ସମୟ',
+  'oc.briefing': 'ମ୍ୟାଚ ବ୍ରିଫିଙ୍ଗ',
+  'oc.crew': 'ଅଧିକାରୀ ଦଳ',
+  'oc.verified': 'ଯାଞ୍ଚ ହୋଇଛି',
+  'oc.pending': 'ବିଚାରାଧୀନ',
+  'oc.checklist': 'ମ୍ୟାଚ ପୂର୍ବ ଚେକଲିଷ୍ଟ',
+  'oc.checklist_complete': 'ସମସ୍ତ ଯାଞ୍ଚ ସଂପୂର୍ଣ',
+  'oc.start_match': 'ମ୍ୟାଚ ଆରମ୍ଭ କରନ୍ତୁ',
+  'oc.start_period': 'ପର୍ଯ୍ୟାୟ ଆରମ୍ଭ କରନ୍ତୁ',
+  'oc.start_confirm': 'ମ୍ୟାଚ ଆରମ୍ଭ କରିବେ?',
+  'oc.start_confirm_msg': 'ସମସ୍ତ ପୂର୍ବ-ମ୍ୟାଚ ଯାଞ୍ଚ ଲକ ହୋଇଯିବ।',
+  'oc.start_confirm_yes': 'ହଁ, ମ୍ୟାଚ ଆରମ୍ଭ କରନ୍ତୁ',
+  'oc.score_events': 'ସ୍କୋର ଘଟଣା',
+  'oc.recent_events': 'ସମ୍ପ୍ରତି ଘଟଣା',
+  'oc.undo': 'ପୂର୍ବ ଅବସ୍ଥାକୁ ଫେରନ୍ତୁ',
+  'oc.pause_match': 'ବିରତ',
+  'oc.resume_match': 'ପୁଣି ଆରମ୍ଭ',
+  'oc.next_period': 'ପରବର୍ତ୍ତୀ ପର୍ଯ୍ୟାୟ',
+  'oc.injury_stop': 'ଆଘାତ ବିରତ',
+  'oc.end_match': 'ମ୍ୟାଚ ଶେଷ କରନ୍ତୁ',
+  'oc.end_confirm': 'ମ୍ୟାଚ ଶେଷ କରିବେ?',
+  'oc.end_confirm_msg': 'ସ୍କୋର ସମୀକ୍ଷା ଓ ସ୍ୱାକ୍ଷର ପାଇଁ ଲକ ହୋଇଯିବ।',
+  'oc.end_confirm_yes': 'ହଁ, ମ୍ୟାଚ ଶେଷ କରନ୍ତୁ',
+  'oc.review': 'ସ୍ୱାକ୍ଷର ପୂର୍ବରୁ ସମୀକ୍ଷା',
+  'oc.sign_off': 'ସ୍କୋର ସିଟ ଖୋଲନ୍ତୁ ଓ ସ୍ୱାକ୍ଷର କରନ୍ତୁ',
+  'oc.report': 'ମ୍ୟାଚ ରିପୋର୍ଟ ଦାଖଲ କରନ୍ତୁ',
+  'oc.sync_pending': 'ସଞ୍ଚୟ ହେଉଛି…',
+  'oc.sync_ok': 'ସବୁ ସଞ୍ଚୟ ହୋଇଛି',
+  'oc.ask_rules': 'ନିୟମ ପଚାରନ୍ତୁ',
+
+  // #994 official availability and calendar: machine draft, reviewed: false
+  'oav.day.0': 'ରବି',
+  'oav.day.1': 'ସୋମ',
+  'oav.day.2': 'ମଙ୍ଗଳ',
+  'oav.day.3': 'ବୁଧ',
+  'oav.day.4': 'ଗୁରୁ',
+  'oav.day.5': 'ଶୁକ୍ର',
+  'oav.day.6': 'ଶନି',
+  'oav.all_day': 'ଦିନସାରା',
+  'oav.any': 'ଯେକୌଣସି',
+  'oav.none': 'କିଛି ନାହିଁ',
+  'oav.not_set': 'ସେଟ୍ ହୋଇନାହିଁ',
+  'oav.remove': 'ହଟାନ୍ତୁ',
+  'oav.min': 'ମିନିଟ୍',
+  'oav.h': 'ଘଣ୍ଟା',
+  'oav.km': 'km',
+  'oav.n_min': '{n} ମିନିଟ୍',
+  'oav.n_hours': '{n} ଘଣ୍ଟା',
+  'oav.n_km': '{n} km',
+  'oav.m.open': 'ସପ୍ତାହରେ ଖୋଲା ଘଣ୍ଟା',
+  'oav.m.any': 'ଯେକୌଣସି ସମୟ',
+  'oav.m.hours': '{n} ଘଣ୍ଟା',
+  'oav.m.blocked': 'ବ୍ଲକ୍ ଦିନ, ଆଗାମୀ 90',
+  'oav.m.tentative': 'ଅସ୍ଥାୟୀ ହୋଲ୍ଡ',
+  'oav.m.confirmed': 'ଆଗାମୀ ନିଶ୍ଚିତ ମ୍ୟାଚ୍',
+  'oav.m.week': 'ଏହି ସପ୍ତାହର ଭାର',
+  'oav.m.week_sub': 'ସହ {n} ଅସ୍ଥାୟୀ',
+  'oav.m.attention': 'ଧ୍ୟାନ ଦରକାର',
+  'oav.att.title': '{n}ଟି ମ୍ୟାଚ୍ ପାଇଁ ନିଷ୍ପତ୍ତି ଦରକାର',
+  'oav.att.time_off': 'ଆପଣଙ୍କ ଛୁଟି ସମୟରେ',
+  'oav.att.outside': 'ଆପଣଙ୍କ ସମୟ ବାହାରେ',
+  'oav.att.hint': 'କିଛି ବି ଆପେ ଆପେ ବାଦ୍ ପଡ଼େ ନାହିଁ। ମ୍ୟାଚ୍ ଖୋଲି ଗ୍ରହଣ, ପ୍ରତ୍ୟାଖ୍ୟାନ କିମ୍ବା ପ୍ରତ୍ୟାହାର କରନ୍ତୁ, ନଚେତ୍ ଆପଣଙ୍କ ଉପଲବ୍ଧତା ବଦଳାନ୍ତୁ।',
+  'oav.week.title': 'ମୋର ଅଫିସିଏଟିଂ ସପ୍ତାହ',
+  'oav.week.sub': 'ମୁଁ ମ୍ୟାଚ୍ ପରିଚାଳନା ପାଇଁ ଉପଲବ୍ଧ ଥିବା ସମୟ, {tz} ଅନୁସାରେ',
+  'oav.week.add': 'ସମୟ ଯୋଡ଼ନ୍ତୁ',
+  'oav.week.season': 'କେବଳ ସିଜନ୍',
+  'oav.week.none': 'ଏଯାଏଁ ସାପ୍ତାହିକ ସମୟ ନାହିଁ, ତେଣୁ ଆପଣ ଯେକୌଣସି ସମୟରେ ଉପଲବ୍ଧ ବୋଲି ଧରାଯିବ। କେବଳ ନିର୍ଦ୍ଦିଷ୍ଟ ସମୟରେ ମ୍ୟାଚ୍ ପରିଚାଳନା କରୁଥିଲେ ସମୟ ଯୋଡ଼ନ୍ତୁ।',
+  'oav.grid.open': 'ଉପଲବ୍ଧ',
+  'oav.grid.any': 'ଉପଲବ୍ଧ (ସମୟ ସେଟ୍ ହୋଇନାହିଁ)',
+  'oav.grid.blocked': 'ପୁନରାବୃତ୍ତ ଛୁଟି',
+  'oav.grid.closed': 'ଅଫିସିଏଟିଂ ନାହିଁ',
+  'oav.load.title': 'ମ୍ୟାଚ୍ ଭାର',
+  'oav.load.sub': 'ବାର ସପ୍ତାହ: ଗତ ଛଅ, ଏହି ସପ୍ତାହ, ଆଗାମୀ ପାଞ୍ଚ',
+  'oav.load.confirmed': 'ନିଶ୍ଚିତ',
+  'oav.load.this_week': 'ଏହି ସପ୍ତାହ',
+  'oav.load.tentative': 'ଅସ୍ଥାୟୀ',
+  'oav.load.cap': 'ଆପଣଙ୍କ ସାପ୍ତାହିକ ସୀମା: {n}',
+  'oav.load.a11y': '{weeks} ସପ୍ତାହରେ {total}ଟି ନିଶ୍ଚିତ ମ୍ୟାଚ୍',
+  'oav.load.empty_title': 'ଏହି ଅବଧିରେ ଏଯାଏଁ କୌଣସି ମ୍ୟାଚ୍ ନାହିଁ',
+  'oav.load.empty_sub': 'ଆୟୋଜକମାନେ ଆପଣଙ୍କୁ ନିଯୁକ୍ତ କଲେ ଆପଣଙ୍କ ନିଶ୍ଚିତ ଓ ଅସ୍ଥାୟୀ ମ୍ୟାଚ୍ ସପ୍ତାହ ଅନୁସାରେ ଏଠାରେ ଚାର୍ଟରେ ଦେଖାଯିବ।',
+  'oav.off.title': 'ଛୁଟି',
+  'oav.off.block': 'ଛୁଟି ବ୍ଲକ୍ କରନ୍ତୁ',
+  'oav.off.repeat': 'ପୁନରାବୃତ୍ତ ବ୍ଲକ୍',
+  'oav.off.holidays': 'ସରକାରୀ ଛୁଟି',
+  'oav.off.tag': 'ଛୁଟି',
+  'oav.off.empty_title': 'କୌଣସି ଛୁଟି ଯୋଡ଼ାଯାଇନାହିଁ',
+  'oav.off.empty_sub': 'ଏକ ଅବଧି, ପୁନରାବୃତ୍ତ ଧାରା କିମ୍ବା ସରକାରୀ ଛୁଟି ବ୍ଲକ୍ କରନ୍ତୁ। ବ୍ଲକ୍ ସମୟ ଭିତରେ ଆୟୋଜକମାନେ ଆପଣଙ୍କୁ ମ୍ୟାଚ୍ ପାଇଁ ଅନୁରୋଧ କରିପାରିବେ ନାହିଁ।',
+  'oav.rep.tag': 'ପୁନରାବୃତ୍ତ',
+  'oav.rep.every': 'ପ୍ରତି ସପ୍ତାହ',
+  'oav.rep.every_n': 'ପ୍ରତି {n} ସପ୍ତାହରେ',
+  'oav.rep.span': '{from} ରୁ {to}',
+  'oav.rep.skip': 'ଏକ ତାରିଖ ବାଦ୍ ଦିଅନ୍ତୁ',
+  'oav.rep.skipped': '{n}ଟି ତାରିଖ ବାଦ୍ ଦିଆଯାଇଛି',
+  'oav.hol.tag': 'ସରକାରୀ ଛୁଟି',
+  'oav.hol.work': 'ମୁଁ ଏହି ଦିନ କାମ କରିବି',
+  'oav.hol.days': 'ଛୁଟି ନେବାକୁ ଥିବା ସରକାରୀ ଛୁଟି',
+  'oav.hol.hint': 'ପ୍ରତ୍ୟେକଟି ଆପଣଙ୍କ ନିଜ ସମୟ ମଣ୍ଡଳରେ ପୂରା ଦିନର ଛୁଟି ହେବ।',
+  'oav.hol.pick_country': 'ସରକାରୀ ଛୁଟି ଦେଖିବାକୁ ଏକ ଦେଶ ବାଛନ୍ତୁ।',
+  'oav.hol.none_title': 'ଯୋଡ଼ିବାକୁ କୌଣସି ସରକାରୀ ଛୁଟି ନାହିଁ',
+  'oav.hol.none_sub': 'ଏହି ଦେଶ ପାଇଁ ଏଯାଏଁ କୌଣସି ସରକାରୀ ଛୁଟି ରେକର୍ଡରେ ନାହିଁ। ତା ବଦଳରେ ତାରିଖଗୁଡ଼ିକୁ ଛୁଟି ଭାବେ ବ୍ଲକ୍ କରନ୍ତୁ।',
+  'oav.hol.all_taken': 'ଏହି ଦେଶର ରେକର୍ଡରେ ଥିବା ସବୁ ଛୁଟି ଆପଣ ଆଗରୁ ନେଇସାରିଛନ୍ତି।',
+  'oav.extra.title': 'ଅତିରିକ୍ତ ଉପଲବ୍ଧତା',
+  'oav.extra.add': 'ଏକ ସମୟ ଖଣ୍ଡ ଖୋଲନ୍ତୁ',
+  'oav.extra.tag': 'ଅତିରିକ୍ତ ଉପଲବ୍ଧତା',
+  'oav.extra.empty': 'ସାପ୍ତାହିକ ସମୟ ବାହାରେ ଥରକ ପାଇଁ ଏକ ସମୟ ଖଣ୍ଡ ଖୋଲନ୍ତୁ, ଯେପରି ଟୁର୍ଣ୍ଣାମେଣ୍ଟର ସପ୍ତାହାନ୍ତ। ଛୁଟି ଓ ନିଶ୍ଚିତ ମ୍ୟାଚ୍ ତଥାପି ଅଗ୍ରାଧିକାର ପାଏ।',
+  'oav.pref.title': 'ସମୟ ନିର୍ଘଣ୍ଟ ପସନ୍ଦ',
+  'oav.pref.rules': 'ସମୟ ନିର୍ଘଣ୍ଟ ନିୟମ',
+  'oav.pref.what': 'ମୁଁ ଯାହା ପରିଚାଳନା କରେ',
+  'oav.pref.travel': 'ମୁଁ ଯେଉଁଠି ଯାତ୍ରା କରେ',
+  'oav.pref.timezone': 'ସମୟ ମଣ୍ଡଳ',
+  'oav.pref.gap': 'ମ୍ୟାଚ୍ ମଝିରେ ବ୍ୟବଧାନ',
+  'oav.pref.gap_hint': 'ଯାତ୍ରା ଓ ବିଶ୍ରାମ ସମୟ। ଆପଣଙ୍କୁ ଅନୁରୋଧ କିମ୍ବା ନିଶ୍ଚିତ କରାଗଲେ ପ୍ରତିଥର ଯାଞ୍ଚ ହୁଏ।',
+  'oav.pref.same_venue_q': 'ଏକା ଭେନ୍ୟୁରେ କମ୍ ବ୍ୟବଧାନ ରଖନ୍ତୁ',
+  'oav.pref.gap_same': 'ଏକା ଭେନ୍ୟୁରେ ବ୍ୟବଧାନ',
+  'oav.pref.same_as_gap': 'ସାଧାରଣ ବ୍ୟବଧାନ ଭଳି',
+  'oav.pref.notice': 'ସର୍ବନିମ୍ନ ପୂର୍ବ ସୂଚନା',
+  'oav.pref.notice_hint': 'ମ୍ୟାଚ୍‌ର ଏହାଠାରୁ ନିକଟରେ ଆସୁଥିବା ନୂଆ ଅନୁରୋଧ ପ୍ରତ୍ୟାଖ୍ୟାନ ହୁଏ।',
+  'oav.pref.caps': 'ଭାର ସୀମା',
+  'oav.pref.per_day': 'ଦିନକୁ {n}',
+  'oav.pref.per_week': 'ସପ୍ତାହକୁ {n}',
+  'oav.pref.in_a_row': 'ଲଗାତାର {n} ଦିନ',
+  'oav.pref.max_day': 'ଦିନକୁ ସର୍ବାଧିକ ମ୍ୟାଚ୍',
+  'oav.pref.max_week': 'ସପ୍ତାହକୁ ସର୍ବାଧିକ ମ୍ୟାଚ୍',
+  'oav.pref.max_row': 'ଲଗାତାର ସର୍ବାଧିକ ଦିନ',
+  'oav.pref.zero_none': '0 ଅର୍ଥ କୌଣସି ସୀମା ନାହିଁ।',
+  'oav.pref.outside': 'ମୋ ସମୟ ବାହାରର ଅନୁରୋଧ',
+  'oav.pref.block_outside': 'ମୋ ସମୟ ବାହାରର ଅନୁରୋଧ ପ୍ରତ୍ୟାଖ୍ୟାନ କରନ୍ତୁ',
+  'oav.pref.block_outside_hint': 'ବନ୍ଦ: ଅନୁରୋଧ ଏକ ଚେତାବନୀ ସହ ଆପଣଙ୍କ ପାଖରେ ପହଞ୍ଚେ। ଚାଲୁ: ସେତେବେଳେ ଆପଣ ଉପଲବ୍ଧ ନୁହଁନ୍ତି ବୋଲି ଆୟୋଜକଙ୍କୁ ଜଣାଯାଏ।',
+  'oav.policy.warn': 'ଚେତାବନୀ ସହ ମୋ ପାଖକୁ ଆସୁ',
+  'oav.policy.block': 'ପ୍ରତ୍ୟାଖ୍ୟାତ',
+  'oav.pref.tentative': 'ଏକା ସମୟର ଅନୁରୋଧ',
+  'oav.pref.one_per_slot': 'ଗୋଟିଏ ସମୟ ପାଇଁ କେବଳ ଗୋଟିଏ ଅନୁରୋଧ ଧରି ରଖନ୍ତୁ',
+  'oav.pref.one_per_slot_hint': 'ଚାଲୁ: ଯେଉଁ ସମୟ ପାଇଁ ଆପଣ ଆଗରୁ ଏକ ଅନୁରୋଧ ଧରି ରଖିଛନ୍ତି, ସେଥିପାଇଁ ଦ୍ୱିତୀୟ ଆୟୋଜକ ଅନୁରୋଧ କରିପାରିବେ ନାହିଁ।',
+  'oav.tpolicy.allow': 'ଅନେକ ଧରି ରଖାଯାଇପାରେ',
+  'oav.tpolicy.one_per_slot': 'ଥରକେ ଗୋଟିଏ',
+  'oav.pref.sports': 'ପସନ୍ଦର କ୍ରୀଡ଼ା',
+  'oav.pref.sports_hint': 'ଆପଣ ପରିଚାଳନା କରୁଥିବା କ୍ରୀଡ଼ାରୁ। ସବୁ ପାଇଁ ଖାଲି ଛାଡ଼ନ୍ତୁ।',
+  'oav.pref.levels': 'ପ୍ରତିଯୋଗିତା ସ୍ତର',
+  'oav.pref.roles': 'ଭୂମିକା',
+  'oav.pref.ages': 'ବୟସ ବର୍ଗ',
+  'oav.pref.region': 'ମୁଁ କଭର୍ କରୁଥିବା ଅଞ୍ଚଳ',
+  'oav.pref.region_hint': 'କେବଳ ସହର କିମ୍ବା ଅଞ୍ଚଳ। ଆପଣଙ୍କ ଠିକଣା କେବେ ନୁହେଁ।',
+  'oav.pref.range': 'ଯାତ୍ରା ପରିସର',
+  'oav.pref.country': 'ସରକାରୀ ଛୁଟି ପାଇଁ ଦେଶ',
+  'oav.pref.country_hint': 'କେବଳ ସେହି ଦେଶର ସରକାରୀ ଛୁଟି ଆପଣଙ୍କୁ ଦେଖାଇବା ପାଇଁ ବ୍ୟବହୃତ।',
+  'oav.priv.title': 'ଆୟୋଜକମାନେ ଯାହା ଦେଖିପାରନ୍ତି',
+  'oav.priv.see': 'ସେମାନେ ଦେଖନ୍ତି: ଆପଣ କେବେ ଖାଲି, ବ୍ୟସ୍ତ କିମ୍ବା ଅନୁପଲବ୍ଧ; ଆପଣଙ୍କ ଅଞ୍ଚଳ; ଏକ ଦୂରତା ବ୍ୟାଣ୍ଡ (ଯେପରି 25 ରୁ 50 km); ଏବଂ ଆପଣଙ୍କ ପସନ୍ଦର କ୍ରୀଡ଼ା, ସ୍ତର ଓ ଭୂମିକା।',
+  'oav.priv.never': 'ସେମାନେ କେବେ ଦେଖନ୍ତି ନାହିଁ: ଆପଣଙ୍କ ଟିପ୍ପଣୀ କିମ୍ବା କାରଣ, ଘର ଠିକଣା କିମ୍ବା ସ୍ଥାନାଙ୍କ, ସଠିକ୍ ଦୂରତା, କିମ୍ବା ଆପଣଙ୍କ ଅନ୍ୟ ମ୍ୟାଚ୍‌ର ବିବରଣୀ।',
+  'oav.hist.title': 'ପରିବର୍ତ୍ତନ ଇତିହାସ',
+  'oav.hist.show': 'ଦେଖାନ୍ତୁ',
+  'oav.hist.hide': 'ଲୁଚାନ୍ତୁ',
+  'oav.hist.sub': 'ଆପଣଙ୍କ ଉପଲବ୍ଧତାର ପ୍ରତ୍ୟେକ ପରିବର୍ତ୍ତନ ତାରିଖ ସହ ରେକର୍ଡ ହୁଏ। ବ୍ୟକ୍ତିଗତ ଟିପ୍ପଣୀ କେବେ ଏଥିରେ ରହେ ନାହିଁ।',
+  'oav.hist.empty': 'ଏଯାଏଁ କୌଣସି ପରିବର୍ତ୍ତନ ରେକର୍ଡ ହୋଇନାହିଁ।',
+  'oav.hist.created': 'ଯୋଡ଼ାଗଲା',
+  'oav.hist.updated': 'ବଦଳାଗଲା',
+  'oav.hist.replaced': 'ବଦଳି ରଖାଗଲା',
+  'oav.hist.removed': 'ହଟାଗଲା',
+  'oav.hist.e_prefs': 'ସମୟ ନିର୍ଘଣ୍ଟ ପସନ୍ଦ',
+  'oav.hist.e_weekly': 'ସାପ୍ତାହିକ ସମୟ',
+  'oav.hist.e_block': 'ଛୁଟି କିମ୍ବା ଖୋଲା ସମୟ ଖଣ୍ଡ',
+  'oav.f.hours_title': 'ସାପ୍ତାହିକ ସମୟ ଯୋଡ଼ନ୍ତୁ',
+  'oav.f.add': 'ଯୋଡ଼ନ୍ତୁ',
+  'oav.f.days': 'ଦିନ',
+  'oav.f.from': 'ଠାରୁ',
+  'oav.f.until': 'ପର୍ଯ୍ୟନ୍ତ',
+  'oav.f.seasonal': 'ବର୍ଷର କେବଳ କିଛି ଅଂଶ ପାଇଁ',
+  'oav.f.seasonal_hint': 'କେବଳ ଗୋଟିଏ ସିଜନ୍‌ରେ ଲାଗୁ ହେଉଥିବା ସମୟ ପାଇଁ।',
+  'oav.f.season': 'ସିଜନ୍ ତାରିଖ',
+  'oav.f.block_title': 'ଛୁଟି ବ୍ଲକ୍ କରନ୍ତୁ',
+  'oav.f.repeat_title': 'ପୁନରାବୃତ୍ତ ଛୁଟି',
+  'oav.f.block_edit': 'ଛୁଟି ବଦଳାନ୍ତୁ',
+  'oav.f.block_notice': 'ସେଭ୍ କରିବା ପୂର୍ବରୁ, ଆପଣଙ୍କ ଅନୁରୋଧିତ ଓ ନିଶ୍ଚିତ ମ୍ୟାଚ୍ ମଧ୍ୟରୁ କେଉଁଗୁଡ଼ିକ ଉପରେ ଏହା ପଡ଼ିବ ଆମେ ଯାଞ୍ଚ କରୁ।',
+  'oav.f.check_save': 'ଯାଞ୍ଚ କରି ସେଭ୍ କରନ୍ତୁ',
+  'oav.f.all_day': 'ପୂରା ଦିନ',
+  'oav.f.dates': 'ତାରିଖ',
+  'oav.f.between': 'ପୁନରାବୃତ୍ତିର ଅବଧି',
+  'oav.f.on_days': 'ଏହି ଦିନଗୁଡ଼ିକରେ',
+  'oav.f.every': 'ପୁନରାବୃତ୍ତି ବ୍ୟବଧାନ',
+  'oav.f.weeks': 'ସପ୍ତାହ',
+  'oav.f.category': 'ଛୁଟିର ପ୍ରକାର',
+  'oav.f.category_hint': 'ଆପଣଙ୍କ ନିଜ ଯୋଜନା ପାଇଁ। ଏହା କେବେ ସେୟାର ହୁଏ ନାହିଁ।',
+  'oav.f.note': 'ବ୍ୟକ୍ତିଗତ ଟିପ୍ପଣୀ',
+  'oav.f.note_hint': 'କେବଳ ଆପଣ ଏହା ପଢ଼ିପାରିବେ। ଏହା ଏନକ୍ରିପ୍ଟ ହୋଇ ସଂରକ୍ଷିତ ହୁଏ।',
+  'oav.f.skip_title': 'ଗୋଟିଏ ତାରିଖ ବାଦ୍ ଦିଅନ୍ତୁ',
+  'oav.f.skip_date': 'ଏହି ବ୍ଲକ୍‌ରୁ ମୁକ୍ତ ରଖିବାକୁ ଥିବା ତାରିଖ',
+  'oav.f.hol_title': 'ସରକାରୀ ଛୁଟିରେ ଛୁଟି ନିଅନ୍ତୁ',
+  'oav.f.extra_title': 'ଅତିରିକ୍ତ ସମୟ ଖଣ୍ଡ ଖୋଲନ୍ତୁ',
+  'oav.f.extra_notice': 'ସାପ୍ତାହିକ ସମୟ ବାହାରେ ହେଲେ ବି ଏହି ସମୟ ଖଣ୍ଡରେ ଆୟୋଜକମାନେ ଆପଣଙ୍କୁ ଉପଲବ୍ଧ ଭାବେ ଦେଖିବେ।',
+  'oav.err.dates': 'ତାରିଖ ବାଛନ୍ତୁ',
+  'oav.err.days': 'ଅତିକମ୍‌ରେ ଗୋଟିଏ ଦିନ ବାଛନ୍ତୁ',
+  'oav.err.times': 'ଶେଷ ସମୟ ଆରମ୍ଭ ପରେ ହେବା ଦରକାର',
+  'oav.err.holidays': 'ଅତିକମ୍‌ରେ ଗୋଟିଏ ଛୁଟି ବାଛନ୍ତୁ',
+  'oav.saved.hours': 'ସାପ୍ତାହିକ ସମୟ ସେଭ୍ ହେଲା',
+  'oav.saved.block': 'ଛୁଟି ସେଭ୍ ହେଲା',
+  'oav.saved.removed': 'ହଟାଗଲା',
+  'oav.saved.skipped': 'ସେହି ତାରିଖ ପୁଣି ମୁକ୍ତ',
+  'oav.saved.holidays': 'ସରକାରୀ ଛୁଟି ନିଆଗଲା',
+  'oav.saved.extra': 'ଅତିରିକ୍ତ ସମୟ ଖଣ୍ଡ ଖୋଲାଗଲା',
+  'oav.saved.prefs': 'ପସନ୍ଦ ସେଭ୍ ହେଲା',
+  'oav.imp.title': 'ଏହା ଆପଣଙ୍କ ମ୍ୟାଚ୍ ଉପରେ ପଡ଼ୁଛି',
+  'oav.imp.lead': '{n}ଟି ଅନୁରୋଧିତ କିମ୍ବା ନିଶ୍ଚିତ ମ୍ୟାଚ୍ ଏହି ଛୁଟି ଭିତରେ ପଡ଼ୁଛି।',
+  'oav.imp.hint': 'ସେଭ୍ କଲେ ସେଗୁଡ଼ିକ ବାଦ୍ ପଡ଼ିବ ନାହିଁ। ଯେଉଁଗୁଡ଼ିକ କରିପାରିବେ ନାହିଁ ସେଗୁଡ଼ିକୁ ପ୍ରତ୍ୟାଖ୍ୟାନ କରନ୍ତୁ କିମ୍ବା ସେଥିରୁ ପ୍ରତ୍ୟାହାର କରନ୍ତୁ, ଯାହାଫଳରେ ଆୟୋଜକ ଅନ୍ୟ କାହାକୁ ନିଯୁକ୍ତ କରିପାରିବେ।',
+  'oav.imp.back': 'ପଛକୁ ଯାଆନ୍ତୁ',
+  'oav.imp.save': 'ତଥାପି ସେଭ୍ କରନ୍ତୁ',
+  'oav.hold.reserved': 'ନିଶ୍ଚିତ',
+  'oav.hold.tentative': 'ଅସ୍ଥାୟୀ',
+  'oav.cat.holiday': 'ଅବକାଶ',
+  'oav.cat.work': 'କାମ',
+  'oav.cat.family': 'ପରିବାର',
+  'oav.cat.injury': 'ଆଘାତ କିମ୍ବା ଆରୋଗ୍ୟ',
+  'oav.cat.travel': 'ଯାତ୍ରା',
+  'oav.cat.study': 'ପଢ଼ା କିମ୍ବା ପରୀକ୍ଷା',
+  'oav.cat.faith': 'ଧର୍ମ କିମ୍ବା ପର୍ବ',
+  'oav.cat.federation_duty': 'ଫେଡେରେସନ୍ ଦାୟିତ୍ୱ',
+  'oav.cat.other_sport': 'ଅନ୍ୟ କ୍ରୀଡ଼ା ଦାୟିତ୍ୱ',
+  'oav.cat.personal': 'ବ୍ୟକ୍ତିଗତ',
+  'oav.level.grassroots': 'ତୃଣମୂଳ',
+  'oav.level.local': 'ସ୍ଥାନୀୟ',
+  'oav.level.district': 'ଜିଲ୍ଲା',
+  'oav.level.county': 'କାଉଣ୍ଟି',
+  'oav.level.regional': 'ଆଞ୍ଚଳିକ',
+  'oav.level.national': 'ଜାତୀୟ',
+  'oav.level.international': 'ଆନ୍ତର୍ଜାତୀୟ',
+  'oav.level.olympic': 'ଅଲିମ୍ପିକ୍',
+  'oav.role.referee': 'ରେଫରି',
+  'oav.role.umpire': 'ଅମ୍ପାୟାର',
+  'oav.role.linesman': 'ସହକାରୀ ରେଫରି',
+  'oav.role.scorer': 'ସ୍କୋରର୍',
+  'oav.role.video_assistant_referee': 'ଭିଡିଓ ସହକାରୀ ରେଫରି',
+  'oav.role.fourth_official': 'ଚତୁର୍ଥ ଅଫିସିଆଲ୍',
+  'oav.role.reserve_assistant_referee': 'ରିଜର୍ଭ ସହକାରୀ ରେଫରି',
+  'oav.role.shot_clock_operator': 'ଶଟ୍ କ୍ଲକ୍ ଅପରେଟର',
+  'oav.role.timekeeper': 'ଟାଇମ୍‌କିପର୍',
+  'oav.role.goal_line_official': 'ଗୋଲ୍-ଲାଇନ୍ ଅଫିସିଆଲ୍',
+  'oav.role.technical_official': 'ଟେକ୍ନିକାଲ୍ ଅଫିସିଆଲ୍',
+  'oav.age.u8': '8 ବର୍ଷରୁ କମ୍',
+  'oav.age.u10': '10 ବର୍ଷରୁ କମ୍',
+  'oav.age.u12': '12 ବର୍ଷରୁ କମ୍',
+  'oav.age.u14': '14 ବର୍ଷରୁ କମ୍',
+  'oav.age.u16': '16 ବର୍ଷରୁ କମ୍',
+  'oav.age.u18': '18 ବର୍ଷରୁ କମ୍',
+  'oav.age.u21': '21 ବର୍ଷରୁ କମ୍',
+  'oav.age.senior': 'ସିନିୟର',
+  'oav.age.masters': 'ମାଷ୍ଟର୍ସ',
+  'oav.band.under_25': '25 km ରୁ କମ୍',
+  'oav.band.25_50': '25 ରୁ 50 km',
+  'oav.band.50_100': '50 ରୁ 100 km',
+  'oav.band.100_200': '100 ରୁ 200 km',
+  'oav.band.200_400': '200 ରୁ 400 km',
+  'oav.band.over_400': '400 km ରୁ ଅଧିକ',
+  'oav.state.available': 'ଉପଲବ୍ଧ',
+  'oav.state.limited': 'ସେମାନଙ୍କ ସୀମା ବାହାରେ',
+  'oav.state.check': 'ସେମାନଙ୍କୁ ପଚାରନ୍ତୁ',
+  'oav.state.unavailable': 'ଅନୁପଲବ୍ଧ',
+  'oav.wiz.hint': 'ଆପଣଙ୍କ ଉପଲବ୍ଧତା ଗୋଟିଏ ଜାଗାରେ ରହେ: ଅଫିସିଆଲ୍ସ ହୋମ୍‌ର ଉପଲବ୍ଧତା ଟ୍ୟାବ୍। ଏବେ ସେଠାରେ ଏହା ସେଭ୍ ହୋଇଛି। ସମୟ, ଛୁଟି ଓ ପସନ୍ଦ ଆପଣ ଯେକୌଣସି ସମୟରେ ସେଠାରେ ସଜାଡ଼ିପାରିବେ।',
+  'oav.wiz.empty_title': 'ଏଯାଏଁ କୌଣସି ଉପଲବ୍ଧତା ସେଭ୍ ହୋଇନାହିଁ',
+  'oav.wiz.empty_sub': 'ଏହି ୱିଜାର୍ଡ ପରେ, ଉପଲବ୍ଧତା ଟ୍ୟାବ୍ ଖୋଲି ଆପଣଙ୍କ ସମୟ, ଛୁଟି ଓ ପସନ୍ଦ ଯୋଡ଼ନ୍ତୁ।',
+  'ocal.view.today': 'ଆଜି',
+  'ocal.view.week': 'ସପ୍ତାହ',
+  'ocal.view.month': 'ମାସ',
+  'ocal.show.all': 'ସବୁକିଛି',
+  'ocal.show.off': 'ଛୁଟି',
+  'ocal.role': 'ଭୂମିକା',
+  'ocal.all_roles': 'ସବୁ ଭୂମିକା',
+  'ocal.m.reserved': 'ନିଶ୍ଚିତ, ସ୍ଲଟ୍ ସଂରକ୍ଷିତ',
+  'ocal.m.tentative': 'ଅସ୍ଥାୟୀ ଅନୁରୋଧ',
+  'ocal.m.blocked': 'ଛୁଟି ବ୍ଲକ୍',
+  'ocal.m.conflicts': 'ସଂଘାତ',
+  'ocal.conflict_banner': '{n}ଟି ଏଣ୍ଟ୍ରି ଅନ୍ୟ ମ୍ୟାଚ୍ କିମ୍ବା ଆପଣଙ୍କ ଛୁଟି ସହ ଟକ୍କର ଖାଉଛି। କାର୍ଡରେ ଚେତାବନୀ ଦେଖନ୍ତୁ।',
+  'ocal.kind.time_off': 'ଛୁଟି',
+  'ocal.kind.holiday': 'ସରକାରୀ ଛୁଟି',
+  'ocal.kind.open_window': 'ଅତିରିକ୍ତ ଉପଲବ୍ଧତା',
+  'ocal.kind.deadline': 'ଶେଷ ତାରିଖ',
+  'ocal.completed': 'ସମାପ୍ତ',
+  'ocal.unavailable': 'ଅନୁପଲବ୍ଧ',
+  'ocal.flag.changed': 'ବଦଳିଛି: ସ୍ୱୀକାର କରନ୍ତୁ',
+  'ocal.flag.clash': 'ଅନ୍ୟ ମ୍ୟାଚ୍ ସହ ଟକ୍କର',
+  'ocal.flag.time_off': 'ଆପଣଙ୍କ ଛୁଟି ସମୟରେ',
+  'ocal.flag.rival': 'ଏହି ସମୟ ପାଇଁ ଆଉ {n}ଟି ଅନୁରୋଧ',
+  'ocal.flag.outside': 'ଆପଣଙ୍କ ସମୟ ବାହାରେ',
+  'ocal.venue_time': 'ଭେନ୍ୟୁରେ {time} ({zone})',
+  'ocal.today': 'ଆଜି',
+  'ocal.day_count': '{n}ଟି ମ୍ୟାଚ୍',
+  'ocal.empty_title': 'କିଛି ନିର୍ଦ୍ଧାରିତ ନାହିଁ',
+  'ocal.empty_day': 'ଏହି ଦିନ କୌଣସି ମ୍ୟାଚ୍ କିମ୍ବା ଛୁଟି ନାହିଁ।',
+  'ocal.empty_range': 'ଏହି ଅବଧିରେ କୌଣସି ମ୍ୟାଚ୍ କିମ୍ବା ଛୁଟି ନାହିଁ। ଆୟୋଜକଙ୍କ ଅନୁରୋଧ ଏଠାରେ ଅସ୍ଥାୟୀ ହୋଲ୍ଡ ଭାବେ ଦେଖାଯିବ।',
+  'ocal.foot': 'ସମୟ {tz} ଅନୁସାରେ। ମ୍ୟାଚ୍ ମଝିରେ ଆପଣଙ୍କ ବ୍ୟବଧାନ {n} ମିନିଟ୍। ଏଣ୍ଟ୍ରିଗୁଡ଼ିକ ଆପଣଙ୍କ ନିଯୁକ୍ତିରୁ ସିଧାସଳଖ ପଢ଼ାଯାଏ, ତେଣୁ ଆୟୋଜକଙ୍କ ପରିବର୍ତ୍ତନ ତୁରନ୍ତ ଦେଖାଯାଏ।',
+  'guide.officials_availability.title': 'ଅଫିସିଆଲ୍ସ: ଉପଲବ୍ଧତା, ଛୁଟି ଓ ସମୟ ନିର୍ଘଣ୍ଟ ପସନ୍ଦ',
+  'guide.officials_availability.why': 'ସବୁ ଲୋକ କ୍ୟାଲେଣ୍ଡର ଉପରେ ଭରସା କଲେ ହିଁ ଅଫିସିଆଲ୍ ନିଯୁକ୍ତି ଠିକ୍ ଚାଲେ। ପ୍ରତ୍ୟେକ ଅଫିସିଆଲ୍ ଗୋଟିଏ ଉପଲବ୍ଧତା ରେକର୍ଡ ରଖନ୍ତି, ଯାହାକୁ ପ୍ଲାଟଫର୍ମ ପ୍ରତ୍ୟେକ ଅନୁରୋଧରେ ଲାଗୁ କରେ। ଆୟୋଜକମାନେ କେବଳ ଖାଲି କି ବ୍ୟସ୍ତ ଦେଖନ୍ତି: କାରଣ, ଟିପ୍ପଣୀ କିମ୍ବା ଘର ଠିକଣା କେବେ ନୁହେଁ।',
+  'guide.officials_availability.s1': 'ଅଫିସିଆଲ୍‌ମାନେ ଅଫିସିଆଲ୍ସ ହୋମ୍, ତା ପରେ ଉପଲବ୍ଧତା ଖୋଲି, ପ୍ରତି ସପ୍ତାହ ମ୍ୟାଚ୍ ପରିଚାଳନା କରୁଥିବା ସମୟ ନିଜ ସମୟ ମଣ୍ଡଳରେ ଯୋଡ଼ନ୍ତି। ସମୟକୁ ଏକ ସିଜନ୍ ମଧ୍ୟରେ ସୀମିତ କରାଯାଇପାରେ। ସପ୍ତାହ ପ୍ଲାନର୍ ଖୋଲା ସମୟ ଓ ପୁନରାବୃତ୍ତ ଛୁଟି ଏକ ନଜରରେ ଦେଖାଏ।',
+  'guide.officials_availability.s2': 'ଛୁଟିକୁ ଏକ ଅବଧି ଭାବେ, ପୁନରାବୃତ୍ତ ଧାରା ଭାବେ (ଯେପରି ପ୍ରତି ଦୁଇ ସପ୍ତାହରେ ମଙ୍ଗଳବାର ସନ୍ଧ୍ୟା) କିମ୍ବା ଛୁଟି କ୍ୟାଲେଣ୍ଡରରୁ ସରକାରୀ ଛୁଟି ନେଇ ବ୍ଲକ୍ କରନ୍ତୁ। କିଛି ସେଭ୍ ହେବା ପୂର୍ବରୁ, ଏହା ଯେଉଁ ଅନୁରୋଧିତ ଓ ନିଶ୍ଚିତ ମ୍ୟାଚ୍ ଉପରେ ପଡ଼ିବ ଆପ୍ ତାହାର ତାଲିକା ଦେଖାଏ। ବ୍ୟକ୍ତିଗତ ଟିପ୍ପଣୀ ଏନକ୍ରିପ୍ଟ ହୋଇ ସଂରକ୍ଷିତ ହୁଏ ଓ କେବେ ସେୟାର ହୁଏ ନାହିଁ।',
+  'guide.officials_availability.s3': 'ସମୟ ନିର୍ଘଣ୍ଟ ପସନ୍ଦରେ ନିୟମ ସେଟ୍ କରନ୍ତୁ: ମ୍ୟାଚ୍ ମଝିରେ ଦରକାରୀ ବ୍ୟବଧାନ (ଏକା ଭେନ୍ୟୁରେ କମ୍), ସର୍ବନିମ୍ନ ପୂର୍ବ ସୂଚନା, ଦିନକୁ କିମ୍ବା ସପ୍ତାହକୁ ସର୍ବାଧିକ ମ୍ୟାଚ୍ ଓ ଲଗାତାର ଦିନ, ଏବଂ ଦର୍ଶାଇଥିବା ସମୟ ବାହାରର ଅନୁରୋଧ ପ୍ରତ୍ୟାଖ୍ୟାନ ହେବ ନା ଚେତାବନୀ ସହ ଆସିବ।',
+  'guide.officials_availability.s4': 'ଆପଣ କଣ ଓ କେଉଁଠି ପରିଚାଳନା କରନ୍ତି ଜଣାନ୍ତୁ: ପସନ୍ଦର କ୍ରୀଡ଼ା, ପ୍ରତିଯୋଗିତା ସ୍ତର, ଭୂମିକା ଓ ବୟସ ବର୍ଗ, ଆପଣ କଭର୍ କରୁଥିବା ଅଞ୍ଚଳ ଓ କେତେ ଦୂର ଯାତ୍ରା କରନ୍ତି। କେବଳ ସହର କିମ୍ବା ଅଞ୍ଚଳ ସଂରକ୍ଷିତ ହୁଏ, ଠିକଣା କେବେ ନୁହେଁ।',
+  'guide.officials_availability.s5': 'ଆୟୋଜକମାନେ ପୂର୍ବ ଭଳି ଆସାଇନମେଣ୍ଟ ବୋର୍ଡ କିମ୍ବା ବଲ୍କ ଇନଭାଇଟ୍‌ରୁ ନିଯୁକ୍ତ କରନ୍ତି। ପ୍ରତ୍ୟେକ ଅଫିସିଆଲ୍ ଏବେ ଉପଲବ୍ଧ, ସେମାନଙ୍କ ସୀମା ବାହାରେ କିମ୍ବା ଅନୁପଲବ୍ଧ ଭାବେ ଦେଖାଯାନ୍ତି, ଏକ ସରଳ କାରଣ ଓ ଦୂରତା ବ୍ୟାଣ୍ଡ ସହ। ଅଫିସିଆଲ୍‌ଙ୍କ ନିୟମ ଭାଙ୍ଗୁଥିବା ଅନୁରୋଧ ସେହି କାରଣ ସହ ପ୍ରତ୍ୟାଖ୍ୟାନ ହୁଏ।',
+  'guide.officials_availability.s6': 'ଅଫିସିଆଲ୍ ଗ୍ରହଣ କରିବା ଯାଏଁ ଅନୁରୋଧ ଏକ ଅସ୍ଥାୟୀ ହୋଲ୍ଡ। ଗ୍ରହଣ କଲେ ସ୍ଲଟ୍ ସଂରକ୍ଷିତ ହୁଏ, ଏବଂ ସେହି ସମୟ ପାଇଁ ଅପେକ୍ଷା କରୁଥିବା ଅନ୍ୟ ଆୟୋଜକଙ୍କୁ ଜଣାଯାଏ। ମ୍ୟାଚ୍ ବାତିଲ୍ କଲେ ସ୍ଲଟ୍ ପୁଣି ମୁକ୍ତ ହୁଏ। କ୍ୟାଲେଣ୍ଡର ଟ୍ୟାବ୍ ଏସବୁକୁ ଅଫିସିଆଲ୍‌ଙ୍କ ସମୟ ମଣ୍ଡଳରେ ଦେଖାଏ, ଭିନ୍ନ ହେଲେ ଭେନ୍ୟୁର ସମୟ ସହ।',
+  'oav.edit': 'ସମ୍ପାଦନ',
 
 
   // ─── Official eligibility (oe.*) — issue #1000 REF-R09 ───────────────────
