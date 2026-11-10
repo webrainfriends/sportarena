@@ -29,7 +29,7 @@ async function requireAssignorGrant(user, eventId) {
 cap({
   name: 'grant_assignor_access', method: 'POST', path: '/official-assignor/grant', tag: TAG,
   summary: 'Event organiser grants a neutral assignor rights to invite officials for one event.',
-  input: z.object({ event_id: id(), assignor_user_id: id(), note: z.string().max(300).optional() }),
+  input: z.object({ event_id: id, assignor_user_id: id, note: z.string().max(300).optional() }),
   async handler({ user }, i) {
     const ev = await requireOrganiser(user, i.event_id);
     const assignee = await one('SELECT id, display_name FROM users WHERE id=$1', [i.assignor_user_id]);
@@ -52,7 +52,7 @@ cap({
 cap({
   name: 'revoke_assignor_access', method: 'POST', path: '/official-assignor/revoke', tag: TAG,
   summary: 'Event organiser revokes an assignor grant. The assignor can no longer invite officials.',
-  input: z.object({ event_id: id(), assignor_user_id: id(), note: z.string().max(300).optional() }),
+  input: z.object({ event_id: id, assignor_user_id: id, note: z.string().max(300).optional() }),
   async handler({ user }, i) {
     await requireOrganiser(user, i.event_id);
     return tx(async (c) => {
@@ -71,7 +71,7 @@ cap({
 cap({
   name: 'list_assignor_grants', method: 'GET', path: '/official-assignor/grants', tag: TAG,
   summary: 'List active assignor grants for an event (organiser only). No fee or PII fields returned.',
-  input: z.object({ event_id: id(), ...page }),
+  input: z.object({ event_id: id, ...page }),
   async handler({ user }, i) {
     await requireOrganiser(user, i.event_id);
     return many(
@@ -90,7 +90,7 @@ cap({
 cap({
   name: 'assignor_invite_official', method: 'POST', path: '/official-assignor/invite', tag: TAG,
   summary: 'Assignor invites an official for a fixture on behalf of the organiser. Assignor cannot view fees, PII or rosters.',
-  input: z.object({ fixture_id: id(), user_id: id(), role: z.string().min(2).max(60), note: z.string().max(300).optional() }),
+  input: z.object({ fixture_id: id, user_id: id, role: z.string().min(2).max(60), note: z.string().max(300).optional() }),
   async handler({ user }, i) {
     const f = await one('SELECT * FROM fixtures WHERE id=$1', [i.fixture_id]);
     if (!f) throw notFound('Fixture');
@@ -115,7 +115,7 @@ cap({
 cap({
   name: 'get_assignor_hub', method: 'GET', path: '/official-assignor/hub', tag: TAG,
   summary: 'Assignor read-only hub: event summary, fixtures with crew status, and invitations made by this assignor. No fee, PII or team roster fields.',
-  input: z.object({ event_id: id() }),
+  input: z.object({ event_id: id }),
   async handler({ user }, i) {
     await requireAssignorGrant(user, i.event_id);
     const ev = await one(
