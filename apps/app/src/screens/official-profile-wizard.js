@@ -1,8 +1,8 @@
-// Official profile onboarding wizard (#991 R00): 10-step self-declaration wizard for referee and official roles.
+// Official profile onboarding wizard (#991 R00 + godmode): 10-step self-declaration wizard for referee and official roles.
 // Auto-saves after every step; resumable from any step_reached. PII never shown in fields — encrypted server-side.
-// Follows the same pattern as academy-scouting-wizard.js (FormSheet per step, Stepper, useLoad for options).
+// Godmode additions: CompletenessBar, compliance checklist in Step 4, multi-lang bio in Step 0, portfolio in Step 9.
 import React, { useState, useEffect } from 'react';
-import { View } from 'react-native';
+import { View, Animated } from 'react-native';
 import { api } from '../api';
 import { useLoad } from '../hooks';
 import { Btn, Card, Empty, ErrorBox, Loading, Sheet, T, Tag } from '../ui';
@@ -18,6 +18,12 @@ import { CountryPicker, countryName } from '../country-picker';
 import { deviceZone } from '../locale';
 import { money } from '../federation-ui';
 
+const PLATFORM_LANGS = ['es','hi','ta','te','ml','mr','kn','bn','or','si','ur','id'];
+const LANG_LABELS = { es:'Español',hi:'हिन्दी',ta:'தமிழ்',te:'తెలుగు',ml:'മലയാളം',mr:'मराठी',kn:'ಕನ್ನಡ',bn:'বাংলা',or:'ଓଡ଼ିଆ',si:'සිංහල',ur:'اردو',id:'Bahasa' };
+const COMPLIANCE_KINDS = ['dbs_police','safeguarding','fitness_test','insurance','anti_corruption','medical'];
+const COMPLIANCE_ICONS = { dbs_police:'🪪', safeguarding:'🛡️', fitness_test:'🏃', insurance:'📋', anti_corruption:'⚖️', medical:'🩺', other_compliance:'📄' };
+const PORTFOLIO_KINDS = ['video','article','match_report','interview','other'];
+
 const STEP_KEYS = ['identity','privacy','sports','experience','credentials','references','availability','rates','payout','review'];
 const ROLE_OPTS = ['referee','umpire','linesman','scorer','judge','starter','timekeeper','video_referee'];
 const LEVEL_OPTS = ['grassroots','local','district','county','regional','national','international','olympic'];
@@ -28,21 +34,44 @@ const YEAR = new Date().getFullYear();
 
 const iso = (v) => (/^[A-Z]{2}$/.test(v ?? '') ? v : '');
 
+// ---------------------------------------------------------------- CompletenessBar
+function CompletenessBar({ score }) {
+  const pct = score ?? 0;
+  const fillColor = pct >= 80 ? c.lime : pct >= 50 ? c.sun : c.orange;
+  return (
+    <View style={{ marginHorizontal: 20, marginBottom: 8, padding: 10, backgroundColor: c.paper, borderRadius: 14, borderWidth: 1, borderColor: c.line }}
+      accessible accessibilityLabel={t('opw.completeness.a11y', { pct })}>
+      <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 5 }}>
+        <T size={11} weight="700" color={c.mute}>{t('opw.completeness.label')}</T>
+        <T size={13} weight="800" color={fillColor}>{pct}%</T>
+      </View>
+      <View style={{ height: 7, borderRadius: 4, backgroundColor: c.violetSoft, overflow: 'hidden' }}>
+        <View style={{ width: `${pct}%`, height: 7, borderRadius: 4, backgroundColor: fillColor }} />
+      </View>
+    </View>
+  );
+}
+
 export function OfficialProfileWizard({ onClose: close, onDone, toast: say, onOpen }) {
   const nav = useNav();
   const session = useSession();
-  const onClose = close ?? nav.back;            // opened as its own page there is no host to close it
+  const onClose = close ?? nav.back;
   const toast = say ?? session.toast;
-  // leave the sheet for a full page (rate cards, payout account, tax) and come back to the same step later
   const leave = (route, params) => { if (onOpen) onOpen(route, params); else nav.push(route, params); };
   const [nat, setNat] = useState(null), [taxCountry, setTaxCountry] = useState(null);
   const opt = useLoad(() => api.get('/me/official-profile/options'), []);
   const existing = useLoad(() => api.get('/me/official-profile').catch((e) => (e?.status === 404 ? null : Promise.reject(e))), []);
+  const completeness = useLoad(() => api.get('/me/official-profile/completeness').catch(() => ({ score: 0, guidance: [] })), []);
   const [profile, setProfile] = useState(null);
   const [step, setStep] = useState(0);
   const [creds, setCreds] = useState([]);
   const [expEntries, setExpEntries] = useState([]);
   const [addCred, setAddCred] = useState(false);
+  const [bioTranslations, setBioTranslations] = useState({});
+  const [activeLang, setActiveLang] = useState('hi');
+  const [portfolioLinks, setPortfolioLinks] = useState([]);
+  const [addPortfolio, setAddPortfolio] = useState(false);
+  const [completenessScore, setCompletenessScore] = useState(0);
 
   useEffect(() => {
     if (existing.data !== undefined && !profile) {
@@ -51,9 +80,15 @@ export function OfficialProfileWizard({ onClose: close, onDone, toast: say, onOp
         setStep(existing.data.step_reached ?? 0);
         setCreds(existing.data.credentials ?? []);
         setExpEntries(existing.data.experience ?? []);
+        setBioTranslations(existing.data.bio_translations ?? {});
+        setPortfolioLinks(existing.data.portfolio_links ?? []);
       }
     }
   }, [existing.data]);
+
+  useEffect(() => {
+    if (completeness.data?.score != null) setCompletenessScore(completeness.data.score);
+  }, [completeness.data]);
 
   if (opt.error || existing.error) return (
     <Sheet visible onClose={onClose} title={t('opw.wiz.title')}>
@@ -68,6 +103,13 @@ export function OfficialProfileWizard({ onClose: close, onDone, toast: say, onOp
   const sportOpts = O.sports.map((s) => ({ value: s.id, label: `${s.emoji ?? '🏅'} ${s.name}` }));
   const p = profile ?? {};
 
+  const refreshCompleteness = async () => {
+    try {
+      const r = await api.get('/me/official-profile/completeness');
+      if (r?.score != null) setCompletenessScore(r.score);
+    } catch (_) {}
+  };
+
   const save = async (patch, to) => {
     try {
       const row = await api.post('/me/official-profile', {
@@ -78,7 +120,24 @@ export function OfficialProfileWizard({ onClose: close, onDone, toast: say, onOp
       setProfile(row);
       toast?.(t('opw.wiz.saved'));
       if (to != null) setStep(to);
+      refreshCompleteness();
       return row;
+    } catch (e) { throw new Error(explain(e)); }
+  };
+
+  const saveBioTranslations = async (translations) => {
+    try {
+      await api.put('/me/official-profile/bio-translations', { translations });
+      setBioTranslations(translations);
+      refreshCompleteness();
+    } catch (e) { throw new Error(explain(e)); }
+  };
+
+  const savePortfolio = async (links) => {
+    try {
+      await api.put('/me/official-profile/portfolio', { links });
+      setPortfolioLinks(links);
+      refreshCompleteness();
     } catch (e) { throw new Error(explain(e)); }
   };
 
@@ -123,6 +182,8 @@ export function OfficialProfileWizard({ onClose: close, onDone, toast: say, onOp
         onJump={(i) => { if (p.id || i === 0) setStep(i); }}
       />
 
+      <CompletenessBar score={completenessScore} />
+
       {/* Step 0: Identity */}
       {step === 0 && (
         <View style={{ gap: 14 }}>
@@ -137,8 +198,15 @@ export function OfficialProfileWizard({ onClose: close, onDone, toast: say, onOp
             { key: 'preferred_pronouns', label: t('opw.f.pronouns'), type: 'chips', options: ['he/him','she/her','they/them','prefer_not_to_say'].map((v) => ({ value: v, label: t(`opw.pronoun.${v}`) })), optional: true },
           ]}
           onSubmit={async (x) => {
-            await save({ display_name_pref: x.display_name_pref || null, bio: x.bio || null, preferred_pronouns: x.preferred_pronouns || null, ...(nat != null ? { nationality: nat || null } : {}) }, 1);
+            await save({ display_name_pref: x.display_name_pref || undefined, bio: x.bio || undefined, preferred_pronouns: x.preferred_pronouns || null, ...(nat != null ? { nationality: nat || null } : {}) }, 1);
           }}
+        />
+        {/* Multi-language bio expander — elite academies search in native language */}
+        <LanguageBioExpander
+          translations={bioTranslations}
+          activeLang={activeLang}
+          onChangeLang={setActiveLang}
+          onSave={saveBioTranslations}
         />
         </View>
       )}
@@ -170,9 +238,13 @@ export function OfficialProfileWizard({ onClose: close, onDone, toast: say, onOp
         <ExperienceStep profile={p} sportOpts={sportOpts} entries={expEntries} setEntries={setExpEntries} onSave={saveExp} onBack={back} nextLabel={nextLabel(4)} />
       )}
 
-      {/* Step 4: Credentials */}
+      {/* Step 4: Credentials + Compliance */}
       {step === 4 && (
         <View style={{ gap: 12 }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+            <T size={15} weight="800" style={{ flex: 1 }}>{t('opw.cred.section_title')}</T>
+            <Btn small title={t('opw.cred.add')} color={c.paper} ink={c.ink} onPress={() => setAddCred(true)} style={{ alignSelf: 'flex-start' }} accessibilityLabel={t('opw.cred.add')} />
+          </View>
           {!creds.length
             ? <Card color={c.violetSoft}><T size={13}>{t('opw.cred.none')}</T></Card>
             : creds.map((cr) => (
@@ -187,7 +259,6 @@ export function OfficialProfileWizard({ onClose: close, onDone, toast: say, onOp
                 </View>
               </Card>
             ))}
-          <Btn small title={t('opw.cred.add')} color={c.paper} ink={c.ink} onPress={() => setAddCred(true)} style={{ alignSelf: 'flex-start' }} />
           {addCred && (
             <FormSheet visible onClose={() => setAddCred(false)} title={t('opw.cred.add')} submitLabel={t('common.save')}
               initial={{ kind: 'licence' }}
@@ -208,12 +279,15 @@ export function OfficialProfileWizard({ onClose: close, onDone, toast: say, onOp
                 });
                 setCreds((cs) => [...cs, cred]);
                 setAddCred(false);
+                refreshCompleteness();
               }}
             />
           )}
+          {/* Compliance checklist — elite academies require structured mandatory items */}
+          <ComplianceChecklist profileId={p?.id} onUpdate={() => refreshCompleteness()} />
           <View style={{ flexDirection: 'row', gap: 8 }}>
-            <Btn title={t('common.back')} color={c.paper} ink={c.ink} onPress={back} />
-            <Btn title={nextLabel(5)} onPress={async () => { await save({ step_reached: 5 }, 5); }} />
+            <Btn title={t('common.back')} color={c.paper} ink={c.ink} onPress={back} accessibilityLabel={t('common.back')} />
+            <Btn title={nextLabel(5)} onPress={async () => { await save({ step_reached: 5 }, 5); }} accessibilityLabel={nextLabel(5)} />
           </View>
           <T size={11} color={c.mute}>{t('opw.wiz.autosave')}</T>
         </View>
@@ -265,7 +339,7 @@ export function OfficialProfileWizard({ onClose: close, onDone, toast: say, onOp
 
       {/* Step 9: Review & Publish */}
       {step === 9 && (
-        <ReviewStep profile={p} onBack={back}
+        <ReviewStep profile={p} onBack={back} portfolioLinks={portfolioLinks}
           onPublish={async () => {
             const row = await api.post('/me/official-profile/publish', { row_version: p.row_version });
             setProfile((pr) => ({ ...pr, ...row }));
@@ -276,6 +350,14 @@ export function OfficialProfileWizard({ onClose: close, onDone, toast: say, onOp
             const row = await api.post('/me/official-profile/retract', { row_version: p.row_version });
             setProfile((pr) => ({ ...pr, ...row }));
             toast?.(t('opw.retracted'));
+          }}
+          onAddPortfolio={async (link) => {
+            const updated = [...portfolioLinks, link].slice(0, 10);
+            await savePortfolio(updated);
+          }}
+          onRemovePortfolio={async (idx) => {
+            const updated = portfolioLinks.filter((_, i) => i !== idx);
+            await savePortfolio(updated);
           }}
         />
       )}
@@ -521,9 +603,11 @@ function RatesStep({ onOpen, onNext, onBack, nextLabel }) {
 }
 
 // ---------------------------------------------------------------- Review & Publish step
-function ReviewStep({ profile: p, onBack, onPublish, onRetract }) {
+function ReviewStep({ profile: p, portfolioLinks, onBack, onPublish, onRetract, onAddPortfolio, onRemovePortfolio }) {
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState(null);
+  const [showAddPortfolio, setShowAddPortfolio] = useState(false);
+  const compliance = useLoad(() => (p?.id ? api.get('/me/official-profile/compliance').catch(() => null) : Promise.resolve(null)), [p?.id]);
   const live = p?.status === 'published';
   const checks = [
     { label: t('opw.review.has_sport'), ok: (p?.sports?.length ?? 0) > 0 },
@@ -534,6 +618,9 @@ function ReviewStep({ profile: p, onBack, onPublish, onRetract }) {
   ];
   const blockers = checks.filter((ch) => !ch.ok);
   const pct = Math.round((checks.filter((ch) => ch.ok).length / checks.length) * 100);
+  const complianceAlerts = compliance.data?.items?.filter((i) => ['expiring_soon','expired','missing'].includes(i.status)) ?? [];
+  const blockingCompliance = complianceAlerts.filter((i) => i.mandatory && ['expired','missing'].includes(i.status));
+  const links = portfolioLinks ?? [];
 
   return (
     <View style={{ gap: 12 }}>
@@ -554,22 +641,253 @@ function ReviewStep({ profile: p, onBack, onPublish, onRetract }) {
           {checks.map((ch) => <T key={ch.label} size={13}>✓ {ch.label}</T>)}
         </Card>
       )}
+
+      {/* Compliance alerts */}
+      {complianceAlerts.length > 0 && (
+        <Card color={blockingCompliance.length ? c.orangeSoft : c.sunSoft}>
+          <T weight="800" style={{ marginBottom: 6 }}>{t('opw.compliance.alerts_title')}</T>
+          {complianceAlerts.map((item) => (
+            <View key={item.kind} style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+              <T size={16}>{COMPLIANCE_ICONS[item.kind] ?? '📄'}</T>
+              <View style={{ flex: 1 }}>
+                <T size={13} weight="700">{t(`opw.compliance.kind.${item.kind}`)}</T>
+                <T size={12} color={c.mute}>
+                  {item.status === 'expiring_soon' ? t('opw.compliance.expires_in', { n: item.days_until_expiry })
+                   : item.status === 'expired' ? t('opw.compliance.expired_on', { d: item.expires_at ?? '' })
+                   : t(`opw.compliance.status.${item.status}`)}
+                </T>
+              </View>
+              <Tag label={t(`opw.compliance.status.${item.status}`)}
+                color={item.status === 'ok' ? c.mintSoft : item.status === 'expiring_soon' ? c.sunSoft : c.orangeSoft} />
+            </View>
+          ))}
+          {blockingCompliance.length > 0 && (
+            <T size={12} color={c.red} style={{ marginTop: 4 }}>{t('opw.compliance.blocking', { n: blockingCompliance.length })}</T>
+          )}
+        </Card>
+      )}
+
+      {/* Career Portfolio */}
+      <Card>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 6 }}>
+          <T weight="800" style={{ flex: 1 }}>{t('opw.portfolio.title')}</T>
+          {links.length < 10 && (
+            <Btn small title={t('opw.portfolio.add')} color={c.paper} ink={c.ink}
+              onPress={() => setShowAddPortfolio(true)} accessibilityLabel={t('opw.portfolio.add')} />
+          )}
+        </View>
+        {!links.length
+          ? <T size={13} color={c.mute}>{t('opw.portfolio.empty')}</T>
+          : links.map((lnk, i) => (
+            <View key={i} style={{ flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 4, borderBottomWidth: i < links.length - 1 ? 1 : 0, borderBottomColor: c.line }}>
+              <View style={{ flex: 1 }}>
+                <T size={13} weight="700">{lnk.label || t(`opw.portfolio.kind.${lnk.kind}`)}</T>
+                <T size={11} color={c.mute} numberOfLines={1}>{lnk.url}</T>
+              </View>
+              <Tag label={t(`opw.portfolio.kind.${lnk.kind}`)} color={c.violetSoft} />
+              <Btn small title={t('opw.portfolio.remove')} color={c.paper} ink={c.red}
+                onPress={() => onRemovePortfolio?.(i)} accessibilityLabel={t('opw.portfolio.remove')} />
+            </View>
+          ))
+        }
+        {links.length >= 10 && <T size={11} color={c.mute} style={{ marginTop: 4 }}>{t('opw.portfolio.max')}</T>}
+      </Card>
+
+      {showAddPortfolio && (
+        <FormSheet visible onClose={() => setShowAddPortfolio(false)}
+          title={t('opw.portfolio.add')} submitLabel={t('common.save')}
+          initial={{ kind: 'video', label: '', url: '' }}
+          fields={[
+            { key: 'kind', label: t('opw.f.cred_kind'), type: 'chips', options: PORTFOLIO_KINDS.map((v) => ({ value: v, label: t(`opw.portfolio.kind.${v}`) })) },
+            { key: 'label', label: t('opw.portfolio.label_placeholder'), optional: true },
+            { key: 'url', label: 'URL', hint: t('opw.portfolio.url_placeholder') },
+          ]}
+          onSubmit={async (x) => {
+            await onAddPortfolio?.({ kind: x.kind, label: x.label || '', url: x.url });
+            setShowAddPortfolio(false);
+          }}
+        />
+      )}
+
       {err ? <T color={c.red} size={13}>{err}</T> : null}
       <View style={{ flexDirection: 'row', gap: 8, flexWrap: 'wrap' }}>
-        <Btn title={t('common.back')} color={c.paper} ink={c.ink} onPress={onBack} />
+        <Btn title={t('common.back')} color={c.paper} ink={c.ink} onPress={onBack} accessibilityLabel={t('common.back')} />
         {!live && (
-          <Btn title={t('opw.publish')} disabled={blockers.length > 0} busy={busy} onPress={async () => {
+          <Btn title={t('opw.publish')} disabled={blockers.length > 0 || blockingCompliance.length > 0} busy={busy} onPress={async () => {
             setBusy(true);
             try { await onPublish(); } catch (e) { setErr(e.message); } finally { setBusy(false); }
-          }} />
+          }} accessibilityLabel={t('opw.publish')} />
         )}
         {live && (
           <Btn title={t('opw.retract')} color={c.paper} ink={c.red} busy={busy} onPress={async () => {
             setBusy(true);
             try { await onRetract(); } catch (e) { setErr(e.message); } finally { setBusy(false); }
-          }} />
+          }} accessibilityLabel={t('opw.retract')} />
         )}
       </View>
+    </View>
+  );
+}
+
+// ---------------------------------------------------------------- LanguageBioExpander
+// Lets elite officials add bio text in 12 platform languages so international academies can find them in their native script.
+function LanguageBioExpander({ translations, activeLang, onChangeLang, onSave }) {
+  const [expanded, setExpanded] = useState(false);
+  const [local, setLocal] = useState(translations ?? {});
+  const [saving, setSaving] = useState(false);
+  const [saved, setSaved] = useState(false);
+
+  useEffect(() => { setLocal(translations ?? {}); }, [translations]);
+
+  const covered = Object.keys(local).filter((k) => (local[k] ?? '').trim().length > 0);
+
+  const handleSave = async () => {
+    setSaving(true);
+    try {
+      await onSave(local);
+      setSaved(true);
+      setTimeout(() => setSaved(false), 2000);
+    } finally { setSaving(false); }
+  };
+
+  return (
+    <Card style={{ gap: 8 }}>
+      <View accessible accessibilityRole="button" accessibilityLabel={t('opw.bio_langs.title')}
+        style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}
+        onTouchEnd={() => setExpanded((v) => !v)}>
+        <T weight="800" style={{ flex: 1 }}>{t('opw.bio_langs.title')}</T>
+        {covered.length > 0 && <Tag label={t('opw.bio_langs.coverage', { n: covered.length })} color={c.mintSoft} />}
+        <T size={18} color={c.mute}>{expanded ? '▲' : '▼'}</T>
+      </View>
+      {!expanded ? (
+        <T size={12} color={c.mute}>{t('opw.bio_langs.hint')}</T>
+      ) : (
+        <View style={{ gap: 10 }}>
+          <T size={12} color={c.mute}>{t('opw.bio_langs.hint')}</T>
+          {/* Language tab strip */}
+          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
+            {PLATFORM_LANGS.map((lang) => {
+              const hasBio = (local[lang] ?? '').trim().length > 0;
+              return (
+                <Btn key={lang} small title={LANG_LABELS[lang]} accessibilityLabel={LANG_LABELS[lang]}
+                  color={activeLang === lang ? c.pink : hasBio ? c.mintSoft : c.paper}
+                  ink={activeLang === lang ? '#fff' : c.ink}
+                  onPress={() => onChangeLang(lang)} />
+              );
+            })}
+          </View>
+          {/* Text area for active language — right-to-left for Urdu */}
+          <View style={{ borderWidth: 1, borderColor: c.line, borderRadius: 10, padding: 10, minHeight: 100,
+            ...(activeLang === 'ur' ? { writingDirection: 'rtl' } : {}) }}>
+            <FormSheet inline visible
+              initial={{ bio: local[activeLang] ?? '' }}
+              fields={[{ key: 'bio', label: t('opw.bio_langs.placeholder', { lang: LANG_LABELS[activeLang] }), type: 'multiline', optional: true }]}
+              onSubmit={(x) => setLocal((l) => ({ ...l, [activeLang]: x.bio || '' }))}
+              onClose={() => {}}
+            />
+          </View>
+          <Btn title={saved ? t('opw.bio_langs.saved') : t('opw.bio_langs.save')}
+            color={saved ? c.mintSoft : c.pink} ink={saved ? c.ink : '#fff'}
+            loading={saving} onPress={handleSave}
+            accessibilityLabel={t('opw.bio_langs.save')} />
+        </View>
+      )}
+    </Card>
+  );
+}
+
+// ---------------------------------------------------------------- ComplianceChecklist
+// Structured mandatory-clearance tracking for elite academies: DBS, safeguarding, fitness, insurance, anti-corruption.
+// Reads from /me/official-profile/compliance and writes via /me/official-profile/compliance/:kind.
+function ComplianceChecklist({ profileId, onUpdate }) {
+  const q = useLoad(() => (profileId ? api.get('/me/official-profile/compliance').catch(() => null) : Promise.resolve(null)), [profileId]);
+  const [uploadKind, setUploadKind] = useState(null);
+  const [err, setErr] = useState(null);
+
+  if (!profileId) return null;
+  if (!q.data && !q.error) return null;
+
+  const items = q.data?.items ?? [];
+
+  const statusColor = (s) => ({
+    ok: c.mintSoft, expiring_soon: c.sunSoft, expired: c.orangeSoft, missing: c.violetSoft, suspended: c.orangeSoft,
+  }[s] ?? c.violetSoft);
+
+  return (
+    <View style={{ gap: 8, marginTop: 8 }}>
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+        <T size={15} weight="800" style={{ flex: 1 }}>{t('opw.compliance.title')}</T>
+        {q.data?.blocking_count > 0 && (
+          <Tag label={`${q.data.blocking_count} blocking`} color={c.orangeSoft} />
+        )}
+      </View>
+      <T size={12} color={c.mute}>{t('opw.compliance.hint')}</T>
+      {items.map((item) => (
+        <Card key={item.kind} pad={12} color={statusColor(item.status)}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+            <T size={22}>{COMPLIANCE_ICONS[item.kind] ?? '📄'}</T>
+            <View style={{ flex: 1 }}>
+              <T weight="800" size={13}>{t(`opw.compliance.kind.${item.kind}`)}</T>
+              {item.credential_name ? <T size={12} color={c.mute}>{item.credential_name}{item.issuing_body ? ` · ${item.issuing_body}` : ''}</T> : null}
+              {item.status === 'expiring_soon' && item.days_until_expiry != null
+                ? <T size={12} color={c.sun}>{t('opw.compliance.expires_in', { n: item.days_until_expiry })}</T>
+                : item.status === 'expired' && item.expires_at
+                  ? <T size={12} color={c.red}>{t('opw.compliance.expired_on', { d: item.expires_at })}</T>
+                  : null}
+            </View>
+            <View style={{ alignItems: 'flex-end', gap: 4 }}>
+              <Tag label={t(`opw.compliance.status.${item.status}`)} color={statusColor(item.status)} />
+              <Btn small title={item.status === 'missing' ? t('opw.compliance.add') : t('opw.compliance.update')}
+                color={c.paper} ink={c.ink} onPress={() => setUploadKind(item.kind)}
+                accessibilityLabel={item.status === 'missing' ? t('opw.compliance.add') : t('opw.compliance.update')} />
+            </View>
+          </View>
+        </Card>
+      ))}
+      {/* COMPLIANCE_KINDS not yet in items (fresh profile) */}
+      {COMPLIANCE_KINDS.filter((k) => !items.find((i) => i.kind === k)).map((k) => (
+        <Card key={k} pad={12} color={c.violetSoft}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+            <T size={22}>{COMPLIANCE_ICONS[k] ?? '📄'}</T>
+            <View style={{ flex: 1 }}>
+              <T weight="800" size={13}>{t(`opw.compliance.kind.${k}`)}</T>
+            </View>
+            <View style={{ alignItems: 'flex-end', gap: 4 }}>
+              <Tag label={t('opw.compliance.status.missing')} color={c.violetSoft} />
+              <Btn small title={t('opw.compliance.add')} color={c.paper} ink={c.ink}
+                onPress={() => setUploadKind(k)} accessibilityLabel={t('opw.compliance.add')} />
+            </View>
+          </View>
+        </Card>
+      ))}
+      {err ? <T color={c.red} size={13}>{err}</T> : null}
+      {uploadKind && (
+        <FormSheet visible onClose={() => setUploadKind(null)}
+          title={`${t('opw.compliance.add')} — ${t(`opw.compliance.kind.${uploadKind}`)}`}
+          submitLabel={t('common.save')}
+          initial={{ issuing_body: '', credential_name: '', issue_date: '', expiry_date: '', mandatory: false, alert_days_before: 30 }}
+          fields={[
+            { key: 'issuing_body', label: t('opw.f.issuing_body') },
+            { key: 'credential_name', label: t('opw.f.cred_name') },
+            { key: 'issue_date', label: t('opw.f.issue_date'), type: 'date', optional: true },
+            { key: 'expiry_date', label: t('opw.f.expiry_date'), type: 'date', optional: true },
+            { key: 'mandatory', label: 'Mandatory for assignments', type: 'switch', optional: true },
+            { key: 'alert_days_before', label: 'Alert days before expiry', type: 'stepper', min: 7, max: 180, step: 7, optional: true },
+          ]}
+          onSubmit={async (x) => {
+            try {
+              await api.put(`/me/official-profile/compliance/${uploadKind}`, {
+                kind: uploadKind, issuing_body: x.issuing_body, credential_name: x.credential_name,
+                issue_date: x.issue_date || undefined, expiry_date: x.expiry_date || undefined,
+                mandatory: x.mandatory, alert_days_before: x.alert_days_before,
+              });
+              setUploadKind(null);
+              q.reload();
+              onUpdate?.();
+            } catch (e) { setErr(e?.message ?? 'Save failed'); }
+          }}
+        />
+      )}
     </View>
   );
 }

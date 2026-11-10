@@ -97,3 +97,87 @@ test('saving the wizard never archives rate cards kept in the catalogue', async 
   const cards = must(await api('GET', '/me/official-profile/rate-cards/catalog', { token: ref.token }));
   assert.deepEqual(cards.map((c) => [c.id, c.status]), [[a.id, 'active']], 'moving on from the rates step leaves every card in place');
 });
+
+test('row_version optimistic-concurrency conflict returns 409', async () => {
+  const ref = await signup(['referee']);
+  const p1 = must(await api('POST', '/me/official-profile', { token: ref.token, body: { display_name_pref: 'A', step_reached: 1 } }), 201);
+  const p2 = must(await api('POST', '/me/official-profile', { token: ref.token, body: { row_version: p1.row_version, display_name_pref: 'B', step_reached: 2 } }));
+  assert.equal(p2.status, 'draft');
+  // now try with the stale row_version — must conflict
+  const r = await api('POST', '/me/official-profile', { token: ref.token, body: { row_version: p1.row_version, display_name_pref: 'C', step_reached: 3 } });
+  assert.equal(r.status, 409, 'stale row_version must return 409');
+});
+
+test('unauthenticated access to official profile returns 401', async () => {
+  const r = await api('GET', '/me/official-profile');
+  assert.equal(r.status, 401);
+});
+
+test('another user cannot see my official profile (existence not leaked)', async () => {
+  const ref = await signup(['referee']), other = await signup(['referee']);
+  must(await api('POST', '/me/official-profile', { token: ref.token, body: { display_name_pref: 'Private', step_reached: 1 } }), 201);
+  // The profile endpoint is scoped to the authenticated user, so other sees 404 not 403
+  const r = await api('GET', '/me/official-profile', { token: other.token });
+  assert.equal(r.status, 404, 'other user gets 404 not existence-revealing 403');
+});
+
+test('compliance endpoint returns missing for each kind on a fresh profile', async () => {
+  const ref = await signup(['referee']);
+  must(await api('POST', '/me/official-profile', { token: ref.token, body: { display_name_pref: 'Fresh', step_reached: 1 } }), 201);
+  const comp = must(await api('GET', '/me/official-profile/compliance', { token: ref.token }));
+  assert.ok(Array.isArray(comp.items), 'items array returned');
+  for (const item of comp.items) {
+    assert.equal(item.status, 'missing', `${item.kind} should be missing on a fresh profile`);
+  }
+  assert.equal(comp.blocking_count, 0, 'fresh profile has no mandatory blocking items by default');
+});
+
+test('upsert_compliance_credential persists and refreshes compliance summary', async () => {
+  const ref = await signup(['referee']);
+  must(await api('POST', '/me/official-profile', { token: ref.token, body: { display_name_pref: 'CompTest', step_reached: 1 } }), 201);
+  const cred = must(await api('PUT', '/me/official-profile/compliance/dbs_police', { token: ref.token, body: {
+    kind: 'dbs_police', issuing_body: 'Disclosure and Barring Service', credential_name: 'Enhanced DBS',
+    issue_date: '2024-01-15', expiry_date: '2027-01-14', mandatory: true, alert_days_before: 60,
+  } }));
+  assert.equal(cred.compliance_kind, 'dbs_police');
+  assert.equal(cred.status, 'active');
+  const comp = must(await api('GET', '/me/official-profile/compliance', { token: ref.token }));
+  const dbs = comp.items.find((i) => i.kind === 'dbs_police');
+  assert.ok(dbs, 'dbs_police item in compliance list');
+  assert.equal(dbs.status, 'ok', 'just-uploaded dbs should be ok');
+  assert.equal(dbs.mandatory, true);
+});
+
+test('completeness score increases monotonically as wizard steps are completed', async () => {
+  const ref = await signup(['referee']);
+  const opts = must(await api('GET', '/me/official-profile/options', { token: ref.token }));
+  const sport = opts.sports[0];
+  must(await api('POST', '/me/official-profile', { token: ref.token, body: { step_reached: 1 } }), 201);
+  const c0 = must(await api('GET', '/me/official-profile/completeness', { token: ref.token }));
+  must(await api('POST', '/me/official-profile', { token: ref.token, body: { display_name_pref: 'Growth', bio: 'Pro referee', step_reached: 2 } }));
+  const c1 = must(await api('GET', '/me/official-profile/completeness', { token: ref.token }));
+  must(await api('PUT', '/me/official-profile/sports', { token: ref.token, body: { sports: [{ sport_id: sport.id, role: 'referee', primary_sport: true }] } }));
+  const c2 = must(await api('GET', '/me/official-profile/completeness', { token: ref.token }));
+  assert.ok(c1.score >= c0.score, 'score after identity step >= initial');
+  assert.ok(c2.score >= c1.score, 'score after sports step >= identity step');
+  assert.ok(Array.isArray(c2.guidance), 'guidance array returned');
+});
+
+test('portfolio links: save and enforce max 10 limit', async () => {
+  const ref = await signup(['referee']);
+  must(await api('POST', '/me/official-profile', { token: ref.token, body: { display_name_pref: 'Portfolio', step_reached: 1 } }), 201);
+  const links = Array.from({ length: 10 }, (_, i) => ({ kind: 'video', label: `Match ${i+1}`, url: `https://example.com/v${i+1}` }));
+  must(await api('PUT', '/me/official-profile/portfolio', { token: ref.token, body: { links } }));
+  const p = must(await api('GET', '/me/official-profile', { token: ref.token }));
+  assert.equal(p.portfolio_links.length, 10);
+  // 11 links should be rejected
+  const r11 = await api('PUT', '/me/official-profile/portfolio', { token: ref.token, body: { links: [...links, { kind: 'article', label: 'Extra', url: 'https://extra.com' }] } });
+  assert.equal(r11.status, 400, '11 links should be rejected');
+});
+
+test('MCP parity: new godmode capabilities are registered (get_official_compliance, upsert_compliance_credential, get_compliance_alerts, get_official_profile_completeness, save_official_portfolio, save_official_bio_translations)', () => {
+  const names = new Set(capabilities.map((c) => c.name));
+  for (const name of ['get_official_compliance', 'upsert_compliance_credential', 'get_compliance_alerts', 'get_official_profile_completeness', 'save_official_portfolio', 'save_official_bio_translations']) {
+    assert.ok(names.has(name), `${name} is registered (REST + MCP)`);
+  }
+});

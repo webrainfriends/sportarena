@@ -15781,6 +15781,51 @@ export default {
   'opw.view.sports': 'Sports & Roles',
   'opw.view.credentials': 'Credentials',
   'opw.view.rates': 'Rate Cards',
+  'opw.cred.section_title': 'Credentials',
+  'opw.completeness.label': 'Profile completeness',
+  'opw.completeness.a11y': 'Profile {{pct}} percent complete',
+  'opw.completeness.guidance_title': 'Complete your profile',
+  'opw.bio_langs.title': 'Bio in other languages',
+  'opw.bio_langs.hint': 'Elite academies search in native script. Add your bio in the languages you work in.',
+  'opw.bio_langs.placeholder': 'Write a short professional bio in {{lang}}…',
+  'opw.bio_langs.save': 'Save bio',
+  'opw.bio_langs.saved': 'Bio saved',
+  'opw.bio_langs.coverage': '{{n}} language(s) covered',
+  'opw.compliance.title': 'Compliance & Clearances',
+  'opw.compliance.hint': 'Mandatory for elite academies — your compliance status is visible to organisers.',
+  'opw.compliance.kind.dbs_police': 'DBS / Police Check',
+  'opw.compliance.kind.safeguarding': 'Safeguarding Certificate',
+  'opw.compliance.kind.fitness_test': 'Fitness Test',
+  'opw.compliance.kind.insurance': 'Public Liability Insurance',
+  'opw.compliance.kind.anti_corruption': 'Anti-Corruption Declaration',
+  'opw.compliance.kind.medical': 'Medical Clearance',
+  'opw.compliance.kind.other_compliance': 'Other Compliance',
+  'opw.compliance.status.ok': 'Valid',
+  'opw.compliance.status.expiring_soon': 'Expiring soon',
+  'opw.compliance.status.expired': 'Expired',
+  'opw.compliance.status.missing': 'Missing',
+  'opw.compliance.status.suspended': 'Suspended',
+  'opw.compliance.expires_in': 'Expires in {{n}} days',
+  'opw.compliance.expired_on': 'Expired {{d}}',
+  'opw.compliance.add': 'Upload clearance',
+  'opw.compliance.update': 'Update',
+  'opw.compliance.alerts_title': 'Compliance Alerts',
+  'opw.compliance.alerts_clear': 'All clearances valid',
+  'opw.compliance.blocking': '{{n}} mandatory clearance(s) blocking publish',
+  'opw.portfolio.title': 'Career Portfolio',
+  'opw.portfolio.hint': 'Add links to match footage, referee reports, media coverage, or interviews. Up to 10 links.',
+  'opw.portfolio.kind.video': 'Match footage',
+  'opw.portfolio.kind.article': 'Article',
+  'opw.portfolio.kind.match_report': 'Official report',
+  'opw.portfolio.kind.interview': 'Interview',
+  'opw.portfolio.kind.other': 'Other',
+  'opw.portfolio.add': 'Add link',
+  'opw.portfolio.label_placeholder': 'e.g. Wimbledon 2024 Final',
+  'opw.portfolio.url_placeholder': 'https://…',
+  'opw.portfolio.empty': 'No portfolio links yet',
+  'opw.portfolio.count': '{{n}} link(s)',
+  'opw.portfolio.remove': 'Remove',
+  'opw.portfolio.max': 'Maximum 10 links reached',
   'nav.title.OfficialProfileWizard': 'Official Profile Setup',
   'nav.title.OfficialProfileView': 'Official Profile',
   'nav.title.RateCardCatalog': 'Rate Cards', // machine draft, reviewed: false
@@ -16362,108 +16407,146 @@ export default {
   'oi.inbox.payout_complete': 'Your invoice has been paid.', // reviewed: false
   // otax keys — machine-translated, reviewed: false
   'nav.title.OfficialTax': 'कर और आय',
-  'otax.title': 'कर और आय',
-  'otax.tab.profile': 'कर प्रोफ़ाइल',
-  'otax.tab.earnings': 'आय',
-  'otax.tab.invoices': 'चालान',
-  'otax.tab.statements': 'विवरण',
-  'otax.profile.heading': 'कर प्रोफ़ाइल',
-  'otax.profile.empty': 'अभी तक कोई कर प्रोफ़ाइल सेट नहीं की गई है।',
-  'otax.profile.edit': 'कर प्रोफ़ाइल संपादित करें',
-  'otax.profile.legal_name': 'कानूनी नाम',
-  'otax.profile.tax_country': 'कर देश / क्षेत्राधिकार',
-  'otax.profile.tax_regime': 'कर व्यवस्था',
-  'otax.profile.registration_status': 'पंजीकरण स्थिति',
-  'otax.profile.registration_id': 'पंजीकरण / VAT / GST संख्या',
-  'otax.profile.price_display': 'मूल्य प्रदर्शन',
-  'otax.profile.price_display.inclusive': 'कर-समावेशी',
-  'otax.profile.price_display.exclusive': 'कर-अनन्य',
-  'otax.profile.withholding': 'स्रोत पर कर लागू',
-  'otax.profile.withholding_rate': 'कटौती दर (%)',
-  'otax.profile.bank_name': 'बैंक का नाम',
-  'otax.profile.bank_account': 'बैंक खाता संख्या',
-  'otax.profile.bank_routing': 'रूटिंग / SWIFT / BSB',
-  'otax.profile.save': 'कर प्रोफ़ाइल सहेजें',
-  'otax.profile.saved': 'कर प्रोफ़ाइल सहेजी गई',
-  'otax.rate.heading': 'कर दरें',
-  'otax.rate.add': 'दर जोड़ें',
-  'otax.rate.class': 'कर वर्ग',
-  'otax.rate.percent': 'दर (%)',
-  'otax.rate.source': 'स्रोत / संदर्भ',
-  'otax.rate.effective_from': 'से प्रभावी',
-  'otax.rate.effective_to': 'तक प्रभावी (वैकल्पिक)',
-  'otax.rate.saved': 'कर दर सहेजी गई',
-  'otax.earnings.heading': 'आय रिपोर्ट',
-  'otax.earnings.period_from': 'से',
-  'otax.earnings.period_to': 'तक',
-  'otax.earnings.apply': 'लागू करें',
-  'otax.earnings.empty': 'इस अवधि के लिए कोई आय नहीं मिली।',
-  'otax.earnings.gross': 'सकल',
-  'otax.earnings.tax': 'कर',
-  'otax.earnings.net': 'निवल',
-  'otax.earnings.total': 'कुल',
-  'otax.earnings.download': 'सारांश डाउनलोड करें',
-  'otax.invoices.heading': 'कर चालान',
-  'otax.invoices.generate': 'चालान बनाएं',
-  'otax.invoices.empty': 'अभी तक कोई चालान नहीं।',
-  'otax.invoice.period_from': 'अवधि से',
-  'otax.invoice.period_to': 'अवधि तक',
-  'otax.invoice.currency': 'मुद्रा',
-  'otax.invoice.kind': 'दस्तावेज़ प्रकार',
-  'otax.invoice.kind.invoice': 'कर चालान',
-  'otax.invoice.kind.receipt': 'रसीद',
-  'otax.invoice.kind.credit_note': 'क्रेडिट नोट',
-  'otax.invoice.notes': 'नोट्स',
-  'otax.invoice.generate': 'बनाएं',
-  'otax.invoice.status.open': 'खुला',
-  'otax.invoice.status.paid': 'भुगतान किया',
-  'otax.invoice.status.void': 'रद्द',
-  'otax.invoice.mark_paid': 'भुगतान चिह्नित करें',
-  'otax.invoice.paid_note': 'भुगतान संदर्भ',
-  'otax.invoice.void': 'चालान रद्द करें',
-  'otax.invoice.void_reason': 'रद्द करने का कारण',
-  'otax.invoice.download': 'PDF डाउनलोड करें',
-  'otax.invoice.total_gross': 'कुल सकल',
-  'otax.invoice.total_tax': 'कुल कर',
-  'otax.invoice.total_net': 'देय निवल',
-  'otax.invoice.marked_paid': 'चालान भुगतान के रूप में चिह्नित',
-  'otax.invoice.voided': 'चालान रद्द किया गया',
-  'otax.statements.heading': 'वार्षिक विवरण',
-  'otax.statements.year': 'वर्ष',
-  'otax.statements.granularity': 'विस्तार स्तर',
-  'otax.statements.granularity.month': 'मासिक',
-  'otax.statements.granularity.quarter': 'त्रैमासिक',
-  'otax.statements.apply': 'बनाएं',
-  'otax.statements.empty': 'इस अवधि के लिए कोई डेटा नहीं।',
-  'otax.statements.period': 'अवधि',
-  'otax.statements.gross': 'सकल',
-  'otax.statements.tax': 'कर',
-  'otax.statements.net': 'निवल',
-  'otax.statements.cumulative': 'संचयी',
-  'otax.statements.download': 'विवरण डाउनलोड करें',
-  'otax.jurisdiction.heading': 'क्षेत्राधिकार कर दरें',
-  'otax.jurisdiction.country': 'देश',
-  'otax.jurisdiction.regime': 'व्यवस्था',
-  'otax.jurisdiction.rate': 'मानक दर',
-  'otax.jurisdiction.threshold': 'पंजीकरण सीमा',
-  'otax.jurisdiction.notes': 'नोट्स',
-  'otax.audit.heading': 'ऑडिट लॉग',
-  'otax.audit.empty': 'कोई ऑडिट घटना दर्ज नहीं।',
-  'otax.audit.event': 'घटना',
-  'otax.audit.at': 'पर',
-  'otax.error.no_profile': 'चालान बनाने से पहले कृपया अपनी कर प्रोफ़ाइल पूरी करें।',
-  'otax.error.no_rate': 'चालान बनाने से पहले कृपया अपनी कर दर जोड़ें।',
-  'otax.error.paid_void': 'भुगतान किया गया चालान रद्द नहीं किया जा सकता।',
-  'otax.error.already_void': 'यह चालान पहले से रद्द है।',
-  'otax.regime.gst': 'जीएसटी',
-  'otax.regime.vat': 'वैट',
-  'otax.regime.sales_tax': 'बिक्री कर',
-  'otax.regime.service_tax': 'सेवा कर',
-  'otax.regime.none': 'कोई नहीं / छूट',
-  'otax.reg_status.registered': 'पंजीकृत',
-  'otax.reg_status.not_registered': 'पंजीकृत नहीं',
-  'otax.reg_status.exempt': 'छूट प्राप्त',
-  'otax.reg_status.pending': 'पंजीकरण प्रतीक्षित',
+  'otax.title': 'Tax & Earnings',  // reviewed: false
+  'otax.subtitle': 'Tax profile and earnings summary',  // reviewed: false
+  'otax.tab.profile': 'Tax Profile',  // reviewed: false
+  'otax.tab.earnings': 'Earnings',  // reviewed: false
+  'otax.tab.invoices': 'Invoices',  // reviewed: false
+  'otax.tab.statements': 'Statements',  // reviewed: false
+  'otax.edit': 'Edit',  // reviewed: false
+  'otax.save': 'Save',  // reviewed: false
+  'otax.profile.saved': 'Tax profile saved',  // reviewed: false
+  'otax.profile.complete': 'Tax profile complete',  // reviewed: false
+  'otax.profile.setup': 'Set up tax profile',  // reviewed: false
+  'otax.profile.none_title': 'No tax profile yet',  // reviewed: false
+  'otax.profile.none_sub': 'Add your payee details and tax registration so organisers can issue you invoices.',  // reviewed: false
+  'otax.profile.edit_title': 'Edit tax profile',  // reviewed: false
+  'otax.profile.edit_notice': 'Changes apply to new invoices. Past invoices are not reissued.',  // reviewed: false
+  'otax.field.payee_type': 'Payee type',  // reviewed: false
+  'otax.field.legal_name': 'Legal name',  // reviewed: false
+  'otax.field.tax_country': 'Tax country',  // reviewed: false
+  'otax.field.tax_regime': 'Tax regime',  // reviewed: false
+  'otax.field.reg_status': 'Registration status',  // reviewed: false
+  'otax.field.reg_id': 'Registration number',  // reviewed: false
+  'otax.field.business_name': 'Business / trading name',  // reviewed: false
+  'otax.field.business_reg': 'Business registration number',  // reviewed: false
+  'otax.field.price_display': 'Prices shown as',  // reviewed: false
+  'otax.field.withholding': 'Withholding tax applies',  // reviewed: false
+  'otax.field.withholding_rate': 'Withholding rate (%)',  // reviewed: false
+  'otax.field.tax_class': 'Default tax class',  // reviewed: false
+  'otax.field.rate_percent': 'Rate (%)',  // reviewed: false
+  'otax.field.source': 'Source',  // reviewed: false
+  'otax.field.kind': 'Type',  // reviewed: false
+  'otax.field.period_from': 'Period from',  // reviewed: false
+  'otax.field.period_to': 'Period to',  // reviewed: false
+  'otax.field.currency': 'Currency',  // reviewed: false
+  'otax.field.paid_note': 'Payment note',  // reviewed: false
+  'otax.field.void_reason': 'Void reason',  // reviewed: false
+  'otax.ph.legal_name': 'Full legal name',  // reviewed: false
+  'otax.ph.tax_country': 'Search country',  // reviewed: false
+  'otax.ph.reg_id': 'e.g. GSTIN, VAT number',  // reviewed: false
+  'otax.ph.source': 'Tax authority or rule',  // reviewed: false
+  'otax.hint.tax_country': 'The country where you are registered for tax',  // reviewed: false
+  'otax.hint.reg_id': 'As shown on your registration certificate',  // reviewed: false
+  "otax.hint.source": "Optional. E.g. 'HMRC VAT Notice 701/36'",  // reviewed: false
+  'otax.err.legal_name': 'Legal name is required',  // reviewed: false
+  'otax.err.tax_country': 'Tax country is required',  // reviewed: false
+  'otax.err.void_reason': 'Please give a reason for voiding',  // reviewed: false
+  'otax.payee.individual': 'Individual',  // reviewed: false
+  'otax.payee.company': 'Company / entity',  // reviewed: false
+  'otax.reg.registered': 'Registered',  // reviewed: false
+  'otax.reg.not_registered': 'Not registered',  // reviewed: false
+  'otax.reg.pending': 'Pending registration',  // reviewed: false
+  'otax.reg.exempt': 'Exempt',  // reviewed: false
+  'otax.regime.none': 'None / Exempt',  // reviewed: false
+  'otax.regime.gst': 'GST',  // reviewed: false
+  'otax.regime.vat': 'VAT',  // reviewed: false
+  'otax.regime.sales_tax': 'Sales Tax',  // reviewed: false
+  'otax.regime.hst': 'HST (Harmonised)',  // reviewed: false
+  'otax.regime.consumption_tax': 'Consumption Tax',  // reviewed: false
+  'otax.class.standard': 'Standard rated',  // reviewed: false
+  'otax.class.zero_rated': 'Zero rated',  // reviewed: false
+  'otax.class.exempt': 'Exempt',  // reviewed: false
+  'otax.class.out_of_scope': 'Out of scope',  // reviewed: false
+  'otax.class.reverse_charge': 'Reverse charge',  // reviewed: false
+  'otax.class.reduced': 'Reduced rate',  // reviewed: false
+  'otax.granularity.month': 'Monthly',  // reviewed: false
+  'otax.granularity.quarter': 'Quarterly',  // reviewed: false
+  'otax.granularity.year': 'Yearly',  // reviewed: false
+  'otax.basis.billed': 'Billed (invoice date)',  // reviewed: false
+  'otax.basis.collected': 'Collected (payment date)',  // reviewed: false
+  'otax.section.payee': 'Payee details',  // reviewed: false
+  'otax.section.rates': 'Tax rates',  // reviewed: false
+  'otax.section.history': 'Invoice history',  // reviewed: false
+  'otax.section.jurisdictions': 'Tax jurisdictions',  // reviewed: false
+  'otax.add_rate': 'Add rate',  // reviewed: false
+  'otax.rates.empty': 'No tax rates set',  // reviewed: false
+  'otax.rates.empty_sub': 'Add a rate for each tax jurisdiction you operate in.',  // reviewed: false
+  'otax.rate.add_title': 'Add tax rate',  // reviewed: false
+  'otax.rate.notice': 'Rates are used to calculate the tax line on your invoices.',  // reviewed: false
+  'otax.rate.saved': 'Tax rate saved',  // reviewed: false
+  'otax.jurisdictions.hint': 'These are the countries where you have issued invoices.',  // reviewed: false
+  'otax.inclusive': 'Tax-inclusive prices',  // reviewed: false
+  'otax.exclusive': 'Tax-exclusive prices',  // reviewed: false
+  'otax.withheld': 'Withholding applies',  // reviewed: false
+  'otax.no_withholding': 'No withholding',  // reviewed: false
+  'otax.from': 'from',  // reviewed: false
+  'otax.all': 'All',  // reviewed: false
+  'otax.fixtures': 'fixtures',  // reviewed: false
+  'otax.tax_abbr': 'TAX',  // reviewed: false
+  'otax.wh_abbr': 'WH',  // reviewed: false
+  'otax.net_abbr': 'NET',  // reviewed: false
+  'otax.disclaimer': 'This summary is generated from platform records and is for your reference only. Consult a tax professional for filing obligations.',  // reviewed: false
+  'otax.status.open': 'Open',  // reviewed: false
+  'otax.status.paid': 'Paid',  // reviewed: false
+  'otax.status.void': 'Void',  // reviewed: false
+  'otax.kind.invoice': 'Invoice',  // reviewed: false
+  'otax.kind.credit_note': 'Credit note',  // reviewed: false
+  'otax.inv.total': 'Total invoiced',  // reviewed: false
+  'otax.inv.total_sub': 'All time, all currencies',  // reviewed: false
+  'otax.inv.open_count': 'Open invoices',  // reviewed: false
+  'otax.inv.open_sub': 'Pending payment',  // reviewed: false
+  'otax.inv.generate': 'Generate invoice',  // reviewed: false
+  'otax.inv.generate_title': 'Generate invoice',  // reviewed: false
+  'otax.inv.generate_notice': 'An invoice will be created from your confirmed fixtures in the selected period.',  // reviewed: false
+  'otax.inv.generated': 'Invoice generated',  // reviewed: false
+  'otax.inv.empty': 'No invoices yet',  // reviewed: false
+  'otax.inv.empty_sub': 'Invoices appear here when you generate them from your confirmed fixtures.',  // reviewed: false
+  'otax.inv.list_title': 'Invoices',  // reviewed: false
+  'otax.inv.download_pdf': 'Download PDF',  // reviewed: false
+  'otax.inv.mark_paid': 'Mark as paid',  // reviewed: false
+  'otax.inv.mark_paid_title': 'Mark invoice as paid',  // reviewed: false
+  'otax.inv.marked_paid': 'Marked as paid',  // reviewed: false
+  'otax.inv.paid_on': 'Paid on',  // reviewed: false
+  'otax.inv.void': 'Void invoice',  // reviewed: false
+  'otax.inv.void_title': 'Void invoice',  // reviewed: false
+  'otax.inv.void_notice': 'Voiding cannot be undone. The organiser will be notified.',  // reviewed: false
+  'otax.inv.voided': 'Invoice voided',  // reviewed: false
+  'otax.filter.all': 'All',  // reviewed: false
+  'otax.stmt.year': 'Year',  // reviewed: false
+  'otax.stmt.empty': 'No earnings yet',  // reviewed: false
+  'otax.stmt.empty_sub': 'Completed and paid fixtures will appear here.',  // reviewed: false
+  'otax.stmt.ytd_title': 'Year to date',  // reviewed: false
+  'otax.stmt.breakdown': 'Breakdown',  // reviewed: false
+  'otax.kpi.gross': 'Gross fees',  // reviewed: false
+  'otax.kpi.tax': 'Tax',  // reviewed: false
+  'otax.kpi.tax_sub': 'charged on invoices',  // reviewed: false
+  'otax.kpi.withholding': 'Withheld',  // reviewed: false
+  'otax.kpi.net': 'Net received',  // reviewed: false
+  'otax.kpi.net_sub': 'after withholding',  // reviewed: false
+  'otax.earnings.period': 'Period',  // reviewed: false
+  'otax.earnings.download': 'Download Summary',  // reviewed: false
+  'otax.earnings.empty': 'No earnings found for this period.',  // reviewed: false
+  'otax.earnings.empty_sub': 'No earnings in this period.',  // reviewed: false
+  'otax.earnings.select_currency': 'Select a currency to see the breakdown.',  // reviewed: false
+  'otax.earnings.untaxed_hint': 'Some fixtures are not yet invoiced.',  // reviewed: false
+  'otax.earnings.hide_lines': 'Hide line detail',  // reviewed: false
+  'otax.earnings.show_lines': 'Show line detail',  // reviewed: false
+  'otax.download.title': 'Download earnings summary',  // reviewed: false
+  'otax.download.hint': 'Choose a currency and format.',  // reviewed: false
+  'otax.download.currency': 'Currency',  // reviewed: false
+  'otax.download.csv': 'Download CSV',  // reviewed: false
+  'otax.download.pdf': 'Download PDF',  // reviewed: false
   // Official rate agreements (R35) — reviewed: false
   'ora.title': 'दर समझौते',
   'ora.new': 'नया समझौता',
@@ -17360,7 +17443,7 @@ export default {
   'guide.officials_availability.s2': 'छुट्टी को एक अवधि के रूप में, दोहराने वाले पैटर्न के रूप में (जैसे हर दूसरे मंगलवार की शाम) या अवकाश कैलेंडर से सार्वजनिक अवकाश लेकर ब्लॉक करें। कुछ भी सहेजने से पहले ऐप उन अनुरोधित और पक्के मैचों की सूची दिखाता है जिन पर यह पड़ेगी। निजी नोट एन्क्रिप्ट करके रखा जाता है और कभी साझा नहीं होता।',
   'guide.officials_availability.s3': 'शेड्यूलिंग प्राथमिकताओं में शेड्यूलिंग नियम तय करें: मैचों के बीच ज़रूरी अंतर (उसी वेन्यू पर कम), न्यूनतम पूर्व सूचना, एक दिन या हफ़्ते में अधिकतम मैच और लगातार दिन, और यह कि तय घंटों के बाहर के अनुरोध अस्वीकार हों या चेतावनी के साथ पहुँचें।',
   'guide.officials_availability.s4': 'बताएँ कि आप क्या और कहाँ ऑफ़िशिएट करते हैं: पसंदीदा खेल, प्रतियोगिता स्तर, भूमिकाएँ और आयु वर्ग, आपका कार्य क्षेत्र और आप कितनी दूर तक जाते हैं। सिर्फ़ शहर या इलाक़ा सहेजा जाता है, पता कभी नहीं।',
-  'guide.officials_availability.s5': 'आयोजक पहले की तरह असाइनमेंट बोर्ड या बल्क इनवाइट से नियुक्ति करते हैं। अब हर ऑफ़िशियल उपलब्ध, अपनी सीमाओं के बाहर या अनुपलब्ध दिखता है, साथ में सीधा-सा कारण और दूरी का दायरा। जो अनुरोध किसी ऑफ़िशियल के नियम तोड़ता है, वह उसी कारण के साथ अस्वीकार हो जाता है।',
+  'guide.officials_availability.s5': 'आयोजक पहले की तरह असाइनमेंट बोर्ड या सामूहिक आमंत्रण से नियुक्ति करते हैं। अब हर अधिकारी उपलब्ध, अपनी सीमाओं से बाहर या अनुपलब्ध के रूप में दूरी की श्रेणी के साथ दिखता है, और उपलब्धता बटन मैच के आसपास के तीन दिनों का खाली और व्यस्त दृश्य सीधे कारण के साथ खोलता है। अधिकारी के नियम तोड़ने वाला अनुरोध उसी कारण के साथ अस्वीकार कर दिया जाता है।',
   'guide.officials_availability.s6': 'जब तक ऑफ़िशियल स्वीकार न करे, अनुरोध एक अस्थायी होल्ड रहता है। स्वीकार करने पर स्लॉट आरक्षित हो जाता है, और उसी समय का इंतज़ार कर रहे हर दूसरे आयोजक को सूचना मिलती है। मैच रद्द होने पर स्लॉट फिर ख़ाली हो जाता है। कैलेंडर टैब यह सब ऑफ़िशियल के टाइम ज़ोन में दिखाता है, और वेन्यू का समय अलग हो तो वह भी।',
   'oav.edit': 'संपादित करें',
 
@@ -17545,4 +17628,89 @@ export default {
   'crew.penalty_config.value': 'Penalty value', // reviewed: false
   'crew.penalty_config.applies_after': 'Applies after (fixtures)', // reviewed: false
 
+  // #994 organiser free / busy sheet: machine draft, reviewed: false
+  'oavo.open': 'उपलब्धता',
+  'oavo.title': 'क्या वे यह मैच ले सकते हैं?',
+  'oavo.tz': 'उनका समय क्षेत्र: {tz}',
+  'oavo.match_pick': 'मैच',
+  'oavo.m.day': 'उस दिन के मैच',
+  'oavo.m.week': 'उस सप्ताह के मैच',
+  'oavo.m.notice': 'पूर्व सूचना जो वे चाहते हैं',
+  'oavo.m.gap': 'अंतराल जो उन्हें चाहिए',
+  'oavo.cap': 'उनकी सीमा {n} है',
+  'oavo.no_cap': 'कोई सीमा तय नहीं',
+  'oavo.reasons': 'उनका कैलेंडर क्या कहता है',
+  'oavo.clear': 'उनके कैलेंडर में इस मैच के आड़े आने वाला कुछ नहीं है।',
+  'oavo.reason.time_off': 'उन्होंने इस समय को अनुपलब्ध बताया है।',
+  'oavo.reason.clash': 'इस समय वे किसी दूसरे मैच के लिए पक्के हैं।',
+  'oavo.reason.buffer': 'किसी दूसरे पक्के मैच के इतना पास कि उन्हें चाहिए उतना अंतराल नहीं बचता।',
+  'oavo.reason.outside_hours': 'उनके अंपायरिंग के घंटों से बाहर।',
+  'oavo.reason.short_notice': 'वे जितनी पूर्व सूचना चाहते हैं, उससे कम।',
+  'oavo.reason.day_cap': 'उस दिन के मैचों की उनकी सीमा पूरी हो चुकी है।',
+  'oavo.reason.week_cap': 'उस सप्ताह के मैचों की उनकी सीमा पूरी हो चुकी है।',
+  'oavo.reason.consecutive_days': 'इससे लगातार काम के दिनों की उनकी सीमा पार हो जाएगी।',
+  'oavo.reason.tentative_overlap': 'इस समय के लिए उनके पास पहले से एक और अनुरोध लंबित है।',
+  'oavo.level.blocked': 'अनुरोध रोकता है',
+  'oavo.level.limit': 'उनकी सीमाओं से बाहर',
+  'oavo.level.note': 'जानने योग्य',
+  'oavo.hours.inside': 'उनके घंटों के भीतर',
+  'oavo.hours.outside': 'उनके घंटों से बाहर',
+  'oavo.hours.none': 'साप्ताहिक घंटे तय नहीं',
+  'oavo.timeline': 'खाली और व्यस्त',
+  'oavo.timeline_sub': 'मैच के आसपास के तीन दिन, उनके समय क्षेत्र में',
+  'oavo.span.busy': 'कहीं और पक्के',
+  'oavo.span.tentative': 'अनुरोध लंबित',
+  'oavo.span.unavailable': 'अनुपलब्ध',
+  'oavo.span.match': 'यह मैच',
+  'oavo.span.free': 'खाली',
+  'oavo.day_free': 'पूरा दिन खाली',
+  'oavo.fit': 'इस मैच के लिए उपयुक्तता',
+  'oavo.fit.sport': 'खेल',
+  'oavo.fit.sport_yes': 'उनका पसंदीदा खेल',
+  'oavo.fit.sport_no': 'उनके पसंदीदा खेलों में नहीं',
+  'oavo.fit.sport_any': 'कोई पसंद तय नहीं',
+  'oavo.fit.area': 'उनका कार्य क्षेत्र',
+  'oavo.fit.distance': 'दूरी',
+  'oavo.fit.range': 'यात्रा सीमा',
+  'oavo.fit.within': 'उनकी यात्रा सीमा के भीतर',
+  'oavo.fit.beyond': 'उनकी यात्रा सीमा से बाहर',
+  'oavo.fit.range_unknown': 'ज्ञात नहीं',
+  'oavo.privacy': 'आपको केवल खाली या व्यस्त दिखता है। कारण, नोट्स, पते और उनके दूसरे मैचों का ब्योरा अधिकारी के पास ही निजी रहता है।',
+  'oavo.unset_title': 'अभी उपलब्धता तय नहीं',
+  'oavo.unset_sub': 'इस अधिकारी ने घंटे या छुट्टी तय नहीं की है, इसलिए केवल उनके पक्के और अनुरोधित मैच ही ज्ञात हैं।',
+  // restored: these labels were dropped from the packs by a merge on main while screens still use them
+  'officials.arrive_by': 'Arrive by {time}',
+  'officials.reporting_time': 'Reporting time',
+  'officials.lock.title': 'Lock Assignment',
+  'officials.lock.reason_placeholder': 'Why is this assignment being locked? (e.g. Finals confirmed, travel booked)',
+  'officials.lock.confirm': 'Lock',
+  'officials.lock.unlock_title': 'Unlock Assignment',
+  'officials.lock.unlock_reason': 'Override reason (required)',
+  'officials.lock.unlock_reason_placeholder': 'Provide a mandatory reason to override the lock',
+  'officials.lock.unlock_confirm': 'Unlock',
+  'officials.lock.badge': 'Locked',
+  'officials.lock.locked_by': 'Locked by {name}',
+  'officials.lock.reason_label': 'Lock reason',
+  'officials.clash.travel_gap': 'Travel time warning',
+  'officials.clash.detail_title': 'Clash Detail',
+  'officials.clash.other_fixture': 'Conflicts with',
+  'officials.clash.distance': '{km} km apart',
+  'officials.clash.gap': '{min} min gap',
+  'officials.clash.required_travel': '{min} min needed to travel',
+  'officials.clash.override_reason': 'Override reason',
+  'officials.clash.override_placeholder': 'Why is this clash being overridden? (required)',
+  'officials.clash.confirm_override': 'Override clash',
+  'officials.clash.locked_error': 'This assignment is locked',
+  'officials.clash.locked_error_body': 'Unlock the assignment before making changes.',
+  'officials.clash.travel_error': 'Insufficient travel time',
+  'officials.clash.travel_error_body': '{distKm} km between venues — {gapMin} min gap, {reqMin} min needed.',
+  // #994 assignment board labels: machine draft, reviewed: false
+  'oavo.board.day': 'मैच का दिन',
+  'oavo.board.all_days': 'सभी दिन',
+  'oavo.board.m_confirmed': 'पुष्ट अधिकारी',
+  'oavo.board.m_pending': 'जवाब का इंतज़ार',
+  'oavo.board.m_uncovered': 'अब भी खाली स्लॉट',
+  'oavo.board.m_conflicts': 'सुलझाने योग्य टकराव',
+  'oavo.board.m_coverage': 'क्रू कवरेज',
+  'oavo.board.coverage_short': 'कवरेज',
 };

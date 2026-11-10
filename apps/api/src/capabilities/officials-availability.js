@@ -368,7 +368,7 @@ cap({
     const a = await assess(pool, { userId: who.id, start: f.scheduled_at, durationMin: f.duration_min, fixtureId: f.id, venueId: f.venue_id ?? null });
     const { prefs, saved } = await loadAvailability(pool, who.id);
     const fromMs = localToMs(addDays(a.local_date, -1), 0, a.timezone), toMs = localToMs(addDays(a.local_date, 1), 1440, a.timezone);
-    const fb = await freeBusy(pool, who.id, fromMs, toMs);
+    const fb = await freeBusy(pool, who.id, fromMs, toMs, f.id);
     const km = await travelKm(pool, who.id, f.venue_id);
     const band = distanceBand(km);
     await audit(null, user.id, 'official_availability.view', 'user', who.id);

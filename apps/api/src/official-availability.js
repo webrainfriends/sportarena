@@ -172,12 +172,12 @@ export async function assess(c, { userId, start, durationMin, fixtureId = null, 
  * Busy / free for an organiser: when an official cannot be asked, with no title, opponent, venue, reason or note.
  * Adjacent and overlapping spans of the same state are merged.
  */
-export async function freeBusy(c, userId, fromMs, toMs) {
+export async function freeBusy(c, userId, fromMs, toMs, exceptFixtureId = null) {
   const { prefs, rows } = await loadAvailability(c, userId);
   const tz = zoneOf(prefs.timezone);
   const spans = [];
   for (const o of expandBlocks(rows.filter((r) => BLOCK_KINDS.includes(r.kind)), fromMs, toMs, tz)) spans.push({ s: o.startMs, e: o.endMs, state: 'unavailable' });
-  for (const w of await nearbyWork(c, userId, fromMs, toMs)) spans.push({ s: w.startMs, e: w.endMs, state: w.confirmed ? 'busy' : 'tentative' });
+  for (const w of await nearbyWork(c, userId, fromMs, toMs, exceptFixtureId)) spans.push({ s: w.startMs, e: w.endMs, state: w.confirmed ? 'busy' : 'tentative' });
   const out = [];
   for (const state of ['unavailable', 'busy', 'tentative']) {
     let cur = null;

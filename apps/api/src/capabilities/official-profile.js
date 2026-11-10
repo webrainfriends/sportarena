@@ -1,6 +1,7 @@
 // Official profile onboarding wizard (#991 R00). Multi-step self-declaration profile for referee and official roles.
 // Reuses official_availability and official_prefs (migration 121); on publish upserts sport_profiles and adds 'referee' to users.roles.
 // PII encrypted throughout; payout/bank fields audit-logged on every admin read; public profile strips all _enc fields.
+// Godmode (#991): completeness scoring, portfolio links, multi-language bio, compliance summary cached on write.
 import { z } from 'zod';
 import { cap, id, page } from '../registry.js';
 import { one, many, tx } from '../db.js';
@@ -9,6 +10,26 @@ import { encrypt, decrypt } from '../crypto.js';
 import { audit } from '../helpers.js';
 import { requireApproved } from '../access.js';
 import { isYouth, requireConsent } from '../youth.js';
+import { buildComplianceSummary } from './official-profile-compliance.js';
+
+const PLATFORM_LANGS = ['es','hi','ta','te','ml','mr','kn','bn','or','si','ur','id'];
+const PORTFOLIO_KINDS = ['video','article','match_report','interview','other'];
+
+function computeCompleteness(p, sportCount, expCount, credCount, refCount, rateCount, hasAvailability) {
+  // 10 checkpoints × 10 points each = 100
+  let score = 0;
+  if (p.display_name_pref) score += 10;                      // identity
+  if (sportCount > 0) score += 10;                           // sports
+  if (expCount > 0) score += 10;                             // experience
+  if (credCount > 0) score += 10;                            // credentials
+  if (refCount > 0) score += 10;                             // references
+  if (hasAvailability) score += 10;                          // availability
+  if (rateCount > 0) score += 10;                            // rates
+  if (p.payout_method) score += 10;                          // payout
+  if (p.bio_translations && Object.keys(p.bio_translations).length > 0) score += 5;  // multilang bio
+  if (p.portfolio_links && p.portfolio_links.length > 0) score += 5;                 // portfolio
+  return Math.min(100, score);
+}
 
 const TAG = 'Official profile';
 const text = (n) => z.string().trim().max(n);
@@ -66,7 +87,16 @@ cap({
     ]);
     const bio = p.bio_enc ? decrypt(p.bio_enc, 'official_profiles.bio') : null;
     if (bio !== null) await audit(null, user.id, 'official_profile.pii_read', 'official_profiles', p.id);
-    return { ...cleanPayout(p), bio, sports, experience, credentials, references, rates };
+    // decrypt multi-lang bios (map lang→plain)
+    let bioTranslations = null;
+    if (p.bio_translations) {
+      const enc = typeof p.bio_translations === 'string' ? JSON.parse(p.bio_translations) : p.bio_translations;
+      bioTranslations = {};
+      for (const [lang, v] of Object.entries(enc)) bioTranslations[lang] = decrypt(v, `official_profiles.bio_translations.${lang}`);
+    }
+    const portfolioLinks = p.portfolio_links ? (typeof p.portfolio_links === 'string' ? JSON.parse(p.portfolio_links) : p.portfolio_links) : [];
+    const complianceSummary = p.compliance_summary ? (typeof p.compliance_summary === 'string' ? JSON.parse(p.compliance_summary) : p.compliance_summary) : null;
+    return { ...cleanPayout(p), bio, bio_translations: bioTranslations, portfolio_links: portfolioLinks, compliance_summary: complianceSummary, sports, experience, credentials, references, rates };
   },
 });
 
@@ -75,8 +105,8 @@ cap({
   summary: 'Create or update an official profile draft. Auto-saves after each wizard step. row_version required on updates (optimistic concurrency). step_reached is never decremented.',
   input: z.object({
     row_version: z.number().int().optional(),
-    display_name_pref: text(80).optional(),
-    bio: text(1000).optional(),
+    display_name_pref: text(80).optional().nullable(),
+    bio: text(1000).optional().nullable(),
     preferred_pronouns: text(40).optional(),
     nationality: text(80).optional(),
     privacy_show_sports: z.boolean().optional(),
@@ -421,6 +451,83 @@ cap({
     if (p.privacy_show_credentials) result.credentials = await many('SELECT sport_id, role, kind, issuing_body, credential_name, issue_date, expiry_date, level_label, status, verified_at FROM official_profile_credentials WHERE profile_id=$1 AND archived_at IS NULL ORDER BY created_at', [p.id]);
     if (p.privacy_show_rates) result.rates = await many('SELECT sport_id, role, fixture_type, level_label, fee_minor, fee_currency, includes_travel, travel_allowance_per_km_minor FROM official_profile_rates WHERE profile_id=$1 AND archived_at IS NULL ORDER BY created_at', [p.id]);
     return result;
+  },
+});
+
+// ------------------------------------------------------------------ completeness score
+cap({
+  name: 'get_official_profile_completeness', method: 'GET', path: '/me/official-profile/completeness', tag: TAG,
+  summary: 'Returns the 0–100 completeness score and per-step guidance array. Used by CompletenessBar in the wizard.',
+  input: z.object({}),
+  async handler({ user }) {
+    await requireApproved(user);
+    const p = await one('SELECT * FROM official_profiles WHERE user_id=$1 AND archived_at IS NULL', [user.id]);
+    if (!p) return { score: 0, guidance: ['Create your profile to begin'] };
+    const [sportCount, expCount, credCount, refCount, rateCount, avail] = await Promise.all([
+      one('SELECT COUNT(*)::int AS n FROM official_profile_sports WHERE profile_id=$1', [p.id]).then((r) => r.n),
+      one('SELECT COUNT(*)::int AS n FROM official_profile_experience WHERE profile_id=$1 AND archived_at IS NULL', [p.id]).then((r) => r.n),
+      one('SELECT COUNT(*)::int AS n FROM official_profile_credentials WHERE profile_id=$1 AND archived_at IS NULL', [p.id]).then((r) => r.n),
+      one('SELECT COUNT(*)::int AS n FROM official_profile_references WHERE profile_id=$1 AND archived_at IS NULL', [p.id]).then((r) => r.n),
+      one("SELECT COUNT(*)::int AS n FROM official_profile_rates WHERE profile_id=$1 AND archived_at IS NULL AND status='active'", [p.id]).then((r) => r.n),
+      one('SELECT 1 FROM official_availability WHERE user_id=$1 LIMIT 1', [user.id]).catch(() => null),
+    ]);
+    const score = computeCompleteness(p, sportCount, expCount, credCount, refCount, rateCount, !!avail);
+    const guidance = [];
+    if (!p.display_name_pref) guidance.push('Add your display name');
+    if (!sportCount) guidance.push('Add at least one sport and role');
+    if (!expCount) guidance.push('Add experience entries');
+    if (!credCount) guidance.push('Add a credential or licence');
+    if (!refCount) guidance.push('Add a reference');
+    if (!avail) guidance.push('Set your availability and travel radius');
+    if (!rateCount) guidance.push('Add an active rate card');
+    if (!p.payout_method) guidance.push('Set payout method');
+    if (!(p.bio_translations && Object.keys(p.bio_translations).length)) guidance.push('Add bio in a second language for wider reach');
+    if (!(p.portfolio_links && p.portfolio_links.length)) guidance.push('Add a portfolio link to showcase your career');
+    return { score, guidance: guidance.slice(0, 3) };
+  },
+});
+
+// ------------------------------------------------------------------ portfolio links
+cap({
+  name: 'save_official_portfolio', method: 'PUT', path: '/me/official-profile/portfolio', tag: TAG,
+  summary: 'Save portfolio / career media links (max 10). Each entry has kind (video|article|match_report|interview|other), label and url.',
+  input: z.object({
+    links: z.array(z.object({
+      kind: z.enum(PORTFOLIO_KINDS),
+      label: z.string().trim().min(1).max(120),
+      url: z.string().url().max(500),
+    })).max(10),
+  }),
+  async handler({ user }, i) {
+    await requireApproved(user);
+    return tx(async (c) => {
+      const p = (await c.query('SELECT id, row_version FROM official_profiles WHERE user_id=$1 AND archived_at IS NULL FOR UPDATE', [user.id])).rows[0];
+      if (!p) throw notFound('Official profile');
+      await c.query("UPDATE official_profiles SET portfolio_links=$1, row_version=row_version+1, updated_at=now() WHERE id=$2", [JSON.stringify(i.links), p.id]);
+      return { links: i.links };
+    });
+  },
+});
+
+// ------------------------------------------------------------------ multi-language bio
+cap({
+  name: 'save_official_bio_translations', method: 'PUT', path: '/me/official-profile/bio-translations', tag: TAG,
+  summary: 'Save encrypted bio text in up to 11 platform language packs (es,hi,ta,te,ml,mr,kn,bn,or,si,ur,id). English bio stays in bio_enc via upsert_official_profile.',
+  input: z.object({
+    translations: z.record(z.enum(PLATFORM_LANGS), z.string().trim().max(1000)),
+  }),
+  async handler({ user }, i) {
+    await requireApproved(user);
+    return tx(async (c) => {
+      const p = (await c.query('SELECT id FROM official_profiles WHERE user_id=$1 AND archived_at IS NULL FOR UPDATE', [user.id])).rows[0];
+      if (!p) throw notFound('Official profile');
+      const encMap = {};
+      for (const [lang, bio] of Object.entries(i.translations)) {
+        if (bio) encMap[lang] = encrypt(bio, `official_profiles.bio_translations.${lang}`);
+      }
+      await c.query("UPDATE official_profiles SET bio_translations=$1, row_version=row_version+1, updated_at=now() WHERE id=$2", [JSON.stringify(encMap), p.id]);
+      return { languages: Object.keys(encMap) };
+    });
   },
 });
 
