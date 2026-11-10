@@ -16508,4 +16508,319 @@ export default {
   'otax.reg_status.not_registered': 'पंजीकृत नहीं',
   'otax.reg_status.exempt': 'छूट प्राप्त',
   'otax.reg_status.pending': 'पंजीकरण प्रतीक्षित',
+  // Official rate agreements (R35) — reviewed: false
+  'ora.title': 'दर समझौते',
+  'ora.new': 'नया समझौता',
+  'ora.needsAction': '⚡ आपकी प्रतिक्रिया चाहिए',
+  'ora.gamesAssigned': 'खेल असाइन',
+  'ora.filterBySport': 'खेल के आधार पर फ़िल्टर',
+  'common.allSports': 'सभी खेल',
+  'common.hour': 'घंटा',
+  'common.day': 'दिन',
+  'common.game': 'खेल',
+  'common.month': 'महीना',
+  'common.night': 'रात',
+  'common.days': 'दिन',
+  'common.notIncluded': 'शामिल नहीं',
+  'ora.tab.active': 'सक्रिय',
+  'ora.tab.pending': 'लंबित',
+  'ora.tab.drafts': 'मसौदे',
+  'ora.tab.history': 'इतिहास',
+  'ora.metric.active': 'सक्रिय',
+  'ora.metric.avgFee': 'औसत शुल्क',
+  'ora.metric.pending': 'लंबित',
+  'ora.context.event_override': 'आयोजन / टूर्नामेंट',
+  'ora.context.academy_contract': 'अकादमी अनुबंध',
+  'ora.context.season_series': 'सीज़न / श्रृंखला',
+  'ora.context.club_org': 'क्लब / संगठन',
+  'ora.context.retainer': 'रिटेनर',
+  'ora.context.desc.event_override': 'किसी विशेष आयोजन के लिए कस्टम दर',
+  'ora.context.desc.academy_contract': 'अकादमी के साथ चल रही व्यवस्था',
+  'ora.context.desc.season_series': 'लीग या सीज़न के सभी फिक्सचर',
+  'ora.context.desc.club_org': 'क्लब या फेडरेशन के साथ स्थायी व्यवस्था',
+  'ora.context.desc.retainer': 'मासिक रिटेनर + प्रति उपस्थिति पूरक',
+  'ora.rate.fixed_match': 'निश्चित मैच शुल्क',
+  'ora.rate.per_hour': 'प्रति घंटा',
+  'ora.rate.per_day': 'प्रति दिन',
+  'ora.rate.volume_tiers': 'वॉल्यूम स्तर',
+  'ora.rate.retainer': 'रिटेनर',
+  'ora.rate.bundle': 'सेवा बंडल',
+  'ora.rate.negotiated': 'वार्तालाप',
+  'ora.rateSummary.tiers': 'वॉल्यूम स्तर',
+  'ora.rateSummary.perMonth': '/माह',
+  'ora.rateSummary.perGame': '/खेल',
+  'ora.rateSummary.bundle': 'बंडल',
+  'ora.status.draft': 'मसौदा',
+  'ora.status.proposed': '📤 प्रस्तावित',
+  'ora.status.countered': '🔄 काउंटर',
+  'ora.status.accepted': '✅ स्वीकृत',
+  'ora.status.active': '● सक्रिय',
+  'ora.status.superseded': 'अधिक्रमित',
+  'ora.status.cancelled': 'रद्द',
+  'ora.empty.active.title': 'कोई सक्रिय समझौता नहीं',
+  'ora.empty.active.body': 'अकादमी, क्लब और आयोजनों के साथ दर निर्धारित करें।',
+  'ora.empty.pending.title': 'कुछ लंबित नहीं',
+  'ora.empty.pending.body': 'प्रस्ताव यहाँ दिखाई देंगे।',
+  'ora.empty.drafts.title': 'कोई मसौदा नहीं',
+  'ora.empty.drafts.body': 'अपूर्ण समझौते यहाँ दिखेंगे।',
+  'ora.empty.history.title': 'कोई इतिहास नहीं',
+  'ora.empty.history.body': 'रद्द और अधिक्रमित समझौते यहाँ दिखेंगे।',
+  'ora.detail.title': 'समझौता',
+  'ora.detail.rates': 'दरें',
+  'ora.detail.baseFee': 'आधार शुल्क',
+  'ora.detail.retainer': 'मासिक रिटेनर',
+  'ora.detail.bundle': 'बंडल कुल',
+  'ora.detail.bundleIncludes': 'बंडल में शामिल',
+  'ora.detail.travel': 'यात्रा भत्ता',
+  'ora.detail.overtime': 'ओवरटाइम दर',
+  'ora.detail.accommodation': 'आवास',
+  'ora.detail.terms': 'अनुबंध शर्तें',
+  'ora.detail.effectiveFrom': 'प्रभावी तिथि',
+  'ora.detail.effectiveUntil': 'समाप्ति',
+  'ora.detail.openEnded': 'अनिश्चितकालीन',
+  'ora.detail.autoRenew': 'स्वतः नवीनीकरण',
+  'ora.detail.cancelNotice': 'रद्दीकरण नोटिस',
+  'ora.detail.cancelFee': 'रद्दीकरण शुल्क',
+  'ora.detail.paymentTrigger': 'चालान ट्रिगर',
+  'ora.detail.paymentNet': 'भुगतान देय',
+  'ora.detail.netDays': 'नेट {{n}} दिन',
+  'ora.detail.estimatedValue': 'अनुमानित सीज़न मूल्य',
+  'ora.detail.stats': 'सीज़न आंकड़े',
+  'ora.detail.gamesAssigned': 'खेल असाइन',
+  'ora.detail.totalEarned': 'कुल अर्जित',
+  'ora.detail.yourNote': 'आपकी निजी टिप्पणी',
+  'ora.detail.timeline': 'अनुमोदन समयरेखा',
+  'ora.hero.youAre': 'आपका समझौता',
+  'ora.hero.official': 'अधिकारी',
+  'ora.snapshotNotice': 'स्वीकृति पर, दरें और शर्तें अपरिवर्तनीय स्नैपशॉट के रूप में लॉक हो जाती हैं।',
+  'ora.snapshotPrivacyNotice': 'यह प्रस्ताव दोनों पक्षों के लिए निजी है।',
+  'ora.snapshotFreezeNotice': 'असाइनमेंट की पुष्टि पर, यह शुल्क बुक किए गए स्नैपशॉट के रूप में फ्रीज हो जाता है।',
+  'ora.action.accept': 'समझौता स्वीकार करें',
+  'ora.action.counter': 'काउंटर',
+  'ora.action.sendCounter': 'काउंटर भेजें',
+  'ora.action.sendProposal': 'प्रस्ताव भेजें',
+  'ora.cancel.title': 'समझौता रद्द करें',
+  'ora.cancel.body': 'कृपया एक कारण दें।',
+  'ora.cancel.reasonLabel': 'कारण',
+  'ora.cancel.reasonRequired': 'कृपया रद्द करने का कारण बताएं।',
+  'ora.cancel.reasonPlaceholder': 'आप इस समझौते को क्यों रद्द कर रहे हैं?',
+  'ora.cancel.confirm': 'समझौता रद्द करें',
+  'ora.toast.accept': 'समझौता स्वीकृत और लॉक।',
+  'ora.toast.counter': 'काउंटर-ऑफर भेजा गया।',
+  'ora.toast.countered': 'काउंटर-ऑफर भेजा गया।',
+  'ora.toast.proposed': 'प्रस्ताव भेजा गया।',
+  'ora.toast.cancel': 'समझौता रद्द।',
+  'ora.event.created': 'समझौता बनाया',
+  'ora.event.proposed': 'प्रस्ताव भेजा',
+  'ora.event.countered': 'काउंटर-ऑफर',
+  'ora.event.accepted': 'स्वीकृत',
+  'ora.event.cancelled': 'रद्द',
+  'ora.event.superseded': 'अधिक्रमित',
+  'ora.event.note_added': 'नोट जोड़ा',
+  'ora.tier.heading': 'वॉल्यूम स्तर',
+  'ora.tier.gamesRange': 'खेल सीमा',
+  'ora.tier.fee': 'शुल्क / खेल',
+  'ora.tier.travel': 'यात्रा',
+  'ora.tier.add': 'स्तर जोड़ें',
+  'ora.autoRenew.none': 'स्वतः नवीनीकरण नहीं',
+  'ora.autoRenew.notify_30': 'समाप्ति से 30 दिन पहले सूचित करें',
+  'ora.autoRenew.notify_60': 'समाप्ति से 60 दिन पहले सूचित करें',
+  'ora.autoRenew.auto': 'समान शर्तों पर स्वतः नवीनीकरण',
+  'ora.payTrigger.per_game': 'प्रत्येक खेल के 7 दिनों के भीतर चालान',
+  'ora.payTrigger.weekly': 'साप्ताहिक सारांश चालान',
+  'ora.payTrigger.monthly': 'मासिक सारांश चालान',
+  'ora.payTrigger.on_completion': 'आयोजन/सीज़न पूर्ण होने पर चालान',
+  'ora.resolution.chain': 'प्राथमिकता श्रृंखला',
+  'ora.resolution.source': 'स्रोत',
+  'ora.resolution.fee': 'शुल्क',
+  'ora.resolution.snapshot': 'बुक किया गया स्नैपशॉट',
+  'ora.resolution.agreement': 'दर समझौता',
+  'ora.resolution.customer': 'ग्राहक ओवरराइड',
+  'ora.resolution.segment': 'सेगमेंट दर',
+  'ora.resolution.profileDefault': 'प्रोफ़ाइल डिफ़ॉल्ट',
+  'ora.feePreview.title': 'शुल्क पूर्वावलोकन',
+  'ora.feePreview.appliedFee': 'लागू शुल्क',
+  'ora.feePreview.noRate': 'कोई दर कॉन्फ़िगर नहीं',
+  'ora.feePreview.setManually': 'असाइनमेंट स्क्रीन से मैन्युअल रूप से शुल्क निर्धारित करें।',
+  'ora.feePreview.tier': 'स्तर',
+  'ora.feePreview.games': 'खेल',
+  'ora.feePreview.breakdown': 'विवरण',
+  'ora.feePreview.totalThisGame': 'इस खेल का कुल',
+  'ora.feePreview.viewAgreement': 'समझौता देखें',
+  'ora.wizard.newTitle': 'नया दर समझौता',
+  'ora.wizard.editTitle': 'समझौता संपादित करें',
+  'ora.wizard.counterTitle': 'काउंटर-ऑफर',
+  'ora.wizard.stepOf': 'चरण {{step}} / {{total}}',
+  'ora.wizard.step1.title': 'समझौता प्रकार',
+  'ora.wizard.step2.title': 'दायरा',
+  'ora.wizard.step3.title': 'दर संरचना',
+  'ora.wizard.step4.title': 'शर्तें',
+  'ora.wizard.step5.title': 'समीक्षा और भेजें',
+  'ora.wizard.sport': 'खेल',
+  'ora.wizard.role': 'अधिकारी की भूमिका',
+  'ora.wizard.currency': 'मुद्रा',
+  'ora.wizard.rateType': 'दर प्रकार',
+  'ora.wizard.baseFee': 'प्रति खेल आधार शुल्क',
+  'ora.wizard.effectiveFrom': 'प्रभावी तिथि',
+  'ora.wizard.effectiveUntil': 'समाप्ति (वैकल्पिक)',
+  'ora.wizard.proposalMessage': 'दूसरे पक्ष को संदेश (वैकल्पिक)',
+  'ora.back': "Back", /* reviewed: false */
+  'ora.accept': "Accept", /* reviewed: false */
+  'ora.counter': "Counter", /* reviewed: false */
+  'ora.decline': "Decline", /* reviewed: false */
+  'ora.send_proposal': "Send Proposal →", /* reviewed: false */
+  'ora.save_draft': "Save as Draft", /* reviewed: false */
+  'ora.continue': "Continue →", /* reviewed: false */
+  'ora.any_sport': "Any sport", /* reviewed: false */
+  'ora.optional': "Optional", /* reviewed: false */
+  'ora.optional_open_ended': "Leave blank for open-ended agreement", /* reviewed: false */
+  'ora.games': "games", /* reviewed: false */
+  'ora.game': "game", /* reviewed: false */
+  'ora.month': "month", /* reviewed: false */
+  'ora.night': "night", /* reviewed: false */
+  'ora.days': "days", /* reviewed: false */
+  'ora.tier': "Tier", /* reviewed: false */
+  'ora.declined': "Declined", /* reviewed: false */
+  'ora.ctx_event': "Event / Tournament Override", /* reviewed: false */
+  'ora.ctx_event_desc': "Custom rate for a specific event", /* reviewed: false */
+  'ora.ctx_academy': "Academy Contract", /* reviewed: false */
+  'ora.ctx_academy_desc': "Ongoing arrangement with an academy", /* reviewed: false */
+  'ora.ctx_season': "Season / Series", /* reviewed: false */
+  'ora.ctx_season_desc': "All fixtures in a league or season", /* reviewed: false */
+  'ora.ctx_club': "Club / Organisation", /* reviewed: false */
+  'ora.ctx_club_desc': "Standing arrangement with a club", /* reviewed: false */
+  'ora.ctx_retainer': "Retainer", /* reviewed: false */
+  'ora.ctx_retainer_desc': "Monthly retainer + per-appearance supplement", /* reviewed: false */
+  'ora.rt_fixed': "Fixed Match", /* reviewed: false */
+  'ora.rt_hour': "Per Hour", /* reviewed: false */
+  'ora.rt_day': "Per Day", /* reviewed: false */
+  'ora.rt_tiers': "Volume Tiers", /* reviewed: false */
+  'ora.rt_retainer': "Retainer", /* reviewed: false */
+  'ora.rt_bundle': "Bundle", /* reviewed: false */
+  'ora.rt_negotiated': "Negotiated", /* reviewed: false */
+  'ora.tab_active': "Active", /* reviewed: false */
+  'ora.tab_pending': "Pending", /* reviewed: false */
+  'ora.tab_history': "History", /* reviewed: false */
+  'ora.metric_active': "Active", /* reviewed: false */
+  'ora.metric_active_unit': "agreements", /* reviewed: false */
+  'ora.metric_avg': "Avg Fee", /* reviewed: false */
+  'ora.metric_avg_unit': "per game", /* reviewed: false */
+  'ora.metric_pending': "Pending", /* reviewed: false */
+  'ora.metric_pending_unit': "review", /* reviewed: false */
+  'ora.empty_active_title': "No active agreements", /* reviewed: false */
+  'ora.empty_active_body': "Create a rate agreement with an academy, club or event.", /* reviewed: false */
+  'ora.empty_pending_title': "Nothing to review", /* reviewed: false */
+  'ora.empty_pending_body': "Incoming proposals and your drafts appear here.", /* reviewed: false */
+  'ora.empty_history_title': "No history yet", /* reviewed: false */
+  'ora.empty_history_body': "Past and cancelled agreements appear here.", /* reviewed: false */
+  'ora.incoming': "Awaiting your response", /* reviewed: false */
+  'ora.sent': "Sent", /* reviewed: false */
+  'ora.review': "Review", /* reviewed: false */
+  'ora.awaiting_response': "Awaiting their response", /* reviewed: false */
+  'ora.wiz_title': "New Agreement", /* reviewed: false */
+  'ora.wiz_s1_title': "Agreement Type", /* reviewed: false */
+  'ora.wiz_s1_sub': "What is this rate agreement for?", /* reviewed: false */
+  'ora.wiz_s2_title': "Who is this with?", /* reviewed: false */
+  'ora.wiz_s2_sub': "Search for the academy or organisation", /* reviewed: false */
+  'ora.wiz_s2_search': "Organisation", /* reviewed: false */
+  'ora.wiz_s2_search_ph': "Search organisations…", /* reviewed: false */
+  'ora.wiz_s2_sport': "Sport", /* reviewed: false */
+  'ora.wiz_s2_role': "Referee Role", /* reviewed: false */
+  'ora.wiz_s3_title': "Rate Structure", /* reviewed: false */
+  'ora.wiz_s3_sub': "Define how fees are calculated", /* reviewed: false */
+  'ora.wiz_s4_title': "Validity & Terms", /* reviewed: false */
+  'ora.wiz_s4_sub': "Set the effective period", /* reviewed: false */
+  'ora.wiz_s5_title': "Review Proposal", /* reviewed: false */
+  'ora.wiz_s5_sub': "Check everything before sending", /* reviewed: false */
+  'ora.rate_summary': "Rate Summary", /* reviewed: false */
+  'ora.rate_type': "Rate Type", /* reviewed: false */
+  'ora.currency': "Currency", /* reviewed: false */
+  'ora.base_fee': "Match fee", /* reviewed: false */
+  'ora.retainer': "Monthly retainer", /* reviewed: false */
+  'ora.retainer_monthly': "Monthly Retainer", /* reviewed: false */
+  'ora.per_game_supplement': "Per-game supplement", /* reviewed: false */
+  'ora.travel': "Travel allowance", /* reviewed: false */
+  'ora.travel_per_game': "Travel (per game)", /* reviewed: false */
+  'ora.overtime': "Overtime rate", /* reviewed: false */
+  'ora.overtime_per_hour': "Overtime (per hour)", /* reviewed: false */
+  'ora.accommodation': "Accommodation", /* reviewed: false */
+  'ora.accommodation_per_night': "Accommodation (per night)", /* reviewed: false */
+  'ora.bundle_fee': "Bundle fee", /* reviewed: false */
+  'ora.bundle_total': "Bundle Total Fee", /* reviewed: false */
+  'ora.bundle_includes': "Bundle includes", /* reviewed: false */
+  'ora.bundle_desc': "What the bundle includes", /* reviewed: false */
+  'ora.additional_rates': "Additional Rates", /* reviewed: false */
+  'ora.validity': "Validity", /* reviewed: false */
+  'ora.effective_from': "Effective From", /* reviewed: false */
+  'ora.effective_until': "Expires On", /* reviewed: false */
+  'ora.auto_renew': "Auto-renew", /* reviewed: false */
+  'ora.ar_none': "No auto-renew", /* reviewed: false */
+  'ora.ar_30': "Notify 30 days before expiry", /* reviewed: false */
+  'ora.ar_60': "Notify 60 days before expiry", /* reviewed: false */
+  'ora.ar_auto': "Auto-renew on same terms", /* reviewed: false */
+  'ora.cancellation': "Cancellation", /* reviewed: false */
+  'ora.notice': "Notice period", /* reviewed: false */
+  'ora.notice_days': "Notice Period (days)", /* reviewed: false */
+  'ora.cancel_fee': "Cancellation fee", /* reviewed: false */
+  'ora.cancel_fee_pct': "Cancellation Fee (%)", /* reviewed: false */
+  'ora.cancel_pct_hint': "% of remaining season value", /* reviewed: false */
+  'ora.payment_terms': "Payment Terms", /* reviewed: false */
+  'ora.invoice_trigger': "Invoice Trigger", /* reviewed: false */
+  'ora.payment_net': "Payment Net", /* reviewed: false */
+  'ora.payment_net_days': "Payment Due (days)", /* reviewed: false */
+  'ora.net_days_hint': "Days from invoice to due date", /* reviewed: false */
+  'ora.pt_per_game': "Within 7 days of each game", /* reviewed: false */
+  'ora.pt_weekly': "Weekly", /* reviewed: false */
+  'ora.pt_monthly': "Monthly", /* reviewed: false */
+  'ora.pt_completion': "On event completion", /* reviewed: false */
+  'ora.private_notes': "Private Notes", /* reviewed: false */
+  'ora.note_placeholder': "Internal notes (not shared)", /* reviewed: false */
+  'ora.counterpart': "Academy / Organisation", /* reviewed: false */
+  'ora.official': "Official", /* reviewed: false */
+  'ora.tiers': "Volume Tiers", /* reviewed: false */
+  'ora.tier_range': "Games Range", /* reviewed: false */
+  'ora.tier_fee': "Fee / Game", /* reviewed: false */
+  'ora.tier_travel': "Travel", /* reviewed: false */
+  'ora.tier_from': "From", /* reviewed: false */
+  'ora.tier_to': "To", /* reviewed: false */
+  'ora.tier_fee_label': "Fee", /* reviewed: false */
+  'ora.add_tier': "Add Tier", /* reviewed: false */
+  'ora.snapshot_notice': "On acceptance, rates are locked as an immutable snapshot. No retrospective changes permitted.", /* reviewed: false */
+  'ora.snapshot_notice_send': "Private to both parties. On acceptance, rates are frozen.", /* reviewed: false */
+  'ora.snapshot_on_confirm': "On assignment confirmation, this fee ({fee}) is frozen as the booked snapshot.", /* reviewed: false */
+  'ora.timeline': "Approval Timeline", /* reviewed: false */
+  'ora.tl_created': "Draft created", /* reviewed: false */
+  'ora.tl_proposed': "Proposal sent", /* reviewed: false */
+  'ora.tl_countered': "Countered", /* reviewed: false */
+  'ora.tl_accepted': "Agreement accepted", /* reviewed: false */
+  'ora.tl_cancelled': "Cancelled", /* reviewed: false */
+  'ora.tl_superseded': "Superseded", /* reviewed: false */
+  'ora.tl_note': "Note added", /* reviewed: false */
+  'ora.cancel_agreement': "Cancel Agreement", /* reviewed: false */
+  'ora.counter_title': "Counter Proposal", /* reviewed: false */
+  'ora.counter_body': "Revise any terms.", /* reviewed: false */
+  'ora.counter_note': "Explanation (optional)", /* reviewed: false */
+  'ora.counter_proceed': "Edit & Counter →", /* reviewed: false */
+  'ora.cancel_title': "Cancel Agreement", /* reviewed: false */
+  'ora.cancel_body': "Give a reason.", /* reviewed: false */
+  'ora.cancel_reason': "Reason (required)", /* reviewed: false */
+  'ora.confirm_cancel': "Confirm Cancellation", /* reviewed: false */
+  'ora.fee_preview_title': "Fee Preview", /* reviewed: false */
+  'ora.applicable_fee': "Applicable Fee", /* reviewed: false */
+  'ora.precedence': "Precedence Chain", /* reviewed: false */
+  'ora.breakdown': "Breakdown", /* reviewed: false */
+  'ora.total_this_game': "Total this game", /* reviewed: false */
+  'ora.not_included': "Not included", /* reviewed: false */
+  'ora.not_in_agreement': "Not in agreement", /* reviewed: false */
+  'ora.prec_default': "Profile Default", /* reviewed: false */
+  'ora.prec_segment': "Segment Rate", /* reviewed: false */
+  'ora.prec_customer': "Customer Override", /* reviewed: false */
+  'ora.prec_agreement': "Rate Agreement", /* reviewed: false */
+  'ora.prec_snapshot': "Booked Snapshot", /* reviewed: false */
+  'ora.agreement': "Agreement", /* reviewed: false */
+  'ora.err_counterpart': "Select the academy, club or event organiser", /* reviewed: false */
+  'ora.err_role': "Select your role", /* reviewed: false */
+  'ora.err_tiers': "Add at least 2 volume tiers", /* reviewed: false */
+  'ora.err_fee': "Enter the fee amount", /* reviewed: false */
+  'ora.err_date': "Set an effective from date", /* reviewed: false */
 };
