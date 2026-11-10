@@ -1,36 +1,16 @@
 <!doctype html><html><head><meta charset="utf-8"><style>
-@font-face{font-family:'Exo2Black';src:url('fonts/Exo2_900Black_Italic.ttf');}
+@font-face{font-family:'InterBlack';src:url('fonts/Inter_900_Italic.woff2') format('woff2');}
 html,body{margin:0;background:transparent}
 svg{display:block}
-text{font-family:'Exo2Black';font-weight:900;font-style:normal}
+text{font-family:'InterBlack';font-weight:900;font-style:italic}
 </style></head><body>
 <svg id="s" xmlns="http://www.w3.org/2000/svg" width="1800" height="620" viewBox="0 0 1800 620">
 <defs>
- <!-- Purple gradient for "GotMy" -->
- <linearGradient id="purple" x1="0" y1="0" x2="0" y2="1">
-  <stop offset="0" stop-color="#C97EFF"/><stop offset=".28" stop-color="#8A3FE8"/><stop offset=".5" stop-color="#6520C8"/>
-  <stop offset=".56" stop-color="#7B33E3"/><stop offset=".85" stop-color="#4A12A8"/><stop offset="1" stop-color="#6B2BD0"/>
+ <linearGradient id="swoosh" x1="0" y1="0" x2="1" y2="0">
+  <stop offset="0" stop-color="#7B2FF0" stop-opacity="0"/>
+  <stop offset=".25" stop-color="#7B2FF0"/>
+  <stop offset="1" stop-color="#4A12A8"/>
  </linearGradient>
- <!-- Amber/gold gradient for "G" -->
- <linearGradient id="amber" x1="0" y1="0" x2="0" y2="1">
-  <stop offset="0" stop-color="#FFE066"/><stop offset=".25" stop-color="#F5A820"/><stop offset=".5" stop-color="#E07800"/>
-  <stop offset=".75" stop-color="#C86000"/><stop offset="1" stop-color="#A04800"/>
- </linearGradient>
- <!-- Deep indigo gradient for "ame" -->
- <linearGradient id="indigo" x1="0" y1="0" x2="0" y2="1">
-  <stop offset="0" stop-color="#6668D8"/><stop offset=".28" stop-color="#3535B8"/><stop offset=".5" stop-color="#2020A0"/>
-  <stop offset=".56" stop-color="#2A2AB0"/><stop offset=".85" stop-color="#181880"/><stop offset="1" stop-color="#222298"/>
- </linearGradient>
- <!-- Side extrusions -->
- <linearGradient id="pside" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#4A1AA0"/><stop offset="1" stop-color="#1E0B55"/></linearGradient>
- <linearGradient id="aside" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#8B5000"/><stop offset="1" stop-color="#3D2000"/></linearGradient>
- <linearGradient id="iside" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#1A1A70"/><stop offset="1" stop-color="#0A0A3A"/></linearGradient>
- <!-- Flame gradient (radial, centre bright) -->
- <radialGradient id="flame" cx="0.4" cy="0.6" r="0.6">
-  <stop offset="0" stop-color="#FFE87A"/><stop offset=".4" stop-color="#F5A820"/><stop offset="1" stop-color="#D06000"/>
- </radialGradient>
- <!-- Tagline swoosh -->
- <linearGradient id="swoosh" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#7B2FF0" stop-opacity="0"/><stop offset=".25" stop-color="#7B2FF0"/><stop offset="1" stop-color="#4A12A8"/></linearGradient>
 </defs>
 <g id="root"></g>
 </svg>
@@ -38,58 +18,87 @@ text{font-family:'Exo2Black';font-weight:900;font-style:normal}
 const NS='http://www.w3.org/2000/svg';
 const el=(n,a={},p)=>{const e=document.createElementNS(NS,n);for(const k in a)e.setAttribute(k,a[k]);p&&p.appendChild(e);return e};
 const root=document.getElementById('root');
-const SIZE=250, SX=1.1, X0=80, BASE=290, D=11;
-const mk=(txt,x,face,side,outline,rim,parent)=>{
-  const g=el('g',{transform:`translate(${x},${BASE}) scale(${SX},1)`},parent);
-  const t=(o)=>{const e=el('text',{x:0,y:0,'font-size':SIZE,'letter-spacing':-5,...o},g);e.textContent=txt;return e};
-  for(let i=D;i>=1;i--) t({transform:`translate(${-i*0.35},${i})`,fill:'url(#'+side+')',stroke:outline,'stroke-width':11,'stroke-linejoin':'round'});
-  t({fill:'none',stroke:outline,'stroke-width':15,'stroke-linejoin':'round'});
-  t({fill:'url(#'+face+')',stroke:rim,'stroke-width':4,'stroke-linejoin':'round','paint-order':'stroke'});
+const SIZE=260, X0=60, BASE=280;
+
+// Flat coloured text — no extrusion
+const mkFlat=(txt,x,fill,parent)=>{
+  const g=el('g',{transform:`translate(${x},${BASE})`},parent);
+  const t=el('text',{x:0,y:0,'font-size':SIZE,'letter-spacing':-4,fill},g);
+  t.textContent=txt;
   return g;
 };
+
 window.build=async(variant,mode='full')=>{
-  await document.fonts.load('900 300px Exo2Black');
+  await document.fonts.load(`900 300px InterBlack`);
   root.innerHTML='';
-  // measure widths
-  const measure=(txt)=>{const p=el('text',{'font-size':SIZE,'letter-spacing':-5,x:0,y:-999},root);p.textContent=txt;const w=p.getComputedTextLength()*SX;p.remove();return w;};
+
+  const measure=(txt)=>{
+    const p=el('text',{'font-size':SIZE,'letter-spacing':-4,x:0,y:-9999},root);
+    p.textContent=txt;
+    const w=p.getComputedTextLength();
+    p.remove();
+    return w;
+  };
+
   const w1=measure('GotMy');
   const wG=measure('G');
   const w3=measure('ame');
-  // "GotMy" in purple
-  mk('GotMy',X0,'purple','pside','#12142A','#E6D4FF',root);
-  // "G" in amber/gold
-  const gx=X0+w1+4;
-  mk('G',gx,'amber','aside','#12142A','#FFE090',root);
-  // Flame swoosh above the G: a teardrop arc from upper-left of G curving over and tapering to a point
-  // Positioned relative to the G's top-right: BASE-SIZE ≈ 40 is the cap height
-  const capTop=BASE-SIZE*0.92; // roughly the top of uppercase letters
-  const gRight=gx+wG;         // right edge of G
-  const flX=gx+wG*0.55;       // flame starts near the G's right shoulder
-  const flY=capTop+20;
+
+  // "GotMy" — purple #7B33C4
+  mkFlat('GotMy', X0, '#7B33C4', root);
+
+  // Flame swoosh above the G: a smooth teardrop arc in amber/gold drawn BEFORE the G text
+  // so it sits behind the letter stroke but visually in front of "GotMy"
+  const gx = X0 + w1;
+  // The cap-top of the font sits at roughly BASE - SIZE*0.74 for Inter
+  const cap = BASE - SIZE * 0.74;
+  // Flame: starts at the left shoulder of G, curves up and over, tapers to a point
+  const fx = gx + wG * 0.08;   // left anchor near the G's top-left
+  const fy = cap + SIZE * 0.06; // just below cap height
+  const tipX = gx + wG * 1.08; // tip extends slightly past the G's right edge
+  const tipY = cap - SIZE * 0.26; // tip points above cap height
   el('path',{
-    // A bezier-based teardrop/flame shape curving upward and to the right, then tapering to a tip
-    d:`M ${flX} ${flY}
-       C ${flX+40} ${flY-110}, ${flX+140} ${flY-170}, ${flX+180} ${flY-220}
-       C ${flX+200} ${flY-250}, ${flX+170} ${flY-270}, ${flX+130} ${flY-240}
-       C ${flX+80}  ${flY-190}, ${flX+30}  ${flY-130}, ${flX}     ${flY} Z`,
-    fill:'url(#flame)',stroke:'none',opacity:0.95
-  },root);
-  // "ame" in deep indigo
-  mk('ame',gx+wG+2,'indigo','iside','#12142A','#A8A8FF',root);
-  const right=gx+wG+2+w3;
-  const total=right-X0, cx=(X0+right)/2;
-  if(mode==='name') return {right,tw:0};
-  el('path',{d:`M ${X0-30} ${BASE+150} C ${X0+200} ${BASE+88}, ${X0+560} ${BASE+62}, ${X0+w1*0.92} ${BASE+62} C ${X0+w1*0.6} ${BASE+88}, ${X0+260} ${BASE+120}, ${X0-30} ${BASE+150} Z`,fill:'url(#swoosh)'},root);
-  const tag='THE SPORTSVERSE', tsize=64, ty=BASE+232;
+    d:`M ${fx} ${fy}
+       C ${fx + wG*0.3}  ${cap - SIZE*0.08},
+         ${tipX - wG*0.35} ${tipY + SIZE*0.04},
+         ${tipX} ${tipY}
+       C ${tipX - wG*0.1} ${tipY + SIZE*0.18},
+         ${fx + wG*1.1}  ${cap + SIZE*0.12},
+         ${fx + wG*0.82} ${fy + SIZE*0.04}
+       C ${fx + wG*0.55} ${fy + SIZE*0.08},
+         ${fx + wG*0.2}  ${fy + SIZE*0.05},
+         ${fx} ${fy} Z`,
+    fill:'#F5A820', stroke:'none'
+  }, root);
+
+  // "G" in amber/gold #F5A820, drawn on top of the flame
+  mkFlat('G', gx, '#F5A820', root);
+
+  // "ame" — deep indigo #3535B8
+  mkFlat('ame', gx + wG, '#3535B8', root);
+
+  const right = gx + wG + w3;
+  const total = right - X0, cx = (X0 + right) / 2;
+  if(mode==='name') return {right, tw:0};
+
+  // Tagline swoosh decoration
+  el('path',{
+    d:`M ${X0-30} ${BASE+140} C ${X0+200} ${BASE+78}, ${X0+500} ${BASE+52}, ${X0+w1*0.9} ${BASE+52} C ${X0+w1*0.55} ${BASE+78}, ${X0+240} ${BASE+114}, ${X0-30} ${BASE+140} Z`,
+    fill:'url(#swoosh)'
+  }, root);
+
+  const tag='THE SPORTSVERSE', tsize=58, ty=BASE+218;
   const navy=variant==='dark'?'#F2F4FA':'#1B1D3A';
   const tt=el('text',{x:0,y:0,'font-size':tsize,'letter-spacing':tsize*0.24,fill:navy},root);
-  let html='';[...tag].forEach((ch,i)=>{html+= (i===11)?`<tspan fill="#8A3FF0">${ch}</tspan>`:ch;});tt.innerHTML=html;
-  const nat=tt.getComputedTextLength(), target=total*0.62, ts=target/nat;
+  let html='';
+  [...tag].forEach((ch,i)=>{ html += (i===11)?`<tspan fill="#8A3FF0">${ch}</tspan>`:ch; });
+  tt.innerHTML=html;
+  const nat=tt.getComputedTextLength(), target=total*0.60, ts=target/nat;
   tt.setAttribute('transform',`translate(${cx-target/2},${ty}) scale(${ts},1)`);
-  const lw=total*0.12, gap=26, ly=ty-tsize*0.34;
-  const line=(x,w)=>el('rect',{x:0,y:0,width:w,height:5,fill:'#7B2FF0',transform:`translate(${x},${ly}) skewX(-20)`},root);
-  line(cx-target/2-gap-lw,lw); line(cx+target/2+gap,lw);
-  const tw=target;
-  return {right,tw};
+  const lw=total*0.11, gap=24, ly=ty-tsize*0.34;
+  const line=(x,w)=>el('rect',{x:0,y:0,width:w,height:4,fill:'#7B2FF0',transform:`translate(${x},${ly}) skewX(-18)`},root);
+  line(cx-target/2-gap-lw, lw);
+  line(cx+target/2+gap, lw);
+  return {right, tw:target};
 };
 </script></body></html>
