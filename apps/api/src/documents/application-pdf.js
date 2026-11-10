@@ -2,7 +2,7 @@
 // screen shows (capabilities/event-openings.js applicationView), so it can never hold more than the person downloading may see.
 import PDFDocument from 'pdfkit';
 import { fonts, assertGlyphs } from './render.js';
-import { drawWordmark } from './brand-font.js';
+import { drawWordmark, ICON } from './brand-font.js';
 
 const day = (d) => (d ? new Date(d).toISOString().slice(0, 10) : '');
 
@@ -32,7 +32,8 @@ export async function renderApplication(v, { generatedAt = new Date() } = {}) {
   };
 
   doc.rect(0, 0, doc.page.width, 8).fill(accent);
-  try { drawWordmark(doc, left, 22, { size: 13 }); } catch { /* the wordmark is decoration: a missing asset must not block the document */ }
+  try { doc.image(ICON, left, 16, { height: 28, width: 28 }); } catch { /* decoration */ }
+  try { drawWordmark(doc, left + 34, 22, { size: 13 }); } catch { /* the wordmark is decoration: a missing asset must not block the document */ }
   t(`Reference ${v.reference}`, { x: left, y: 24, size: 8.5, color: mute, align: 'right', lineBreak: false });
   doc.y = 52;
   t('APPLICATION FOR AN EVENT POSITION', { bold: true, size: 8.5, color: accent });

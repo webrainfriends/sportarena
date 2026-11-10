@@ -3,7 +3,7 @@
 // referee's name), then other assignments, payments, feedback and disputes. Every page has margins, a footer with the record's identity and "Page X of Y".
 import PDFDocument from 'pdfkit';
 import { fonts, assertGlyphs } from './render.js';
-import { drawWordmark } from './brand-font.js';
+import { drawWordmark, ICON } from './brand-font.js';
 
 const nice = (s) => String(s ?? '').replace(/_/g, ' ');
 const cap1 = (s) => nice(s).replace(/^./, (m) => m.toUpperCase());
@@ -157,7 +157,8 @@ export async function renderOfficialExtract({ snapshot, createdAt, id, sha256, l
       put(M.referee, left + W - 170, 35, 170, { size: 12, bold: true, align: 'right', h: 16 });
       put(c.role, left + W - 160, 52, 160, { size: 8, color: mute, align: 'right' });
     } else {
-      drawWordmark(doc, left, 18, { size: 14 });
+      try { doc.image(ICON, left, 16, { height: 28, width: 28 }); } catch { /* decoration */ }
+      drawWordmark(doc, left + 34, 18, { size: 14 });
       put(c.title, left, 36, W - 190, { size: 14, bold: true, color: accent, h: 18 });
       put(M.period, left, 58, W - 190, { size: 8.5, color: mute });
       put('REFEREE', left + W - 160, 24, 160, { size: 7.5, bold: true, color: mute, align: 'right' });

@@ -2,6 +2,7 @@
 // left out unless the caller already put it in the view; an athlete's copy is built from the frozen shared version. pdfkit with the shared font helper.
 import PDFDocument from 'pdfkit';
 import { fonts, assertGlyphs } from './render.js';
+import { drawWordmark, ICON } from './brand-font.js';
 
 const PILLAR = { technical: 'Technical', tactical: 'Tactical', physical: 'Physical', mental: 'Mental', behaviour: 'Behaviour', lifestyle: 'Lifestyle', other: 'Other' };
 const STATUS = { draft: 'Draft', shared: 'Shared', responded: 'Responded', closed: 'Closed' };
@@ -19,7 +20,7 @@ export async function renderEvaluation(ev, { generatedAt = new Date(), sections 
   const strings = [ev.title, ev.athlete?.display_name, ev.coach_name, ev.sheet?.name, ...Object.values(ev.narrative ?? {}), ev.response?.comment, ev.response?.questions,
     ...Object.values(ev.pillar_labels ?? {}), ...ev.criteria.flatMap((c) => [c.name, c.description, c.comment, c.self_comment, ...Object.values(c.labels ?? {}), ...Object.values(c.anchors ?? {}), ...(c.evidence ?? []).map((x) => x.text)]), ...(ev.thread ?? []).map((m) => m.body)];
   assertGlyphs(strings, f);
-  const accent = '#B4182D', ink = '#242E49', mute = '#5B6478', wash = '#F3F4F8';
+  const accent = '#8458B3', ink = '#2F3242', mute = '#5F6580', wash = '#EEE9F8';
   const doc = new PDFDocument({ size: 'A4', margin: 40, bufferPages: true, compress: true, info: { Title: `Evaluation - ${ev.title}`, Author: 'GotMyGame', CreationDate: generatedAt, Producer: 'GotMyGame' } });
   const chunks = []; doc.on('data', (c) => chunks.push(c));
   const done = new Promise((res, rej) => { doc.on('end', res); doc.on('error', rej); });
@@ -31,7 +32,9 @@ export async function renderEvaluation(ev, { generatedAt = new Date(), sections 
   const bar = (x, y, w, pct, color) => { doc.rect(x, y, w, 6).fill('#E5E7EF'); if (pct != null) doc.rect(x, y, Math.max(1, (w * Math.min(100, Math.max(0, pct))) / 100), 6).fill(color); };
 
   doc.rect(0, 0, doc.page.width, 8).fill(accent);
-  doc.y = 26;
+  try { doc.image(ICON, left, 16, { height: 28, width: 28 }); } catch { /* decoration */ }
+  try { drawWordmark(doc, left + 34, 22, { size: 13 }); } catch { /* decoration */ }
+  doc.y = 52;
   t('EVALUATION', { bold: true, size: 8.5, color: accent });
   t(ev.title, { bold: true, size: 18 });
   t([`Athlete: ${ev.athlete?.display_name ?? ''}`, `Coach: ${ev.coach_name}`, `Sheet: ${ev.sheet?.name} v${ev.sheet?.version}`, `Status: ${STATUS[ev.status] ?? ev.status}`, ev.version ? `Version ${ev.version}` : 'Not shared yet', ev.period_from ? `${day(ev.period_from)} to ${day(ev.period_to) || '...'}` : null].filter(Boolean).join('   |   '), { size: 8.5, color: mute });

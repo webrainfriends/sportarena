@@ -5,7 +5,7 @@ import { AppError } from '../errors.js';
 import { toMajor } from '../currency.js';
 import { drawForm } from './sheet-forms.js';
 import { formStrings } from '../tracking/forms.js';
-import { drawWordmark } from './brand-font.js';
+import { drawWordmark, ICON } from './brand-font.js';
 
 const MM = 72 / 25.4;
 const BASE_FONTS = { regular: 'Helvetica', bold: 'Helvetica-Bold' };
@@ -511,7 +511,7 @@ export async function renderSponsorshipReport({ kit, logo, report }) {
   let x = left;
   if (logo) { try { doc.image(logo, x, doc.y, { fit: [110, 44] }); x += 120; } catch { throw new AppError(422, 'logo_unreadable', 'The brand logo could not be read. Upload it again as PNG or JPEG.'); } }
   if (kit?.display_name) label(kit.display_name, x, 36, width - (x - left), { bold: true, size: 14, color: accent });
-  else if (report.kind === 'kpi') { drawWordmark(doc, x, 34, { size: 20 }); label('analytics', x + 108, 42, 80, { bold: true, size: 9, color: accent }); }
+  else if (report.kind === 'kpi') { try { doc.image(ICON, x, 30, { height: 28, width: 28 }); } catch { /* decoration */ } drawWordmark(doc, x + 34, 34, { size: 20 }); label('analytics', x + 34 + 108, 42, 80, { bold: true, size: 9, color: accent }); }
   else label('Sponsorship report', x, 36, width - (x - left), { bold: true, size: 14, color: accent });
   label(report.title ?? `${KIND_TITLE[report.kind]} report`, x, doc.y + 2, width - (x - left), { bold: true, size: 12 });
   label(`As of ${report.basis.as_of} · ${report.basis.currency_basis === 'reporting' ? `converted to ${report.basis.currency} at each agreement's sourced rate` : 'every currency kept apart'} · cash and estimates separate · generated ${report.basis.generated_at.slice(0, 16).replace('T', ' ')} UTC`, x, doc.y + 2, width - (x - left), { size: 8 });
@@ -588,7 +588,7 @@ export async function renderTrackingSheet({ sheet, layout, kit, logo, code, qr, 
   // header: logo + title on the left, QR + reference on the right
   let x = left;
   if (logo) { try { doc.image(logo, x, 36, { fit: [90, 40] }); x += 100; } catch { throw new AppError(422, 'logo_unreadable', 'The brand logo could not be read. Upload it again as PNG or JPEG.'); } }
-  if (kit?.display_name) label(kit.display_name, x, 36, width - 110, { bold: true, size: 10, color: accent }); else drawWordmark(doc, x, 32, { size: 16 });
+  if (kit?.display_name) label(kit.display_name, x, 36, width - 110, { bold: true, size: 10, color: accent }); else { try { doc.image(ICON, x, 30, { height: 28, width: 28 }); } catch { /* decoration */ } drawWordmark(doc, x + 34, 32, { size: 16 }); }
   label(layout.title, x, 50, width - 110, { bold: true, size: 16 });
   label(sheet.mode === 'linked' ? 'RESULT PROPOSAL - not official until reviewed and approved' : 'UNOFFICIAL - personal tracking sheet', x, 72, width - 110, { size: 8, bold: true, color: '#B42318' });
   if (qr) { // qr = boolean matrix; drawn as vector squares so it prints sharp
