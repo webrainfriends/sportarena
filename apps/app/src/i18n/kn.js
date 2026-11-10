@@ -16791,4 +16791,112 @@ export default {
   'rule_ai.no_open_escalations': 'No open escalations.', // reviewed: false
   'rule_ai.no_escalations': 'No escalations.', // reviewed: false
 
+
+  // ─── Official eligibility (oe.*) — issue #1000 REF-R09 ───────────────────
+  'oe.header_label': 'OFFICIALS · ELIGIBILITY', // reviewed: false
+  'oe.heading': 'Your eligibility', // reviewed: false
+  'oe.sub': 'All factors checked for this assignment', // reviewed: false
+  'oe.crew.heading': 'Crew eligibility', // reviewed: false
+  'oe.crew.sub': 'Eligibility status for all assigned officials', // reviewed: false
+  'oe.crew.title': 'Crew panel', // reviewed: false
+  'oe.crew.all_eligible': 'All eligible', // reviewed: false
+  'oe.crew.issues': 'issue(s)', // reviewed: false
+  'oe.crew.empty': 'No officials assigned', // reviewed: false
+  'oe.crew.empty_sub': 'Assign officials from the crew panel to see their eligibility status.', // reviewed: false
+  'oe.section.eligibility': 'Eligibility factors', // reviewed: false
+  'oe.section.overrides': 'Active overrides', // reviewed: false
+  'oe.eligibility_note': 'All factors must be clear before this assignment can be confirmed.', // reviewed: false
+  'oe.privacy_note': 'Eligibility decisions are based on your verified profile. Sanction details are never disclosed.', // reviewed: false
+  'oe.state.eligible': 'Eligible', // reviewed: false
+  'oe.state.pending': 'Pending', // reviewed: false
+  'oe.state.ineligible': 'Ineligible', // reviewed: false
+  'oe.state.overridden': 'Overridden', // reviewed: false
+  'oe.badge.eligible': 'Eligible', // reviewed: false
+  'oe.badge.ineligible': 'Ineligible', // reviewed: false
+  'oe.override_active': 'Override active', // reviewed: false
+  'oe.override.factor': 'Override: {factor}', // reviewed: false
+  'oe.override.by': 'Granted by {name}', // reviewed: false
+  'oe.override.expires': 'Expires {date}', // reviewed: false
+  'oe.override.granted': 'Override granted.', // reviewed: false
+  'oe.override.title': 'Grant override — {factor}', // reviewed: false
+  'oe.override.submit': 'Grant override', // reviewed: false
+  'oe.override.notice': 'Overrides are audit-logged and visible to governing bodies. Suspension sanctions cannot be overridden.', // reviewed: false
+  'oe.override.reason_label': 'Reason for override', // reviewed: false
+  'oe.override.expires_label': 'Override expires at', // reviewed: false
+  'oe.btn.declare_conflict': 'Declare conflict of interest', // reviewed: false
+  'oe.btn.appeal': 'Submit appeal', // reviewed: false
+  'oe.btn.grant_override_for': 'Grant override — {factor}', // reviewed: false
+  'oe.btn.view_conflicts': 'View conflicts', // reviewed: false
+  'oe.appeal.title': 'Appeal ineligibility decision', // reviewed: false
+  'oe.appeal.submit': 'Submit appeal', // reviewed: false
+  'oe.appeal.sent': 'Appeal submitted. The event organiser has been notified.', // reviewed: false
+  'oe.appeal.notice': 'Appeals are reviewed by the event organiser. Provide as much detail as possible.', // reviewed: false
+  'oe.appeal.grounds_label': 'Grounds for appeal', // reviewed: false
+  'oe.appeal.note_label': 'Supporting notes (optional)', // reviewed: false
+  'oe.empty': 'Nothing to review', // reviewed: false
+  'oe.empty_sub': 'Open this screen from an assignment or fixture to check eligibility.', // reviewed: false
+
+  // ─── Official conflict of interest (oci.*) — issue #1000 REF-R09 ─────────
+  'oci.header_label': 'OFFICIALS · CONFLICT OF INTEREST', // reviewed: false
+  'oci.heading.official': 'Your declarations', // reviewed: false
+  'oci.heading.organiser': 'Conflict declarations', // reviewed: false
+  'oci.sub.official': 'Declare any conflict of interest for this assignment', // reviewed: false
+  'oci.sub.organiser': 'Review and decide pending conflict declarations', // reviewed: false
+  'oci.kind.team_relationship': 'Team relationship', // reviewed: false
+  'oci.kind.family_member': 'Family member', // reviewed: false
+  'oci.kind.club_membership': 'Club membership', // reviewed: false
+  'oci.kind.financial_interest': 'Financial interest', // reviewed: false
+  'oci.kind.association_connection': 'Association connection', // reviewed: false
+  'oci.kind.previous_involvement': 'Previous involvement', // reviewed: false
+  'oci.kind.other': 'Other', // reviewed: false
+  'oci.status.open': 'Open', // reviewed: false
+  'oci.status.waived': 'Waived', // reviewed: false
+  'oci.status.reassigned': 'Reassigned', // reviewed: false
+  'oci.status.escalated': 'Escalated', // reviewed: false
+  'oci.status.withdrawn': 'Withdrawn', // reviewed: false
+  'oci.serious': 'Serious', // reviewed: false
+  'oci.raised_at': 'Raised {date}', // reviewed: false
+  'oci.show_detail': 'Show detail', // reviewed: false
+  'oci.section.my_declarations': 'My declarations', // reviewed: false
+  'oci.section.pending': 'Pending decision', // reviewed: false
+  'oci.section.decided': 'Decided', // reviewed: false
+  'oci.empty.official': 'No declarations', // reviewed: false
+  'oci.empty.official_sub': 'If you have a conflict of interest for this assignment, declare it here.', // reviewed: false
+  'oci.empty.organiser': 'No pending declarations', // reviewed: false
+  'oci.empty.organiser_sub': 'All conflict declarations for this assignment have been decided.', // reviewed: false
+  'oci.btn.declare': 'Declare a conflict', // reviewed: false
+  'oci.btn.withdraw': 'Withdraw declaration', // reviewed: false
+  'oci.declare.sent': 'Declaration submitted. The event organiser has been notified.', // reviewed: false
+  'oci.withdrawn': 'Declaration withdrawn.', // reviewed: false
+  'oci.privacy_note': 'Conflict details are encrypted and visible only to you and the event organiser.', // reviewed: false
+  'oci.wizard.step1': 'What type of conflict?', // reviewed: false
+  'oci.wizard.step1_sub': 'Select the category that best describes the conflict.', // reviewed: false
+  'oci.wizard.step2': 'Who is involved?', // reviewed: false
+  'oci.wizard.counterparty_label': 'Team or person name (optional)', // reviewed: false
+  'oci.wizard.counterparty_hint': 'e.g. FC Barcelona, John Smith', // reviewed: false
+  'oci.wizard.detail_label': 'Describe the conflict', // reviewed: false
+  'oci.wizard.detail_hint': 'Explain the nature of the conflict in detail. This is encrypted.', // reviewed: false
+  'oci.wizard.step3': 'Review and submit', // reviewed: false
+  'oci.wizard.serious_label': 'Incompatible with impartiality?', // reviewed: false
+  'oci.wizard.serious_hint': 'Mark this if you believe the conflict could compromise your impartiality.', // reviewed: false
+  'oci.wizard.serious_yes': 'Yes', // reviewed: false
+  'oci.wizard.serious_no': 'No', // reviewed: false
+  'oci.wizard.review_heading': 'Your declaration', // reviewed: false
+  'oci.wizard.privacy_note': 'The detail you provide will be encrypted. Only you and the event organiser will be able to read it.', // reviewed: false
+  'oci.wizard.submit': 'Submit declaration', // reviewed: false
+  'oci.decide.waive': 'Waive', // reviewed: false
+  'oci.decide.reassign': 'Release & reassign', // reviewed: false
+  'oci.decide.escalate': 'Escalate', // reviewed: false
+  'oci.decide.form_title.waive': 'Waive conflict declaration', // reviewed: false
+  'oci.decide.form_title.reassign': 'Release and reassign official', // reviewed: false
+  'oci.decide.form_title.escalate': 'Escalate to governing body', // reviewed: false
+  'oci.decide.form_submit.waive': 'Confirm waiver', // reviewed: false
+  'oci.decide.form_submit.reassign': 'Confirm release', // reviewed: false
+  'oci.decide.form_submit.escalate': 'Confirm escalation', // reviewed: false
+  'oci.decide.note_label': 'Decision note (optional, encrypted)', // reviewed: false
+  'oci.decide.reassign_notice': 'The official will be released from this assignment immediately.', // reviewed: false
+  'oci.decide.done.waive': 'Conflict waived. The official has been notified.', // reviewed: false
+  'oci.decide.done.reassign': 'Official released and reassigned. They have been notified.', // reviewed: false
+  'oci.decide.done.escalate': 'Escalated to governing body.', // reviewed: false
+
 };
