@@ -177,7 +177,11 @@ export async function planStage(c, ev, i, ov = {}) {
     catch (e) { throw e.code ? badRequest(e.message, { code: e.code }) : badRequest(e.message); }
   }
   const { matches, items, byes } = built;
-  const sportRow = ev.sport_id ? (await c.query('SELECT slug, name, category, scoring FROM sports WHERE id=$1', [ev.sport_id])).rows[0] : null;
+  const sportRow = ev.sport_id ? (await c.query('SELECT slug, name, category, scoring, typical_match_min FROM sports WHERE id=$1', [ev.sport_id])).rows[0] : null;
+  // Use sport's typical_match_min when caller did not supply an explicit match_duration_min (input default is 90)
+  if (sportRow?.typical_match_min && i.match_duration_min === 90 && sportRow.typical_match_min !== 90) {
+    i = { ...i, match_duration_min: sportRow.typical_match_min };
+  }
   const coverage = coverageOf(sportRow);
   const warnings = [...(built.warnings ?? []), ...(i.format !== 'round_robin' && coverage.mode === 'fallback' ? [coverage.note] : [])];
 
