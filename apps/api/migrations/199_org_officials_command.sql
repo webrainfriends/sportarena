@@ -18,9 +18,12 @@ CREATE TABLE IF NOT EXISTS org_official_rosters (
   removed_by       uuid        REFERENCES users(id),
   removal_reason   text        CHECK (removal_reason IS NULL OR length(removal_reason) <= 500),
   notes_enc        text,                                        -- field-level encrypted; never projected publicly
-  created_at       timestamptz NOT NULL DEFAULT now(),
-  UNIQUE (organisation_id, user_id, COALESCE(sport_id, '00000000-0000-0000-0000-000000000000'::uuid))
+  created_at       timestamptz NOT NULL DEFAULT now()
 );
+-- One roster row per organisation, official and sport, where "all sports" (NULL) counts as one value. A table UNIQUE constraint
+-- cannot hold an expression (Postgres rejects it as a syntax error), so this is a unique index.
+CREATE UNIQUE INDEX IF NOT EXISTS org_official_rosters_one ON org_official_rosters
+  (organisation_id, user_id, COALESCE(sport_id, '00000000-0000-0000-0000-000000000000'::uuid));
 CREATE INDEX IF NOT EXISTS org_official_rosters_org_status ON org_official_rosters(organisation_id, status);
 CREATE INDEX IF NOT EXISTS org_official_rosters_user       ON org_official_rosters(user_id);
 
@@ -51,9 +54,11 @@ CREATE TABLE IF NOT EXISTS org_assignor_grants (
                               CHECK (status IN ('active','revoked')),
   revoked_at      timestamptz,
   revoked_by      uuid        REFERENCES users(id),
-  created_at      timestamptz NOT NULL DEFAULT now(),
-  UNIQUE (organisation_id, granted_to, COALESCE(sport_id, '00000000-0000-0000-0000-000000000000'::uuid))
+  created_at      timestamptz NOT NULL DEFAULT now()
 );
+-- One grant per organisation, person and sport ("all sports" counts as one value): a unique index, for the same reason as above.
+CREATE UNIQUE INDEX IF NOT EXISTS org_assignor_grants_one ON org_assignor_grants
+  (organisation_id, granted_to, COALESCE(sport_id, '00000000-0000-0000-0000-000000000000'::uuid));
 CREATE INDEX IF NOT EXISTS org_assignor_grants_org_status    ON org_assignor_grants(organisation_id, status);
 CREATE INDEX IF NOT EXISTS org_assignor_grants_grantee       ON org_assignor_grants(granted_to, status);
 
