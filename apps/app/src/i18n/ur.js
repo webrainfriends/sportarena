@@ -15479,7 +15479,7 @@ export default {
   'residency.supported_banner': 'Your data will be stored in {region}',
   'residency.unsupported_banner': 'GotMyGame does not currently have data storage in {country}.',
   'residency.fallback_title': 'Singapore storage consent',
-  'residency.fallback_body': 'GotMyGame does not operate data storage in your home country. With your permission, your account and eligible personal data will be stored and processed in Singapore.',
+  'residency.fallback_body': 'GotMyGame does not operate data storage in your home country. With your permission, your account and eligible personal data will be stored and processed in AWS Singapore (ap-southeast-1).',
   'residency.fallback_agree': 'Agree to Singapore storage',
   'residency.fallback_decline': 'Not now — browse without an account',
   'residency.fallback_waitlist': 'Join waitlist for in-country storage',
@@ -15526,10 +15526,10 @@ export default {
   'residency.policy_hash_label': 'Text hash',
   'residency.policy_region_label': 'Region',
   'residency.affirmation_label': 'What you are agreeing to',
-  'residency.affirmation_body': 'By tapping Agree, you give GotMyGame explicit, affirmative, freely-given consent to store and process the data categories listed above in Singapore. You may withdraw consent at any time from Account -> Data Residency.',
+  'residency.affirmation_body': 'By tapping Agree, you give GotMyGame explicit, affirmative, freely-given consent to store and process the data categories listed above in AWS Singapore. You may withdraw consent at any time from Account -> Data Residency.',
   'residency.no_pretick': 'No pre-ticked boxes. This consent is freely given and freely withdrawable.',
   'residency.consent_success_title': 'Singapore consent recorded',
-  'residency.consent_success_body': 'Your data will be stored in Singapore. You can review or withdraw this consent at any time from Account -> Data Residency.',
+  'residency.consent_success_body': 'Your data will be stored in AWS Singapore. You can review or withdraw this consent at any time from Account -> Data Residency.',
   'residency.status.active': 'Active',
   'residency.status.fallback': 'Fallback',
   'residency.status.in_country': 'In-country',
@@ -15541,14 +15541,14 @@ export default {
   'residency.admin.audit_title': 'Residency audit log',
   'residency.admin.export': 'Export compliance report',
   'residency.set_country_title': 'Where should your data live?',
-  'residency.set_country_body': 'GotMyGame stores your personal data in a country chosen from your home country. Choose your country to see where your data will live — or to consent to Singapore storage if your country is not yet covered.',
+  'residency.set_country_body': 'GotMyGame stores your personal data in an AWS region based on your home country. Choose your country to see which region applies — or to consent to Singapore storage if your country is not yet covered.',
   'residency.set_country_cta': 'Save & check data consent',
   'residency.set_country_skip': 'Skip for now',
   'residency.country_saved': 'Home country saved',
   'residency.country_change_note': 'Changing country may require new storage consent',
   'residency.preview_loading': 'Checking data region…',
   'residency.banner_title': 'Set your data home',
-  'residency.banner_body': 'Tell us your home country so we can store your personal data in the right country — required for data residency compliance.',
+  'residency.banner_body': 'Tell us your home country so we can store your personal data in the right AWS region — required for data residency compliance.',
   'residency.country_required': 'Please choose your home country to set up data storage',
   'residency.country_required_hint': 'Required — choose your home country',
   'pu.title': 'پلیٹ فارم صارفین',
@@ -15953,31 +15953,6 @@ export default {
   'officials.bulk.go_to_board': 'تقرری بورڈ پر جائیں',
   'officials.bulk.selected': 'منتخب',
   'officials.bulk.not_scheduled': 'ابھی طے نہیں',
-  'officials.arrive_by': 'Arrive by {time}', // reviewed: false
-  'officials.reporting_time': 'Reporting time', // reviewed: false
-  'officials.lock.title': 'Lock Assignment', // reviewed: false
-  'officials.lock.reason_placeholder': 'Why is this assignment being locked? (e.g. Finals confirmed, travel booked)', // reviewed: false
-  'officials.lock.confirm': 'Lock', // reviewed: false
-  'officials.lock.unlock_title': 'Unlock Assignment', // reviewed: false
-  'officials.lock.unlock_reason': 'Override reason (required)', // reviewed: false
-  'officials.lock.unlock_reason_placeholder': 'Provide a mandatory reason to override the lock', // reviewed: false
-  'officials.lock.unlock_confirm': 'Unlock', // reviewed: false
-  'officials.lock.badge': 'Locked', // reviewed: false
-  'officials.lock.locked_by': 'Locked by {name}', // reviewed: false
-  'officials.lock.reason_label': 'Lock reason', // reviewed: false
-  'officials.clash.travel_gap': 'Travel time warning', // reviewed: false
-  'officials.clash.detail_title': 'Clash Detail', // reviewed: false
-  'officials.clash.other_fixture': 'Conflicts with', // reviewed: false
-  'officials.clash.distance': '{km} km apart', // reviewed: false
-  'officials.clash.gap': '{min} min gap', // reviewed: false
-  'officials.clash.required_travel': '{min} min needed to travel', // reviewed: false
-  'officials.clash.override_reason': 'Override reason', // reviewed: false
-  'officials.clash.override_placeholder': 'Why is this clash being overridden? (required)', // reviewed: false
-  'officials.clash.confirm_override': 'Override clash', // reviewed: false
-  'officials.clash.locked_error': 'This assignment is locked', // reviewed: false
-  'officials.clash.locked_error_body': 'Unlock the assignment before making changes.', // reviewed: false
-  'officials.clash.travel_error': 'Insufficient travel time', // reviewed: false
-  'officials.clash.travel_error_body': '{distKm} km between venues — {gapMin} min gap, {reqMin} min needed.', // reviewed: false
 
   'officialEarnings.title': 'آمدنی اور فیس', // reviewed: false
   'officialEarnings.tab.overview': 'جائزہ', // reviewed: false
@@ -17309,4 +17284,113 @@ export default {
   'guide.officials_availability.s5': 'منتظمین پہلے کی طرح تقرری بورڈ یا اجتماعی دعوت سے تقرری کرتے ہیں۔ اب ہر آفیشل دستیاب، اپنی حدود سے باہر یا غیر دستیاب دکھائی دیتا ہے، سادہ وجہ اور فاصلے کی حد کے ساتھ۔ جو درخواست کسی آفیشل کے اصول توڑے وہ اسی وجہ کے ساتھ مسترد ہو جاتی ہے۔',
   'guide.officials_availability.s6': 'درخواست اس وقت تک عارضی بکنگ رہتی ہے جب تک آفیشل اسے قبول نہ کرے۔ قبول کرنے سے وہ وقت محفوظ ہو جاتا ہے، اور اسی وقت کے منتظر کسی دوسرے منتظم کو اطلاع دی جاتی ہے۔ میچ منسوخ ہونے سے وہ وقت دوبارہ خالی ہو جاتا ہے۔ کیلنڈر ٹیب یہ سب آفیشل کے ٹائم زون میں دکھاتا ہے، اور مقام کا وقت مختلف ہو تو وہ بھی۔',
   'oav.edit': 'ترمیم',
+
+
+  // ─── Official eligibility (oe.*) — issue #1000 REF-R09 ───────────────────
+  'oe.header_label': 'OFFICIALS · ELIGIBILITY', // reviewed: false
+  'oe.heading': 'Your eligibility', // reviewed: false
+  'oe.sub': 'All factors checked for this assignment', // reviewed: false
+  'oe.crew.heading': 'Crew eligibility', // reviewed: false
+  'oe.crew.sub': 'Eligibility status for all assigned officials', // reviewed: false
+  'oe.crew.title': 'Crew panel', // reviewed: false
+  'oe.crew.all_eligible': 'All eligible', // reviewed: false
+  'oe.crew.issues': 'issue(s)', // reviewed: false
+  'oe.crew.empty': 'No officials assigned', // reviewed: false
+  'oe.crew.empty_sub': 'Assign officials from the crew panel to see their eligibility status.', // reviewed: false
+  'oe.section.eligibility': 'Eligibility factors', // reviewed: false
+  'oe.section.overrides': 'Active overrides', // reviewed: false
+  'oe.eligibility_note': 'All factors must be clear before this assignment can be confirmed.', // reviewed: false
+  'oe.privacy_note': 'Eligibility decisions are based on your verified profile. Sanction details are never disclosed.', // reviewed: false
+  'oe.state.eligible': 'Eligible', // reviewed: false
+  'oe.state.pending': 'Pending', // reviewed: false
+  'oe.state.ineligible': 'Ineligible', // reviewed: false
+  'oe.state.overridden': 'Overridden', // reviewed: false
+  'oe.badge.eligible': 'Eligible', // reviewed: false
+  'oe.badge.ineligible': 'Ineligible', // reviewed: false
+  'oe.override_active': 'Override active', // reviewed: false
+  'oe.override.factor': 'Override: {factor}', // reviewed: false
+  'oe.override.by': 'Granted by {name}', // reviewed: false
+  'oe.override.expires': 'Expires {date}', // reviewed: false
+  'oe.override.granted': 'Override granted.', // reviewed: false
+  'oe.override.title': 'Grant override — {factor}', // reviewed: false
+  'oe.override.submit': 'Grant override', // reviewed: false
+  'oe.override.notice': 'Overrides are audit-logged and visible to governing bodies. Suspension sanctions cannot be overridden.', // reviewed: false
+  'oe.override.reason_label': 'Reason for override', // reviewed: false
+  'oe.override.expires_label': 'Override expires at', // reviewed: false
+  'oe.btn.declare_conflict': 'Declare conflict of interest', // reviewed: false
+  'oe.btn.appeal': 'Submit appeal', // reviewed: false
+  'oe.btn.grant_override_for': 'Grant override — {factor}', // reviewed: false
+  'oe.btn.view_conflicts': 'View conflicts', // reviewed: false
+  'oe.appeal.title': 'Appeal ineligibility decision', // reviewed: false
+  'oe.appeal.submit': 'Submit appeal', // reviewed: false
+  'oe.appeal.sent': 'Appeal submitted. The event organiser has been notified.', // reviewed: false
+  'oe.appeal.notice': 'Appeals are reviewed by the event organiser. Provide as much detail as possible.', // reviewed: false
+  'oe.appeal.grounds_label': 'Grounds for appeal', // reviewed: false
+  'oe.appeal.note_label': 'Supporting notes (optional)', // reviewed: false
+  'oe.empty': 'Nothing to review', // reviewed: false
+  'oe.empty_sub': 'Open this screen from an assignment or fixture to check eligibility.', // reviewed: false
+
+  // ─── Official conflict of interest (oci.*) — issue #1000 REF-R09 ─────────
+  'oci.header_label': 'OFFICIALS · CONFLICT OF INTEREST', // reviewed: false
+  'oci.heading.official': 'Your declarations', // reviewed: false
+  'oci.heading.organiser': 'Conflict declarations', // reviewed: false
+  'oci.sub.official': 'Declare any conflict of interest for this assignment', // reviewed: false
+  'oci.sub.organiser': 'Review and decide pending conflict declarations', // reviewed: false
+  'oci.kind.team_relationship': 'Team relationship', // reviewed: false
+  'oci.kind.family_member': 'Family member', // reviewed: false
+  'oci.kind.club_membership': 'Club membership', // reviewed: false
+  'oci.kind.financial_interest': 'Financial interest', // reviewed: false
+  'oci.kind.association_connection': 'Association connection', // reviewed: false
+  'oci.kind.previous_involvement': 'Previous involvement', // reviewed: false
+  'oci.kind.other': 'Other', // reviewed: false
+  'oci.status.open': 'Open', // reviewed: false
+  'oci.status.waived': 'Waived', // reviewed: false
+  'oci.status.reassigned': 'Reassigned', // reviewed: false
+  'oci.status.escalated': 'Escalated', // reviewed: false
+  'oci.status.withdrawn': 'Withdrawn', // reviewed: false
+  'oci.serious': 'Serious', // reviewed: false
+  'oci.raised_at': 'Raised {date}', // reviewed: false
+  'oci.show_detail': 'Show detail', // reviewed: false
+  'oci.section.my_declarations': 'My declarations', // reviewed: false
+  'oci.section.pending': 'Pending decision', // reviewed: false
+  'oci.section.decided': 'Decided', // reviewed: false
+  'oci.empty.official': 'No declarations', // reviewed: false
+  'oci.empty.official_sub': 'If you have a conflict of interest for this assignment, declare it here.', // reviewed: false
+  'oci.empty.organiser': 'No pending declarations', // reviewed: false
+  'oci.empty.organiser_sub': 'All conflict declarations for this assignment have been decided.', // reviewed: false
+  'oci.btn.declare': 'Declare a conflict', // reviewed: false
+  'oci.btn.withdraw': 'Withdraw declaration', // reviewed: false
+  'oci.declare.sent': 'Declaration submitted. The event organiser has been notified.', // reviewed: false
+  'oci.withdrawn': 'Declaration withdrawn.', // reviewed: false
+  'oci.privacy_note': 'Conflict details are encrypted and visible only to you and the event organiser.', // reviewed: false
+  'oci.wizard.step1': 'What type of conflict?', // reviewed: false
+  'oci.wizard.step1_sub': 'Select the category that best describes the conflict.', // reviewed: false
+  'oci.wizard.step2': 'Who is involved?', // reviewed: false
+  'oci.wizard.counterparty_label': 'Team or person name (optional)', // reviewed: false
+  'oci.wizard.counterparty_hint': 'e.g. FC Barcelona, John Smith', // reviewed: false
+  'oci.wizard.detail_label': 'Describe the conflict', // reviewed: false
+  'oci.wizard.detail_hint': 'Explain the nature of the conflict in detail. This is encrypted.', // reviewed: false
+  'oci.wizard.step3': 'Review and submit', // reviewed: false
+  'oci.wizard.serious_label': 'Incompatible with impartiality?', // reviewed: false
+  'oci.wizard.serious_hint': 'Mark this if you believe the conflict could compromise your impartiality.', // reviewed: false
+  'oci.wizard.serious_yes': 'Yes', // reviewed: false
+  'oci.wizard.serious_no': 'No', // reviewed: false
+  'oci.wizard.review_heading': 'Your declaration', // reviewed: false
+  'oci.wizard.privacy_note': 'The detail you provide will be encrypted. Only you and the event organiser will be able to read it.', // reviewed: false
+  'oci.wizard.submit': 'Submit declaration', // reviewed: false
+  'oci.decide.waive': 'Waive', // reviewed: false
+  'oci.decide.reassign': 'Release & reassign', // reviewed: false
+  'oci.decide.escalate': 'Escalate', // reviewed: false
+  'oci.decide.form_title.waive': 'Waive conflict declaration', // reviewed: false
+  'oci.decide.form_title.reassign': 'Release and reassign official', // reviewed: false
+  'oci.decide.form_title.escalate': 'Escalate to governing body', // reviewed: false
+  'oci.decide.form_submit.waive': 'Confirm waiver', // reviewed: false
+  'oci.decide.form_submit.reassign': 'Confirm release', // reviewed: false
+  'oci.decide.form_submit.escalate': 'Confirm escalation', // reviewed: false
+  'oci.decide.note_label': 'Decision note (optional, encrypted)', // reviewed: false
+  'oci.decide.reassign_notice': 'The official will be released from this assignment immediately.', // reviewed: false
+  'oci.decide.done.waive': 'Conflict waived. The official has been notified.', // reviewed: false
+  'oci.decide.done.reassign': 'Official released and reassigned. They have been notified.', // reviewed: false
+  'oci.decide.done.escalate': 'Escalated to governing body.', // reviewed: false
+
 };

@@ -1,6 +1,13 @@
 // Shared invariants for fixture officials: eligibility + double-booking checks used by create, reschedule, invite and accept.
+// Extended for issue #1000 (REF-R09): suspension gate, minimum-age, training certs, safeguarding clearance,
+// association neutrality, and undecided conflict-of-interest blocks. Each new check respects event policy fields
+// and skips gracefully when the policy is not configured, so existing fixtures are unaffected.
 import { badRequest, conflict } from './errors.js';
 import { assess } from './official-availability.js';
+import { activeSportingSanction } from './integrity.js';
+import { blocksOn, BLOCKING_KINDS } from './discipline.js';
+import { serviceFor } from './discipline-live.js';
+import { gate as complianceGate, hasObligations } from './compliance.js';
 
 export const OFFICIAL_ROLES = [
   'referee', 'umpire', 'linesman', 'scorer',
@@ -71,6 +78,61 @@ export async function assertOfficialEligible(c, { event, sportId, fixtureId, use
       }
     }
   }
+  // — Suspension check (cannot be bypassed by an override here; use the governing body) —
+  if (role !== 'scorer' && start) {
+    const day = typeof start === 'string' ? start.slice(0, 10) : new Date(start).toISOString().slice(0, 10);
+    const suspended = await (async () => {
+      if (await activeSportingSanction(c, userId, sport, day)) return true;
+      const rows = (await c.query(
+        `SELECT s.* FROM disc_sanctions s JOIN comp_competitions k ON k.id=s.competition_id
+          WHERE s.subject_user_id=$1 AND s.superseded_at IS NULL AND s.status IN ('interim','active') AND s.kind = ANY($2::text[]) AND COALESCE(s.sport_id, k.sport_id)=$3`,
+        [userId, BLOCKING_KINDS, sport])).rows;
+      for (const s of rows) {
+        if (blocksOn(s, day, s.kind === 'match_suspension' ? await serviceFor(c, s) : null)) return true;
+      }
+      return false;
+    })();
+    if (suspended) throw conflict('This official has an active sporting sanction or match suspension');
+  }
+
+  // — Minimum age (event.official_min_age) —
+  if (event?.official_min_age && start) {
+    const day = typeof start === 'string' ? start.slice(0, 10) : new Date(start).toISOString().slice(0, 10);
+    const dob = (await c.query('SELECT birth_date FROM profiles WHERE user_id=$1', [userId])).rows[0]?.birth_date;
+    if (dob) {
+      const age = Math.floor((new Date(day) - new Date(dob)) / (365.25 * 864e5));
+      if (age < event.official_min_age) throw badRequest(`This event requires officials to be at least ${event.official_min_age} years old`);
+    }
+  }
+
+  // — Training certificates (event.official_training_required) —
+  if (event?.official_training_required?.length) {
+    const held = (await c.query(
+      "SELECT category FROM compliance_records WHERE subject_id=$1 AND subject_type='user' AND organisation_id IS NULL AND state='active' AND category = ANY($2::text[])",
+      [userId, event.official_training_required])).rows.map((r) => r.category);
+    const missing = event.official_training_required.filter((r) => !held.includes(r));
+    if (missing.length) throw badRequest(`This event requires the following training for officials: ${missing.join(', ')}`);
+  }
+
+  // — Safeguarding / youth-access clearance (event.official_safeguarding_required) —
+  if (event?.official_safeguarding_required) {
+    const ctx = {};
+    const hasObs = await hasObligations(c, 'youth_access', ctx);
+    if (hasObs) {
+      const g = await complianceGate(c, userId, 'youth_access', ctx);
+      if (g.decision !== 'clear') throw badRequest('This event requires officials to have a current safeguarding clearance for working with young people');
+    }
+  }
+
+  // — Undecided conflict-of-interest declarations (event.official_conflict_declaration_required) —
+  if (event?.official_conflict_declaration_required && fixtureId) {
+    const foId = (await c.query('SELECT id FROM fixture_officials WHERE fixture_id=$1 AND user_id=$2 AND status IN ($3,$4) LIMIT 1', [fixtureId, userId, 'invited', 'accepted'])).rows[0]?.id;
+    if (foId) {
+      const open = (await c.query("SELECT 1 FROM official_conflicts WHERE fixture_official_id=$1 AND status='open' LIMIT 1", [foId])).rowCount;
+      if (open) throw conflict('This event requires all conflict-of-interest declarations to be decided before the assignment is confirmed');
+    }
+  }
+
   if (!checkClash) return null;
 
   // Clash window: starts at reporting time (arrive at venue before kickoff), ends when the fixture plus buffer ends.
