@@ -137,7 +137,7 @@ export function OfficialProfileWizard({ onClose: close, onDone, toast: say, onOp
             { key: 'preferred_pronouns', label: t('opw.f.pronouns'), type: 'chips', options: ['he/him','she/her','they/them','prefer_not_to_say'].map((v) => ({ value: v, label: t(`opw.pronoun.${v}`) })), optional: true },
           ]}
           onSubmit={async (x) => {
-            await save({ display_name_pref: x.display_name_pref || null, bio: x.bio || null, preferred_pronouns: x.preferred_pronouns || null, ...(nat != null ? { nationality: nat || null } : {}) }, 1);
+            await save({ display_name_pref: x.display_name_pref || undefined, bio: x.bio || undefined, preferred_pronouns: x.preferred_pronouns || null, ...(nat != null ? { nationality: nat || null } : {}) }, 1);
           }}
         />
         </View>

@@ -16361,108 +16361,146 @@ export default {
   'oi.inbox.payout_complete': 'Your invoice has been paid.', // reviewed: false
   // otax keys — machine-translated, reviewed: false
   'nav.title.OfficialTax': 'வரி மற்றும் வருமானம்',
-  'otax.title': 'வரி மற்றும் வருமானம்',
-  'otax.tab.profile': 'வரிச் சுயவிவரம்',
-  'otax.tab.earnings': 'வருமானம்',
-  'otax.tab.invoices': 'விலைப்பட்டியல்',
-  'otax.tab.statements': 'அறிக்கைகள்',
-  'otax.profile.heading': 'வரிச் சுயவிவரம்',
-  'otax.profile.empty': 'இதுவரை வரிச் சுயவிவரம் அமைக்கப்படவில்லை.',
-  'otax.profile.edit': 'வரிச் சுயவிவரத்தை திருத்தவும்',
-  'otax.profile.legal_name': 'சட்டப்பூர்வ பெயர்',
-  'otax.profile.tax_country': 'வரி நாடு / அதிகார வரம்பு',
-  'otax.profile.tax_regime': 'வரி முறை',
-  'otax.profile.registration_status': 'பதிவு நிலை',
-  'otax.profile.registration_id': 'பதிவு / VAT / GST எண்',
-  'otax.profile.price_display': 'விலை காட்சி',
-  'otax.profile.price_display.inclusive': 'வரி உட்பட',
-  'otax.profile.price_display.exclusive': 'வரி தனியாக',
-  'otax.profile.withholding': 'நிறுத்தி வைத்தல் வரி பொருந்தும்',
-  'otax.profile.withholding_rate': 'நிறுத்தி வைத்தல் விகிதம் (%)',
-  'otax.profile.bank_name': 'வங்கி பெயர்',
-  'otax.profile.bank_account': 'வங்கி கணக்கு எண்',
-  'otax.profile.bank_routing': 'ரூட்டிங் / SWIFT / BSB',
-  'otax.profile.save': 'வரிச் சுயவிவரத்தை சேமிக்கவும்',
-  'otax.profile.saved': 'வரிச் சுயவிவரம் சேமிக்கப்பட்டது',
-  'otax.rate.heading': 'வரி விகிதங்கள்',
-  'otax.rate.add': 'விகிதம் சேர்க்கவும்',
-  'otax.rate.class': 'வரி வகுப்பு',
-  'otax.rate.percent': 'விகிதம் (%)',
-  'otax.rate.source': 'ஆதாரம் / குறிப்பு',
-  'otax.rate.effective_from': 'முதல் நடைமுறை',
-  'otax.rate.effective_to': 'வரை நடைமுறை (விருப்பத்தேர்வு)',
-  'otax.rate.saved': 'வரி விகிதம் சேமிக்கப்பட்டது',
-  'otax.earnings.heading': 'வருமான அறிக்கை',
-  'otax.earnings.period_from': 'இருந்து',
-  'otax.earnings.period_to': 'வரை',
-  'otax.earnings.apply': 'பயன்படுத்து',
-  'otax.earnings.empty': 'இந்த காலகட்டத்தில் வருமானம் இல்லை.',
-  'otax.earnings.gross': 'மொத்தம்',
-  'otax.earnings.tax': 'வரி',
-  'otax.earnings.net': 'நிகர',
-  'otax.earnings.total': 'மொத்தம்',
-  'otax.earnings.download': 'சுருக்கம் பதிவிறக்கவும்',
-  'otax.invoices.heading': 'வரி விலைப்பட்டியல்கள்',
-  'otax.invoices.generate': 'விலைப்பட்டியல் உருவாக்கு',
-  'otax.invoices.empty': 'இதுவரை விலைப்பட்டியல் இல்லை.',
-  'otax.invoice.period_from': 'காலம் இருந்து',
-  'otax.invoice.period_to': 'காலம் வரை',
-  'otax.invoice.currency': 'நாணயம்',
-  'otax.invoice.kind': 'ஆவண வகை',
-  'otax.invoice.kind.invoice': 'வரி விலைப்பட்டியல்',
-  'otax.invoice.kind.receipt': 'ரசீது',
-  'otax.invoice.kind.credit_note': 'கிரெடிட் நோட்',
-  'otax.invoice.notes': 'குறிப்புகள்',
-  'otax.invoice.generate': 'உருவாக்கு',
-  'otax.invoice.status.open': 'திறந்த',
-  'otax.invoice.status.paid': 'செலுத்தப்பட்டது',
-  'otax.invoice.status.void': 'ரத்து',
-  'otax.invoice.mark_paid': 'செலுத்தப்பட்டதாக குறிக்கவும்',
-  'otax.invoice.paid_note': 'கட்டண குறிப்பு',
-  'otax.invoice.void': 'விலைப்பட்டியல் ரத்து செய்யவும்',
-  'otax.invoice.void_reason': 'ரத்து செய்வதற்கான காரணம்',
-  'otax.invoice.download': 'PDF பதிவிறக்கவும்',
-  'otax.invoice.total_gross': 'மொத்த தொகை',
-  'otax.invoice.total_tax': 'மொத்த வரி',
-  'otax.invoice.total_net': 'செலுத்த வேண்டிய நிகர',
-  'otax.invoice.marked_paid': 'விலைப்பட்டியல் செலுத்தப்பட்டதாக குறிக்கப்பட்டது',
-  'otax.invoice.voided': 'விலைப்பட்டியல் ரத்து செய்யப்பட்டது',
-  'otax.statements.heading': 'ஆண்டு அறிக்கைகள்',
-  'otax.statements.year': 'ஆண்டு',
-  'otax.statements.granularity': 'விரிவு நிலை',
-  'otax.statements.granularity.month': 'மாதாந்திர',
-  'otax.statements.granularity.quarter': 'காலாண்டு',
-  'otax.statements.apply': 'உருவாக்கு',
-  'otax.statements.empty': 'இந்த காலகட்டத்திற்கு தரவு இல்லை.',
-  'otax.statements.period': 'காலகட்டம்',
-  'otax.statements.gross': 'மொத்தம்',
-  'otax.statements.tax': 'வரி',
-  'otax.statements.net': 'நிகர',
-  'otax.statements.cumulative': 'ஒட்டுமொத்த',
-  'otax.statements.download': 'அறிக்கை பதிவிறக்கவும்',
-  'otax.jurisdiction.heading': 'அதிகார வரம்பு வரி விகிதங்கள்',
-  'otax.jurisdiction.country': 'நாடு',
-  'otax.jurisdiction.regime': 'முறை',
-  'otax.jurisdiction.rate': 'நிலையான விகிதம்',
-  'otax.jurisdiction.threshold': 'பதிவு வரம்பு',
-  'otax.jurisdiction.notes': 'குறிப்புகள்',
-  'otax.audit.heading': 'தணிக்கை பதிவு',
-  'otax.audit.empty': 'தணிக்கை நிகழ்வுகள் பதிவு இல்லை.',
-  'otax.audit.event': 'நிகழ்வு',
-  'otax.audit.at': 'நேரம்',
-  'otax.error.no_profile': 'விலைப்பட்டியல் உருவாக்குவதற்கு முன் உங்கள் வரிச் சுயவிவரத்தை நிறைவு செய்யவும்.',
-  'otax.error.no_rate': 'விலைப்பட்டியல் உருவாக்குவதற்கு முன் உங்கள் வரி விகிதத்தை சேர்க்கவும்.',
-  'otax.error.paid_void': 'செலுத்தப்பட்ட விலைப்பட்டியலை ரத்து செய்ய முடியாது.',
-  'otax.error.already_void': 'இந்த விலைப்பட்டியல் ஏற்கனவே ரத்து செய்யப்பட்டது.',
-  'otax.regime.gst': 'ஜிஎஸ்டி',
-  'otax.regime.vat': 'வாட்',
-  'otax.regime.sales_tax': 'விற்பனை வரி',
-  'otax.regime.service_tax': 'சேவை வரி',
-  'otax.regime.none': 'இல்லை / விலக்கு',
-  'otax.reg_status.registered': 'பதிவு செய்யப்பட்டது',
-  'otax.reg_status.not_registered': 'பதிவு செய்யப்படவில்லை',
-  'otax.reg_status.exempt': 'விலக்கு',
-  'otax.reg_status.pending': 'பதிவு நிலுவையில்',
+  'otax.title': 'Tax & Earnings',  // reviewed: false
+  'otax.subtitle': 'Tax profile and earnings summary',  // reviewed: false
+  'otax.tab.profile': 'Tax Profile',  // reviewed: false
+  'otax.tab.earnings': 'Earnings',  // reviewed: false
+  'otax.tab.invoices': 'Invoices',  // reviewed: false
+  'otax.tab.statements': 'Statements',  // reviewed: false
+  'otax.edit': 'Edit',  // reviewed: false
+  'otax.save': 'Save',  // reviewed: false
+  'otax.profile.saved': 'Tax profile saved',  // reviewed: false
+  'otax.profile.complete': 'Tax profile complete',  // reviewed: false
+  'otax.profile.setup': 'Set up tax profile',  // reviewed: false
+  'otax.profile.none_title': 'No tax profile yet',  // reviewed: false
+  'otax.profile.none_sub': 'Add your payee details and tax registration so organisers can issue you invoices.',  // reviewed: false
+  'otax.profile.edit_title': 'Edit tax profile',  // reviewed: false
+  'otax.profile.edit_notice': 'Changes apply to new invoices. Past invoices are not reissued.',  // reviewed: false
+  'otax.field.payee_type': 'Payee type',  // reviewed: false
+  'otax.field.legal_name': 'Legal name',  // reviewed: false
+  'otax.field.tax_country': 'Tax country',  // reviewed: false
+  'otax.field.tax_regime': 'Tax regime',  // reviewed: false
+  'otax.field.reg_status': 'Registration status',  // reviewed: false
+  'otax.field.reg_id': 'Registration number',  // reviewed: false
+  'otax.field.business_name': 'Business / trading name',  // reviewed: false
+  'otax.field.business_reg': 'Business registration number',  // reviewed: false
+  'otax.field.price_display': 'Prices shown as',  // reviewed: false
+  'otax.field.withholding': 'Withholding tax applies',  // reviewed: false
+  'otax.field.withholding_rate': 'Withholding rate (%)',  // reviewed: false
+  'otax.field.tax_class': 'Default tax class',  // reviewed: false
+  'otax.field.rate_percent': 'Rate (%)',  // reviewed: false
+  'otax.field.source': 'Source',  // reviewed: false
+  'otax.field.kind': 'Type',  // reviewed: false
+  'otax.field.period_from': 'Period from',  // reviewed: false
+  'otax.field.period_to': 'Period to',  // reviewed: false
+  'otax.field.currency': 'Currency',  // reviewed: false
+  'otax.field.paid_note': 'Payment note',  // reviewed: false
+  'otax.field.void_reason': 'Void reason',  // reviewed: false
+  'otax.ph.legal_name': 'Full legal name',  // reviewed: false
+  'otax.ph.tax_country': 'Search country',  // reviewed: false
+  'otax.ph.reg_id': 'e.g. GSTIN, VAT number',  // reviewed: false
+  'otax.ph.source': 'Tax authority or rule',  // reviewed: false
+  'otax.hint.tax_country': 'The country where you are registered for tax',  // reviewed: false
+  'otax.hint.reg_id': 'As shown on your registration certificate',  // reviewed: false
+  "otax.hint.source": "Optional. E.g. 'HMRC VAT Notice 701/36'",  // reviewed: false
+  'otax.err.legal_name': 'Legal name is required',  // reviewed: false
+  'otax.err.tax_country': 'Tax country is required',  // reviewed: false
+  'otax.err.void_reason': 'Please give a reason for voiding',  // reviewed: false
+  'otax.payee.individual': 'Individual',  // reviewed: false
+  'otax.payee.company': 'Company / entity',  // reviewed: false
+  'otax.reg.registered': 'Registered',  // reviewed: false
+  'otax.reg.not_registered': 'Not registered',  // reviewed: false
+  'otax.reg.pending': 'Pending registration',  // reviewed: false
+  'otax.reg.exempt': 'Exempt',  // reviewed: false
+  'otax.regime.none': 'None / Exempt',  // reviewed: false
+  'otax.regime.gst': 'GST',  // reviewed: false
+  'otax.regime.vat': 'VAT',  // reviewed: false
+  'otax.regime.sales_tax': 'Sales Tax',  // reviewed: false
+  'otax.regime.hst': 'HST (Harmonised)',  // reviewed: false
+  'otax.regime.consumption_tax': 'Consumption Tax',  // reviewed: false
+  'otax.class.standard': 'Standard rated',  // reviewed: false
+  'otax.class.zero_rated': 'Zero rated',  // reviewed: false
+  'otax.class.exempt': 'Exempt',  // reviewed: false
+  'otax.class.out_of_scope': 'Out of scope',  // reviewed: false
+  'otax.class.reverse_charge': 'Reverse charge',  // reviewed: false
+  'otax.class.reduced': 'Reduced rate',  // reviewed: false
+  'otax.granularity.month': 'Monthly',  // reviewed: false
+  'otax.granularity.quarter': 'Quarterly',  // reviewed: false
+  'otax.granularity.year': 'Yearly',  // reviewed: false
+  'otax.basis.billed': 'Billed (invoice date)',  // reviewed: false
+  'otax.basis.collected': 'Collected (payment date)',  // reviewed: false
+  'otax.section.payee': 'Payee details',  // reviewed: false
+  'otax.section.rates': 'Tax rates',  // reviewed: false
+  'otax.section.history': 'Invoice history',  // reviewed: false
+  'otax.section.jurisdictions': 'Tax jurisdictions',  // reviewed: false
+  'otax.add_rate': 'Add rate',  // reviewed: false
+  'otax.rates.empty': 'No tax rates set',  // reviewed: false
+  'otax.rates.empty_sub': 'Add a rate for each tax jurisdiction you operate in.',  // reviewed: false
+  'otax.rate.add_title': 'Add tax rate',  // reviewed: false
+  'otax.rate.notice': 'Rates are used to calculate the tax line on your invoices.',  // reviewed: false
+  'otax.rate.saved': 'Tax rate saved',  // reviewed: false
+  'otax.jurisdictions.hint': 'These are the countries where you have issued invoices.',  // reviewed: false
+  'otax.inclusive': 'Tax-inclusive prices',  // reviewed: false
+  'otax.exclusive': 'Tax-exclusive prices',  // reviewed: false
+  'otax.withheld': 'Withholding applies',  // reviewed: false
+  'otax.no_withholding': 'No withholding',  // reviewed: false
+  'otax.from': 'from',  // reviewed: false
+  'otax.all': 'All',  // reviewed: false
+  'otax.fixtures': 'fixtures',  // reviewed: false
+  'otax.tax_abbr': 'TAX',  // reviewed: false
+  'otax.wh_abbr': 'WH',  // reviewed: false
+  'otax.net_abbr': 'NET',  // reviewed: false
+  'otax.disclaimer': 'This summary is generated from platform records and is for your reference only. Consult a tax professional for filing obligations.',  // reviewed: false
+  'otax.status.open': 'Open',  // reviewed: false
+  'otax.status.paid': 'Paid',  // reviewed: false
+  'otax.status.void': 'Void',  // reviewed: false
+  'otax.kind.invoice': 'Invoice',  // reviewed: false
+  'otax.kind.credit_note': 'Credit note',  // reviewed: false
+  'otax.inv.total': 'Total invoiced',  // reviewed: false
+  'otax.inv.total_sub': 'All time, all currencies',  // reviewed: false
+  'otax.inv.open_count': 'Open invoices',  // reviewed: false
+  'otax.inv.open_sub': 'Pending payment',  // reviewed: false
+  'otax.inv.generate': 'Generate invoice',  // reviewed: false
+  'otax.inv.generate_title': 'Generate invoice',  // reviewed: false
+  'otax.inv.generate_notice': 'An invoice will be created from your confirmed fixtures in the selected period.',  // reviewed: false
+  'otax.inv.generated': 'Invoice generated',  // reviewed: false
+  'otax.inv.empty': 'No invoices yet',  // reviewed: false
+  'otax.inv.empty_sub': 'Invoices appear here when you generate them from your confirmed fixtures.',  // reviewed: false
+  'otax.inv.list_title': 'Invoices',  // reviewed: false
+  'otax.inv.download_pdf': 'Download PDF',  // reviewed: false
+  'otax.inv.mark_paid': 'Mark as paid',  // reviewed: false
+  'otax.inv.mark_paid_title': 'Mark invoice as paid',  // reviewed: false
+  'otax.inv.marked_paid': 'Marked as paid',  // reviewed: false
+  'otax.inv.paid_on': 'Paid on',  // reviewed: false
+  'otax.inv.void': 'Void invoice',  // reviewed: false
+  'otax.inv.void_title': 'Void invoice',  // reviewed: false
+  'otax.inv.void_notice': 'Voiding cannot be undone. The organiser will be notified.',  // reviewed: false
+  'otax.inv.voided': 'Invoice voided',  // reviewed: false
+  'otax.filter.all': 'All',  // reviewed: false
+  'otax.stmt.year': 'Year',  // reviewed: false
+  'otax.stmt.empty': 'No earnings yet',  // reviewed: false
+  'otax.stmt.empty_sub': 'Completed and paid fixtures will appear here.',  // reviewed: false
+  'otax.stmt.ytd_title': 'Year to date',  // reviewed: false
+  'otax.stmt.breakdown': 'Breakdown',  // reviewed: false
+  'otax.kpi.gross': 'Gross fees',  // reviewed: false
+  'otax.kpi.tax': 'Tax',  // reviewed: false
+  'otax.kpi.tax_sub': 'charged on invoices',  // reviewed: false
+  'otax.kpi.withholding': 'Withheld',  // reviewed: false
+  'otax.kpi.net': 'Net received',  // reviewed: false
+  'otax.kpi.net_sub': 'after withholding',  // reviewed: false
+  'otax.earnings.period': 'Period',  // reviewed: false
+  'otax.earnings.download': 'Download Summary',  // reviewed: false
+  'otax.earnings.empty': 'No earnings found for this period.',  // reviewed: false
+  'otax.earnings.empty_sub': 'No earnings in this period.',  // reviewed: false
+  'otax.earnings.select_currency': 'Select a currency to see the breakdown.',  // reviewed: false
+  'otax.earnings.untaxed_hint': 'Some fixtures are not yet invoiced.',  // reviewed: false
+  'otax.earnings.hide_lines': 'Hide line detail',  // reviewed: false
+  'otax.earnings.show_lines': 'Show line detail',  // reviewed: false
+  'otax.download.title': 'Download earnings summary',  // reviewed: false
+  'otax.download.hint': 'Choose a currency and format.',  // reviewed: false
+  'otax.download.currency': 'Currency',  // reviewed: false
+  'otax.download.csv': 'Download CSV',  // reviewed: false
+  'otax.download.pdf': 'Download PDF',  // reviewed: false
   // Official rate agreements (R35) — reviewed: false
   'ora.title': 'கட்டண ஒப்பந்தங்கள்',
   'ora.new': 'புதிய ஒப்பந்தம்',
