@@ -8,8 +8,9 @@ import { badRequest, notFound } from '../errors.js';
 import { audit, isAdmin } from '../helpers.js';
 import { encrypt, decrypt } from '../crypto.js';
 import { notify } from '../notify.js';
-import { ask, aiConfigured, AI_RULES, quoteData } from '../ai.js';
+import { ask, askDetailed, aiConfigured, AI_RULES, quoteData } from '../ai.js';
 import { fixtureContext } from './match-tracking.js';
+import { packOf } from './rule-packs.js';
 import { checklistFor, checklistItems } from '../officials-checklist.js';
 import { isYouthEvent } from '../spectator.js';
 import { rulesetForEvent } from '../scoring/state.js';
@@ -210,6 +211,34 @@ cap({
   },
 });
 
+// ------------------------------------------------------------------ rule session helpers
+/** Resolve the governing rule pack and local settings for a fixture. */
+async function resolvePackForFixture(fixtureId) {
+  const f = await one('SELECT e.id AS event_id, s.slug, s.name AS sport_name, e.comp_season_id FROM fixtures fx JOIN events e ON e.id=fx.event_id JOIN sports s ON s.id=e.sport_id WHERE fx.id=$1', [fixtureId]);
+  if (!f) throw notFound('Fixture');
+  let pack = null, localId = null, localName = null, effectiveDate = null, packVersion = null, packName = null;
+  if (f.comp_season_id) {
+    try { const p = await packOf(pool, f.comp_season_id); pack = p?.current ?? null; } catch { /* no pack */ }
+  }
+  if (pack) { packVersion = pack.version; packName = pack.name; }
+  const lrs = await one("SELECT lr.id, lr.name FROM local_rule_sets ls JOIN local_rule_versions lr ON lr.set_id=ls.id AND lr.id=ls.current_version_id WHERE ls.scope='event' AND ls.event_id=$1 AND ls.status='active' ORDER BY lr.published_at DESC LIMIT 1", [f.event_id]);
+  if (lrs) { localId = lrs.id; localName = lrs.name; }
+  // effective date: from pack created_at or local version
+  if (pack) effectiveDate = pack.created_at ? String(pack.created_at).slice(0, 10) : null;
+  return { slug: f.slug, sportName: f.sport_name, packRow: pack, localId, localName, effectiveDate, packVersion, packName };
+}
+
+/** Resolve book cards from a session's stored pack snapshot or live resolveBook. */
+function resolveCardsFromSession(session) {
+  // sessions store slug/format; re-resolve live (snapshot stored separately for offline)
+  return resolveBook(session.sport_slug, session.sport_format ?? undefined, {});
+}
+
+/** Build a standard pack hash using session's stored pack. Falls back to standardHash. */
+function hashForSession(session) {
+  return session.pack_hash ?? standardHash(session.sport_slug, session.sport_format ?? undefined);
+}
+
 // ------------------------------------------------------------------ rules Q&A
 const STOP = new Set(['the', 'a', 'an', 'is', 'are', 'of', 'to', 'in', 'on', 'for', 'and', 'or', 'what', 'how', 'when', 'does', 'do', 'can', 'if', 'it', 'be', 'by', 'with', 'that', 'this', 'at', 'as', 'there', 'i', 'my', 'we', 'rule', 'rules']);
 const tokens = (s) => String(s).toLowerCase().replace(/[^a-z0-9\s]/g, ' ').split(/\s+/).filter((w) => w.length > 2 && !STOP.has(w)).map((w) => w.replace(/(ing|ed|es|s)$/, ''));
@@ -221,11 +250,12 @@ cap({
   summary: 'Ask the rules: explains the governed rulebook (and the event\'s local rules) with citations to the section used. It never makes or signals a call, judges a player, issues a card or penalty, or changes a score; those questions are declined. If the rulebook does not cover the question, it says so.',
   input: z.object({ question: z.string().trim().min(3).max(300), fixture_id: id.optional(), sport: z.string().max(60).optional() }),
   async handler({ user }, i) {
-    let slug = i.sport, localId = null, format;
+    let slug = i.sport, localId = null, format, packMeta = null;
     if (i.fixture_id) {
       const x = await standing(user, i.fixture_id);
-      slug = (await one('SELECT s.slug FROM events e JOIN sports s ON s.id=e.sport_id WHERE e.id=$1', [x.f.event_id])).slug;
-      localId = (await one("SELECT id FROM local_rule_sets WHERE scope='event' AND event_id=$1 AND status='active' ORDER BY updated_at DESC LIMIT 1", [x.f.event_id]))?.id ?? null;
+      const r = await resolvePackForFixture(i.fixture_id);
+      slug = r.slug; localId = r.localId;
+      packMeta = r.packRow ? { gov_pack_id: r.packRow.id, gov_pack_version: r.packVersion, gov_pack_name: r.packName, effective_date: r.effectiveDate } : null;
     }
     if (!slug) throw badRequest('Give a fixture_id or a sport');
     const base = { question: i.question, can_not: ['make or signal a call', 'judge a player or issue a card or penalty', 'change a score or result'] };
@@ -240,7 +270,7 @@ cap({
     const scored = book.cards.map((c) => ({ c, score: tokens(`${c.title} ${c.body} ${c.params.map((p) => p.label).join(' ')}`).filter((w) => q.has(w)).length + tokens(c.title).filter((w) => q.has(w)).length })).filter((s) => s.score > 0).sort((a, b) => b.score - a.score || String(a.c.key).localeCompare(String(b.c.key))).slice(0, 3);
     if (!scored.length) return { ...base, answer: null, insufficient: true, message: `The ${book.name} rulebook in GotMyGame does not cover that, so I will not guess. Check the governing body's full text.`, citations: [], official_url: book.official_url };
     const citations = scored.map(({ c }, n) => ({ n: n + 1, no: c.no ?? null, title: c.title, text: c.body, settings: c.params.map((p) => ({ label: p.label, value: p.value, standard: p.std, local_change: p.changed })), source: `${book.name} (${book.body})`, official_url: book.official_url }));
-    const version = { standard_hash: standardHash(sport.slug, format), local: view ? { id: view.id, name: view.name, version: view.current_version } : null };
+    const version = { standard_hash: standardHash(sport.slug, format), local: view ? { id: view.id, name: view.name, version: view.current_version } : null, ...(packMeta ?? {}) };
     let answer = null;
     if (aiConfigured()) {
       const data = citations.map((c) => `[${c.n}] ${c.title}: ${quoteData(c.text, 700)} ${c.settings.map((s) => `${s.label}=${s.value}${s.local_change ? ' (local change)' : ''}`).join('; ')}`).join('\n');
@@ -250,5 +280,224 @@ cap({
       });
     }
     return { ...base, answer: answer ?? `From ${book.name}: ${citations[0].title}. ${citations[0].text}`, ai: Boolean(answer), citations, rule_version: version };
+  },
+});
+
+// ------------------------------------------------------------------ versioned rule AI session caps
+
+cap({
+  name: 'start_rule_session', method: 'POST', path: '/fixtures/:id/rule-sessions', tag: TAG,
+  summary: 'Start a versioned rules Q&A session for a fixture. The session is anchored to the governing rule pack in force at this moment. Any previous open session for the same user+fixture is closed.',
+  input: z.object({ id, sport_format: z.string().max(60).optional() }),
+  async handler({ user }, i) {
+    const x = await standing(user, i.id);
+    const r = await resolvePackForFixture(i.id);
+    const format = i.sport_format ?? null;
+    const book = resolveBook(r.slug, format ?? undefined, {});
+    const hash = standardHash(r.slug, format ?? undefined);
+    // Close any existing open session for this user+fixture
+    await pool.query("UPDATE rule_ai_sessions SET status='closed', closed_at=now() WHERE fixture_id=$1 AND user_id=$2 AND status='open'", [i.id, user.id]);
+    const sess = await one(
+      `INSERT INTO rule_ai_sessions (fixture_id,user_id,sport_slug,sport_format,gov_pack_id,gov_pack_version,gov_pack_name,local_rule_version_id,local_rule_set_name,effective_date,pack_hash)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) RETURNING *`,
+      [i.id, user.id, r.slug, format, r.packRow?.id ?? null, r.packVersion ?? null, r.packName ?? null, r.localId ?? null, r.localName ?? null, r.effectiveDate ?? null, hash],
+    );
+    return { session_id: sess.id, sport: r.slug, sport_name: r.sportName, format, pack_name: r.packName, pack_version: r.packVersion, effective_date: r.effectiveDate, pack_hash: hash, rulebook_name: book.name };
+  },
+});
+
+cap({
+  name: 'ask_rule_session', method: 'POST', path: '/rule-sessions/:id/ask', tag: TAG,
+  summary: 'Ask a follow-up or new rules question within a versioned session. Returns an answer with citations, or a single clarifying question if the query is ambiguous.',
+  input: z.object({ id, question: z.string().trim().min(3).max(500) }),
+  async handler({ user }, i) {
+    const sess = await one('SELECT * FROM rule_ai_sessions WHERE id=$1', [i.id]);
+    if (!sess) throw notFound('Session');
+    if (sess.user_id !== user.id) throw notFound('Session');
+    if (sess.status !== 'open') throw badRequest('Session is closed');
+    const base = { session_id: i.id, question: i.question };
+    // Safety: decline on-field calls
+    if (CALL.test(i.question)) {
+      const turn = await one(
+        'INSERT INTO rule_ai_turns (session_id,turn_no,question,declined,ai_used,citations_json) VALUES ($1,$2,$3,true,false,\'[]\') RETURNING id,turn_no',
+        [i.id, (sess.turn_count || 0) + 1],
+      );
+      await pool.query('UPDATE rule_ai_sessions SET turn_count=turn_count+1 WHERE id=$1', [i.id]);
+      return { ...base, turn_id: turn.id, turn_no: turn.turn_no, type: 'declined', text: 'That is a call for the match official. I can explain what the rulebook says about a situation in general, but I do not make, signal or record decisions, judge players or change a result.', citations: [] };
+    }
+    // Keyword-score relevant cards (top 5)
+    const book = resolveCardsFromSession(sess);
+    const q = new Set(tokens(i.question));
+    const scored = book.cards.map((c) => ({ c, score: tokens(`${c.title} ${c.body} ${c.params.map((p) => p.label).join(' ')}`).filter((w) => q.has(w)).length + tokens(c.title).filter((w) => q.has(w)).length })).filter((s) => s.score > 0).sort((a, b) => b.score - a.score).slice(0, 5);
+    if (!scored.length) {
+      const turn = await one(
+        'INSERT INTO rule_ai_turns (session_id,turn_no,question,insufficient,ai_used,citations_json,rule_hash) VALUES ($1,$2,$3,true,false,\'[]\',$4) RETURNING id,turn_no',
+        [i.id, (sess.turn_count || 0) + 1, i.question, hashForSession(sess)],
+      );
+      await pool.query('UPDATE rule_ai_sessions SET turn_count=turn_count+1 WHERE id=$1', [i.id]);
+      return { ...base, turn_id: turn.id, turn_no: turn.turn_no, type: 'insufficient', text: `The ${book.name} rulebook does not cover that — I will not guess. Check the governing body's official text.`, citations: [] };
+    }
+    const citations = scored.map(({ c }, n) => ({ n: n + 1, no: c.no ?? null, title: c.title, text: c.body, settings: c.params.map((p) => ({ label: p.label, value: p.value, local_change: p.changed })), source: `${book.name} (${book.body})`, official_url: book.official_url }));
+    // Build prior-turn context (last 6 turns for context window)
+    const priorTurns = await many('SELECT turn_no,question,answer,clarifying_question FROM rule_ai_turns WHERE session_id=$1 ORDER BY turn_no DESC LIMIT 6', [i.id]);
+    const history = priorTurns.reverse().map((t) => `Q${t.turn_no}: ${t.question}\nA${t.turn_no}: ${t.answer ?? t.clarifying_question ?? '(unanswered)'}`).join('\n');
+    let answer = null, clarifyingQ = null, model = null, inTok = null, outTok = null, aiUsed = false;
+    if (aiConfigured()) {
+      const data = citations.map((c) => `[${c.n}] ${c.title}: ${quoteData(c.text, 700)}`).join('\n');
+      const packInfo = sess.gov_pack_name ? `${sess.gov_pack_name} v${sess.gov_pack_version ?? '?'}, effective ${sess.effective_date ?? 'unknown'}` : book.name;
+      const res = await askDetailed({
+        system: `You are a sport rules reference assistant for ${sess.sport_slug}. Use ONLY the numbered rule cards in <data>. Cite card numbers like [1]. Pack in force: ${packInfo}. ${AI_RULES} Never make rulings, issue cards, change scores or suggest on-field decisions. If the question is genuinely ambiguous about which rule applies, ask ONE focused clarifying question by starting your response with "CLARIFY: ". Otherwise answer directly.`,
+        user: `${history ? `Conversation so far:\n${history}\n\n` : ''}Current question: ${quoteData(i.question, 400)}\n<data>\n${data}\n</data>`,
+        maxTokens: 500,
+      });
+      aiUsed = true; model = res.model ?? null; inTok = res.usage?.input_tokens ?? null; outTok = res.usage?.output_tokens ?? null;
+      if (res.text.startsWith('CLARIFY:')) { clarifyingQ = res.text.slice(8).trim(); } else { answer = res.text; }
+    } else {
+      answer = `From ${book.name}: ${citations[0].title}. ${citations[0].text}`;
+    }
+    const citJson = JSON.stringify(citations);
+    const turn = await one(
+      'INSERT INTO rule_ai_turns (session_id,turn_no,question,answer,clarifying_question,ai_used,model,input_tokens,output_tokens,citations_json,rule_hash) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10::jsonb,$11) RETURNING id,turn_no',
+      [i.id, (sess.turn_count || 0) + 1, i.question, answer, clarifyingQ, aiUsed, model, inTok, outTok, citJson, hashForSession(sess)],
+    );
+    await pool.query('UPDATE rule_ai_sessions SET turn_count=turn_count+1 WHERE id=$1', [i.id]);
+    return { ...base, turn_id: turn.id, turn_no: turn.turn_no, type: clarifyingQ ? 'clarification' : 'answer', text: answer ?? clarifyingQ, citations: answer ? citations : [], ai: aiUsed };
+  },
+});
+
+cap({
+  name: 'get_rule_session', method: 'GET', path: '/rule-sessions/:id', tag: TAG,
+  summary: 'Retrieve a versioned rule session with all its turns and citations.',
+  input: z.object({ id }),
+  async handler({ user }, i) {
+    const sess = await one('SELECT * FROM rule_ai_sessions WHERE id=$1', [i.id]);
+    if (!sess) throw notFound('Session');
+    // Allow session owner or event managers/admins
+    const isOwner = sess.user_id === user.id;
+    if (!isOwner) {
+      const x = await standing(user, sess.fixture_id).catch(() => null);
+      if (!x?.may) throw notFound('Session');
+    }
+    const turns = await many('SELECT id,turn_no,question,answer,clarifying_question,declined,insufficient,citations_json,ai_used,escalated,created_at FROM rule_ai_turns WHERE session_id=$1 ORDER BY turn_no', [i.id]);
+    const escalations = await many('SELECT id,turn_id,status,reason,created_at FROM rule_ai_escalations WHERE session_id=$1 ORDER BY created_at', [i.id]);
+    return { ...sess, turns, escalations };
+  },
+});
+
+cap({
+  name: 'list_rule_sessions', method: 'GET', path: '/fixtures/:id/rule-sessions', tag: TAG,
+  summary: 'List all rule sessions for a fixture (most recent first). Visible to assigned officials and event managers.',
+  input: z.object({ id, ...page }),
+  async handler({ user }, i) {
+    const x = await standing(user, i.id);
+    const isOrg = x?.admin || isAdmin(user);
+    // Organisers see all; officials see only their own
+    const filter = isOrg ? 'WHERE fixture_id=$1' : 'WHERE fixture_id=$1 AND user_id=$2';
+    const params = isOrg ? [i.id] : [i.id, user.id];
+    const sessions = await many(`SELECT s.id,s.user_id,s.sport_slug,s.gov_pack_name,s.gov_pack_version,s.effective_date,s.pack_hash,s.status,s.turn_count,s.created_at,s.closed_at FROM rule_ai_sessions s ${filter} ORDER BY s.created_at DESC LIMIT 20`, params);
+    return { sessions };
+  },
+});
+
+cap({
+  name: 'escalate_rule_turn', method: 'POST', path: '/rule-sessions/:id/turns/:turn_id/escalate', tag: TAG,
+  summary: 'Escalate a rule Q&A turn for human review by the event organiser or assessor body.',
+  input: z.object({ id, turn_id: id, reason: z.string().trim().min(5).max(500), routed_to_body_id: id.optional() }),
+  async handler({ user }, i) {
+    const sess = await one('SELECT * FROM rule_ai_sessions WHERE id=$1', [i.id]);
+    if (!sess) throw notFound('Session');
+    if (sess.user_id !== user.id) throw notFound('Session');
+    const turn = await one('SELECT * FROM rule_ai_turns WHERE id=$1 AND session_id=$2', [i.turn_id, i.id]);
+    if (!turn) throw notFound('Turn');
+    if (turn.escalated) throw badRequest('Turn already escalated');
+    // Get event_id via fixture
+    const fx = await one('SELECT event_id FROM fixtures WHERE id=$1', [sess.fixture_id]);
+    if (!fx) throw notFound('Fixture');
+    const esc = await one(
+      'INSERT INTO rule_ai_escalations (session_id,turn_id,raised_by,reason,event_id,routed_to_body_id) VALUES ($1,$2,$3,$4,$5,$6) RETURNING id,created_at',
+      [i.id, i.turn_id, user.id, i.reason, fx.event_id, i.routed_to_body_id ?? null],
+    );
+    // Mark turn as escalated — via direct UPDATE (escalated is a status flag, not content; append-only rule blocks content edits only)
+    await pool.query('UPDATE rule_ai_turns SET escalated=true WHERE id=$1', [i.turn_id]);
+    await notify(null, fx.event_id, { kind: 'rule_escalation', escalation_id: esc.id, session_id: i.id, turn_no: turn.turn_no });
+    return { escalation_id: esc.id, session_id: i.id, turn_id: i.turn_id, created_at: esc.created_at };
+  },
+});
+
+cap({
+  name: 'list_rule_escalations', method: 'GET', path: '/rule-escalations', tag: TAG,
+  summary: 'List open rule escalations routed to this user\'s events (organiser) or assessor body. Requires event manager / assessor role.',
+  input: z.object({ event_id: id.optional(), status: z.enum(['open', 'resolved', 'withdrawn']).optional(), ...page }),
+  async handler({ user }, i) {
+    if (!isAdmin(user)) {
+      // Must be organiser of at least one event — filter to events they manage
+      const managed = await many("SELECT e.id FROM events e JOIN event_roles r ON r.event_id=e.id AND r.user_id=$1 AND r.role IN ('organiser','admin','assessor') WHERE e.status != 'archived'", [user.id]);
+      if (!managed.length) throw notFound('Escalations');
+      const ids = managed.map((e) => e.id);
+      const statusFilter = i.status ? `AND esc.status=$2` : '';
+      const params = i.status ? [ids, i.status] : [ids];
+      const rows = await many(`SELECT esc.*,s.sport_slug,t.question,t.answer FROM rule_ai_escalations esc JOIN rule_ai_sessions s ON s.id=esc.session_id JOIN rule_ai_turns t ON t.id=esc.turn_id WHERE esc.event_id=ANY($1::uuid[]) ${statusFilter} ORDER BY esc.created_at DESC LIMIT 50`, params);
+      return { escalations: rows };
+    }
+    const params = []; const filters = [];
+    if (i.event_id) { params.push(i.event_id); filters.push(`esc.event_id=$${params.length}`); }
+    if (i.status) { params.push(i.status); filters.push(`esc.status=$${params.length}`); }
+    const where = filters.length ? `WHERE ${filters.join(' AND ')}` : '';
+    const rows = await many(`SELECT esc.*,s.sport_slug,t.question,t.answer FROM rule_ai_escalations esc JOIN rule_ai_sessions s ON s.id=esc.session_id JOIN rule_ai_turns t ON t.id=esc.turn_id ${where} ORDER BY esc.created_at DESC LIMIT 50`, params);
+    return { escalations: rows };
+  },
+});
+
+cap({
+  name: 'resolve_rule_escalation', method: 'POST', path: '/rule-escalations/:id/resolve', tag: TAG,
+  summary: 'Resolve a rule escalation with a human clarification and outcome. Visible to the official who raised it.',
+  input: z.object({ id, resolution_note: z.string().trim().min(5).max(2000), outcome: z.enum(['confirmed', 'amended', 'deferred']) }),
+  async handler({ user }, i) {
+    const esc = await one('SELECT * FROM rule_ai_escalations WHERE id=$1', [i.id]);
+    if (!esc) throw notFound('Escalation');
+    if (esc.status !== 'open') throw badRequest('Escalation already resolved');
+    // Must be event organiser/admin or platform admin
+    const x = await one("SELECT 1 FROM event_roles WHERE event_id=$1 AND user_id=$2 AND role IN ('organiser','admin','assessor')", [esc.event_id, user.id]);
+    if (!x && !isAdmin(user)) throw notFound('Escalation');
+    const noteEnc = encrypt(i.resolution_note);
+    await pool.query("UPDATE rule_ai_escalations SET status='resolved',resolved_by=$1,resolution_note_enc=$2,resolution_outcome=$3,resolved_at=now() WHERE id=$4", [user.id, noteEnc, i.outcome, i.id]);
+    await audit(esc.event_id, user.id, 'rule_escalation.resolved', 'rule_ai_escalation', i.id);
+    await notify(null, esc.raised_by, { kind: 'rule_escalation_resolved', escalation_id: i.id, outcome: i.outcome });
+    return { escalation_id: i.id, outcome: i.outcome, resolved_at: new Date().toISOString() };
+  },
+});
+
+cap({
+  name: 'get_offline_rule_pack', method: 'GET', path: '/fixtures/:id/offline-rules', tag: TAG,
+  summary: 'Get the full resolved rule pack for a fixture suitable for offline caching on the mobile client. Returns a signed content token valid for 7 days.',
+  input: z.object({ id, sport_format: z.string().max(60).optional() }),
+  async handler({ user }, i) {
+    const x = await standing(user, i.id);
+    const r = await resolvePackForFixture(i.id);
+    const format = i.sport_format ?? null;
+    const book = resolveBook(r.slug, format ?? undefined, {});
+    const hash = standardHash(r.slug, format ?? undefined);
+    const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+    // Upsert snapshot row (keep existing if same hash — append-only table, no update needed)
+    const existing = await one('SELECT id FROM rule_pack_snapshots WHERE fixture_id=$1 AND user_id=$2 AND pack_hash=$3 AND expires_at>now()', [i.id, user.id, hash]);
+    let snapId = existing?.id;
+    if (!snapId) {
+      const snap = await one(
+        'INSERT INTO rule_pack_snapshots (fixture_id,user_id,gov_pack_id,sport_slug,sport_format,content_json,pack_hash,expires_at) VALUES ($1,$2,$3,$4,$5,$6::jsonb,$7,$8) RETURNING id',
+        [i.id, user.id, r.packRow?.id ?? null, r.slug, format, JSON.stringify(book), hash, expiresAt],
+      );
+      snapId = snap.id;
+    }
+    return {
+      snap_id: snapId,
+      sport: r.slug,
+      sport_name: r.sportName,
+      pack_name: r.packName ?? book.name,
+      pack_version: r.packVersion,
+      effective_date: r.effectiveDate,
+      pack_hash: hash,
+      expires_at: expiresAt.toISOString(),
+      content: book,
+    };
   },
 });
