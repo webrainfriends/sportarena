@@ -66,10 +66,25 @@ export const PRIORITY = [
 ];
 export const PRIORITY_DEFAULT = ['FindGames', 'Leaderboard', 'MyApplications', 'PlayerContracts', 'Representation', 'Health', 'Insure', 'Wallet', 'Shop', 'Billboard', 'ToolsHome'];
 
-/** The wheel's order for someone with these roles: their priority modules first, then the rest in catalogue order. */
+// Who a module is for. A module listed here shows only to someone holding one of these roles; a module not listed is for everyone.
+// An athlete-only account therefore never sees the tiles for running an organisation, an academy, a business or a practice.
+const RUNS_THINGS = ['organizer', 'venue_manager', 'coach', 'referee', 'sponsor', 'supplier', 'recruiter', 'agent', 'insurer', 'admin', 'platform_admin'];
+const EARNS = [...RUNS_THINGS, 'physio', 'doctor', 'lawyer'];
+export const AUDIENCE = {
+  Orgs: RUNS_THINGS, Federations: RUNS_THINGS, MediaWorkspace: RUNS_THINGS, Analytics: RUNS_THINGS, Supply: RUNS_THINGS, ServicesBuyer: RUNS_THINGS, Marketplace: EARNS,
+  Advertising: EARNS, Finance: EARNS, Earnings: EARNS, EventInbox: EARNS, Openings: EARNS,
+  Sponsors: ['sponsor', 'organizer', 'venue_manager', 'coach', 'agent', 'admin', 'platform_admin'],
+  Insurance: ['organizer', 'venue_manager', 'coach', 'insurer', 'admin', 'platform_admin'],
+};
+/** True when someone with these roles is offered this module (a front-desk cashier counts as venue staff). */
+export const moduleVisible = (name, roles = [], desk = false) => !AUDIENCE[name] || AUDIENCE[name].some((r) => roles.includes(r) || (desk && r === 'venue_manager'));
+/** True for someone who treats patients: the Health tile then speaks of their practice, otherwise of their own health file. */
+export const isClinician = (roles = []) => roles.includes('physio') || roles.includes('doctor');
+
+/** The wheel's order for someone with these roles: their priority modules first, then the rest in catalogue order. Modules meant for other roles are left out. */
 export function orderedModules(roles = [], desk = false) {
   const first = (PRIORITY.find(([rs]) => rs.some((r) => roles.includes(r))) ?? [null, PRIORITY_DEFAULT])[1];
   const byName = Object.fromEntries(MODULES.map((m) => [m[0], m]));
   const work = workspacesFor(roles, desk).length ? [WORKSPACE_MODULE] : [];
-  return [...work, ...first.map((n) => byName[n]), ...MODULES.filter((m) => !first.includes(m[0]))];
+  return [...work, ...first.map((n) => byName[n]), ...MODULES.filter((m) => !first.includes(m[0]))].filter((m) => moduleVisible(m[0], roles, desk));
 }

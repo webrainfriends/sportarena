@@ -146,7 +146,7 @@ cap({
       `SELECT oi.*, f.event_id, e.organizer_id, fo.user_id AS official_user_id,
               fo.fee_minor AS fo_fee_minor, fo.fee_currency AS fo_fee_currency,
               fo.status AS fo_status, fo.pay_status,
-              e.name AS event_name, f.name AS fixture_name
+              e.name AS event_name, concat_ws(' v ', (SELECT t.name FROM teams t WHERE t.id=f.home_team_id), (SELECT t.name FROM teams t WHERE t.id=f.away_team_id)) AS fixture_name
        FROM official_invoices oi
        JOIN fixture_officials fo ON fo.id = oi.fixture_official_id
        JOIN fixtures f ON f.id = fo.fixture_id
@@ -158,8 +158,8 @@ cap({
 
     await audit(null, user.id, 'read_official_invoice', 'official_invoices', oi.id);
 
-    const buyerSnap = oi.buyer_snapshot_enc ? JSON.parse(decrypt(oi.buyer_snapshot_enc)) : null;
-    const sellerSnap = oi.seller_snapshot_enc ? JSON.parse(decrypt(oi.seller_snapshot_enc)) : null;
+    const buyerSnap = oi.buyer_snapshot_enc ? JSON.parse(decrypt(oi.buyer_snapshot_enc, 'official_invoices.buyer')) : null;
+    const sellerSnap = oi.seller_snapshot_enc ? JSON.parse(decrypt(oi.seller_snapshot_enc, 'official_invoices.seller')) : null;
 
     const [withholding, payoutItems, events] = await Promise.all([
       one('SELECT * FROM official_withholding WHERE official_invoice_id=$1', [oi.id]),
@@ -196,7 +196,7 @@ cap({
 
     if (!isAdmin(user)) {
       wheres.push(`(oi.official_id=$${params.push(user.id)} OR oi.organisation_id = ANY(
-        SELECT org_id FROM events e JOIN fixtures f ON f.event_id=e.id JOIN fixture_officials fo ON fo.fixture_id=f.id
+        SELECT organisation_id FROM events e JOIN fixtures f ON f.event_id=e.id JOIN fixture_officials fo ON fo.fixture_id=f.id
         WHERE e.organizer_id=$${params.push(user.id)} LIMIT 1000
       ))`);
     }
@@ -214,7 +214,7 @@ cap({
       `SELECT oi.id, oi.kind, oi.status, oi.currency, oi.total_minor, oi.tax_minor, oi.net_minor,
               oi.withholding_minor, oi.invoice_number, oi.submitted_at, oi.approved_at,
               oi.created_at, oi.fixture_official_id, oi.organisation_id, oi.official_id,
-              f.name AS fixture_name, e.name AS event_name, e.id AS event_id
+              concat_ws(' v ', (SELECT t.name FROM teams t WHERE t.id=f.home_team_id), (SELECT t.name FROM teams t WHERE t.id=f.away_team_id)) AS fixture_name, e.name AS event_name, e.id AS event_id
        FROM official_invoices oi
        JOIN fixture_officials fo ON fo.id = oi.fixture_official_id
        JOIN fixtures f ON f.id = fo.fixture_id
@@ -528,7 +528,7 @@ cap({
     const curClause = i.currency ? `AND oi.currency=$${params.push(i.currency)}` : '';
     const rows = await many(
       `SELECT oi.id, oi.invoice_number, oi.currency, oi.total_minor, oi.net_minor, oi.withholding_minor,
-              oi.official_id, fo.role, fo.scheduled_at, f.name AS fixture_name,
+              oi.official_id, fo.role, f.scheduled_at, concat_ws(' v ', (SELECT t.name FROM teams t WHERE t.id=f.home_team_id), (SELECT t.name FROM teams t WHERE t.id=f.away_team_id)) AS fixture_name,
               u.display_name AS official_name
        FROM official_invoices oi
        JOIN fixture_officials fo ON fo.id = oi.fixture_official_id
@@ -538,7 +538,7 @@ cap({
          AND oi.status = 'approved'
          AND fo.pay_status = 'due'
          ${curClause}
-       ORDER BY fo.scheduled_at NULLS LAST
+       ORDER BY f.scheduled_at NULLS LAST
        LIMIT $${params.push(i.limit)} OFFSET $${params.push(i.offset)}`,
       params,
     );
@@ -569,7 +569,7 @@ cap({
     if (!isAdmin(user)) {
       if (isOff && i.official_id !== user.id) throw forbidden();
       if (isOrg && !isOff) {
-        const check = await one('SELECT 1 AS y FROM events WHERE org_id=$1 AND organizer_id=$2 LIMIT 1', [i.organisation_id, user.id]);
+        const check = await one('SELECT 1 AS y FROM events WHERE organisation_id=$1 AND organizer_id=$2 LIMIT 1', [i.organisation_id, user.id]);
         if (!check) throw notFound('organisation');
       }
       if (!isOff && !isOrg) {

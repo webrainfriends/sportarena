@@ -15,6 +15,7 @@ import { orgRole } from '../org-access.js';
 import { renderRulebook } from '../documents/render.js';
 import { BOOKS, bookFor } from '../rulebook/catalog.js';
 import { cleanValues, resolveBook, standardHash } from '../rulebook/apply.js';
+import { officialLink } from '../rulebook/links.js';
 
 const TAG = 'Tools';
 const q = (c) => c ?? pool;
@@ -93,6 +94,18 @@ cap({
       if (s.format) b = bookFor(sp.slug, s.format); // the set was made for one format
     }
     return { ...resolveBook(b.slug, b.format, values), sport: { id: sp.id, slug: sp.slug }, local };
+  },
+});
+
+cap({
+  name: 'check_official_rulebook_link', method: 'GET', path: '/rulebook/:sport/official-link', tag: TAG,
+  summary: 'Where the governing body publishes this sport\'s official rules, checked just now (or within the last few hours): the rulebook page when it answers, otherwise the body\'s home page, otherwise url is null and verified is false. Offer a link to a person only when verified is true.',
+  input: z.object({ sport: z.string().min(1) }),
+  async handler(_ctx, i) {
+    const sp = await sportRow(i.sport);
+    const b = sp && bookFor(sp.slug);
+    if (!b) throw notFound('Rulebook');
+    return { sport: sp.slug, body: b.book.body, ...(await officialLink(b.book)) };
   },
 });
 
@@ -209,7 +222,7 @@ export function rulebookRouter() {
         values = currentSettings(view); local = { name: s.name, scope: s.scope, version: s.current_version, by: view.owner_name };
       }
       const book = resolveBook(b.slug, b.format, values);
-      const { buffer } = await renderRulebook({ book, local });
+      const { buffer } = await renderRulebook({ book, local, link: await officialLink(b.book) });
       await audit(null, user.id, 'generate_rulebook_pdf', 'sports', sp.id);
       res.set(docHeaders('application/pdf', buffer)).set('Content-Disposition', `inline; filename="${b.slug}-rulebook.pdf"`);
       res.end(buffer);

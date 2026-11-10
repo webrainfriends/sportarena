@@ -116,3 +116,36 @@ test('rejecting, declining and withdrawing never delete anything; vendor places 
   const kept = await pool.query("SELECT status FROM event_staff_assignments WHERE id = ANY($1) ORDER BY created_at", [[a1.id, a2.id, a3.id]]);
   assert.deepEqual(kept.rows.map((r) => r.status).sort(), ['declined', 'rejected', 'withdrawn']);
 });
+
+test('the submitted application can be read in full and downloaded as a PDF by its two parties only', async () => {
+  const org = await signup(['organizer']), ref = await signup(['athlete']), stranger = await signup(['athlete']);
+  const ev = await mkEvent(org);
+  const role = must(await api('POST', `/events/${ev.id}/staff-roles`, { token: org.token, body: { role: 'referee', needed: 1, fee_cents: 50000, requirements: 'Level 2 or above' } }), 201);
+  const ap = must(await api('POST', `/staff-roles/${role.id}/apply`, { token: ref.token, body: { message: 'Fifteen seasons in the middle', fee_cents: 60000,
+    application_data: { strengths: ['Game management', 'Fitness'], experience_level: 'expert', years_active: 15, has_qualification: true, qualification_body: 'State FA', qualification_level: 'Level 2', confirms_dates: true, transport: 'own_vehicle', accommodation_needed: false, additional: 'Kit size L' } } }), 201);
+  assert.equal((await put(`/staff-assignments/${ap.id}/documents`, ref.token, pdf, '?title=Licence')).status, 201);
+  assert.equal((await put(`/staff-assignments/${ap.id}/documents`, ref.token, pdf, '?title=Insurance')).status, 201, 'several documents can sit on one application');
+
+  for (const who of [ref, org]) {
+    const v = must(await api('GET', `/staff-assignments/${ap.id}/application`, { token: who.token }));
+    assert.equal(v.side, who === ref ? 'applicant' : 'organiser');
+    assert.match(v.reference, /^APP-[0-9A-F]{8}$/);
+    assert.equal(v.status, 'applied'); assert.equal(v.message, 'Fifteen seasons in the middle');
+    assert.equal(v.position.requirements, 'Level 2 or above'); assert.equal(v.event.name, ev.name);
+    assert.equal(v.fee.posted_cents, 50000); assert.equal(v.fee.proposed_cents, 60000); assert.equal(v.fee.vendor, false);
+    assert.deepEqual(v.sections.map((s) => s.key), ['strengths', 'experience', 'credentials', 'logistics', 'additional'], 'answers keep the order of the form');
+    const rows = Object.fromEntries(v.sections.flatMap((s) => s.rows.map((r) => [r.key, r])));
+    assert.equal(rows.experience_level.text, 'Expert'); assert.equal(rows.years_active.text, '15 years'); assert.equal(rows.accommodation_needed.text, 'No'); assert.equal(rows.strengths.text, 'Game management, Fitness');
+    assert.equal(v.documents.length, 2); assert.equal(v.timeline[0].to, 'applied');
+    assert.equal(v.can.withdraw, who === ref);
+  }
+  assert.equal((await api('GET', `/staff-assignments/${ap.id}/application`, { token: stranger.token })).status, 404, 'no one else learns the application exists');
+  assert.equal((await api('GET', `/staff-assignments/${ap.id}/application`)).status, 401);
+
+  const file = await fetch(`${base}/api/v1/staff-assignments/${ap.id}/application.pdf`, { headers: { authorization: `Bearer ${ref.token}` } });
+  assert.equal(file.status, 200); assert.equal(file.headers.get('content-type'), 'application/pdf'); assert.equal(file.headers.get('cache-control'), 'private, no-store');
+  assert.equal(Buffer.from(await file.arrayBuffer()).subarray(0, 5).toString(), '%PDF-');
+  assert.equal((await fetch(`${base}/api/v1/staff-assignments/${ap.id}/application.pdf`, { headers: { authorization: `Bearer ${stranger.token}` } })).status, 404);
+  assert.equal((await fetch(`${base}/api/v1/staff-assignments/${ap.id}/application.pdf`)).status, 401);
+  assert.equal((await pool.query("SELECT count(*)::int AS n FROM audit_log WHERE action='export_staff_application' AND entity_id=$1", [ap.id])).rows[0].n, 1, 'each download is logged');
+});

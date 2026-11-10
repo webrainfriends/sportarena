@@ -15,7 +15,7 @@ const big = (node, depth = 0) => {
 export function uploadPathPatterns() {
   const out = [];
   for (const c of capabilities) {
-    if (!['POST', 'PATCH'].includes(c.method)) continue;
+    if (!['POST', 'PATCH', 'PUT'].includes(c.method)) continue;
     let js; try { js = z.toJSONSchema(c.input, { unrepresentable: 'any', io: 'input' }); } catch { continue; }
     if (big(js)) out.push(new RegExp(`^/api/v1${c.path.replace(/:[A-Za-z_]+/g, '[^/]+')}/?$`));
   }
