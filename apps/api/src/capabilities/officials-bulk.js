@@ -8,7 +8,7 @@ import { many, one, tx } from '../db.js';
 import { badRequest, conflict, forbidden, notFound } from '../errors.js';
 import { isAdmin, hasRole, audit } from '../helpers.js';
 import { notify } from '../notify.js';
-import { OFFICIAL_ROLES, lockOfficial, assertOfficialEligible, recordHistory, credentialFor, closeOfficial } from '../officials.js';
+import { OFFICIAL_ROLES, lockOfficial, assertOfficialEligible, recordHistory, credentialFor, closeOfficial, recordClashException } from '../officials.js';
 import { eventForOrganizer, inviteOfficial } from './events.js';
 
 const role = z.enum(OFFICIAL_ROLES);
@@ -743,5 +743,78 @@ cap({
       stats: { total: fixtures.length, confirmed: totalConfirmed, pending: totalPending, uncovered_slots: totalUncoveredSlots, conflicts: totalConflicts },
       event: { id: ev.id, name: ev.name, sport_id: ev.sport_id, starts_at: ev.starts_at, ends_at: ev.ends_at },
     };
+  },
+});
+
+// ─── Lock / Unlock fixture official assignment ───────────────────────────────
+
+cap({
+  name: 'lock_fixture_official',
+  method: 'POST',
+  path: '/official-assignments/:id/lock',
+  tag: 'officials',
+  summary: 'Lock an accepted official assignment so it cannot be released or swapped without an authorised override.',
+  input: z.object({
+    id,
+    lock_reason: z.string().min(5).max(500).describe('Why this assignment is being locked (e.g. "confirmed for final, travel booked")'),
+  }),
+  output: z.object({ id, locked_at: z.string(), locked_by: id, lock_reason: z.string() }),
+  async handler({ user }, i) {
+    return tx(async (c) => {
+      const fo = (await c.query(
+        `SELECT fo.*, f.event_id FROM fixture_officials fo JOIN fixtures f ON f.id=fo.fixture_id WHERE fo.id=$1`,
+        [i.id])).rows[0];
+      if (!fo) throw notFound('assignment');
+      await eventForOrganizerOrAdmin(user, fo.event_id, c);
+      if (fo.status !== 'accepted') throw badRequest('Only accepted assignments can be locked');
+      if (fo.locked_at) throw conflict('Assignment is already locked');
+
+      await c.query(
+        'UPDATE fixture_officials SET locked_at=now(), locked_by=$2, lock_reason=$3 WHERE id=$1',
+        [fo.id, user.id, i.lock_reason]);
+      await recordHistory(c, fo.id, user.id, fo.status, fo.status, `locked: ${i.lock_reason}`);
+      await audit(c, user.id, 'official_assignment_locked', { fixture_official_id: fo.id, lock_reason: i.lock_reason });
+
+      return { id: fo.id, locked_at: new Date().toISOString(), locked_by: user.id, lock_reason: i.lock_reason };
+    });
+  },
+});
+
+cap({
+  name: 'unlock_fixture_official',
+  method: 'POST',
+  path: '/official-assignments/:id/unlock',
+  tag: 'officials',
+  summary: 'Unlock a locked official assignment, requiring a documented override reason. Records an exception audit row.',
+  input: z.object({
+    id,
+    override_reason: z.string().min(10).max(500).describe('Mandatory reason for overriding the lock (min 10 chars)'),
+  }),
+  output: z.object({ id, unlocked_at: z.string() }),
+  async handler({ user }, i) {
+    return tx(async (c) => {
+      const fo = (await c.query(
+        `SELECT fo.*, f.event_id FROM fixture_officials fo JOIN fixtures f ON f.id=fo.fixture_id WHERE fo.id=$1`,
+        [i.id])).rows[0];
+      if (!fo) throw notFound('assignment');
+      await eventForOrganizerOrAdmin(user, fo.event_id, c);
+      if (!fo.locked_at) throw badRequest('Assignment is not locked');
+
+      await c.query(
+        'UPDATE fixture_officials SET locked_at=NULL, locked_by=NULL, lock_reason=NULL WHERE id=$1',
+        [fo.id]);
+      await recordHistory(c, fo.id, user.id, fo.status, fo.status, `unlocked: ${i.override_reason}`);
+      await recordClashException(c, {
+        foId: fo.id,
+        overridingFoId: null,
+        actorId: user.id,
+        overrideReason: i.override_reason,
+        gapMin: null,
+        distKm: null,
+      });
+      await audit(c, user.id, 'official_assignment_unlocked', { fixture_official_id: fo.id, override_reason: i.override_reason });
+
+      return { id: fo.id, unlocked_at: new Date().toISOString() };
+    });
   },
 });

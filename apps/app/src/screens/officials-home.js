@@ -54,16 +54,32 @@ const dayOf = (iso, tz) => { try { return new Intl.DateTimeFormat('en-CA', { tim
 const isoAt = (day, t) => new Date(`${day}T${t}:00`).toISOString();
 const statusTag = (s) => <Tag label={STATUS[s]?.[0] ?? s} color={STATUS[s]?.[1] ?? c.paper} />;
 const roleTag = (r) => <Tag label={ROLE_LABEL[r] ?? r} color={c.violetSoft} />;
+/** Returns "HH:MM" string for arrive-by time (kickoff minus reportingMin), in the fixture's timezone. */
+const arriveByTime = (scheduledAt, reportingMin, tz) => {
+  const d = new Date(new Date(scheduledAt).getTime() - reportingMin * 60000);
+  return d.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit', ...(tz ? { timeZone: tz } : {}) });
+};
 
 // ------------------------------------------------------------------ one assignment
 function Assignment({ a, tz, onOpen, children, prominent }) {
   return (
     <Card color={prominent ? c.paper : c.paper} onPress={onOpen} accessibilityLabel={`${a.home_name ?? 'TBD'} versus ${a.away_name ?? 'TBD'}, ${when(a.scheduled_at, tz)}, ${ROLE_LABEL[a.role] ?? a.role}, ${a.status}`}>
       <View style={{ gap: 8 }}>
-        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>{roleTag(a.role)}{statusTag(a.status)}{a.needs_ack ? <Tag label="🔔 Changed: acknowledge" color={c.sunSoft} /> : null}{payTag(a)}</View>
+        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
+          {roleTag(a.role)}
+          {statusTag(a.status)}
+          {a.needs_ack ? <Tag label="🔔 Changed: acknowledge" color={c.sunSoft} /> : null}
+          {a.locked_at ? <Tag label={`🔒 ${t('officials.lock.badge')}`} color={c.pinkSoft} /> : null}
+          {payTag(a)}
+        </View>
         <T weight="800" size={prominent ? 22 : 17} style={{ letterSpacing: -0.4 }}>{a.home_name ?? 'TBD'} v {a.away_name ?? 'TBD'}</T>
         <T size={13} color={c.mute}>{a.sport_emoji} {a.event_name}{a.round ? ` · ${a.round}` : ''}</T>
         <T size={14} weight="700">{when(a.scheduled_at, tz)} · {a.duration_min} min</T>
+        {a.status === 'accepted' && a.reporting_min > 0 && a.scheduled_at ? (
+          <T size={13} color={c.cyan} weight="600">
+            ⏱ {t('officials.arrive_by', { time: arriveByTime(a.scheduled_at, a.reporting_min, tz) })}
+          </T>
+        ) : null}
         {a.resource_name || a.venue_name ? <T size={13} color={c.mute}>📍 {[a.resource_name, a.venue_name].filter(Boolean).join(' · ')}</T> : null}
         {children}
       </View>
@@ -202,9 +218,13 @@ function CalendarTab({ tz, go, sportId }) {
             <View style={{ gap: 6 }}>
               <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
                 {e.kind === 'assignment' ? <>{roleTag(e.role)}{statusTag(e.status)}</> : <Tag label={e.kind === 'time_off' ? '🌴 Time off' : '⚖️ Deadline'} color={c.cyanSoft} />}
-                {e.clash_with?.length ? <Tag label="⚠️ Clashes with another match" color={c.sunSoft} /> : null}
+                {e.locked_at ? <Tag label={`🔒 ${t('officials.lock.badge')}`} color={c.pinkSoft} /> : null}
+                {e.clash_with?.some((x) => x.clash_type === 'travel_gap') ? <Tag label={`🚗 ${t('officials.clash.travel_gap')}`} color={c.orangeSoft} /> : e.clash_with?.length ? <Tag label="⚠️ Clashes with another match" color={c.sunSoft} /> : null}
                 {e.unavailable_with?.length ? <Tag label="⚠️ During your time off" color={c.sunSoft} /> : null}
                 {e.outside_availability ? <Tag label="Outside your usual hours" color={c.sunSoft} /> : null}
+                {e.status === 'accepted' && e.reporting_min > 0 && e.starts_at ? (
+                  <Tag label={`⏱ ${t('officials.arrive_by', { time: arriveByTime(e.starts_at, e.reporting_min, tz) })}`} color={c.cyanSoft} />
+                ) : null}
               </View>
               <T weight="800" size={16}>{e.title}</T>
               <T size={12.5} color={c.mute}>{when(e.starts_at, tz)}{e.kind === 'assignment' ? ` – ${clock(e.ends_at, tz)}` : ''}{e.subtitle ? ` · ${e.subtitle}` : ''}</T>

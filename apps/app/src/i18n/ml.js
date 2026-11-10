@@ -16058,6 +16058,31 @@ export default {
   'officials.bulk.go_to_board': 'നിയമന ബോർഡിലേക്ക് പോകുക',
   'officials.bulk.selected': 'തിരഞ്ഞെടുത്തു',
   'officials.bulk.not_scheduled': 'ഇനിയും ഷെഡ്യൂൾ ചെയ്തിട്ടില്ല',
+  'officials.arrive_by': 'Arrive by {time}', // reviewed: false
+  'officials.reporting_time': 'Reporting time', // reviewed: false
+  'officials.lock.title': 'Lock Assignment', // reviewed: false
+  'officials.lock.reason_placeholder': 'Why is this assignment being locked? (e.g. Finals confirmed, travel booked)', // reviewed: false
+  'officials.lock.confirm': 'Lock', // reviewed: false
+  'officials.lock.unlock_title': 'Unlock Assignment', // reviewed: false
+  'officials.lock.unlock_reason': 'Override reason (required)', // reviewed: false
+  'officials.lock.unlock_reason_placeholder': 'Provide a mandatory reason to override the lock', // reviewed: false
+  'officials.lock.unlock_confirm': 'Unlock', // reviewed: false
+  'officials.lock.badge': 'Locked', // reviewed: false
+  'officials.lock.locked_by': 'Locked by {name}', // reviewed: false
+  'officials.lock.reason_label': 'Lock reason', // reviewed: false
+  'officials.clash.travel_gap': 'Travel time warning', // reviewed: false
+  'officials.clash.detail_title': 'Clash Detail', // reviewed: false
+  'officials.clash.other_fixture': 'Conflicts with', // reviewed: false
+  'officials.clash.distance': '{km} km apart', // reviewed: false
+  'officials.clash.gap': '{min} min gap', // reviewed: false
+  'officials.clash.required_travel': '{min} min needed to travel', // reviewed: false
+  'officials.clash.override_reason': 'Override reason', // reviewed: false
+  'officials.clash.override_placeholder': 'Why is this clash being overridden? (required)', // reviewed: false
+  'officials.clash.confirm_override': 'Override clash', // reviewed: false
+  'officials.clash.locked_error': 'This assignment is locked', // reviewed: false
+  'officials.clash.locked_error_body': 'Unlock the assignment before making changes.', // reviewed: false
+  'officials.clash.travel_error': 'Insufficient travel time', // reviewed: false
+  'officials.clash.travel_error_body': '{distKm} km between venues — {gapMin} min gap, {reqMin} min needed.', // reviewed: false
 
   'officialEarnings.title': 'വരുമാനം & ഫീസ്', // reviewed: false
   'officialEarnings.tab.overview': 'അവലോകനം', // reviewed: false
