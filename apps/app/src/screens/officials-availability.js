@@ -25,7 +25,7 @@ const dayName = (d) => t(`oav.day.${d}`);
 const toMin = (s) => { const [h, m] = String(s).split(':').map(Number); return h * 60 + (m || 0); };
 const hrs = (m) => (m % 60 ? (m / 60).toFixed(1) : String(m / 60));
 const newKey = () => `av-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
-const CAT_TONE = { holiday: c.violetSoft, work: c.cyanSoft, family: c.mintSoft, injury: c.redSoft, travel: c.cyanSoft, study: c.limeSoft, faith: c.violetSoft, federation_duty: c.pinkSoft, other_sport: c.limeSoft, personal: c.sunSoft };
+const CAT_TONE = { holiday: c.violetSoft, work: c.cyan, family: c.mint, injury: c.red, travel: c.cyan, study: c.mint, faith: c.violetSoft, federation_duty: c.pinkSoft, other_sport: c.mint, personal: c.sun };
 
 /** Which weekday columns an hour row is open, blocked (repeating time off) or both, from the weekly hours and the repeating blocks. */
 function gridState(weekly, recurring, today) {
@@ -267,7 +267,7 @@ export function AvailabilityTab({ sports = [], go }) {
                   <T weight="700" size={14}>{a.event_name}</T>
                   <T size={12.5} color={c.mute}>{dateTimeIn(a.scheduled_at, tz)} · {t(`oav.role.${a.role}`)} · {t(a.status === 'accepted' ? 'oav.hold.reserved' : 'oav.hold.tentative')}</T>
                 </View>
-                <Tag label={t(a.issue === 'time_off' ? 'oav.att.time_off' : 'oav.att.outside')} color={c.sunSoft} />
+                <Tag label={t(a.issue === 'time_off' ? 'oav.att.time_off' : 'oav.att.outside')} color={c.sun} />
                 <T weight="800" color={c.pink}>›</T>
               </Pressable>
             ))}
@@ -287,10 +287,10 @@ export function AvailabilityTab({ sports = [], go }) {
         {hasBlocks ? (
           <View style={{ gap: 8, flexDirection: L.tablet ? 'row' : 'column', flexWrap: 'wrap' }}>
             {[
-              ...recurring.map((r) => rowCard(r.id, <><Tag label={'🔁 ' + t('oav.rep.tag')} color={c.cyanSoft} />{catTag(r.category)}{r.exclude_dates.length ? <Tag label={t('oav.rep.skipped', { n: r.exclude_dates.length })} color={c.violetSoft} /> : null}</>,
+              ...recurring.map((r) => rowCard(r.id, <><Tag label={'🔁 ' + t('oav.rep.tag')} color={c.cyan} />{catTag(r.category)}{r.exclude_dates.length ? <Tag label={t('oav.rep.skipped', { n: r.exclude_dates.length })} color={c.violetSoft} /> : null}</>,
                 repeatLine(r), t('oav.rep.span', { from: longDay(r.starts_on), to: longDay(r.ends_on) }), r.note,
                 [act(t('oav.edit'), () => setForm({ kind: 'repeat', row: r })), act(t('oav.rep.skip'), () => setForm({ kind: 'skip', row: r })), act(t('oav.remove'), () => remove(r, t('oav.saved.removed')))])),
-              ...off.map((o) => rowCard(o.id, <><Tag label={'🌴 ' + t('oav.off.tag')} color={c.sunSoft} />{catTag(o.category)}</>,
+              ...off.map((o) => rowCard(o.id, <><Tag label={'🌴 ' + t('oav.off.tag')} color={c.sun} />{catTag(o.category)}</>,
                 o.all_day ? (localDate(o.starts_at, tz) === addDays(localDate(o.ends_at, tz), -1) ? longDay(localDate(o.starts_at, tz)) : `${longDay(localDate(o.starts_at, tz))} → ${longDay(addDays(localDate(o.ends_at, tz), -1))}`) : `${dateTimeIn(o.starts_at, tz)} → ${dateTimeIn(o.ends_at, tz)}`,
                 o.all_day ? t('oav.all_day') : null, o.note,
                 [act(t('oav.edit'), () => setForm({ kind: 'once', row: o })), act(t('oav.remove'), () => remove(o, t('oav.saved.removed')))])),
@@ -302,7 +302,7 @@ export function AvailabilityTab({ sports = [], go }) {
       </Section>
 
       <Section title={t('oav.extra.title')} color={c.mint} action={t('oav.extra.add')} onAction={() => setForm({ kind: 'extra' })}>
-        {extra.length ? <View style={{ gap: 8 }}>{extra.map((x) => rowCard(x.id, <Tag label={'✨ ' + t('oav.extra.tag')} color={c.mintSoft} />, `${dateTimeIn(x.starts_at, tz)} → ${dateTimeIn(x.ends_at, tz)}`, null, null, [act(t('oav.remove'), () => remove(x, t('oav.saved.removed')))]))}</View>
+        {extra.length ? <View style={{ gap: 8 }}>{extra.map((x) => rowCard(x.id, <Tag label={'✨ ' + t('oav.extra.tag')} color={c.mint} />, `${dateTimeIn(x.starts_at, tz)} → ${dateTimeIn(x.ends_at, tz)}`, null, null, [act(t('oav.remove'), () => remove(x, t('oav.saved.removed')))]))}</View>
           : <Card color={c.paper} pad={14}><T size={13} color={c.mute}>{t('oav.extra.empty')}</T></Card>}
       </Section>
 
@@ -328,7 +328,7 @@ export function AvailabilityTab({ sports = [], go }) {
         {!showHistory ? <T size={12.5} color={c.mute}>{t('oav.hist.sub')}</T> : !hist.data ? <Loading /> : hist.data.length ? (
           <Card><View style={{ gap: 8 }}>{hist.data.map((h) => (
             <View key={h.id} style={{ flexDirection: 'row', gap: 8, alignItems: 'center' }}>
-              <Tag label={t(`oav.hist.${h.action}`)} color={h.action === 'removed' ? c.redSoft : h.action === 'created' ? c.mintSoft : c.cyanSoft} />
+              <Tag label={t(`oav.hist.${h.action}`)} color={h.action === 'removed' ? c.red : h.action === 'created' ? c.mint : c.cyan} />
               <T size={13} style={{ flex: 1 }}>{t(`oav.hist.e_${h.entity}`)}</T>
               <T size={12} color={c.mute}>{dateTimeIn(h.at, tz)}</T>
             </View>
@@ -457,7 +457,7 @@ export function AvailabilityTab({ sports = [], go }) {
             {(impact?.affected ?? []).map((a) => (
               <Card key={a.id} pad={12}>
                 <View style={{ gap: 4 }}>
-                  <View style={{ flexDirection: 'row', gap: 6, flexWrap: 'wrap' }}><Tag label={t(`oav.role.${a.role}`)} color={c.violetSoft} /><Tag label={t(a.status === 'accepted' ? 'oav.hold.reserved' : 'oav.hold.tentative')} color={a.status === 'accepted' ? c.mintSoft : c.sunSoft} /></View>
+                  <View style={{ flexDirection: 'row', gap: 6, flexWrap: 'wrap' }}><Tag label={t(`oav.role.${a.role}`)} color={c.violetSoft} /><Tag label={t(a.status === 'accepted' ? 'oav.hold.reserved' : 'oav.hold.tentative')} color={a.status === 'accepted' ? c.mint : c.sun} /></View>
                   <T weight="800">{a.event_name}</T>
                   <T size={12.5} color={c.mute}>{dateTimeIn(a.scheduled_at, tz)} · {t('oav.n_min', { n: a.duration_min })}</T>
                 </View>
