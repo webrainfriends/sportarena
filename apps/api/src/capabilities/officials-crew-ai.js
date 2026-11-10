@@ -31,7 +31,7 @@ function gbScore(gb) { const i = GB_PRIORITY.findIndex((x) => gb.toLowerCase().i
 cap({
   name: 'suggest_crew_requirements', method: 'POST', path: '/crew-ai/suggest', tag: TAG,
   summary: 'AI-powered crew suggestion for a fixture based on the governing-body catalog for the sport. Returns deficit analysis and creates alerts for organiser and officials.',
-  input: z.object({ fixture_id: id() }),
+  input: z.object({ fixture_id: id }),
   async handler({ user }, i) {
     const f = await one(
       `SELECT f.*, e.id AS event_id, e.name AS event_name, s.slug AS sport_slug, s.name AS sport_name
@@ -131,7 +131,7 @@ cap({
 cap({
   name: 'accept_crew_suggestion', method: 'POST', path: '/crew-ai/suggestions/:id/accept', tag: TAG,
   summary: 'Organiser acknowledges the AI crew suggestion. The final roster decision remains with the organiser.',
-  input: z.object({ id: id(), override_note: z.string().max(500).optional() }),
+  input: z.object({ id: id, override_note: z.string().max(500).optional() }),
   async handler({ user }, i) {
     const sugg = await one('SELECT * FROM fixture_crew_suggestions WHERE id=$1', [i.id]);
     if (!sugg) throw notFound('Suggestion');
@@ -149,7 +149,7 @@ cap({
 cap({
   name: 'get_crew_compliance_report', method: 'GET', path: '/fixtures/:id/crew-compliance', tag: TAG,
   summary: 'Crew compliance section for match/event reports. Shows required vs assigned crew, deficit, penalty impact, and AI suggestion history.',
-  input: z.object({ id: id() }),
+  input: z.object({ id: id }),
   async handler({ user }, i) {
     const f = await one(
       `SELECT f.*, e.id AS event_id, e.name AS event_name, s.slug AS sport_slug
@@ -201,7 +201,7 @@ cap({
 cap({
   name: 'list_crew_deficit_alerts', method: 'GET', path: '/crew-ai/alerts', tag: TAG,
   summary: 'Crew deficit alerts for the authenticated user, optionally filtered by event.',
-  input: z.object({ event_id: id().optional(), ...page }),
+  input: z.object({ event_id: id.optional(), ...page }),
   async handler({ user }, i) {
     const params = [user.id];
     let filter = 'WHERE a.alerted_user_id=$1 AND a.read_at IS NULL';
@@ -220,7 +220,7 @@ cap({
   name: 'platform_admin_configure_crew_penalty', method: 'POST', path: '/crew-ai/penalty-config', tag: TAG,
   summary: 'Platform admin configures points/rank degradation rules for under-staffed events.',
   input: z.object({
-    event_id: id(),
+    event_id: id,
     penalty_type: z.enum(['points_deduction', 'rank_degradation', 'void_result', 'warning_only']),
     penalty_value: z.number().min(0),
     applies_after: z.number().int().min(1).default(1),
