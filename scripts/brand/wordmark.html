@@ -40,12 +40,12 @@ window.build=async(variant,mode='full')=>{
     return w;
   };
 
-  const w1=measure('GotMy');
+  const w1=measure('gotmy');
   const wG=measure('G');
   const w3=measure('ame');
 
-  // "GotMy" — purple #7B33C4
-  mkFlat('GotMy', X0, '#7B33C4', root);
+  // "gotmy" — dark pinkish-purple
+  mkFlat('gotmy', X0, '#8B2DBE', root);
 
   // Flame swoosh above the G: a smooth teardrop arc in amber/gold drawn BEFORE the G text
   // so it sits behind the letter stroke but visually in front of "GotMy"
@@ -83,7 +83,7 @@ window.build=async(variant,mode='full')=>{
 
   // Tagline swoosh decoration
   el('path',{
-    d:`M ${X0-30} ${BASE+140} C ${X0+200} ${BASE+78}, ${X0+500} ${BASE+52}, ${X0+w1*0.9} ${BASE+52} C ${X0+w1*0.55} ${BASE+78}, ${X0+240} ${BASE+114}, ${X0-30} ${BASE+140} Z`,
+    d:`M ${X0-30} ${BASE+140} C ${X0+200} ${BASE+78}, ${X0+500} ${BASE+52}, ${X0+w1*0.95} ${BASE+52} C ${X0+w1*0.6} ${BASE+78}, ${X0+240} ${BASE+114}, ${X0-30} ${BASE+140} Z`,
     fill:'url(#swoosh)'
   }, root);
 
