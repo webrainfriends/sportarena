@@ -124,7 +124,7 @@ function AgentProfileWizard({ visible, onClose, orgs = [], ids = new Map(), titl
             </View>
             <Card color={c.cyanSoft} pad={14}>
               <T weight="700" size={13}>What happens next</T>
-              <T size={13} style={{ marginTop: 4 }}>Profile created immediately. SportArena verifies your licence details before listing you in search. Athletes must consent before you can see any of their information.</T>
+              <T size={13} style={{ marginTop: 4 }}>Profile created immediately. GotMyGame verifies your licence details before listing you in search. Athletes must consent before you can see any of their information.</T>
             </Card>
             {err && <T color={c.red} size={13}>{err}</T>}
           </View>
@@ -149,7 +149,7 @@ function Setup({ reload }) {
   const mine = (orgs.data ?? []).filter((o) => ['owner', 'admin'].includes(o.role ?? o.my_role));
   return (
     <View style={{ gap: 12 }}>
-      <Empty emoji="🧑‍💼" title="Set up your agent profile" sub="A profile is a business identity, never access to anyone. Athletes find you once SportArena verifies you, and you only ever see what an athlete agrees to share." />
+      <Empty emoji="🧑‍💼" title="Set up your agent profile" sub="A profile is a business identity, never access to anyone. Athletes find you once GotMyGame verifies you, and you only ever see what an athlete agrees to share." />
       <Btn title="Create my agent profile" onPress={() => setOpen(true)} />
       <AgentProfileWizard
         visible={open}
@@ -183,7 +183,7 @@ function Home({ agentId, own, tab, setTab, sel, setSel, reloadProfile }) {
         </View>
         {h.verification.verified ? (
           <View style={{ marginTop: 8, gap: 2 }}>{h.verification.checked.map((x) => <T key={x.label} size={13}>✓ {x.label}{x.note ? ` - ${x.note}` : ''}</T>)}<T size={12} color={c.mute}>Valid until {plainDate(h.verification.expires_at)}.</T></View>
-        ) : <Note tone={c.pinkSoft}>You cannot start or sign a mandate until SportArena verifies you. Open Me → Verification → Verified agent and attach your ID and your business or licence evidence. The review states exactly what it checked.</Note>}
+        ) : <Note tone={c.pinkSoft}>You cannot start or sign a mandate until GotMyGame verifies you. Open Me → Verification → Verified agent and attach your ID and your business or licence evidence. The review states exactly what it checked.</Note>}
         {h.verification.licences?.length ? <View style={{ marginTop: 8, gap: 4 }}>{h.verification.licences.map((l) => <T key={l.id} size={13}>{l.issuing_body} · {l.grade || 'Registration'} · {l.jurisdiction} - {l.standing}{l.valid_to ? ` (until ${plainDate(l.valid_to)})` : ''}</T>)}</View> : null}
         {own ? <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 10 }}><LicenceButton reload={refresh} /><Btn small title="Declared interests & staff" color={c.paper} ink={c.ink} onPress={() => setTab('conflicts')} /></View> : null}
       </Card>

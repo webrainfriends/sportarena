@@ -1,6 +1,6 @@
 # Federation & Governing Body OS (#475, #574)
 
-A governing layer over the canonical SportArena entities: **international / national federation → regional or state association → league organiser →
+A governing layer over the canonical GotMyGame entities: **international / national federation → regional or state association → league organiser →
 club, academy or school → teams and participants.** A governing body is an ordinary organisation plus one `governing_bodies` row (level, jurisdiction,
 abbreviation); clubs, teams, events, people, rule packs, payments and cases are **referenced, never copied**.
 

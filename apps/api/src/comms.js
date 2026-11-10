@@ -13,7 +13,7 @@ import { adapterFor } from './comms-providers.js';
 
 export const VARS_CTX = 'notification_deliveries.vars';
 export const CONTACT_TABLE = { whatsapp: 'whatsapp_contacts', sms: 'sms_contacts' };
-const BRAND = 'Gotmygame';
+const BRAND = 'GotMyGame';
 const TZ = 'Asia/Kolkata';
 const dbOf = (db) => db ?? { query };
 

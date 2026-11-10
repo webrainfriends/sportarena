@@ -380,7 +380,7 @@ test('portfolio, comparison and renewal pack reconcile with the dues, stay insid
 
   // renewal pack: facts only; the athlete-style outcome stays private unless shared
   const pack = must(await api('GET', `/sponsorships/${a.id}/renewal-pack`, { token: owner.token }));
-  assert.ok(pack.facts.length > 3 && pack.facts.some((f) => /Not measured by Sportarena/.test(f)));
+  assert.ok(pack.facts.length > 3 && pack.facts.some((f) => /Not measured by GotMyGame/.test(f)));
   assert.equal(pack.outcomes.status, 'not_shared');
   assert.equal(pack.workspace.propose.path, `/sponsorships/${a.id}/renewal`);
   assert.equal(pack.valuation, undefined);

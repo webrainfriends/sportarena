@@ -180,7 +180,7 @@ cap({
     } else {
       data = await standings(i.event_id);
     }
-    return { dataset: i.dataset, event_id: i.event_id, grant: { id: g.id, mode: g.mode, delay_seconds: g.delay_seconds, valid_to: g.valid_to }, generated_at: new Date().toISOString(), source: 'SportArena official scoring and results', data };
+    return { dataset: i.dataset, event_id: i.event_id, grant: { id: g.id, mode: g.mode, delay_seconds: g.delay_seconds, valid_to: g.valid_to }, generated_at: new Date().toISOString(), source: 'GotMyGame official scoring and results', data };
   },
 });
 

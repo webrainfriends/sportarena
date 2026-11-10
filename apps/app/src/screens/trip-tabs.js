@@ -164,7 +164,7 @@ const legFields = (party, edit, orders = []) => [
   { key: 'mode', label: 'How', type: 'chips', options: Object.entries(MODE).map(([value, l]) => ({ value, label: l })), default: 'coach' },
   { key: 'mode_label', label: 'Name the mode', type: 'text', show: (v) => v.mode === 'other' },
   { key: 'provider', label: 'Provider (airline, rail, coach company)', type: 'text', optional: true },
-  { key: 'reference', label: 'Booking reference', type: 'text', optional: true, hint: 'Recorded as typed by the team. SportArena does not check it against the provider.' },
+  { key: 'reference', label: 'Booking reference', type: 'text', optional: true, hint: 'Recorded as typed by the team. GotMyGame does not check it against the provider.' },
   { key: 'origin', label: 'From', type: 'place' }, { key: 'destination', label: 'To', type: 'place' },
   { key: 'd1', label: 'Departs', type: 'section' },
   { key: 'dep_date', label: 'Departure date', type: 'date' }, { key: 'dep_time', label: 'Departure time', type: 'time', step: 5 }, { key: 'depart_tz', label: 'Time zone of the departure place', type: 'timezone' },

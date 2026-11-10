@@ -47,7 +47,7 @@ cap({
   input: z.object({}),
   async handler({ user }) {
     const scopes = [];
-    if (isAdmin(user)) scopes.push({ kind: 'platform', id: null, name: 'SportArena (platform)', write: true });
+    if (isAdmin(user)) scopes.push({ kind: 'platform', id: null, name: 'GotMyGame (platform)', write: true });
     for (const o of await many("SELECT o.id, o.name FROM organisation_members m JOIN organisations o ON o.id=m.organisation_id WHERE m.user_id=$1 AND m.status='active' AND m.role IN ('owner','admin') AND o.status='active' ORDER BY o.name", [user.id])) scopes.push({ kind: 'organisation', id: o.id, name: o.name, write: true });
     for (const e of await many(
       `SELECT DISTINCT e.id, e.name FROM events e WHERE e.status <> 'cancelled' AND (e.organizer_id=$1 OR e.organisation_id IN (SELECT organisation_id FROM organisation_members WHERE user_id=$1 AND status='active' AND role IN ('owner','admin'))) ORDER BY e.name LIMIT 100`, [user.id])) scopes.push({ kind: 'event', id: e.id, name: e.name, write: true });

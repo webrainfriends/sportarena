@@ -112,7 +112,7 @@ export function StreamsPanel({ id, isOrg, games, licences = [], canAct }) {
     <>
       <ACard tone={A.cyan} pad={12} style={{ gap: 4 }}>
         <AT size={13} weight="800">How streaming works here</AT>
-        <AT size={12.5} color={A.mute}>SportArena does not host video. A stream is a reference to one on an external provider, and its state is reported by the organiser or the licensed partner. A game is only shown as live when someone has reported it live with a playback link.</AT>
+        <AT size={12.5} color={A.mute}>GotMyGame does not host video. A stream is a reference to one on an external provider, and its state is reported by the organiser or the licensed partner. A game is only shown as live when someone has reported it live with a playback link.</AT>
       </ACard>
       <ASection title="Streams" action={act ? '+ Add stream' : undefined} onAction={() => setForm(true)} />
       {!d.data.length ? <AEmpty emoji="📺" title="No streams configured" sub={act ? 'Add the external stream for a game or the whole event. Until you do, none is shown anywhere.' : 'Nothing is configured for this event.'} action={act ? 'Add a stream' : undefined} onAction={() => setForm(true)} /> : d.data.map((st) => (

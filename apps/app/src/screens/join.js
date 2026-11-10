@@ -124,7 +124,7 @@ export function TeamJoinLinks({ teamId }) {
       try { await Clipboard.setStringAsync(url); toast(t('tjl.copied')); } catch { toast(url); }
       return;
     }
-    await Share.share({ message: `Join our team on SportArena! Use code ${link.code} or tap: ${url}`, url });
+    await Share.share({ message: `Join our team on GotMyGame! Use code ${link.code} or tap: ${url}`, url });
   };
 
   const handleRevoke = async (linkId) => {

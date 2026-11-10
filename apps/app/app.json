@@ -1,6 +1,6 @@
 {
   "expo": {
-    "name": "Gotmygame",
+    "name": "GotMyGame",
     "slug": "gotmygame",
     "version": "0.1.0",
     "scheme": ["sportarena", "com.googleusercontent.apps.909476957194-bmrrif4q7qdffemon7mrrm3puoovbg5r"],
@@ -31,8 +31,8 @@
     "web": {
       "bundler": "metro",
       "output": "single",
-      "name": "Gotmygame",
-      "shortName": "Gotmygame",
+      "name": "GotMyGame",
+      "shortName": "GotMyGame",
       "backgroundColor": "#E5EAF5",
       "themeColor": "#2A2D3A",
       "favicon": "./public/favicon.png"
@@ -50,7 +50,7 @@
       [
         "expo-local-authentication",
         {
-          "faceIDPermission": "Unlock Gotmygame with Face ID if you turned on the device lock in Account security."
+          "faceIDPermission": "Unlock GotMyGame with Face ID if you turned on the device lock in Account security."
         }
       ],
       [

@@ -228,7 +228,7 @@ const displayState = (s) => (s.state === 'live' && s.scheduled_end && Date.now()
 
 cap({
   name: 'list_stream_providers', method: 'GET', path: '/media-stream-providers', tag: TAG, auth: 'public',
-  summary: 'The external streaming / broadcast providers a stream can be associated with, and how each is connected in this deployment. Today every provider is a reference only: the organiser or partner supplies the stream reference and reports its state. SportArena does not host video, and never shows a stream as live on its own.',
+  summary: 'The external streaming / broadcast providers a stream can be associated with, and how each is connected in this deployment. Today every provider is a reference only: the organiser or partner supplies the stream reference and reports its state. GotMyGame does not host video, and never shows a stream as live on its own.',
   input: z.object({}),
   handler: async () => Object.entries(STREAM_PROVIDERS).map(([key, label]) => ({ key, label, integration: 'reference_only', state_reported_by: 'organiser_or_partner', credentials: 'never stored' })),
 });

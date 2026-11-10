@@ -50,7 +50,7 @@ cap({
   handler: async () => ({
     purposes: PURPOSES, data_access: DATA_ACCESS, contact_actions: CONTACT_ACTIONS, staff_permissions: STAFF_PERMS,
     never_shared: NEVER_SHARED, athlete_only: ATHLETE_ONLY,
-    conflict_policy: { cannot_be_accepted_by_athlete: noWaiver(), note: 'SportArena flags possible conflicts and records the decision of the people involved. It never decides whether a conflict is legally acceptable.' },
+    conflict_policy: { cannot_be_accepted_by_athlete: noWaiver(), note: 'GotMyGame flags possible conflicts and records the decision of the people involved. It never decides whether a conflict is legally acceptable.' },
     approval_window_days: APPROVAL_DAYS(),
     live_checks: ['mandate agreed by every required party and inside its dates', 'agent not suspended', 'agent verification current', 'licence relied on current and checked', 'purpose, data category and action are in the agreed version', 'for a young person, the guardian\'s current consent', 'for a private item, a grant for that exact item', 'no open conflict on the item'],
     matrix: [
@@ -128,7 +128,7 @@ async function mine(user, c = pool) {
 
 cap({
   name: 'add_agent_licence', method: 'POST', path: '/agents/me/licences', tag: TAG, status: 201,
-  summary: 'Declare a licence or registration: issuing body, grade or type, jurisdiction, validity and (optionally) the reference. The reference is encrypted; only its last four characters are ever shown. It stays "declared" until the SportArena review team checks it as part of your verification; an expired validity date shows as expired.',
+  summary: 'Declare a licence or registration: issuing body, grade or type, jurisdiction, validity and (optionally) the reference. The reference is encrypted; only its last four characters are ever shown. It stays "declared" until the GotMyGame review team checks it as part of your verification; an expired validity date shows as expired.',
   input: z.object({ issuing_body: text(120).min(2), grade: text(80).default(''), jurisdiction: market, sport_id: id.optional(), reference: text(60).optional(), valid_from: day.optional(), valid_to: day.optional() }),
   async handler({ user }, i) {
     if (i.valid_from && i.valid_to && i.valid_to < i.valid_from) throw badRequest('The validity cannot end before it starts');

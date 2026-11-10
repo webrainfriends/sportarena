@@ -1,5 +1,5 @@
 // Team & delegation travel operations (#485), part 3: transport segments, accommodation and rooming, equipment consignments and the link to
-// supplier orders (#458). Every booking reference is labelled for what it is: typed by the team (external) or taken from a supplier order. SportArena
+// supplier orders (#458). Every booking reference is labelled for what it is: typed by the team (external) or taken from a supplier order. GotMyGame
 // has no inventory of its own: a typed reference is never "verified"; only a booking confirmed by a connected travel partner (#704) is, and it says so.
 import { z } from 'zod';
 import { cap, id } from '../registry.js';
@@ -20,7 +20,7 @@ export const referenceLabel = (r) => (r.reference_source === 'partner'
     ? { source: 'room_block', verified: false, label: 'Rooms taken from the room block the event organiser published. The booking terms are the organiser\'s.' }
   : r.reference_source === 'supplier_order'
   ? { source: 'supplier_order', verified: false, label: `Supplier order ${r.order_number ?? ''}${r.travel_confirmation === 'supplier_booking_confirmed' ? ': the supplier confirmed the booking' : r.travel_confirmation === 'third_party_reference_recorded' ? ': third-party reference recorded by the supplier' : ''}. Not a live availability check.`.replace(' :', ':') }
-  : { source: 'external', verified: false, label: r.reference ? 'Reference typed by the team or taken from the provider. SportArena has not verified it.' : 'No reference recorded yet.' });
+  : { source: 'external', verified: false, label: r.reference ? 'Reference typed by the team or taken from the provider. GotMyGame has not verified it.' : 'No reference recorded yet.' });
 
 /** An accepted supplier order for travel/accommodation that the caller may act on as a buyer. The order itself is never copied. */
 async function orderFor(c, user, orderId, category = null) {

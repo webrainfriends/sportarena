@@ -138,7 +138,7 @@ function Enquiries({ list, push }) {
       {list.data.length ? list.data.map((e) => (
         <Row key={e.id} title={`${e.unread ? '● ' : ''}${e.institution}`} sub={`${e.programme_title ?? 'General enquiry'}${e.sport ? ` · ${e.sport_emoji} ${e.sport}` : ''}\n${when(e.last_message_at)}`}
           right={<Tag label={label(STAGES, e.status)} />} onPress={() => push('Enquiry', { id: e.id })} />
-      )) : <Empty emoji="✉️" title="No enquiries yet" sub="Open a college listed on Sportarena and ask them anything. They answer here." />}
+      )) : <Empty emoji="✉️" title="No enquiries yet" sub="Open a college listed on GotMyGame and ask them anything. They answer here." />}
     </Section>
   );
 }

@@ -704,7 +704,7 @@ cap({
           valuation_estimates: {
             valuation_note: i.valuation_note ?? 'No valuation estimate included in this report.',
             narrative: i.narrative?.valuation_estimates ?? null,
-            warning: 'Valuation figures are assumption-based estimates only, not measured facts. Sportarena does not endorse or verify valuation claims.',
+            warning: 'Valuation figures are assumption-based estimates only, not measured facts. GotMyGame does not endorse or verify valuation claims.',
           },
         },
         exclusion_manifest: [
@@ -814,7 +814,7 @@ cap({
       if (!r) throw notFound('Impact report');
       const { prog } = await requireProgrammeAccess(user, r.programme_id, 'read', c);
 
-      if (!verifyReport(r)) throw unprocessable('This report no longer matches its recorded hash and cannot be exported. Contact Sportarena if you believe this is an error.');
+      if (!verifyReport(r)) throw unprocessable('This report no longer matches its recorded hash and cannot be exported. Contact GotMyGame if you believe this is an error.');
 
       await auditOutcomeRead(c, user.id, prog.sponsor_id, 'para_impact_report_export', i.id);
 

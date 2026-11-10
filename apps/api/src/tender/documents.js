@@ -106,7 +106,7 @@ async function regretNoticeDoc(user, id, q) {
   if (won) throw badRequest('This supplier has an award notice, not a regret notice');
   if (!(await one("SELECT 1 FROM proc_awards WHERE project_id=$1 AND notified_at IS NOT NULL", [p.id])) && p.status !== 'closed') throw notFound('Outcome');
   const e = await one('SELECT legal_name FROM supplier_entities WHERE id=$1', [q.entity_id]);
-  return { p, audience: `supplier:${q.entity_id}`, refId: pr.id, title: 'Outcome notice', subtitle: p.title, reference: `${p.ref}-ON`, sections: [{ heading: 'Outcome', text: `${e.legal_name} was not selected for this tender. Your own scores and the evaluation rationale you are entitled to are available in the debrief in Sportarena.`, rows: [['Your proposal eligibility', pr.eligibility], ['Appeal window', `${Math.max(p.standstill_days, 7)} days from the notice`]] }], footnote: 'No competing prices, scores or identities are disclosed.' };
+  return { p, audience: `supplier:${q.entity_id}`, refId: pr.id, title: 'Outcome notice', subtitle: p.title, reference: `${p.ref}-ON`, sections: [{ heading: 'Outcome', text: `${e.legal_name} was not selected for this tender. Your own scores and the evaluation rationale you are entitled to are available in the debrief in GotMyGame.`, rows: [['Your proposal eligibility', pr.eligibility], ['Appeal window', `${Math.max(p.standstill_days, 7)} days from the notice`]] }], footnote: 'No competing prices, scores or identities are disclosed.' };
 }
 
 async function agreementDoc(user, id) {

@@ -138,7 +138,7 @@ const contractText = ({ ev, role, organiser, party, fee, currency, terms }) => {
     '4. Changes. Either party may withdraw, and the Organiser may release the engagement, through the platform; the record of that stays attached to this agreement.',
     ...(terms ? ['5. Additional terms.', terms] : []),
     '',
-    `Accepting this agreement on Gotmygame is a binding electronic signature by both parties.`,
+    `Accepting this agreement on GotMyGame is a binding electronic signature by both parties.`,
   ].join('\n');
 };
 

@@ -21,7 +21,7 @@ const stale = () => conflict('This changed while you were looking; reload it and
 // ------------------------------------------------------------------ definitions
 cap({
   name: 'list_sponsorship_metric_definitions', method: 'GET', path: '/sponsorship-metric-definitions', tag: TAG,
-  summary: 'What every exposure metric means, where it comes from (platform_measured or provider_reported), whether it is a figure for a period or a point in time, how duplicates are avoided, and what Sportarena does NOT measure. The same definitions are embedded in every issued report.',
+  summary: 'What every exposure metric means, where it comes from (platform_measured or provider_reported), whether it is a figure for a period or a point in time, how duplicates are avoided, and what GotMyGame does NOT measure. The same definitions are embedded in every issued report.',
   async handler() { return { metrics: METRICS, not_measured: NOT_MEASURED, rules: ['A figure is never estimated: a metric with no data is listed as missing, not zero.', 'Platform-measured counts and provider-reported figures are never added together.', 'Money and valuation estimates are separate: a valuation exists only from assumptions the brand configured, is versioned and is always labelled an estimate.'] }; },
 });
 
@@ -77,7 +77,7 @@ async function readable(c, user, sponsorshipId, action = 'roi') {
 
 cap({
   name: 'get_sponsorship_exposure', method: 'GET', path: '/sponsorships/:id/exposure', tag: TAG,
-  summary: 'Measured exposure of one agreement over a period (default: its whole term so far): platform-measured placement impressions and clicks, event/team followers (distinct accounts, a point-in-time count), and provider-reported figures, each with its definition, basis, sources and days with data. Metrics a booked inventory unit should produce but that have no data are listed as `missing`; `not_measured` names what Sportarena never estimates. Both sides (sponsor side needs roi).',
+  summary: 'Measured exposure of one agreement over a period (default: its whole term so far): platform-measured placement impressions and clicks, event/team followers (distinct accounts, a point-in-time count), and provider-reported figures, each with its definition, basis, sources and days with data. Metrics a booked inventory unit should produce but that have no data are listed as `missing`; `not_measured` names what GotMyGame never estimates. Both sides (sponsor side needs roi).',
   input: z.object({ id, from: date.optional(), to: date.optional() }),
   async handler({ user }, i) {
     return tx(async (c) => {
@@ -255,12 +255,12 @@ const sentence = (f, out) => {
   s.push(`${a.sponsor} and ${a.beneficiary}: agreement ${a.ref ?? a.id.slice(0, 8)} is ${a.status.replace('_', ' ')}, ${a.starts_on ?? '?'} to ${a.ends_on ?? 'open-ended'}${a.days_left != null ? ` (${a.days_left >= 0 ? `${a.days_left} days left` : `ended ${-a.days_left} days ago`})` : ''}.`);
   for (const t of f.finance.totals) s.push(`Money (${t.currency}): ${t.confirmed_cents} of ${t.committed_cents} committed has been confirmed received; ${t.outstanding_cents} is outstanding${t.overdue_cents ? `, of which ${t.overdue_cents} is overdue` : ''} (minor units).`);
   s.push(d.total ? `Deliverables: ${d.accepted} accepted, ${d.missed} missed, ${d.excepted} excepted by agreement, ${d.awaiting_review} awaiting review, ${d.upcoming} upcoming of ${d.total}.` : 'Deliverables: none were set up for this agreement.');
-  for (const m of f.exposure.metrics) s.push(`${m.label}: ${m.value} ${m.unit} (${m.provenance === 'measured' ? 'measured by Sportarena' : `imported from ${m.sources.join(', ')}`}${m.period_bound ? '' : ', point in time'}).`);
+  for (const m of f.exposure.metrics) s.push(`${m.label}: ${m.value} ${m.unit} (${m.provenance === 'measured' ? 'measured by GotMyGame' : `imported from ${m.sources.join(', ')}`}${m.period_bound ? '' : ', point in time'}).`);
   for (const m of f.exposure.missing) s.push(`No figures for ${metricOf(m.metric).label} on ${m.inventory}: ${m.reason}.`);
   if (f.disputes.open) s.push(`${f.disputes.open} dispute(s) are still open.`);
   if (out) s.push(out.status === 'shared' ? `The beneficiary shares results with the sponsor: ${out.metrics} metric(s), ${out.objectives} objective(s).` : 'The beneficiary has not shared results with the sponsor, so none are included.');
   if (f.valuation) s.push(`Estimated (assumption-based, model "${f.valuation.model.name}" v${f.valuation.model.version}): ${f.valuation.estimated_value_cents} ${f.valuation.currency} minor units. This is not a measured figure.`);
-  s.push(`Not measured by Sportarena: ${NOT_MEASURED.slice(0, 3).join('; ')}.`);
+  s.push(`Not measured by GotMyGame: ${NOT_MEASURED.slice(0, 3).join('; ')}.`);
   return s;
 };
 

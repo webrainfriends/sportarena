@@ -182,7 +182,7 @@ cap({
             AND (s.starts_at AT TIME ZONE s.timezone)::date BETWEEN $3::date AND coalesce($4::date, $3::date) ORDER BY s.starts_at`, [r.user_id, r.organisation_id, r.on_date, r.ends_on])).rows;
       for (const n of needs_cover) await c.query("INSERT INTO academy_cover_requests(session_id, requester_id, reason) VALUES ($1,$2,'Approved time off') ON CONFLICT DO NOTHING", [n.session_id, r.user_id]);
     }
-    await notify(c, r.user_id, { kind: 'academy_time_off_decision', title: i.approve ? 'Time off approved' : 'Time off not approved', body: i.note ?? 'Open Gotmygame for details.', data: { organisation_id: r.organisation_id, request_id: r.id }, dedupe_key: `academy-timeoff-decision:${r.id}` });
+    await notify(c, r.user_id, { kind: 'academy_time_off_decision', title: i.approve ? 'Time off approved' : 'Time off not approved', body: i.note ?? 'Open GotMyGame for details.', data: { organisation_id: r.organisation_id, request_id: r.id }, dedupe_key: `academy-timeoff-decision:${r.id}` });
     await audit(c, user.id, i.approve ? 'approve_academy_time_off' : 'reject_academy_time_off', 'academy_staff_availability', r.id);
     return { ok: true, status: i.approve ? 'approved' : 'rejected', sessions_needing_cover: needs_cover };
   }),
@@ -234,7 +234,7 @@ cap({
     if (i.action === 'cancel' ? r.requester_id !== user.id : !a.has('schedule')) throw forbidden('You cannot close this request');
     if (r.status !== 'open') throw conflict(`This request is already ${r.status}`);
     await c.query('UPDATE academy_cover_requests SET status=$2, decided_by=$3, decided_at=now() WHERE id=$1', [r.id, i.action === 'cancel' ? 'cancelled' : 'declined', user.id]);
-    if (i.action === 'decline') await notify(c, r.requester_id, { kind: 'academy_cover_declined', title: 'Your cover request was not approved', body: 'Open Gotmygame for details.', data: { session_id: r.session_id }, dedupe_key: `academy-cover-declined:${r.id}` });
+    if (i.action === 'decline') await notify(c, r.requester_id, { kind: 'academy_cover_declined', title: 'Your cover request was not approved', body: 'Open GotMyGame for details.', data: { session_id: r.session_id }, dedupe_key: `academy-cover-declined:${r.id}` });
     return { ok: true };
   }),
 });
@@ -256,7 +256,7 @@ cap({
     const iss = await staffIssues(c, i.id, i.user_id, i.starts_at, i.ends_at, { tz: i.timezone });
     if (iss.length) throw conflict('This person cannot take that shift', { conflicts: iss });
     const r = (await c.query('INSERT INTO academy_shifts(organisation_id, user_id, title, duty_label, programme_id, timezone, starts_at, ends_at, created_by) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING *', [i.id, i.user_id, i.title, i.duty_label ?? null, i.programme_id ?? null, i.timezone, i.starts_at, i.ends_at, user.id])).rows[0];
-    await notify(c, i.user_id, { kind: 'academy_shift', title: 'You were rostered for a shift', body: 'Open Gotmygame to confirm.', data: { shift_id: r.id, organisation_id: i.id }, dedupe_key: `academy-shift:${r.id}:${i.user_id}` });
+    await notify(c, i.user_id, { kind: 'academy_shift', title: 'You were rostered for a shift', body: 'Open GotMyGame to confirm.', data: { shift_id: r.id, organisation_id: i.id }, dedupe_key: `academy-shift:${r.id}:${i.user_id}` });
     return r;
   }),
 });
@@ -284,7 +284,7 @@ cap({
     if (!sh) throw notFound('Shift');
     (await opsAccess(user, sh.organisation_id, { write: true, c })).need('schedule');
     await c.query("UPDATE academy_shifts SET status='cancelled', row_version=row_version+1 WHERE id=$1", [sh.id]);
-    await notify(c, sh.user_id, { kind: 'academy_shift_cancelled', title: 'A shift was cancelled', body: 'Open Gotmygame for details.', data: { shift_id: sh.id }, dedupe_key: `academy-shift-cancel:${sh.id}` });
+    await notify(c, sh.user_id, { kind: 'academy_shift_cancelled', title: 'A shift was cancelled', body: 'Open GotMyGame for details.', data: { shift_id: sh.id }, dedupe_key: `academy-shift-cancel:${sh.id}` });
     return { ok: true };
   }),
 });

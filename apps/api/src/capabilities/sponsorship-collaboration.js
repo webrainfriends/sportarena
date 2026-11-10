@@ -147,7 +147,7 @@ const noteTarget = { ...target, application_id: id.optional().describe('one appl
 
 /** Tell the other side of an application thread that something is waiting, never what it says. */
 async function pingThread(c, acc, noteId) {
-  const msg = (data) => ({ kind: 'sponsorship_update', title: 'New message about a sponsorship application', body: 'Open Gotmygame to see it.', data });
+  const msg = (data) => ({ kind: 'sponsorship_update', title: 'New message about a sponsorship application', body: 'Open GotMyGame to see it.', data });
   if (acc.applicant) await notifySponsor(c, acc.sp, 'program', { ...msg({ program_id: acc.program.id, application_id: acc.application.id }), dedupe_key: `spapp:${noteId}` }, null);
   else await notify(c, acc.application.applicant_id, { ...msg({ application_id: acc.application.id }), dedupe_key: `spapp:${noteId}:a` });
 }

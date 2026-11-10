@@ -120,7 +120,7 @@ test('platform number, dedicated numbers per owner, revoke falls back', async ()
   const plain = await signup();
   assert.equal((await api('GET', '/admin/whatsapp/senders', { token: plain.token })).status, 403);
 
-  const platform = must(await api('POST', '/admin/whatsapp/senders', { token: adm.token, body: { label: 'Sportarena' } }), 201);
+  const platform = must(await api('POST', '/admin/whatsapp/senders', { token: adm.token, body: { label: 'GotMyGame' } }), 201);
   assert.ok(platform.qr.startsWith('data:image'));
   assert.equal((await api('POST', '/admin/whatsapp/senders', { token: adm.token, body: { label: 'again' } })).status, 409, 'one platform number');
   const orgId = '11111111-1111-4111-8111-111111111111';

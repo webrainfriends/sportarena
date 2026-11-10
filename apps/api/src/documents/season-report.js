@@ -43,7 +43,7 @@ export async function renderSeasonReport({ layout, kit, logo, pack, createdAt, p
   const accent = hex(kit?.primary_color, '#0F6E56'), ink = hex(kit?.secondary_color, '#444441');
   const title = `${pack.athlete.display_name} · ${pack.scope.label}`;
   const doc = new PDFDocument({ size: layout.paper, layout: layout.orientation, margin: layout.margin_mm * MM, bufferPages: true, compress: true,
-    info: { Title: title, Author: kit?.display_name ?? 'Sportarena', CreationDate: createdAt, Producer: 'Sportarena' } });
+    info: { Title: title, Author: kit?.display_name ?? 'GotMyGame', CreationDate: createdAt, Producer: 'GotMyGame' } });
   const chunks = []; doc.on('data', (c) => chunks.push(c));
   const done = new Promise((res, rej) => { doc.on('end', res); doc.on('error', rej); });
   const left = doc.page.margins.left, width = doc.page.width - left - doc.page.margins.right;

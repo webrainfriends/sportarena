@@ -110,7 +110,7 @@ async function checkRecipients(user, filter, recipientIds) {
   const ids = [...new Set(recipientIds)];
   if (filter.view === 'recipient' && (ids.length !== 1 || ids[0] !== user.id)) throw unprocessable('A recipient-side report shows your own agreements, so it can only be delivered to you');
   for (const rid of ids) {
-    if (!(await one('SELECT 1 FROM users WHERE id=$1', [rid]))) throw unprocessable('A recipient is not a Sportarena user');
+    if (!(await one('SELECT 1 FROM users WHERE id=$1', [rid]))) throw unprocessable('A recipient is not a GotMyGame user');
     try { await assertReportAccess({ id: rid }, filter.view, 'report'); } catch { throw unprocessable('Every recipient needs a role that may read sponsorship reports on a brand you can see'); }
   }
   return ids;

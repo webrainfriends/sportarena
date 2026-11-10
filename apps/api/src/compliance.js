@@ -69,7 +69,7 @@ export function roleChoices(scopeKind, subjectKind) {
 // ---------------------------------------------------------------- who manages a scope
 /** Names for scopes (shown next to a requirement so a person knows who asks for it). */
 export async function scopeName(c, kind, id) {
-  if (kind === 'platform') return 'SportArena';
+  if (kind === 'platform') return 'GotMyGame';
   const q = kind === 'organisation' ? 'SELECT name FROM organisations WHERE id=$1' : kind === 'event' ? 'SELECT name FROM events WHERE id=$1' : 'SELECT o.name FROM governing_bodies b JOIN organisations o ON o.id=b.organisation_id WHERE b.id=$1';
   return (await c.query(q, [id])).rows[0]?.name ?? null;
 }

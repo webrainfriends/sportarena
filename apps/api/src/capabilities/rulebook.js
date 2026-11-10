@@ -66,7 +66,7 @@ export { readable as readableLocalRules };
 // ------------------------------------------------------------------ the rulebook
 cap({
   name: 'list_rulebooks', method: 'GET', path: '/rulebook', tag: TAG,
-  summary: 'The standard rulebooks SportArena has for each supported sport, with the governing body and a link to its official book. Anyone signed in can read them.',
+  summary: 'The standard rulebooks GotMyGame has for each supported sport, with the governing body and a link to its official book. Anyone signed in can read them.',
   async handler({ user }) {
     const mine = await many("SELECT sp.slug, count(*)::int AS n FROM local_rule_sets s JOIN sports sp ON sp.id=s.sport_id WHERE s.owner_user_id=$1 AND s.status='active' GROUP BY sp.slug", [user.id]);
     const count = Object.fromEntries(mine.map((r) => [r.slug, r.n]));

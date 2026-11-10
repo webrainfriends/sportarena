@@ -102,10 +102,10 @@ try {
   check(await vis(p, 'Sponsorship ROI'), 'the ROI screen opens');
   check(await vis(p, /from the dues and confirmed payments/), 'money is read from the dues and payments (finance truth)');
   check(await vis(p, 'Deliverable health'), 'deliverable health is shown');
-  check(await vis(p, /Not measured by Sportarena/), 'what is not measured is stated');
+  check(await vis(p, /Not measured by GotMyGame/), 'what is not measured is stated');
   await shot(p, '01-portfolio-phone', 3);
   await openFirstAgreement(p);
-  check(await vis(p, /Reported by a provider/i) && await vis(p, /Measured by Sportarena/i), 'exposure labels measured vs provider-reported');
+  check(await vis(p, /Reported by a provider/i) && await vis(p, /Measured by GotMyGame/i), 'exposure labels measured vs provider-reported');
   check(await vis(p, /Missing: Broadcast impressions/i), 'an expected metric without data is missing, not zero');
   await shot(p, '02-exposure-phone', 2);
   await tab(p, 'Deliverables'); check(await vis(p, 'Trophy presentation by the brand ambassador'), 'deliverables list'); await shot(p, '03-deliverables-phone', 2);

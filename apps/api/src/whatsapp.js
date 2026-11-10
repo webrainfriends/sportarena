@@ -70,7 +70,7 @@ export async function whatsappEligible(db, userId, kind) {
       WHERE w.user_id=$1 AND w.verified_at IS NOT NULL AND w.opted_out_at IS NULL AND (u.youth_until IS NULL OR u.youth_until <= current_date)`, [userId])).rowCount;
 }
 
-const textOf = (n) => `*${n.title}*\n${n.body}`.slice(0, 1000) + '\n\n— Sportarena · change this in Notifications';
+const textOf = (n) => `*${n.title}*\n${n.body}`.slice(0, 1000) + '\n\n— GotMyGame · change this in Notifications';
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 /** Send every pending WhatsApp message, a few per cycle with a pause between them. Safe from several instances (claim first). */

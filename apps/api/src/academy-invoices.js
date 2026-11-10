@@ -139,9 +139,9 @@ export async function applyReceipt(c, chargeId, { amountMinor = null, method = '
   if (left === 0) {
     await closeCharge(c, after, { method, paid: true });
     await academyChargePaid(c, after);            // the payer earns under every live loyalty programme that applies (once per charge)
-    await notify(c, ch.payer_id, { kind: 'academy_payment_received', title: 'Payment received', body: 'Open Gotmygame to see your receipt.', data: { organisation_id: ch.organisation_id, charge_id: ch.id }, dedupe_key: `academy:paid:${ch.id}` });
+    await notify(c, ch.payer_id, { kind: 'academy_payment_received', title: 'Payment received', body: 'Open GotMyGame to see your receipt.', data: { organisation_id: ch.organisation_id, charge_id: ch.id }, dedupe_key: `academy:paid:${ch.id}` });
   } else {
-    await notify(c, ch.payer_id, { kind: 'academy_payment_part', title: 'Part payment received', body: 'Open Gotmygame to see what is still due.', data: { organisation_id: ch.organisation_id, charge_id: ch.id }, dedupe_key: `academy:part:${receipt.id}` });
+    await notify(c, ch.payer_id, { kind: 'academy_payment_part', title: 'Part payment received', body: 'Open GotMyGame to see what is still due.', data: { organisation_id: ch.organisation_id, charge_id: ch.id }, dedupe_key: `academy:part:${receipt.id}` });
   }
   return { applied: true, replay: false, completed: left === 0, balance_minor: left, receipt_id: receipt.id, amount_minor: amount };
 }
@@ -177,7 +177,7 @@ export async function applyAdjustment(c, chargeId, { kind, amountMinor, reasonEn
       for (const f of fees) await syncChargeInvoice(c, f.id);
     }
   }
-  await notify(c, ch.payer_id, { kind: 'academy_balance_adjusted', title: left === 0 ? 'Nothing more to pay' : 'Your balance was reduced', body: 'Open Gotmygame to see the details.', data: { organisation_id: ch.organisation_id, charge_id: ch.id }, dedupe_key: `academy:adjust:${row.id}` });
+  await notify(c, ch.payer_id, { kind: 'academy_balance_adjusted', title: left === 0 ? 'Nothing more to pay' : 'Your balance was reduced', body: 'Open GotMyGame to see the details.', data: { organisation_id: ch.organisation_id, charge_id: ch.id }, dedupe_key: `academy:adjust:${row.id}` });
   return { replay: false, adjustment_id: row.id, balance_minor: left, charge_status: left === 0 ? (Number(after.settled_minor) > 0 ? 'paid' : 'waived') : 'awaiting_payment' };
 }
 

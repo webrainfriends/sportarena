@@ -1,6 +1,6 @@
 # Sports Media, Broadcast & Rights (#482, #590)
 
-A rights-and-operations layer over canonical SportArena records. It is not a video platform or CDN. Where the event console is the one home for running an event, the **Broadcast** tab is where its media side lives; media partners and crew use one **Media & broadcast** workspace (More → Media & broadcast).
+A rights-and-operations layer over canonical GotMyGame records. It is not a video platform or CDN. Where the event console is the one home for running an event, the **Broadcast** tab is where its media side lives; media partners and crew use one **Media & broadcast** workspace (More → Media & broadcast).
 
 ## Overlap / reuse matrix (latest `main` at the time of writing)
 

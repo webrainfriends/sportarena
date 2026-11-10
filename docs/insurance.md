@@ -34,7 +34,7 @@ existing plans and copied each existing plan's terms onto its policies. No row w
 
 ## Insurers as a role of their own (agency)
 An account holding the **`insurer`** role (picked at sign-up or added under Me → Add or remove roles) runs an insurer **desk**
-(Me → Insurer desk). Gotmygame is the marketplace and record-keeper, not the underwriter: insurers set their own terms and prices.
+(Me → Insurer desk). GotMyGame is the marketplace and record-keeper, not the underwriter: insurers set their own terms and prices.
 
 | Step | Capability | Notes |
 |---|---|---|
@@ -45,7 +45,7 @@ An account holding the **`insurer`** role (picked at sign-up or added under Me �
 
 ## Panel doctors and physios
 
-An insurer links physios/doctors to its **panel** so people covered by that insurer can find the right provider. Gotmygame records the arrangement; it does not process claims or settle "cashless" billing (that flag is information shown to patients).
+An insurer links physios/doctors to its **panel** so people covered by that insurer can find the right provider. GotMyGame records the arrangement; it does not process claims or settle "cashless" billing (that flag is information shown to patients).
 
 * **Both sides agree.** `invite_panel_provider` (insurer) → provider `respond_panel_link` (accepting needs a current verified credential); or `request_panel_membership` (provider) → insurer approves with terms via `respond_panel_link`. Nobody is listed without consent. `update_panel_member` edits terms; `end_panel_membership` ends a link from either side (rows and an append-only event history are kept, never deleted). `list_my_panel` shows links for the signed-in insurer or provider.
 * **Terms per link:** cashless (information), network reference, kinds of cover (`individual`, `team`, `group`, `organisation`, `event`; none = all), which of the insurer's plans (none = all), validity dates.

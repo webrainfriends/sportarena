@@ -40,7 +40,7 @@ export async function describePurpose(c, type, id) {
   if (type === 'shop_checkout') {
     // everything bought together in one cart: pay what is still awaiting payment (lines cancelled meanwhile drop out)
     const o = (await c.query("SELECT min(buyer_id::text)::uuid AS payer_id, min(currency) AS currency, count(DISTINCT currency)::int AS currencies, coalesce(sum(total_cents) FILTER (WHERE status='awaiting_payment'), 0) AS amount, count(*) FILTER (WHERE status='awaiting_payment')::int AS due FROM shop_orders WHERE checkout_id=$1", [id])).rows[0];
-    return o?.payer_id && o.currencies === 1 && { payerId: o.payer_id, amount: Number(o.amount), currency: o.currency, name: `Gotmygame Shop order (${o.due} item${o.due === 1 ? '' : 's'})`, payable: o.due > 0 };
+    return o?.payer_id && o.currencies === 1 && { payerId: o.payer_id, amount: Number(o.amount), currency: o.currency, name: `GotMyGame Shop order (${o.due} item${o.due === 1 ? '' : 's'})`, payable: o.due > 0 };
   }
   if (type === 'coach_hire') {
     const h = await q("SELECT h.hirer_id AS payer_id, h.total_cents - h.loyalty_credit_cents AS amount, h.currency, h.status, h.payment_status, h.series_id, u.display_name, s.pay_mode, s.payment_id, s.anchor_hire_id FROM coach_hires h JOIN users u ON u.id=h.coach_id LEFT JOIN coach_series s ON s.id=h.series_id WHERE h.id=$1 FOR UPDATE OF h");
@@ -92,7 +92,7 @@ export async function describePurpose(c, type, id) {
   }
   if (type === 'gift_card') {
     const g = await q("SELECT purchaser_id AS payer_id, amount_cents AS amount, currency, status FROM gift_cards WHERE id=$1 FOR UPDATE");
-    return g && { payerId: g.payer_id, amount: Number(g.amount), currency: g.currency, name: 'Gotmygame gift card', payable: g.status === 'awaiting_payment' };
+    return g && { payerId: g.payer_id, amount: Number(g.amount), currency: g.currency, name: 'GotMyGame gift card', payable: g.status === 'awaiting_payment' };
   }
   if (type === 'venue_plan') {
     const u = await q("SELECT up.user_id AS payer_id, up.price_cents AS amount, up.currency, up.status, up.name, v.name AS venue FROM user_plans up JOIN venues v ON v.id=up.venue_id WHERE up.id=$1 FOR UPDATE OF up");

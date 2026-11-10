@@ -52,7 +52,7 @@ const campaignShape = {
   audience: z.enum(['everyone', 'followers']).default('everyone').describe('followers = people who follow the venue or event you promote'),
   frequency_per_day: z.number().int().min(1).max(100).optional().describe('most times one person sees this ad in a day'),
   landing_entity_type: z.enum(ENTITY_TYPES).optional(), landing_entity_id: id.optional(),
-  landing_url: z.string().max(300).optional().describe('an https page; only when the destination is not a Gotmygame page'),
+  landing_url: z.string().max(300).optional().describe('an https page; only when the destination is not a GotMyGame page'),
 };
 
 // ------------------------------------------------------------------ shaping
@@ -82,14 +82,14 @@ async function validate(user, advertiser, v, c) {
   if (v.billing_model === 'flat' && v.budget_minor !== v.rate_minor) throw badRequest('A flat fee campaign spends exactly its fee: set the budget equal to the fee');
   if (v.budget_minor < v.rate_minor) throw badRequest('The budget cannot be less than one billing unit');
   if (!CATEGORIES[v.category]) throw badRequest('Choose what you are promoting from the list');
-  if (!CATEGORIES[v.category].allowed) throw unprocessable(`${CATEGORIES[v.category].label} cannot be advertised on Gotmygame`, { category: v.category });
+  if (!CATEGORIES[v.category].allowed) throw unprocessable(`${CATEGORIES[v.category].label} cannot be advertised on GotMyGame`, { category: v.category });
   if (v.sports.length) {
     const have = (await c.query('SELECT slug FROM sports WHERE slug = ANY($1)', [v.sports])).rows.map((r) => r.slug);
     const missing = v.sports.filter((s) => !have.includes(s));
     if (missing.length) throw badRequest(`Unknown sport: ${missing.join(', ')}`);
   }
   const landing = [v.landing_entity_type || v.landing_entity_id ? 'entity' : null, v.landing_url ? 'url' : null].filter(Boolean);
-  if (landing.length > 1) throw badRequest('Choose one destination: a Gotmygame page or an external link');
+  if (landing.length > 1) throw badRequest('Choose one destination: a GotMyGame page or an external link');
   if (!!v.landing_entity_type !== !!v.landing_entity_id) throw badRequest('Pick the page this ad promotes');
   if (v.landing_url && !safeLandingUrl(v.landing_url)) throw badRequest('The destination must be a secure https link to a public website');
   if (v.landing_entity_type) await checkEntity(user, advertiser, v.landing_entity_type, v.landing_entity_id, c);
@@ -444,7 +444,7 @@ cap({
 
 cap({
   name: 'follow_ad', method: 'POST', path: '/public/ads/:token/click', tag: TAG, auth: 'public',
-  summary: 'Count a visitor following an ad\'s button and say where it leads (a Gotmygame page, or an external https link). The token only works for the person it was served to, once, shortly after it was shown, and only while the campaign is live and its ad still approved — a paused or withdrawn ad leads nowhere.',
+  summary: 'Count a visitor following an ad\'s button and say where it leads (a GotMyGame page, or an external https link). The token only works for the person it was served to, once, shortly after it was shown, and only while the campaign is live and its ad still approved — a paused or withdrawn ad leads nowhere.',
   input: z.object({ token: id }),
   async handler({ user, meta }, i) { return followAd({ user, meta, token: i.token }); },
 });

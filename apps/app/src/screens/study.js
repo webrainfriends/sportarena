@@ -197,7 +197,7 @@ export function Explore({ push, onSaved }) {
         ) : <Empty emoji="🔎" title="No suggestions" sub="Try more countries or a different sport." />) : null}
       </Section>
 
-      <Section title="On Sportarena: ask them directly" color={c.cyan}>
+      <Section title="On GotMyGame: ask them directly" color={c.cyan}>
         {progs.error ? <ErrorBox error={progs.error} onRetry={progs.reload} /> : !progs.data ? <Loading /> : progs.data.length ? progs.data.map((p) => (
           <Row key={p.id} title={p.title} onPress={() => push('Programme', { id: p.id })}
             sub={`${p.institution} · ${place(p)}\n${label(KINDS, p.kind)} · ${label(MODES, p.mode)}${p.sports.length ? '' : ' · General sports'}${p.reviews ? ` · ★ ${p.rating.toFixed(1)} (${p.reviews})` : ''}`}

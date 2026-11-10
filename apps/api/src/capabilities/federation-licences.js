@@ -95,7 +95,7 @@ export async function licenceChecks(c, l, type, { issuedOn }) {
   const need = PROFILE_FOR[type.holder_role];
   const missing = await missingDocuments(c, 'licence', l.id, p.required_documents);
   const checks = [
-    ...(need ? [check('profile', `Holds a ${need} profile`, holder.roles.includes(need), holder.roles.includes(need) ? null : `They need a ${need} profile on Sportarena first`)] : []),
+    ...(need ? [check('profile', `Holds a ${need} profile`, holder.roles.includes(need), holder.roles.includes(need) ? null : `They need a ${need} profile on GotMyGame first`)] : []),
     check('documents', 'Required documents are attached', missing.length === 0, missing.length ? `Missing: ${missing.join(', ')}` : (p.required_documents.length ? `${p.required_documents.length} attached` : 'None required')),
     check('fee', 'Fee settled', ['none', 'paid', 'waived'].includes(l.fee_status), l.fee_status === 'due' ? 'The fee is still due' : null),
   ];

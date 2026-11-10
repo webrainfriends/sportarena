@@ -453,7 +453,7 @@ cap({
       const owner = tk.owner_id ?? ownerId;
       await assertWorker(plan.organisation_id, owner, 'The task owner', { providers: true });
       await c.query('INSERT INTO academy_dev_interventions(plan_id, objective_id, kind, title, owner_id, due_on, visibility, created_by) VALUES ($1,$2,$3,$4,$5,$6,$7,$8)', [plan.id, o.id, tk.kind, tk.title, owner, tk.due_on ?? null, i.visibility, user.id]);
-      if (owner !== user.id) await notify(c, owner, { kind: 'academy_dev_task', title: 'You have a new development task', body: 'Open Gotmygame to see what you have been asked to do.', data: { plan_id: plan.id }, dedupe_key: `academy:dev:task:${o.id}:${owner}:${tk.title.slice(0, 20)}` });
+      if (owner !== user.id) await notify(c, owner, { kind: 'academy_dev_task', title: 'You have a new development task', body: 'Open GotMyGame to see what you have been asked to do.', data: { plan_id: plan.id }, dedupe_key: `academy:dev:task:${o.id}:${owner}:${tk.title.slice(0, 20)}` });
     }
     await audit(c, user.id, 'add_academy_dev_objective', 'academy_dev_objectives', o.id);
     return o;
@@ -525,7 +525,7 @@ cap({
     const r = (await c.query(
       `INSERT INTO academy_dev_interventions(plan_id, objective_id, kind, title, detail_enc, owner_id, due_on, visibility, coaching_action_id, created_by) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING *`,
       [plan.id, i.objective_id ?? null, i.kind, i.title, sealT(i.detail, 'detail'), ownerId, i.due_on ?? null, i.visibility, i.coaching_action_id ?? null, user.id])).rows[0];
-    if (ownerId !== user.id) await notify(c, ownerId, { kind: 'academy_dev_task', title: 'You have a new development task', body: 'Open Gotmygame to see what you have been asked to do.', data: { plan_id: plan.id, intervention_id: r.id }, dedupe_key: `academy:dev:task:${r.id}` });
+    if (ownerId !== user.id) await notify(c, ownerId, { kind: 'academy_dev_task', title: 'You have a new development task', body: 'Open GotMyGame to see what you have been asked to do.', data: { plan_id: plan.id, intervention_id: r.id }, dedupe_key: `academy:dev:task:${r.id}` });
     await audit(c, user.id, 'add_academy_dev_intervention', 'academy_dev_interventions', r.id);
     return r;
   }),
@@ -634,7 +634,7 @@ cap({
       await c.query("UPDATE academy_dev_plans SET status='active', row_version=row_version+1, updated_at=now() WHERE id=$1 AND status='in_review'", [plan.id]);
       if (i.share_with_family) {
         const to = await guardiansOf(plan.athlete_id, c);
-        for (const uid of new Set([plan.athlete_id, ...to])) await notify(c, uid, { kind: 'academy_dev_review', title: 'A development review is ready to read', body: 'Open Gotmygame to read it and let the academy know you have seen it.', data: { plan_id: plan.id, review_id: r.id }, dedupe_key: `academy:dev:review:${r.id}:${uid}` });
+        for (const uid of new Set([plan.athlete_id, ...to])) await notify(c, uid, { kind: 'academy_dev_review', title: 'A development review is ready to read', body: 'Open GotMyGame to read it and let the academy know you have seen it.', data: { plan_id: plan.id, review_id: r.id }, dedupe_key: `academy:dev:review:${r.id}:${uid}` });
       }
     }
     const s = (await c.query('INSERT INTO academy_dev_signoffs(review_id, user_id, capacity, decision, comment_enc) VALUES ($1,$2,$3,$4,$5) RETURNING id, review_id, capacity, decision, created_at', [r.id, user.id, capacity, i.decision, sealT(i.comment, 'signoff')])).rows[0];

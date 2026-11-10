@@ -19,7 +19,7 @@ export async function priceInvoice(c, order, profile, items) {
     rules[l.tax_code] = await q1(c, 'SELECT code, name, jurisdiction, treatment, rate_bp, withholding_bp, evidence, effective_from FROM svc_tax_rules WHERE profile_id=$1 AND code=$2 AND effective_from <= current_date AND (effective_to IS NULL OR effective_to >= current_date) ORDER BY effective_from DESC LIMIT 1', [profile.id, l.tax_code]);
   }
   for (const l of t.lines) { const r = l.tax_code ? rules[l.tax_code] : null; if (r?.withholding_bp) hold += withholding(l.net_minor, r.withholding_bp); }
-  return { ...t, withholding: hold, evidence: { rules, inclusive: !!order.tax_snapshot?.inclusive, rounding: order.tax_snapshot?.rounding ?? 'per_line', reverse_charge: t.lines.some((l) => l.tax_treatment === 'reverse_charge'), note: 'Tax treatment is the supplier’s own configuration; Gotmygame does not assert it is correct for any jurisdiction.' } };
+  return { ...t, withholding: hold, evidence: { rules, inclusive: !!order.tax_snapshot?.inclusive, rounding: order.tax_snapshot?.rounding ?? 'per_line', reverse_charge: t.lines.some((l) => l.tax_treatment === 'reverse_charge'), note: 'Tax treatment is the supplier’s own configuration; GotMyGame does not assert it is correct for any jurisdiction.' } };
 }
 
 /** Billing and settlement roll-up for an order, from issued invoices, credit notes and verified/recorded payments. Pure facts; never touches fulfilment. */
@@ -75,7 +75,7 @@ export async function fulfilServiceInvoicePaid(c, invoiceId, payment) {
   await addPayment(c, inv.id, { source: 'provider', amount_minor: Number(payment.amount_cents), paid_on: new Date().toISOString().slice(0, 10), reference: payment.provider_ref ?? `provider:${payment.id}`, payment_id: payment.id }, actor);
   const o = await q1(c, 'SELECT profile_id FROM svc_orders WHERE id=$1', [inv.order_id]);
   for (const u of (await c.query("SELECT owner_id AS u FROM svc_profiles WHERE id=$1 UNION SELECT user_id FROM svc_staff WHERE profile_id=$1 AND status='active' AND role IN ('owner','finance')", [o.profile_id])).rows.map((r) => r.u)) {
-    await notify(c, u, { kind: 'svc_payment_received', title: 'An invoice was paid online', body: 'Open Gotmygame to see the payment. Paying the supplier out is recorded manually.', data: { svc_invoice_id: inv.id }, dedupe_key: `svc:pay:${payment.id}:${u}` });
+    await notify(c, u, { kind: 'svc_payment_received', title: 'An invoice was paid online', body: 'Open GotMyGame to see the payment. Paying the supplier out is recorded manually.', data: { svc_invoice_id: inv.id }, dedupe_key: `svc:pay:${payment.id}:${u}` });
   }
   return true;
 }

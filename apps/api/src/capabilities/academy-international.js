@@ -60,7 +60,7 @@ async function familyOf(c, kase) {
 }
 /** Generic wording on purpose, like every academy message: no names, countries or document details in a lock-screen preview. */
 async function tellFamily(c, kase, kind, title, key) {
-  for (const uid of await familyOf(c, kase)) await notify(c, uid, { kind: `academy_intl_${kind}`, title, body: 'Open Gotmygame to see the details.', data: { organisation_id: kase.organisation_id, application_id: kase.application_id, case_id: kase.id }, dedupe_key: `intl:${kind}:${kase.id}:${key}:${uid}` });
+  for (const uid of await familyOf(c, kase)) await notify(c, uid, { kind: `academy_intl_${kind}`, title, body: 'Open GotMyGame to see the details.', data: { organisation_id: kase.organisation_id, application_id: kase.application_id, case_id: kase.id }, dedupe_key: `intl:${kind}:${kase.id}:${key}:${uid}` });
 }
 const touch = async (c, kase) => (await c.query('UPDATE academy_intl_cases SET row_version=row_version+1, updated_at=now() WHERE id=$1 RETURNING row_version', [kase.id])).rows[0].row_version;
 

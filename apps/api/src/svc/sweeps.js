@@ -8,7 +8,7 @@ import { releaseExpiredHolds } from './capacity.js';
 export async function expireQuotes() {
   return tx(async (c) => {
     const due = (await c.query("UPDATE svc_quotes SET status='expired' WHERE status IN ('submitted','shortlisted') AND valid_until < now() RETURNING id, profile_id, rfq_id")).rows;
-    for (const q of due) for (const u of await supplierAudience(c, q.profile_id)) await notify(c, u, { kind: 'svc_quote_expired', title: 'A quote expired', body: 'One of your quotes passed its validity date. Open Gotmygame to submit a new version.', data: { rfq_id: q.rfq_id }, dedupe_key: `svc:qexp:${q.id}:${u}` });
+    for (const q of due) for (const u of await supplierAudience(c, q.profile_id)) await notify(c, u, { kind: 'svc_quote_expired', title: 'A quote expired', body: 'One of your quotes passed its validity date. Open GotMyGame to submit a new version.', data: { rfq_id: q.rfq_id }, dedupe_key: `svc:qexp:${q.id}:${u}` });
     return due.length;
   });
 }

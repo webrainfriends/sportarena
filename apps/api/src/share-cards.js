@@ -96,7 +96,7 @@ export function cardSvg(card) {
 <text x="${70 + 22}" y="176" font-family="Helvetica, Arial, sans-serif" font-size="26" font-weight="800" fill="#23252F">${esc(card.label.toUpperCase())}</text>
 ${title.map((t, i) => `<text x="70" y="${290 + i * 84}" font-family="Helvetica, Arial, sans-serif" font-size="72" font-weight="800" fill="#F8F5FF">${esc(t)}</text>`).join('\n')}
 ${lines.map((t, i) => `<text x="70" y="${450 + i * 42}" font-family="Helvetica, Arial, sans-serif" font-size="30" fill="#D8D2F0">${esc(t)}</text>`).join('\n')}
-<text x="1130" y="600" text-anchor="end" font-family="Helvetica, Arial, sans-serif" font-size="26" font-weight="700" fill="#A79FCB">Gotmygame</text>
+<text x="1130" y="600" text-anchor="end" font-family="Helvetica, Arial, sans-serif" font-size="26" font-weight="700" fill="#A79FCB">GotMyGame</text>
 </svg>`;
 }
 

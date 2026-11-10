@@ -26,7 +26,7 @@ const tender = z.object({
 });
 const saleBody = {
   id, lines: z.array(line).min(1).max(60),
-  customer_handle: z.string().optional().describe('the customer\'s Gotmygame handle; leave out for a walk-in guest'),
+  customer_handle: z.string().optional().describe('the customer\'s GotMyGame handle; leave out for a walk-in guest'),
   guest_name: z.string().trim().max(80).optional(), guest_phone: z.string().trim().max(30).optional(),
   bill_to: z.object({ name: z.string().trim().max(120).optional(), address: z.string().trim().max(300).optional(), tax_id: z.string().trim().max(40).optional() }).optional().describe('business billing details printed on the invoice'),
   promo_codes: z.array(z.string().trim().max(40)).max(5).default([]).describe('the venue\'s own offer codes, applied by the booking engine to court time'),

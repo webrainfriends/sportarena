@@ -66,7 +66,7 @@ export async function validateProject(projectId, actorId) {
         else if (!prev) seenEmail.set(idx, { row: r.row_no, first: d.first_name });
         const acct = status === 'conflict' ? null : await accountByEmail(pool, idx);
         if (acct && status !== 'conflict' && !sameFirstName(acct.display_name, d.first_name)) { status = 'conflict'; reasons.push({ level: 'warning', field: 'email', message: `This email belongs to an existing account named "${acct.display_name}", not "${d.first_name}". Confirm only if they are the same person` }); }
-        else if (acct) reasons.push({ level: 'info', field: 'email', message: 'Already on Gotmygame: an invitation will be sent to their account' });
+        else if (acct) reasons.push({ level: 'info', field: 'email', message: 'Already on GotMyGame: an invitation will be sent to their account' });
         const live = await pool.query('SELECT 1 FROM migration_links WHERE organisation_id=$1 AND domain=$2 AND key_hash=$3 AND released_at IS NULL AND project_id<>$4', [p.organisation_id, p.domain, key, projectId]);
         if (live.rowCount) { status = 'duplicate'; reasons.push({ level: 'warning', field: 'email', message: 'Already imported from an earlier file: skipped so nobody is invited twice' }); }
       }

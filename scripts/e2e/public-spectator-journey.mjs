@@ -67,7 +67,7 @@ try {
   await call('PATCH', `/sponsorships/${deal.id}`, { token: org.token, body: { status: 'active' } });
   await call('POST', `/events/${ev.id}/sponsor-placements`, { token: org.token, body: { sponsorship_id: deal.id, slot: 'title_partner', cta_label: 'Get 10% off', cta_url: 'https://volt.example/summer-cup' } });
   await call('POST', `/events/${ev.id}/sponsor-placements`, { token: org.token, body: { sponsorship_id: deal.id, slot: 'scorecard' } });
-  await db.query("INSERT INTO mr_assets(event_id, kind, right_kind, title, caption, credit, creator_id, owner_kind, source_kind, external_url, audience, status) VALUES ($1,'video','highlights','Semi-final highlights','Every goal from the group stage','Gotmygame Media',$2,'organiser','external_link','https://video.example/summer-cup-highlights','public','published')", [ev.id, org.id]);
+  await db.query("INSERT INTO mr_assets(event_id, kind, right_kind, title, caption, credit, creator_id, owner_kind, source_kind, external_url, audience, status) VALUES ($1,'video','highlights','Semi-final highlights','Every goal from the group stage','GotMyGame Media',$2,'organiser','external_link','https://video.example/summer-cup-highlights','public','published')", [ev.id, org.id]);
   await call('PATCH', `/events/${ev.id}/public-settings`, { token: org.token, body: { reactions: true, mvp_vote: true, show_officials: true, indexable: true } });
   await call('POST', '/me/follows', { token: fan.token, body: { subject_type: 'event', subject_id: ev.id } });
   await call('POST', '/me/follows', { token: fan.token, body: { subject_type: 'team', subject_id: teams[0].id, alerts: ['score', 'result'] } });

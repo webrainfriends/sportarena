@@ -2,7 +2,7 @@
 
 Tools is a module on the More swivel for utilities that are useful to everyone, whatever their role. It holds the **Document Designer** (the existing branded-documents screen, #249, unchanged), **Scoring & Game Tracking** and **Rules & rulebook**.
 
-> Anyone can score or track. Only governed, authorised review turns tracking into an official SportArena result.
+> Anyone can score or track. Only governed, authorised review turns tracking into an official GotMyGame result.
 
 ## What was reused, what was added
 
@@ -24,7 +24,7 @@ No second scoring engine, result workflow, match log, PDF engine or review model
 
 ## Rules & rulebook
 
-`apps/api/src/rulebook/catalog.js` holds a written rulebook for each first-release sport: football, cricket (T20, ODI, Test), athletics, table tennis, hockey, chess (classical, rapid, blitz), ice hockey, baseball, American football, rugby (union, sevens), pickleball, futsal, racquetball, squash, boxing (elite, youth, professional), judo, karate (kumite, kata), weightlifting and badminton. Each rule is a card (`no`, `title`, `body`), the governing body and a link to its **official book**. The text is a plain-language summary written for SportArena; it says so on every book, and the official book decides any dispute.
+`apps/api/src/rulebook/catalog.js` holds a written rulebook for each first-release sport: football, cricket (T20, ODI, Test), athletics, table tennis, hockey, chess (classical, rapid, blitz), ice hockey, baseball, American football, rugby (union, sevens), pickleball, futsal, racquetball, squash, boxing (elite, youth, professional), judo, karate (kumite, kata), weightlifting and badminton. Each rule is a card (`no`, `title`, `body`), the governing body and a link to its **official book**. The text is a plain-language summary written for GotMyGame; it says so on every book, and the official book decides any dispute.
 
 A card may carry **settings**: the few things a competition may change (half length, overs per innings, points to win a game, rounds, timeouts...). They are typed (a stepper, chips or a switch), range-checked on the server, and per format. Everything else is the standard and is never edited.
 
@@ -82,4 +82,4 @@ Taps that cannot reach the server are queued in the app, kept on the device acro
 - Virus scanning needs a `clamd` the operator runs; none ships with the platform.
 - A heat proposal records results for the session's existing entries; it does not create entries or heats. Lifting sheets can be proposed as scores.
 - Live cricket scoring now runs inside Match Centre (the same scorebook component, over `log_match_event`); see [live-scoring.md](live-scoring.md). The Tools tracker keeps its own sheet (unofficial or proposal) and shares only the device send queue.
-- The rulebook text is a SportArena summary; the official books are linked, not reproduced.
+- The rulebook text is a GotMyGame summary; the official books are linked, not reproduced.

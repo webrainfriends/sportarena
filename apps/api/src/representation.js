@@ -176,7 +176,7 @@ export async function agentStanding(c, agent) {
   const licences = lic.map((l) => ({ ...l, standing: l.valid_to && l.valid_to < today ? 'expired' : l.verified_case_id && l.case_current ? 'verified' : 'declared' }));
   return {
     verified: !!kase, case_id: kase?.id ?? null, verified_at: kase?.decided_at ?? null, expires_at: kase?.expires_at ?? null, checked,
-    statement: kase ? 'Checked by the SportArena review team against the evidence listed. This is not a statement that the agent is licensed everywhere, nor a legal opinion.' : 'Not verified by SportArena.',
+    statement: kase ? 'Checked by the GotMyGame review team against the evidence listed. This is not a statement that the agent is licensed everywhere, nor a legal opinion.' : 'Not verified by GotMyGame.',
     licences,
   };
 }
@@ -332,7 +332,7 @@ export async function raiseConflict(c, { agent, mandate, athleteId, kind, subjec
   const row = r.rows[0];
   if (row && mandate) {
     await logEvent(c, mandate.id, raised_user, raised_by === 'system' ? 'system' : raised_by, 'conflict_raised', { subject_type: row.subject_type, subject_id: row.subject_id, detail: { kind, conflict_id: row.id } });
-    const msg = { kind: 'representation_conflict', title: 'Possible conflict of interest', body: 'A possible conflict of interest was recorded on a representation. Review it before anything proceeds. SportArena does not decide whether it is acceptable.' };
+    const msg = { kind: 'representation_conflict', title: 'Possible conflict of interest', body: 'A possible conflict of interest was recorded on a representation. Review it before anything proceeds. GotMyGame does not decide whether it is acceptable.' };
     await notifyAthleteSide(c, mandate, msg, raised_user);
     await notifyAgentSide(c, mandate, msg, raised_user);
   }

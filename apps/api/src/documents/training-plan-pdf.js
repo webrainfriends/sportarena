@@ -34,7 +34,7 @@ export async function renderTrainingPlan(plan, { generatedAt = new Date() } = {}
   const strings = [plan.title, plan.goal, plan.athlete_name, plan.coach_name, plan.sport, ...(plan.phases ?? []).flatMap((p) => [p.label, p.focus]), ...plan.sessions.flatMap((s) => [s.title, s.objective, s.instructions, s.athlete_feedback, s.coach_feedback, ...(s.structure ?? []).flatMap((b) => [b.label, b.notes, b.demo?.title, b.demo?.url])]), ...(plan.targets ?? []).flatMap((t) => [t.label, t.value])];
   assertGlyphs(strings, f);
   const accent = '#B4182D', ink = '#242E49', mute = '#5B6478';
-  const doc = new PDFDocument({ size: 'A4', margin: 40, bufferPages: true, compress: true, info: { Title: `Training plan - ${plan.title}`, Author: 'Sportarena', CreationDate: generatedAt, Producer: 'Sportarena' } });
+  const doc = new PDFDocument({ size: 'A4', margin: 40, bufferPages: true, compress: true, info: { Title: `Training plan - ${plan.title}`, Author: 'GotMyGame', CreationDate: generatedAt, Producer: 'GotMyGame' } });
   const chunks = []; doc.on('data', (c) => chunks.push(c));
   const done = new Promise((res, rej) => { doc.on('end', res); doc.on('error', rej); });
   const left = doc.page.margins.left, width = doc.page.width - left - doc.page.margins.right;

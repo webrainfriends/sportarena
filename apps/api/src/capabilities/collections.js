@@ -246,7 +246,7 @@ cap({
           const until = within(i.until ?? new Date(Date.now() + 14 * 864e5).toISOString().slice(0, 10), 90, 'The hold after reinstating');
           await c.query('UPDATE collection_cases SET hold_until=$2 WHERE id=$1', [cs.id, until]);
           await addEvent(c, cs.id, 'reinstated', { actor: user.id, data: { automatic: false, hold_until: until }, note: i.reason, dedupe: `reinstated:${l.id}` });
-          for (const uid of await payersToTell(c, { enrolment_id: ch.enrolment_id, payer_id: cs.payer_id })) await notify(c, uid, { kind: 'collections_access_restored', title: 'Access restored', body: 'Open Gotmygame to see the details.', data: { organisation_id: ch.organisation_id }, dedupe_key: `coll:reinstated:${l.id}:${uid}` });
+          for (const uid of await payersToTell(c, { enrolment_id: ch.enrolment_id, payer_id: cs.payer_id })) await notify(c, uid, { kind: 'collections_access_restored', title: 'Access restored', body: 'Open GotMyGame to see the details.', data: { organisation_id: ch.organisation_id }, dedupe_key: `coll:reinstated:${l.id}:${uid}` });
         }
         break;
       }
@@ -298,7 +298,7 @@ cap({
       'INSERT INTO payment_plans(charge_id, instalments, balance_minor, settled_at_approval, note_enc, approved_by, idempotency_key) VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING id, status, instalments, balance_minor',
       [ch.id, JSON.stringify(list), balance, Number(ch.settled_minor) + Number(ch.adjusted_minor), encrypt(i.note ?? null, 'payment_plans.note'), user.id, i.idempotency_key])).rows[0];
     await planEvent(c, ch.id, user.id, 'plan_approved', { plan_id: plan.id, instalments: list.length, balance_minor: balance });
-    for (const uid of await payersToTell(c, { ...ch, athlete_id: null })) await notify(c, uid, { kind: 'collections_plan', title: 'A payment plan was agreed', body: 'Open Gotmygame to see the dates.', data: { organisation_id: ch.organisation_id, charge_id: ch.id }, dedupe_key: `coll:plan:${plan.id}:${uid}` });
+    for (const uid of await payersToTell(c, { ...ch, athlete_id: null })) await notify(c, uid, { kind: 'collections_plan', title: 'A payment plan was agreed', body: 'Open GotMyGame to see the dates.', data: { organisation_id: ch.organisation_id, charge_id: ch.id }, dedupe_key: `coll:plan:${plan.id}:${uid}` });
     await audit(c, user.id, 'approve_payment_plan', 'academy_charges', ch.id);
     return { ...plan, replay: false };
   }),

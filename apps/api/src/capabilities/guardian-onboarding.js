@@ -460,7 +460,7 @@ cap({
       await notify(null, guardianId, {
         kind: 'child_independent',
         title: `${child.display_name}'s account is now independent`,
-        body: `${child.display_name} now manages their own SportArena account.`,
+        body: `${child.display_name} now manages their own GotMyGame account.`,
         data: { type: 'child_independent', child_id },
       });
     }

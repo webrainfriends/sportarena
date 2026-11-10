@@ -267,7 +267,7 @@ cap({
       const u = (await c.query("UPDATE academy_report_packs SET status='issued', issued_by=$2, issued_at=now(), document_id=$3, row_version=row_version+1 WHERE id=$1 AND status='approved' RETURNING id", [p.id, user.id, doc.id])).rows[0];
       if (!u) throw conflict('This report was already issued');
       await event(c, p.id, 'issued', user.id, null, { document_id: doc.id, sha256: doc.sha256, pages: doc.pages });
-      for (const uid of to) await notify(c, uid, { kind: 'academy_report', title: 'A new academy report is ready', body: 'Open Gotmygame to read it. The report is not included in this message.', data: { organisation_id: i.id, pack_id: p.id }, dedupe_key: `pack-issued:${p.id}:${uid}` });
+      for (const uid of to) await notify(c, uid, { kind: 'academy_report', title: 'A new academy report is ready', body: 'Open GotMyGame to read it. The report is not included in this message.', data: { organisation_id: i.id, pack_id: p.id }, dedupe_key: `pack-issued:${p.id}:${uid}` });
       if (to.length) await event(c, p.id, 'delivered', null, null, { recipients: to.length, channel: 'in_app_notification' });
     });
     await audit(null, user.id, 'issue_academy_report_pack', 'academy_report_packs', p.id);
@@ -288,7 +288,7 @@ cap({
       const u = (await c.query("UPDATE academy_report_packs SET status='revoked', revoked_by=$2, revoked_at=now(), revoke_reason=$3, row_version=row_version+1 WHERE id=$1 AND status='issued' RETURNING id", [p.id, user.id, i.reason])).rows[0];
       if (!u) throw conflict('Only an issued report can be revoked');
       await event(c, p.id, 'revoked', user.id, i.reason);
-      for (const uid of to) await notify(c, uid, { kind: 'academy_report', title: 'An academy report was withdrawn', body: 'Open Gotmygame for details. The file can no longer be opened.', data: { organisation_id: i.id, pack_id: p.id }, dedupe_key: `pack-revoked:${p.id}:${uid}` });
+      for (const uid of to) await notify(c, uid, { kind: 'academy_report', title: 'An academy report was withdrawn', body: 'Open GotMyGame for details. The file can no longer be opened.', data: { organisation_id: i.id, pack_id: p.id }, dedupe_key: `pack-revoked:${p.id}:${uid}` });
     });
     await audit(null, user.id, 'revoke_academy_report_pack', 'academy_report_packs', p.id);
     return ROW(await loadPack(i.id, p.id), 'full');

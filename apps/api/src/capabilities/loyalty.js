@@ -30,7 +30,7 @@ const dayStart = (d) => (d ? new Date(`${d}T00:00:00Z`) : null);
 const dayAfter = (d) => (d ? new Date(new Date(`${d}T00:00:00Z`).getTime() + 86_400_000) : null);
 
 const OWNER_NAME = `CASE p.owner_kind WHEN 'venue' THEN (SELECT name FROM venues WHERE id=p.owner_id) WHEN 'organisation' THEN (SELECT name FROM organisations WHERE id=p.owner_id)
-  WHEN 'coach' THEN (SELECT display_name FROM users WHERE id=p.owner_id) WHEN 'event' THEN (SELECT name FROM events WHERE id=p.owner_id) ELSE 'Gotmygame' END`;
+  WHEN 'coach' THEN (SELECT display_name FROM users WHERE id=p.owner_id) WHEN 'event' THEN (SELECT name FROM events WHERE id=p.owner_id) ELSE 'GotMyGame' END`;
 const PROGRAMME_COLS = `p.id, p.owner_kind, p.owner_id, p.slug, p.name, p.unit, p.currency, p.funding_owner, p.sponsorship_id, p.status, p.current_version, p.created_at, ${OWNER_NAME} AS owner_name`;
 
 /** Who runs a programme. Outsiders get a 404, never a hint that it exists. Money rules (publish, adjust, pause) need an owner/admin; finance may read. */

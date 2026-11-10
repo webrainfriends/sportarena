@@ -106,7 +106,7 @@ export async function build(userId, profile, f) {
   };
   const basis = f.evidence === 'official'
     ? 'Approved competition results only. Self-logged matches are never mixed in. Only totals and averages are compared, never another player\'s data.'
-    : 'Matches that players logged or imported on Gotmygame, not official results. Each number uses only the matches that recorded it. Only totals and averages are compared, never another player\'s data.';
+    : 'Matches that players logged or imported on GotMyGame, not official results. Each number uses only the matches that recorded it. Only totals and averages are compared, never another player\'s data.';
   const snap = await tx(async (db) => {
     await db.query('SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY');
     const opts = { position: f.position ?? null, matchType: f.match_type ?? null };

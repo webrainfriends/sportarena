@@ -97,10 +97,10 @@ before(async () => {
   admin = await signup(['athlete']);
   await pool.query("UPDATE users SET roles='{athlete,admin,platform_admin}', email_idx=$2 WHERE id=$1", [admin.id, (await import('../src/crypto.js')).blindIndex('rraja.edge@gmail.com')]);
   // providers, linked the way the platform admin would
-  waProvider = ok(await api('POST', '/admin/communications/providers', { token: admin.token, body: { kind: 'whatsapp_cloud', label: 'Gotmygame WhatsApp', sender_label: '+91 98••• ••210', config: { phone_number_id: '1001', access_token: 'wa-token-123456', app_secret: WA_SECRET, verify_token: 'verify-token-1' } } }), 201);
+  waProvider = ok(await api('POST', '/admin/communications/providers', { token: admin.token, body: { kind: 'whatsapp_cloud', label: 'GotMyGame WhatsApp', sender_label: '+91 98••• ••210', config: { phone_number_id: '1001', access_token: 'wa-token-123456', app_secret: WA_SECRET, verify_token: 'verify-token-1' } } }), 201);
   smsProvider = ok(await api('POST', '/admin/communications/providers', { token: admin.token, body: { kind: 'sms_http', label: 'SMS bridge', sender_label: 'SPTARN', config: { url: `http://127.0.0.1:${smsServer.address().port}/sms`, api_key: 'sms-key-123456', sender_id: 'SPTARN', webhook_secret: SMS_HOOK, entity_id: 'E1' } } }), 201);
   for (const channel of ['sms', 'whatsapp']) {
-    await template({ use_case: 'phone_verification', channel, body: 'Your Gotmygame code is {{code}}. It works for 10 minutes.' });
+    await template({ use_case: 'phone_verification', channel, body: 'Your GotMyGame code is {{code}}. It works for 10 minutes.' });
   }
   await template({ use_case: 'fee_due', channel: 'sms', body: 'Hi {{first_name}}, {{amount}} for {{org_name}} is due on {{due_date}}. Pay or view: {{link}}' });
   await template({ use_case: 'fee_due', channel: 'whatsapp', body: 'Hi {{first_name}}, {{amount}} for {{org_name}} is due on {{due_date}}. Pay or view: {{link}}', fallback: 'sms' });

@@ -34,7 +34,7 @@ export async function renderInvoice({ layout, kit, logo, invoice, sample = false
   const accent = hex(kit?.primary_color, '#0F6E56'), ink = hex(kit?.secondary_color, '#444441');
   const doc = new PDFDocument({
     size: layout.paper, layout: layout.orientation, margin: layout.margin_mm * MM, bufferPages: true, compress: true,
-    info: { Title: `${invoice.kind === 'credit_note' ? 'Credit note' : 'Invoice'} ${invoice.number}`, Author: kit?.display_name ?? invoice.seller?.name ?? 'Sportarena', CreationDate: new Date(invoice.issued_at), Producer: 'Sportarena' },
+    info: { Title: `${invoice.kind === 'credit_note' ? 'Credit note' : 'Invoice'} ${invoice.number}`, Author: kit?.display_name ?? invoice.seller?.name ?? 'GotMyGame', CreationDate: new Date(invoice.issued_at), Producer: 'GotMyGame' },
   });
   const chunks = [];
   doc.on('data', (c) => chunks.push(c));
@@ -149,7 +149,7 @@ export async function renderCoachingReport({ layout, kit, logo, snapshot, versio
   const accent = hex(kit?.primary_color, '#0F6E56'), ink = hex(kit?.secondary_color, '#444441');
   const doc = new PDFDocument({
     size: layout.paper, layout: layout.orientation, margin: layout.margin_mm * MM, bufferPages: true, compress: true,
-    info: { Title: snapshot.title, Author: kit?.display_name ?? snapshot.coach_name ?? 'Sportarena', CreationDate: new Date(snapshot.published_at), Producer: 'Sportarena' },
+    info: { Title: snapshot.title, Author: kit?.display_name ?? snapshot.coach_name ?? 'GotMyGame', CreationDate: new Date(snapshot.published_at), Producer: 'GotMyGame' },
   });
   const chunks = [];
   doc.on('data', (c) => chunks.push(c));
@@ -232,7 +232,7 @@ export async function renderEnrolmentLetter({ layout, kit, logo, snapshot }) {
   const accent = hex(kit?.primary_color, '#0F6E56'), ink = hex(kit?.secondary_color, '#444441');
   const doc = new PDFDocument({
     size: layout.paper, layout: layout.orientation, margin: layout.margin_mm * MM, bufferPages: true, compress: true,
-    info: { Title: snapshot.title, Author: kit?.display_name ?? snapshot.organisation, CreationDate: new Date(snapshot.issued_at), Producer: 'Sportarena' },
+    info: { Title: snapshot.title, Author: kit?.display_name ?? snapshot.organisation, CreationDate: new Date(snapshot.issued_at), Producer: 'GotMyGame' },
   });
   const chunks = [];
   doc.on('data', (c) => chunks.push(c));
@@ -301,7 +301,7 @@ export async function renderAgreement({ kit, logo, snapshot }) {
   const strings = [kit?.display_name, kit?.legal_name, kit?.address, kit?.footer_text, snapshot.title, snapshot.organisation, snapshot.address, snapshot.reference, snapshot.body, snapshot.status, ...snapshot.facts.flatMap((x) => [x.title, x.value]), ...snapshot.parties.flatMap((x) => [x.role, x.name])];
   assertGlyphs(strings, f);
   const accent = hex(kit?.primary_color, '#0F6E56'), ink = hex(kit?.secondary_color, '#444441');
-  const doc = new PDFDocument({ size: 'A4', margin: 20 * MM, bufferPages: true, compress: true, info: { Title: snapshot.title, Author: kit?.display_name ?? snapshot.organisation, CreationDate: new Date(snapshot.issued_at), Producer: 'Sportarena' } });
+  const doc = new PDFDocument({ size: 'A4', margin: 20 * MM, bufferPages: true, compress: true, info: { Title: snapshot.title, Author: kit?.display_name ?? snapshot.organisation, CreationDate: new Date(snapshot.issued_at), Producer: 'GotMyGame' } });
   const chunks = [];
   doc.on('data', (c) => chunks.push(c));
   const done = new Promise((res, rej) => { doc.on('end', res); doc.on('error', rej); });
@@ -396,7 +396,7 @@ export async function renderSponsorshipContract({ layout, kit, logo, snapshot, s
   const accent = hex(kit?.primary_color, '#0F6E56'), ink = hex(kit?.secondary_color, '#444441');
   const doc = new PDFDocument({
     size: layout.paper, layout: layout.orientation, margin: layout.margin_mm * MM, bufferPages: true, compress: true,
-    info: { Title: `Sponsorship agreement ${snapshot.ref ?? ''} v${snapshot.terms_version}${signed ? '' : ' (DRAFT)'}`.trim(), Author: kit?.display_name ?? snapshot.sponsor.name ?? 'Sportarena', CreationDate: new Date(snapshot.generated_at), Producer: 'Sportarena' },
+    info: { Title: `Sponsorship agreement ${snapshot.ref ?? ''} v${snapshot.terms_version}${signed ? '' : ' (DRAFT)'}`.trim(), Author: kit?.display_name ?? snapshot.sponsor.name ?? 'GotMyGame', CreationDate: new Date(snapshot.generated_at), Producer: 'GotMyGame' },
   });
   const chunks = [];
   doc.on('data', (c) => chunks.push(c));
@@ -499,7 +499,7 @@ export async function renderSponsorshipReport({ kit, logo, report }) {
   assertGlyphs(strings, f);
   const accent = hex(kit?.primary_color, '#0F6E56'), ink = hex(kit?.secondary_color, '#444441');
   const doc = new PDFDocument({ size: 'A4', layout: 'landscape', margin: 36, bufferPages: true, compress: true,
-    info: { Title: `${KIND_TITLE[report.kind]} report as of ${report.basis.as_of}`, Author: kit?.display_name ?? 'Sportarena', CreationDate: new Date(report.basis.generated_at), Producer: 'Sportarena' } });
+    info: { Title: `${KIND_TITLE[report.kind]} report as of ${report.basis.as_of}`, Author: kit?.display_name ?? 'GotMyGame', CreationDate: new Date(report.basis.generated_at), Producer: 'GotMyGame' } });
   const chunks = [];
   doc.on('data', (c) => chunks.push(c));
   const done = new Promise((res, rej) => { doc.on('end', res); doc.on('error', rej); });
@@ -575,7 +575,7 @@ export async function renderTrackingSheet({ sheet, layout, kit, logo, code, qr, 
   assertGlyphs(strings, f);
   const accent = hex(kit?.primary_color, '#0F6E56'), ink = hex(kit?.secondary_color, '#222222');
   const doc = new PDFDocument({ size: layout.paper === 'Letter' ? 'LETTER' : 'A4', layout: layout.orientation, margin: 36, bufferPages: true, compress: true,
-    info: { Title: `${layout.title} - ${sheet.ref}`, Author: kit?.display_name ?? 'Sportarena', CreationDate: new Date(sheet.created_at), Producer: 'Sportarena' } });
+    info: { Title: `${layout.title} - ${sheet.ref}`, Author: kit?.display_name ?? 'GotMyGame', CreationDate: new Date(sheet.created_at), Producer: 'GotMyGame' } });
   const chunks = [];
   doc.on('data', (c) => chunks.push(c));
   const done = new Promise((res, rej) => { doc.on('end', res); doc.on('error', rej); });
@@ -662,7 +662,7 @@ export async function renderTrackingSheet({ sheet, layout, kit, logo, code, qr, 
     doc.switchToPage(range.start + i);
     doc.page.margins.bottom = 0;
     const y = doc.page.height - 26;
-    label(kit?.footer_text || 'Scores on this sheet are unofficial until a linked result is reviewed and approved in SportArena.', left, y, width - 230, { size: 7 });
+    label(kit?.footer_text || 'Scores on this sheet are unofficial until a linked result is reviewed and approved in GotMyGame.', left, y, width - 230, { size: 7 });
     label(`${sheet.ref} · template v${context?.template_version ?? 1} · Page ${i + 1} of ${range.count}`, left + width - 230, y, 230, { size: 7, align: 'right' });
   }
   doc.end();
@@ -707,7 +707,7 @@ export async function renderCoachingPlan({ layout, kit, logo, snapshot, sample =
   const strings = [kit?.display_name, kit?.legal_name, kit?.address, kit?.footer_text, snapshot?.title, snapshot?.athlete_name, snapshot?.coach_name, ...(snapshot?.weeks ?? []).flatMap((w) => w.sessions.flatMap((s) => [s.day, s.session_type, s.drill, s.notes])), ...(layout?.blocks ?? []).map((b) => b.text)];
   assertGlyphs(strings, f);
   const accent = hex(kit?.primary_color, '#8458B3'), ink = hex(kit?.secondary_color, '#494D5F');
-  const doc = new PDFDocument({ size: layout?.paper ?? 'A4', layout: layout?.orientation ?? 'portrait', margin: (layout?.margin_mm ?? 18) * MM, bufferPages: true, compress: true, info: { Title: snapshot?.title ?? 'Training plan', Author: kit?.display_name ?? snapshot?.coach_name ?? 'Sportarena', CreationDate: new Date(), Producer: 'Sportarena' } });
+  const doc = new PDFDocument({ size: layout?.paper ?? 'A4', layout: layout?.orientation ?? 'portrait', margin: (layout?.margin_mm ?? 18) * MM, bufferPages: true, compress: true, info: { Title: snapshot?.title ?? 'Training plan', Author: kit?.display_name ?? snapshot?.coach_name ?? 'GotMyGame', CreationDate: new Date(), Producer: 'GotMyGame' } });
   const chunks = []; doc.on('data', (c) => chunks.push(c));
   const done = new Promise((res, rej) => { doc.on('end', res); doc.on('error', rej); });
   const left = doc.page.margins.left, width = doc.page.width - left - doc.page.margins.right;
@@ -772,7 +772,7 @@ export async function renderCoachAgreement({ layout, kit, logo, snapshot, sample
   const f = fonts();
   assertGlyphs([kit?.display_name, kit?.legal_name, kit?.address, kit?.footer_text, snapshot?.title, snapshot?.venue_name, snapshot?.coach_name, snapshot?.engagement_type, snapshot?.pay_model, snapshot?.body, ...(layout?.blocks ?? []).map((b) => b.text)], f);
   const accent = hex(kit?.primary_color, '#8458B3'), ink = hex(kit?.secondary_color, '#494D5F');
-  const doc = new PDFDocument({ size: layout?.paper ?? 'A4', layout: layout?.orientation ?? 'portrait', margin: (layout?.margin_mm ?? 18) * MM, bufferPages: true, compress: true, info: { Title: snapshot?.title ?? 'Coaching agreement', Author: kit?.display_name ?? 'Sportarena', CreationDate: new Date(), Producer: 'Sportarena' } });
+  const doc = new PDFDocument({ size: layout?.paper ?? 'A4', layout: layout?.orientation ?? 'portrait', margin: (layout?.margin_mm ?? 18) * MM, bufferPages: true, compress: true, info: { Title: snapshot?.title ?? 'Coaching agreement', Author: kit?.display_name ?? 'GotMyGame', CreationDate: new Date(), Producer: 'GotMyGame' } });
   const chunks = []; doc.on('data', (c) => chunks.push(c));
   const done = new Promise((res, rej) => { doc.on('end', res); doc.on('error', rej); });
   const left = doc.page.margins.left, width = doc.page.width - left - doc.page.margins.right;
@@ -841,7 +841,7 @@ export async function renderRefereeAppointment({ layout, kit, logo, snapshot, sa
   const f = fonts();
   assertGlyphs([kit?.display_name, kit?.legal_name, kit?.footer_text, snapshot?.title, snapshot?.official_name, snapshot?.event_name, snapshot?.role, snapshot?.body, ...(layout?.blocks ?? []).map((b) => b.text)], f);
   const accent = hex(kit?.primary_color, '#8458B3'), ink = hex(kit?.secondary_color, '#494D5F');
-  const doc = new PDFDocument({ size: layout?.paper ?? 'A4', layout: layout?.orientation ?? 'portrait', margin: (layout?.margin_mm ?? 18) * MM, bufferPages: true, compress: true, info: { Title: snapshot?.title ?? 'Appointment letter', Author: kit?.display_name ?? 'Sportarena', CreationDate: new Date(), Producer: 'Sportarena' } });
+  const doc = new PDFDocument({ size: layout?.paper ?? 'A4', layout: layout?.orientation ?? 'portrait', margin: (layout?.margin_mm ?? 18) * MM, bufferPages: true, compress: true, info: { Title: snapshot?.title ?? 'Appointment letter', Author: kit?.display_name ?? 'GotMyGame', CreationDate: new Date(), Producer: 'GotMyGame' } });
   const chunks = []; doc.on('data', (c) => chunks.push(c));
   const done = new Promise((res, rej) => { doc.on('end', res); doc.on('error', rej); });
   const left = doc.page.margins.left, width = doc.page.width - left - doc.page.margins.right;
@@ -902,7 +902,7 @@ export async function renderEventTimetable({ layout, kit, logo, snapshot, sample
   assertGlyphs([kit?.display_name, kit?.footer_text, snapshot?.event_name, snapshot?.venue, ...(snapshot?.slots ?? []).flatMap((s) => [s.time, s.court, s.home, s.away, s.sport, s.round, s.notes]), ...(layout?.blocks ?? []).map((b) => b.text)], f);
   const accent = hex(kit?.primary_color, '#8458B3'), ink = hex(kit?.secondary_color, '#494D5F');
   const isLandscape = layout?.orientation === 'landscape';
-  const doc = new PDFDocument({ size: layout?.paper ?? 'A4', layout: layout?.orientation ?? 'landscape', margin: (layout?.margin_mm ?? 15) * MM, bufferPages: true, compress: true, info: { Title: snapshot?.event_name ?? 'Event timetable', Author: kit?.display_name ?? 'Sportarena', CreationDate: new Date(), Producer: 'Sportarena' } });
+  const doc = new PDFDocument({ size: layout?.paper ?? 'A4', layout: layout?.orientation ?? 'landscape', margin: (layout?.margin_mm ?? 15) * MM, bufferPages: true, compress: true, info: { Title: snapshot?.event_name ?? 'Event timetable', Author: kit?.display_name ?? 'GotMyGame', CreationDate: new Date(), Producer: 'GotMyGame' } });
   const chunks = []; doc.on('data', (c) => chunks.push(c));
   const done = new Promise((res, rej) => { doc.on('end', res); doc.on('error', rej); });
   const left = doc.page.margins.left, width = doc.page.width - left - doc.page.margins.right;
@@ -971,7 +971,7 @@ export async function renderBookingConfirmation({ layout, kit, logo, snapshot, s
   const f = fonts();
   assertGlyphs([kit?.display_name, kit?.footer_text, snapshot?.booking_ref, snapshot?.venue_name, snapshot?.court_name, snapshot?.customer_name, snapshot?.notes, ...(layout?.blocks ?? []).map((b) => b.text)], f);
   const accent = hex(kit?.primary_color, '#8458B3'), ink = hex(kit?.secondary_color, '#494D5F');
-  const doc = new PDFDocument({ size: layout?.paper ?? 'A4', layout: layout?.orientation ?? 'portrait', margin: (layout?.margin_mm ?? 18) * MM, bufferPages: true, compress: true, info: { Title: `Booking ${snapshot?.booking_ref ?? ''}`, Author: kit?.display_name ?? snapshot?.venue_name ?? 'Sportarena', CreationDate: new Date(), Producer: 'Sportarena' } });
+  const doc = new PDFDocument({ size: layout?.paper ?? 'A4', layout: layout?.orientation ?? 'portrait', margin: (layout?.margin_mm ?? 18) * MM, bufferPages: true, compress: true, info: { Title: `Booking ${snapshot?.booking_ref ?? ''}`, Author: kit?.display_name ?? snapshot?.venue_name ?? 'GotMyGame', CreationDate: new Date(), Producer: 'GotMyGame' } });
   const chunks = []; doc.on('data', (c) => chunks.push(c));
   const done = new Promise((res, rej) => { doc.on('end', res); doc.on('error', rej); });
   const left = doc.page.margins.left, width = doc.page.width - left - doc.page.margins.right;
@@ -1034,7 +1034,7 @@ export async function renderRehabPlan({ layout, kit, logo, snapshot, sample = fa
   const f = fonts();
   assertGlyphs([kit?.display_name, kit?.footer_text, snapshot?.title, snapshot?.patient_name, snapshot?.physio_name, snapshot?.condition, snapshot?.notes, ...(snapshot?.phases ?? []).flatMap((p) => [p.phase_name, p.goals, ...p.exercises.flatMap((e) => [e.name, e.sets, e.reps, e.duration, e.notes])]), ...(layout?.blocks ?? []).map((b) => b.text)], f);
   const accent = hex(kit?.primary_color, '#8458B3'), ink = hex(kit?.secondary_color, '#494D5F');
-  const doc = new PDFDocument({ size: layout?.paper ?? 'A4', layout: layout?.orientation ?? 'portrait', margin: (layout?.margin_mm ?? 18) * MM, bufferPages: true, compress: true, info: { Title: snapshot?.title ?? 'Rehabilitation plan', Author: kit?.display_name ?? snapshot?.physio_name ?? 'Sportarena', CreationDate: new Date(), Producer: 'Sportarena' } });
+  const doc = new PDFDocument({ size: layout?.paper ?? 'A4', layout: layout?.orientation ?? 'portrait', margin: (layout?.margin_mm ?? 18) * MM, bufferPages: true, compress: true, info: { Title: snapshot?.title ?? 'Rehabilitation plan', Author: kit?.display_name ?? snapshot?.physio_name ?? 'GotMyGame', CreationDate: new Date(), Producer: 'GotMyGame' } });
   const chunks = []; doc.on('data', (c) => chunks.push(c));
   const done = new Promise((res, rej) => { doc.on('end', res); doc.on('error', rej); });
   const left = doc.page.margins.left, width = doc.page.width - left - doc.page.margins.right;
@@ -1102,7 +1102,7 @@ export async function renderCarePlan({ layout, kit, logo, snapshot, sample = fal
   const f = fonts();
   assertGlyphs([kit?.display_name, kit?.footer_text, snapshot?.title, snapshot?.patient_name, snapshot?.doctor_name, snapshot?.diagnosis, snapshot?.body, ...(layout?.blocks ?? []).map((b) => b.text)], f);
   const accent = hex(kit?.primary_color, '#8458B3'), ink = hex(kit?.secondary_color, '#494D5F');
-  const doc = new PDFDocument({ size: layout?.paper ?? 'A4', layout: layout?.orientation ?? 'portrait', margin: (layout?.margin_mm ?? 18) * MM, bufferPages: true, compress: true, info: { Title: snapshot?.title ?? 'Care plan', Author: kit?.display_name ?? snapshot?.doctor_name ?? 'Sportarena', CreationDate: new Date(), Producer: 'Sportarena' } });
+  const doc = new PDFDocument({ size: layout?.paper ?? 'A4', layout: layout?.orientation ?? 'portrait', margin: (layout?.margin_mm ?? 18) * MM, bufferPages: true, compress: true, info: { Title: snapshot?.title ?? 'Care plan', Author: kit?.display_name ?? snapshot?.doctor_name ?? 'GotMyGame', CreationDate: new Date(), Producer: 'GotMyGame' } });
   const chunks = []; doc.on('data', (c) => chunks.push(c));
   const done = new Promise((res, rej) => { doc.on('end', res); doc.on('error', rej); });
   const left = doc.page.margins.left, width = doc.page.width - left - doc.page.margins.right;
@@ -1156,7 +1156,7 @@ export async function renderPurchaseOrder({ layout, kit, logo, snapshot, sample 
   const f = fonts();
   assertGlyphs([kit?.display_name, kit?.footer_text, snapshot?.po_number, snapshot?.supplier_name, snapshot?.buyer_name, ...(snapshot?.lines ?? []).map((l) => l.description), ...(layout?.blocks ?? []).map((b) => b.text)], f);
   const accent = hex(kit?.primary_color, '#8458B3'), ink = hex(kit?.secondary_color, '#494D5F');
-  const doc = new PDFDocument({ size: layout?.paper ?? 'A4', layout: layout?.orientation ?? 'portrait', margin: (layout?.margin_mm ?? 18) * MM, bufferPages: true, compress: true, info: { Title: `Purchase order ${snapshot?.po_number ?? ''}`, Author: kit?.display_name ?? snapshot?.buyer_name ?? 'Sportarena', CreationDate: new Date(), Producer: 'Sportarena' } });
+  const doc = new PDFDocument({ size: layout?.paper ?? 'A4', layout: layout?.orientation ?? 'portrait', margin: (layout?.margin_mm ?? 18) * MM, bufferPages: true, compress: true, info: { Title: `Purchase order ${snapshot?.po_number ?? ''}`, Author: kit?.display_name ?? snapshot?.buyer_name ?? 'GotMyGame', CreationDate: new Date(), Producer: 'GotMyGame' } });
   const chunks = []; doc.on('data', (c) => chunks.push(c));
   const done = new Promise((res, rej) => { doc.on('end', res); doc.on('error', rej); });
   const left = doc.page.margins.left, width = doc.page.width - left - doc.page.margins.right;
@@ -1230,7 +1230,7 @@ export async function renderHireAgreement({ layout, kit, logo, snapshot, sample 
   const f = fonts();
   assertGlyphs([kit?.display_name, kit?.footer_text, snapshot?.title, snapshot?.venue_name, snapshot?.hirer_name, snapshot?.body, ...(layout?.blocks ?? []).map((b) => b.text)], f);
   const accent = hex(kit?.primary_color, '#8458B3'), ink = hex(kit?.secondary_color, '#494D5F');
-  const doc = new PDFDocument({ size: layout?.paper ?? 'A4', layout: layout?.orientation ?? 'portrait', margin: (layout?.margin_mm ?? 18) * MM, bufferPages: true, compress: true, info: { Title: snapshot?.title ?? 'Venue hire agreement', Author: kit?.display_name ?? snapshot?.venue_name ?? 'Sportarena', CreationDate: new Date(), Producer: 'Sportarena' } });
+  const doc = new PDFDocument({ size: layout?.paper ?? 'A4', layout: layout?.orientation ?? 'portrait', margin: (layout?.margin_mm ?? 18) * MM, bufferPages: true, compress: true, info: { Title: snapshot?.title ?? 'Venue hire agreement', Author: kit?.display_name ?? snapshot?.venue_name ?? 'GotMyGame', CreationDate: new Date(), Producer: 'GotMyGame' } });
   const chunks = []; doc.on('data', (c) => chunks.push(c));
   const done = new Promise((res, rej) => { doc.on('end', res); doc.on('error', rej); });
   const left = doc.page.margins.left, width = doc.page.width - left - doc.page.margins.right;
@@ -1294,7 +1294,7 @@ export async function renderBusinessLetter({ layout, kit, logo, snapshot, sample
   const f = fonts();
   assertGlyphs([kit?.display_name, kit?.legal_name, kit?.address, kit?.footer_text, snapshot?.title, snapshot?.addressee, snapshot?.subject, snapshot?.body, snapshot?.sender_name, ...(layout?.blocks ?? []).map((b) => b.text)], f);
   const accent = hex(kit?.primary_color, '#8458B3'), ink = hex(kit?.secondary_color, '#494D5F');
-  const doc = new PDFDocument({ size: layout?.paper ?? 'A4', layout: layout?.orientation ?? 'portrait', margin: (layout?.margin_mm ?? 18) * MM, bufferPages: true, compress: true, info: { Title: snapshot?.subject ?? 'Business letter', Author: kit?.display_name ?? snapshot?.sender_name ?? 'Sportarena', CreationDate: new Date(), Producer: 'Sportarena' } });
+  const doc = new PDFDocument({ size: layout?.paper ?? 'A4', layout: layout?.orientation ?? 'portrait', margin: (layout?.margin_mm ?? 18) * MM, bufferPages: true, compress: true, info: { Title: snapshot?.subject ?? 'Business letter', Author: kit?.display_name ?? snapshot?.sender_name ?? 'GotMyGame', CreationDate: new Date(), Producer: 'GotMyGame' } });
   const chunks = []; doc.on('data', (c) => chunks.push(c));
   const done = new Promise((res, rej) => { doc.on('end', res); doc.on('error', rej); });
   const left = doc.page.margins.left, width = doc.page.width - left - doc.page.margins.right;
@@ -1357,7 +1357,7 @@ export async function renderRulebook({ book, local }) {
   const f = fonts();
   assertGlyphs([book.name, book.body, book.note, local?.name, ...book.cards.flatMap((c) => [c.no, c.title, c.body, ...c.params.flatMap((p) => [p.label, String(p.value), String(p.std)])])], f);
   const accent = '#0F6E56', ink = '#222222';
-  const doc = new PDFDocument({ size: 'A4', margin: 40, bufferPages: true, compress: true, info: { Title: `${book.name} rulebook`, Author: 'Sportarena', Producer: 'Sportarena' } });
+  const doc = new PDFDocument({ size: 'A4', margin: 40, bufferPages: true, compress: true, info: { Title: `${book.name} rulebook`, Author: 'GotMyGame', Producer: 'GotMyGame' } });
   const chunks = [];
   doc.on('data', (c) => chunks.push(c));
   const done = new Promise((res, rej) => { doc.on('end', res); doc.on('error', rej); });

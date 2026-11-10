@@ -13,7 +13,7 @@ export const KIND_LABEL = { anti_doping: 'Anti-doping administration', match_int
 export const STATES = ['received', 'under_review', 'response_due', 'decision_pending', 'decided', 'closed', 'suspended', 'deferred', 'withdrawn'];
 export const STATE_LABEL = { received: 'Referral received', under_review: 'Under review', response_due: 'Response due', decision_pending: 'Decision pending', decided: 'Decided', closed: 'Closed', suspended: 'Suspended', deferred: 'Deferred', withdrawn: 'Withdrawn' };
 export const NOT_A_FINDING = 'A referral, an allegation or a pending test is not a finding. Nothing here is a decision until an authorised body records one.';
-export const REFERENCE_ONLY = 'Administrative reference to what the authoritative source supplied, exactly as supplied. SportArena does not interpret results.';
+export const REFERENCE_ONLY = 'Administrative reference to what the authoritative source supplied, exactly as supplied. GotMyGame does not interpret results.';
 
 /** What each action does from each state. The engine is fixed; the labels and deadlines are the body's. */
 export const FLOW = {
@@ -70,7 +70,7 @@ export function needDecide(s) { if (!mayDecide(s)) throw forbidden('Only an inte
 
 /** A generic notice: it says only that there is something to open. Never the category, the person or the substance. */
 export async function tell(c, userId, caseRow, { guardians = true } = {}) {
-  const msg = { kind: 'integrity_update', title: 'Update on a governance matter', body: 'Open SportArena to view it.', data: { governance_notice: true } };
+  const msg = { kind: 'integrity_update', title: 'Update on a governance matter', body: 'Open GotMyGame to view it.', data: { governance_notice: true } };
   await notify(c, userId, { ...msg, dedupe_key: `int:${caseRow.id}:${caseRow.row_version}:${userId}` });
   if (guardians && userId === caseRow.subject_id) for (const g of await guardiansOf(userId, c)) await notify(c, g, { ...msg, dedupe_key: `int:${caseRow.id}:${caseRow.row_version}:${g}` });
 }

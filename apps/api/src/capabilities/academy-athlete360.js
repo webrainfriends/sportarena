@@ -185,7 +185,7 @@ cap({
     const a = await one("SELECT * FROM org_provider_associations WHERE id=$1 AND organisation_id=$2 AND status='active'", [i.association_id, i.id]);
     if (!a) throw notFound('Association');
     const to = (await isYouth(i.athlete_id)) ? await guardiansOf(i.athlete_id) : [i.athlete_id];
-    for (const uid of to) await notify(null, uid, { kind: 'academy_provider_referral', title: 'Your academy suggested a health professional', body: 'Open Gotmygame to look at the suggestion. Nothing is shared with them unless you book.', data: { organisation_id: i.id, provider_id: a.provider_id }, dedupe_key: `academy:referral:${a.id}:${i.athlete_id}:${uid}:${today()}` });
+    for (const uid of to) await notify(null, uid, { kind: 'academy_provider_referral', title: 'Your academy suggested a health professional', body: 'Open GotMyGame to look at the suggestion. Nothing is shared with them unless you book.', data: { organisation_id: i.id, provider_id: a.provider_id }, dedupe_key: `academy:referral:${a.id}:${i.athlete_id}:${uid}:${today()}` });
     await audit(null, user.id, 'refer_academy_athlete_to_provider', 'org_provider_associations', a.id);
     return { referred: to.length, provider_id: a.provider_id };
   },

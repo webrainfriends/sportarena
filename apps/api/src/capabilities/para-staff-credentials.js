@@ -310,7 +310,7 @@ cap({
     };
 
     // Look up publisher name for the credential
-    let publisherName = 'Sportarena';
+    let publisherName = 'GotMyGame';
     if (track.publisher_body_id) {
       const pb = (await c.query('SELECT o.name FROM governing_bodies b JOIN organisations o ON o.id=b.organisation_id WHERE b.id=$1', [track.publisher_body_id])).rows[0];
       if (pb) publisherName = pb.name;

@@ -376,7 +376,7 @@ test('a young athlete\'s kit is visible to a verified guardian only, live: revok
   assert.equal(dbCharge.payer_id, parent.id, 'a young person\'s guardian is billed, not the child');
   const note = (await pool.query("SELECT user_id, title, body FROM notifications WHERE kind='academy_kit_issued' AND user_id = ANY($1)", [[parent.id, kid.id]])).rows;
   assert.deepEqual(note.map((x) => x.user_id), [parent.id], 'the guardian is told, with generic wording');
-  assert.equal(note[0].body, 'Open Gotmygame to see the details.');
+  assert.equal(note[0].body, 'Open GotMyGame to see the details.');
   const mine = ok(await api('GET', '/me/academy/kit', { token: parent.token, query: { athlete_id: kid.id } }));
   assert.equal(mine.organisations[0].items[0].status, 'issued');
   assert.equal(mine.organisations[0].items[0].charge.amount_minor, 2500);

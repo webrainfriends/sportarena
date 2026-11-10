@@ -18,7 +18,7 @@ export async function renderServiceDocument({ doc: d, kit = null, logo = null })
   const strings = [kit?.display_name, kit?.legal_name, kit?.address, kit?.footer_text, d.title, d.number, d.footnote, ...(d.parties ?? []).flatMap((p) => p.lines), ...(d.sections ?? []).flatMap((s) => (s.kind === 'text' ? [s.text, s.heading] : [s.heading, ...(s.rows ?? []).flat(), ...(s.columns ?? []).map((c) => c.t)]))];
   assertGlyphs(strings.map((x) => (x == null ? '' : String(x))), f);
   const accent = hex(kit?.primary_color, '#0F6E56'), ink = hex(kit?.secondary_color, '#444441');
-  const pdf = new PDFDocument({ size: 'A4', margin: 15 * MM, bufferPages: true, compress: true, info: { Title: `${d.title}${d.number ? ` ${d.number}` : ''}`, Author: kit?.display_name ?? 'Sportarena', CreationDate: new Date(d.issued_at ?? Date.now()) } });
+  const pdf = new PDFDocument({ size: 'A4', margin: 15 * MM, bufferPages: true, compress: true, info: { Title: `${d.title}${d.number ? ` ${d.number}` : ''}`, Author: kit?.display_name ?? 'GotMyGame', CreationDate: new Date(d.issued_at ?? Date.now()) } });
   const chunks = []; pdf.on('data', (c) => chunks.push(c));
   const done = new Promise((res, rej) => { pdf.on('end', res); pdf.on('error', rej); });
   const left = pdf.page.margins.left, width = pdf.page.width - left - pdf.page.margins.right;

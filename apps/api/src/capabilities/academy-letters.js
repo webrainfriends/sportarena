@@ -77,7 +77,7 @@ async function snapshotOf(e, { note }) {
   if (charges.length) sections.push({ title: 'Fees and payment', items: charges.map((ch) => ({ title: `${KIND[ch.kind] ?? ch.kind} · due ${ds(ch.due_on)}`, value: money(ch.amount_minor, ch.currency), meta: `${STATUS[ch.status] ?? ch.status}${ch.invoice_number ? ` · invoice ${ch.invoice_number}` : ''}` })) });
   if (agreed.length) sections.push({ title: 'Agreements accepted', items: agreed.map((a) => ({ title: a.title, value: `Version ${a.version}`, meta: `Accepted ${ds(a.created_at)}` })) });
   if (p.equipment?.trim()) sections.push({ title: 'What to bring', body: p.equipment.trim() });
-  sections.push({ title: 'Changes and questions', body: 'If anything here is not right, or you need to change or withdraw, please contact the academy through Gotmygame. Fees shown are as agreed at enrolment and do not change if the programme price changes later.' });
+  sections.push({ title: 'Changes and questions', body: 'If anything here is not right, or you need to change or withdraw, please contact the academy through GotMyGame. Fees shown are as agreed at enrolment and do not change if the programme price changes later.' });
   return {
     title: 'Enrolment confirmation', organisation: org.name, legal_name: org.legal_name ?? null, address: org.billing_address ?? null,
     addressee: youth ? `Parent / guardian of ${e.athlete_name}` : e.athlete_name, reference: `ENR-${e.id.replace(/-/g, '').slice(0, 8).toUpperCase()}`, issued_at: new Date().toISOString(), sections,

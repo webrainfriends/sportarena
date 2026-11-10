@@ -358,7 +358,7 @@ cap({
 
 cap({
   name: 'export_payout_run', method: 'POST', path: '/player-payout-runs/:id/export', tag: TAG,
-  summary: 'Download the bank file (CSV) for an approved run: one row per ready line with the verified bank details of the person (decrypted for this export; every row read is audit-logged), the amount in the contract currency and a reference to quote. SportArena does not send the money: make the transfers from your bank, then record each result. Finance only.',
+  summary: 'Download the bank file (CSV) for an approved run: one row per ready line with the verified bank details of the person (decrypted for this export; every row read is audit-logged), the amount in the contract currency and a reference to quote. GotMyGame does not send the money: make the transfers from your bank, then record each result. Finance only.',
   input: z.object({ id }),
   async handler({ user }, i) {
     return tx(async (c) => {

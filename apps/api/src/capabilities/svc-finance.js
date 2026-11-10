@@ -1,5 +1,5 @@
 // Supplier services (#458) 5/5b — supplier invoices, credit notes, tax evidence, matching, manual and online payments, statements.
-// Issued invoices are immutable snapshots on the canonical `invoices` table; corrections are linked credit notes. Gotmygame never claims a
+// Issued invoices are immutable snapshots on the canonical `invoices` table; corrections are linked credit notes. GotMyGame never claims a
 // supplier payout happened unless someone recorded it, and never claims jurisdictional tax or e-invoicing compliance.
 import { z } from 'zod';
 import { cap, id, page, money } from '../registry.js';
@@ -275,7 +275,7 @@ cap({
       if (inv.match_status !== 'exception') throw conflict(`This invoice is ${inv.match_status}; no exception is needed`);
       const ap = await q1(c, "INSERT INTO svc_approvals(buyer_id, subject_type, subject_id, amount_minor, currency, requested_by, exception_reason, payload) VALUES ($1,'invoice_exception',$2,$3,$4,$5,$6,$7) RETURNING *", [inv.buyer_id, inv.id, inv.payable_minor, inv.currency, user.id, i.reason, { match: inv.match_detail }]);
       await c.query('UPDATE svc_invoices SET approval_id=$2 WHERE id=$1', [inv.id, ap.id]);
-      await tell(c, await buyerAudience(c, inv.buyer_id, ['approver']), { kind: 'svc_approval_requested', title: 'An invoice exception needs your approval', body: 'Open Gotmygame to review and decide.', data: { approval_id: ap.id }, dedupe_key: `svc:ap:${ap.id}` }, user.id);
+      await tell(c, await buyerAudience(c, inv.buyer_id, ['approver']), { kind: 'svc_approval_requested', title: 'An invoice exception needs your approval', body: 'Open GotMyGame to review and decide.', data: { approval_id: ap.id }, dedupe_key: `svc:ap:${ap.id}` }, user.id);
       return ap;
     });
   },
@@ -334,7 +334,7 @@ cap({
 });
 cap({
   name: 'pay_service_invoice_online', method: 'POST', path: '/service-invoices/:id/pay', tag: TAG,
-  summary: 'Buyer finance: pay an issued, matched invoice through a configured provider (hosted checkout). The amount is read from the invoice; the payment settles only through the signed provider callback, is idempotent, and is refunded automatically if the invoice can no longer take it. Paying the supplier out afterwards is a manual, audited record (record_supplier_payout) — Gotmygame never marks funds as transferred on its own.',
+  summary: 'Buyer finance: pay an issued, matched invoice through a configured provider (hosted checkout). The amount is read from the invoice; the payment settles only through the signed provider callback, is idempotent, and is refunded automatically if the invoice can no longer take it. Paying the supplier out afterwards is a manual, audited record (record_supplier_payout) — GotMyGame never marks funds as transferred on its own.',
   input: z.object({ id, provider: z.enum(['stripe', 'paypal', 'razorpay']), method: z.enum(['card', 'paypal', 'upi', 'netbanking', 'wallet']).optional(), return_url: z.string().url().optional() }),
   async handler({ user }, i) {
     const inv = await tx(async (c) => {

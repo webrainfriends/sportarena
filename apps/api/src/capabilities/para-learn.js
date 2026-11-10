@@ -99,7 +99,7 @@ cap({
       [ver.id],
     );
     return { path: { id: path.id, slug: path.slug, level_key: path.level_key, title: path.title, summary: path.summary },
-      sport, publisher: pub ? { name: pub.name } : { name: 'Sportarena' },
+      sport, publisher: pub ? { name: pub.name } : { name: 'GotMyGame' },
       version: { id: ver.id, version: ver.version, objectives: ver.objectives, estimated_minutes: ver.estimated_minutes,
         source_attribution: ver.source_attribution, copyright_note: ver.copyright_note, published_at: ver.published_at },
       modules };
