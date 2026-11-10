@@ -20,7 +20,7 @@ export async function renderEvaluation(ev, { generatedAt = new Date(), sections 
   const strings = [ev.title, ev.athlete?.display_name, ev.coach_name, ev.sheet?.name, ...Object.values(ev.narrative ?? {}), ev.response?.comment, ev.response?.questions,
     ...Object.values(ev.pillar_labels ?? {}), ...ev.criteria.flatMap((c) => [c.name, c.description, c.comment, c.self_comment, ...Object.values(c.labels ?? {}), ...Object.values(c.anchors ?? {}), ...(c.evidence ?? []).map((x) => x.text)]), ...(ev.thread ?? []).map((m) => m.body)];
   assertGlyphs(strings, f);
-  const accent = '#B4182D', ink = '#242E49', mute = '#5B6478', wash = '#F3F4F8';
+  const accent = '#8458B3', ink = '#2F3242', mute = '#5F6580', wash = '#EEE9F8';
   const doc = new PDFDocument({ size: 'A4', margin: 40, bufferPages: true, compress: true, info: { Title: `Evaluation - ${ev.title}`, Author: 'GotMyGame', CreationDate: generatedAt, Producer: 'GotMyGame' } });
   const chunks = []; doc.on('data', (c) => chunks.push(c));
   const done = new Promise((res, rej) => { doc.on('end', res); doc.on('error', rej); });

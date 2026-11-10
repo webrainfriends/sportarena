@@ -12,7 +12,7 @@ const when = (iso) => new Date(iso).toISOString().replace('T', ' ').slice(0, 16)
 const KIND = { warmup: 'Warm-up', work: 'Main work', interval: 'Intervals', strength: 'Strength', rest: 'Rest', cooldown: 'Cool-down' };
 const PHASE = { preparation: 'Preparation', pre_competition: 'Pre-competition', competition: 'Competition', transition: 'Transition', return_to_play: 'Return to play' };
 const STATUS_LABEL = { scheduled: 'SCHEDULED', completed: 'COMPLETED', skipped: 'SKIPPED', cancelled: 'CANCELLED' };
-const STATUS_COLOR = { scheduled: '#5B6478', completed: '#1A7F4B', skipped: '#B4182D', cancelled: '#888' };
+const STATUS_COLOR = { scheduled: '#494D5F', completed: '#1A7F4B', skipped: '#8458B3', cancelled: '#888' };
 
 export function describeBlock(b, rules) {
   if (b.kind === 'rest') return `Rest ${fmtTime(b.rest_sec)}`;
@@ -36,7 +36,7 @@ export async function renderTrainingPlan(plan, { generatedAt = new Date() } = {}
   const hidden = plan.sessions.some((s) => s.athlete_data_hidden);
   const strings = [plan.title, plan.goal, plan.athlete_name, plan.coach_name, plan.sport, ...(plan.phases ?? []).flatMap((p) => [p.label, p.focus]), ...plan.sessions.flatMap((s) => [s.title, s.objective, s.instructions, s.athlete_feedback, s.coach_feedback, s.coach_technical_notes, s.coach_tactical_notes, s.coach_physical_notes, s.coach_next_focus, ...(s.structure ?? []).flatMap((b) => [b.label, b.notes, b.demo?.title, b.demo?.url])]), ...(plan.targets ?? []).flatMap((t) => [t.label, t.value])];
   assertGlyphs(strings, f);
-  const accent = '#B4182D', ink = '#242E49', mute = '#5B6478', green = '#1A7F4B';
+  const accent = '#8458B3', ink = '#2F3242', mute = '#5F6580', green = '#1A7F4B', slate = '#494D5F';
   const doc = new PDFDocument({ size: 'A4', margin: 40, bufferPages: true, compress: true, info: { Title: `Training plan - ${plan.title}`, Author: 'GotMyGame', CreationDate: generatedAt, Producer: 'GotMyGame' } });
   const chunks = []; doc.on('data', (c) => chunks.push(c));
   const done = new Promise((res, rej) => { doc.on('end', res); doc.on('error', rej); });
@@ -72,7 +72,7 @@ export async function renderTrainingPlan(plan, { generatedAt = new Date() } = {}
     const sum = cols.reduce((a, c) => a + c[1], 0), k = width / sum;
     const row = (vals, bold, shade) => {
       room(14); const y = doc.y; let x = left;
-      if (shade) doc.rect(left, y - 2, width, 13).fill('#F3F4F8');
+      if (shade) doc.rect(left, y - 2, width, 13).fill('#EEE9F8');
       vals.forEach((v, i) => { t(v === null || v === undefined ? '-' : String(v), { x: x + 2, y, w: cols[i][1] * k - 4, size: 8, bold, lineBreak: false }); x += cols[i][1] * k; });
       doc.y = y + 13;
     };
@@ -115,7 +115,7 @@ export async function renderTrainingPlan(plan, { generatedAt = new Date() } = {}
       room(20);
       // Column header
       const colY = doc.y;
-      doc.rect(left + 8, colY, width - 8, 13).fill('#EDEEF2');
+      doc.rect(left + 8, colY, width - 8, 13).fill('#EEE9F8');
       doc.font(f.bold).fontSize(7.5).fillColor(mute).text('EXERCISE / BLOCK', left + 12, colY + 3, { width: (width - 8) * 0.5, lineBreak: false });
       doc.font(f.bold).fontSize(7.5).fillColor(mute).text('PLAN', left + 8 + (width - 8) * 0.5, colY + 3, { width: (width - 8) * 0.22, lineBreak: false });
       doc.font(f.bold).fontSize(7.5).fillColor(mute).text('ACTUAL', left + 8 + (width - 8) * 0.72, colY + 3, { width: (width - 8) * 0.28, lineBreak: false });
@@ -199,9 +199,9 @@ export async function renderTrainingPlan(plan, { generatedAt = new Date() } = {}
     if (hasCoachNotes) {
       doc.y += 4;
       room(14);
-      doc.rect(left + 8, doc.y, width - 8, 13).fill('#F0F4FC');
+      doc.rect(left + 8, doc.y, width - 8, 13).fill('#EAE0F5');
       const cnY = doc.y + 2.5;
-      doc.font(f.bold).fontSize(8).fillColor('#3059A8').text('COACH NOTES', left + 12, cnY, { lineBreak: false });
+      doc.font(f.bold).fontSize(8).fillColor(slate).text('COACH NOTES', left + 12, cnY, { lineBreak: false });
       doc.y = cnY + 11;
 
       if (s.coach_feedback) t(`Overall: ${s.coach_feedback}`, { size: 8.5, x: left + 12, w: width - 12 });
@@ -231,7 +231,7 @@ export async function renderTrainingPlan(plan, { generatedAt = new Date() } = {}
 
   // Coach signature box
   const coachBoxY = doc.y;
-  doc.rect(left, coachBoxY, halfW, 100).strokeColor('#CCCCCC').lineWidth(0.5).stroke();
+  doc.rect(left, coachBoxY, halfW, 100).strokeColor('#C4B5D9').lineWidth(0.5).stroke();
   t('COACH', { bold: true, size: 8, color: accent, x: left + 8, y: coachBoxY + 8 });
   t(plan.coach_name ?? '', { size: 9, x: left + 8, y: coachBoxY + 20 });
   doc.moveTo(left + 8, coachBoxY + 55).lineTo(left + halfW - 8, coachBoxY + 55).lineWidth(0.5).strokeColor('#AAAAAA').dash(2, { space: 2 }).stroke();
@@ -243,8 +243,8 @@ export async function renderTrainingPlan(plan, { generatedAt = new Date() } = {}
 
   // Athlete signature box
   const athBoxX = left + halfW + 20;
-  doc.rect(athBoxX, coachBoxY, halfW, 100).strokeColor('#CCCCCC').lineWidth(0.5).stroke();
-  t('ATHLETE', { bold: true, size: 8, color: green, x: athBoxX + 8, y: coachBoxY + 8 });
+  doc.rect(athBoxX, coachBoxY, halfW, 100).strokeColor('#C4B5D9').lineWidth(0.5).stroke();
+  t('ATHLETE', { bold: true, size: 8, color: slate, x: athBoxX + 8, y: coachBoxY + 8 });
   t(plan.athlete_name ?? '', { size: 9, x: athBoxX + 8, y: coachBoxY + 20 });
   doc.moveTo(athBoxX + 8, coachBoxY + 55).lineTo(athBoxX + halfW - 8, coachBoxY + 55).lineWidth(0.5).strokeColor('#AAAAAA').dash(2, { space: 2 }).stroke();
   doc.undash();
