@@ -1,6 +1,6 @@
 import { I18nManager, Platform } from 'react-native';
 import { locale } from '../locale';
-import { LANGUAGES, languageInfo, languageOf, translate, translateEnum } from './catalogue';
+import { LANGUAGES, languageInfo, languageOf, translate, translateEnum } from './core';
 
 // The language follows the chosen locale (account sheet) or the device, resolved once at load like the theme and locale.
 export const language = languageOf(locale);

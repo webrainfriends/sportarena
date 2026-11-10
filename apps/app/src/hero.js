@@ -6,7 +6,7 @@ import { Icon } from './icons';
 import { c, toneFor } from './theme';
 import { roleLabel } from './roles';
 import { t, tEnum } from './i18n';
-import { hasKey } from './i18n/catalogue';
+import { hasKey } from './i18n/core';
 import { useLayout } from './layout';
 import { api, mediaUrl } from './api';
 import { useSession } from './session';
