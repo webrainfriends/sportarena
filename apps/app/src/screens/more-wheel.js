@@ -11,7 +11,8 @@ import { c, dark, day } from '../theme';
 import { locale } from '../locale';
 import { TileArt, tileColors } from './more-art';
 import { roleLabel } from '../roles';
-import { GROUP_COLOR, orderedModules, workspaceTitle, workspacesFor } from './more-catalog';
+import { GROUP_COLOR, isClinician, orderedModules, workspaceTitle, workspacesFor } from './more-catalog';
+import { t } from '../i18n';
 
 const STEP_ARC = 26;    // degrees between neighbouring modules on the arc
 const ARC_VIS = 82;     // modules beyond this angle from straight up are hidden
@@ -51,7 +52,7 @@ export function MoreWheel() {
     Leaderboard: d?.pending_results > 0 ? `${d.pending_results} result${d.pending_results > 1 ? 's' : ''} waiting for approval` : null,
     Insure: d?.policies_to_renew > 0 ? `${d.policies_to_renew} to renew soon` : null,
     Workspace: spaces.length > 1 ? `${spaces.length} workspaces · ${spaces.map((sp) => workspaceTitle(sp, roleLabel).replace(/ (workspace|console)$/, '')).join(', ')}` : spaces[0] ? spaces[0][2] : null,
-    Health: d?.fit_to_play === 'restricted' ? 'Cleared with restrictions' : d?.fit_to_play === 'not_cleared' ? 'Not cleared to play' : d?.fit_to_play === 'cleared' ? 'Fit to play' : null,
+    Health: d?.fit_to_play === 'restricted' ? 'Cleared with restrictions' : d?.fit_to_play === 'not_cleared' ? 'Not cleared to play' : d?.fit_to_play === 'cleared' ? 'Fit to play' : isClinician(user.roles) ? null : t('more.health_own_sub'),
   };
 
   // `pos` is the wheel's turn in modules (fractional while dragging). The module at index round(pos) is centred.

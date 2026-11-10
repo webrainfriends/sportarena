@@ -9,7 +9,7 @@ export const capabilities = [];
 /**
  * @param {object} c
  * @param {string} c.name      snake_case id; MCP tool name & OpenAPI operationId
- * @param {'GET'|'POST'|'PATCH'|'DELETE'} c.method
+ * @param {'GET'|'POST'|'PATCH'|'PUT'|'DELETE'} c.method
  * @param {string} c.path      e.g. /teams/:id (relative to /api/v1)
  * @param {string} c.summary
  * @param {string} c.tag

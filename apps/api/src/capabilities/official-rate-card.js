@@ -52,7 +52,7 @@ const rateCardInput = z.object({
 function decryptNotes(row, isOwner) {
   if (!row) return row;
   const { private_notes_enc, ...rest } = row;
-  return isOwner && private_notes_enc ? { ...rest, private_notes: decrypt(private_notes_enc) } : rest;
+  return isOwner && private_notes_enc ? { ...rest, private_notes: decrypt(private_notes_enc, 'official_profile_rates.private_notes') } : rest;
 }
 
 function publicView(row) {
@@ -88,7 +88,7 @@ function insertValues(p, i, status, version) {
     status,
     version,
     i.is_indicative ?? true,
-    i.private_notes ? encrypt(i.private_notes) : null,
+    i.private_notes ? encrypt(i.private_notes, 'official_profile_rates.private_notes') : null,
     i.travel_radius_km ?? 0,
   ];
 }
@@ -195,7 +195,7 @@ cap({
             i.valid_from ?? existing.valid_from,
             i.valid_until ?? existing.valid_until,
             i.is_indicative ?? existing.is_indicative,
-            i.private_notes ? encrypt(i.private_notes) : existing.private_notes_enc,
+            i.private_notes ? encrypt(i.private_notes, 'official_profile_rates.private_notes') : existing.private_notes_enc,
             i.id,
           ],
         )).rows[0];
@@ -265,7 +265,7 @@ cap({
       const src = {
         ...existing,
         name: (existing.name ?? 'Rate card') + ' (copy)',
-        private_notes: existing.private_notes_enc ? decrypt(existing.private_notes_enc) : undefined,
+        private_notes: existing.private_notes_enc ? decrypt(existing.private_notes_enc, 'official_profile_rates.private_notes') : undefined,
       };
       const row = (await c.query(SAFE_INSERT_SQL, insertValues(p, src, 'draft', 1))).rows[0];
       return decryptNotes(row, true);

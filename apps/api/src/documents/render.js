@@ -1353,47 +1353,98 @@ export async function renderBusinessLetter({ layout, kit, logo, snapshot, sample
  * The rulebook as a printable booklet: one card per rule, local changes marked against the standard. Text comes from the catalogue
  * (rulebook/catalog.js) and the local values it is given; nothing is computed here.
  */
-export async function renderRulebook({ book, local }) {
+export async function renderRulebook({ book, local, link = null, generatedAt = new Date() }) {
   const f = fonts();
-  assertGlyphs([book.name, book.body, book.note, local?.name, ...book.cards.flatMap((c) => [c.no, c.title, c.body, ...c.params.flatMap((p) => [p.label, String(p.value), String(p.std)])])], f);
-  const accent = '#0F6E56', ink = '#222222';
-  const doc = new PDFDocument({ size: 'A4', margin: 40, bufferPages: true, compress: true, info: { Title: `${book.name} rulebook`, Author: 'GotMyGame', Producer: 'GotMyGame' } });
+  assertGlyphs([book.name, book.body, book.note, local?.name, ...book.cards.flatMap((c) => [c.no, c.title, c.body, ...(c.points ?? []), ...c.params.flatMap((p) => [p.label, String(p.value), String(p.std)])])], f);
+  const accent = '#8458B3', ink = '#2A2D3A', mute = '#5F6580', wash = '#F1EEF8', rule = '#CDD5E8', warn = '#B54708';
+  const doc = new PDFDocument({ size: 'A4', margin: 44, bufferPages: true, compress: true, info: { Title: `${book.name} rulebook`, Author: 'GotMyGame', Producer: 'GotMyGame', CreationDate: generatedAt } });
   const chunks = [];
   doc.on('data', (c) => chunks.push(c));
   const done = new Promise((res, rej) => { doc.on('end', res); doc.on('error', rej); });
   const left = doc.page.margins.left, width = doc.page.width - left - doc.page.margins.right;
-  const text = (t, o = {}) => doc.font(o.bold ? f.bold : f.regular).fontSize(o.size ?? 9.5).fillColor(o.color ?? ink).text(t, left + (o.indent ?? 0), doc.y, { width: width - (o.indent ?? 0), lineGap: o.gap ?? 1.5 });
-  const room = (h) => { if (doc.y + h > doc.page.height - doc.page.margins.bottom - 20) doc.addPage(); };
+  const text = (t, o = {}) => doc.font(o.bold ? f.bold : f.regular).fontSize(o.size ?? 9.5).fillColor(o.color ?? ink).text(t, left + (o.indent ?? 0), o.y ?? doc.y, { width: (o.w ?? width) - (o.indent ?? 0), lineGap: o.gap ?? 1.5, align: o.align ?? 'left' });
+  const room = (h) => { if (doc.y + h > doc.page.height - doc.page.margins.bottom - 24) { doc.addPage(); doc.y = doc.page.margins.top; } };
   const nice = (v, unit) => (typeof v === 'boolean' ? (v ? 'on' : 'off') : `${v}${unit ? ` ${unit}` : ''}`);
+  const h2 = (t) => { room(48); doc.moveDown(0.8); text(t.toUpperCase(), { bold: true, size: 9, color: accent }); doc.moveTo(left, doc.y + 1).lineTo(left + width, doc.y + 1).lineWidth(0.8).stroke(accent); doc.moveDown(0.6); };
+  const day = generatedAt.toISOString().slice(0, 10);
+  const params = book.cards.flatMap((c) => c.params.map((p) => ({ ...p, card: c })));
+  const points = book.cards.reduce((n, c) => n + (c.points?.length ?? 0), 0);
+  const handbook = points > 0;
 
-  text(book.name, { bold: true, size: 22, color: accent });
-  text(`${book.format ? `${book.format} · ` : ''}Source: ${book.body}`, { size: 9, color: '#555555' });
-  text(`Official book: ${book.official_url}`, { size: 8, color: '#555555' });
-  doc.moveDown(0.4);
-  if (local) text(`Local rules in force: ${local.name} (${local.scope}, version ${local.version}). Changed settings are marked against the standard.`, { bold: true, size: 9, color: '#B54708' });
-  else text('Standard rules.', { size: 9, color: '#555555' });
+  // ---- cover
+  doc.rect(0, 0, doc.page.width, 150).fill(accent);
+  doc.font(f.bold).fontSize(9).fillColor('#FFFFFF').text(handbook ? "MATCH OFFICIALS' HANDBOOK" : 'RULEBOOK SUMMARY', left, 46, { width, characterSpacing: 1.2 });
+  doc.font(f.bold).fontSize(30).fillColor('#FFFFFF').text(book.name, left, 62, { width });
+  doc.font(f.regular).fontSize(11).fillColor('#FFFFFF').text(`${book.format ? `${book.format} format   |   ` : ''}${book.body}`, left, 104, { width });
+  doc.y = 168;
+  const facts = [['Rules', String(book.cards.length)], ['Decision points', handbook ? String(points) : 'Not yet written'], ['Local settings', String(params.length)], ['Changed locally', String(book.changes.length)]];
+  const fy = doc.y;
+  doc.roundedRect(left, fy, width, 46, 6).fill(wash);
+  facts.forEach(([k, v], i) => {
+    const x = left + 12 + (i * (width - 24)) / facts.length, w = (width - 24) / facts.length - 6;
+    doc.font(f.bold).fontSize(7).fillColor(mute).text(k.toUpperCase(), x, fy + 9, { width: w, lineBreak: false });
+    doc.font(f.bold).fontSize(13).fillColor(ink).text(v, x, fy + 21, { width: w, lineBreak: false });
+  });
+  doc.y = fy + 58;
+  h2('Document control');
+  const ctl = [['Source', book.body], ['Official publication', link?.verified ? link.url : 'Ask the governing body named above for its current edition.'], ['Rules in force', local ? `${local.name} (${local.scope}, version ${local.version}${local.by ? `, published by ${local.by}` : ''})` : 'The standard rules, with no local changes'], ['Generated', day], ['Status', handbook ? 'Summary cards with officials\' decision points for every rule.' : 'Summary cards. Officials\' decision points for this sport are not written yet.']];
+  for (const [k, v] of ctl) { const y = doc.y; text(k, { bold: true, size: 8.5, color: mute, w: 120 }); doc.y = y; text(v, { indent: 124, size: 9 }); doc.moveDown(0.25); }
+  doc.moveDown(0.3);
+  text(book.note, { size: 8.5, color: mute });
+
+  h2('Contents');
+  book.cards.forEach((c) => { room(14); const y = doc.y; text(c.no, { bold: true, size: 9, color: mute, w: 90 }); doc.y = y; text(`${c.title}${c.params.some((p) => p.changed) ? '   (local change)' : ''}`, { indent: 92, size: 9.5 }); });
+
+  // ---- settings in force
+  if (params.length) {
+    h2('Settings in force');
+    const col = [left, left + 70, left + 262, left + 386];
+    const head = doc.y;
+    doc.rect(left, head - 3, width, 16).fill(wash);
+    [['RULE', 0], ['SETTING', 1], ['IN FORCE', 2], ['STANDARD', 3]].forEach(([t, i]) => doc.font(f.bold).fontSize(7).fillColor(mute).text(t, col[i] + 4, head + 1, { lineBreak: false }));
+    doc.y = head + 17;
+    for (const p of params) {
+      room(16); const y = doc.y;
+      doc.font(f.regular).fontSize(8.5).fillColor(mute).text(p.card.no, col[0] + 4, y, { width: 62, height: 10, ellipsis: true });
+      doc.font(f.regular).fontSize(8.5).fillColor(ink).text(p.label, col[1] + 4, y, { width: 184, height: 10, ellipsis: true });
+      doc.font(f.bold).fontSize(8.5).fillColor(p.changed ? warn : ink).text(nice(p.value, p.unit), col[2] + 4, y, { width: 118, height: 10, ellipsis: true });
+      doc.font(f.regular).fontSize(8.5).fillColor(mute).text(nice(p.std, p.unit), col[3] + 4, y, { width: width - 392, height: 10, ellipsis: true });
+      doc.y = y + 13; doc.moveTo(left, doc.y - 2).lineTo(left + width, doc.y - 2).lineWidth(0.3).stroke(rule);
+    }
+  }
+
+  // ---- the rules
+  doc.addPage(); doc.y = doc.page.margins.top;
+  text('The rules', { bold: true, size: 18, color: accent });
+  text(local ? `As played under ${local.name}. Settings that differ from the standard are marked LOCAL.` : 'Standard rules.', { size: 9, color: local ? warn : mute });
   doc.moveDown(0.6);
-
   for (const c of book.cards) {
     const changed = c.params.some((p) => p.changed);
-    room(60 + c.body.length / 5);
+    room(70 + c.body.length / 5);
     const y0 = doc.y;
-    doc.font(f.bold).fontSize(7.5).fillColor('#666666').text(c.no.toUpperCase(), left, y0, { width: 90 });
-    doc.font(f.bold).fontSize(12).fillColor(accent).text(c.title, left + 92, y0, { width: width - 92 });
-    doc.y = Math.max(doc.y, y0 + 14);
+    doc.font(f.bold).fontSize(7.5).fillColor(mute).text(c.no.toUpperCase(), left, y0 + 2, { width: 90 });
+    doc.font(f.bold).fontSize(12.5).fillColor(accent).text(c.title, left + 92, y0, { width: width - 92 });
+    doc.y = Math.max(doc.y, y0 + 15);
     text(c.body, { indent: 92 });
-    for (const p of c.params) text(`${p.changed ? 'LOCAL' : 'Setting'}: ${p.label} ${nice(p.value, p.unit)}${p.changed ? `   (standard ${nice(p.std, p.unit)})` : ''}`, { indent: 92, bold: p.changed, size: 8.5, color: p.changed ? '#B54708' : '#555555' });
-    doc.moveDown(0.3);
-    doc.moveTo(left, doc.y).lineTo(left + width, doc.y).lineWidth(changed ? 1 : 0.4).stroke(changed ? '#B54708' : '#CCCCCC');
-    doc.moveDown(0.5);
+    for (const pt of c.points ?? []) {
+      room(doc.font(f.regular).fontSize(9).heightOfString(pt, { width: width - 104 }) + 4);
+      const y = doc.y + 3;
+      doc.circle(left + 96, y + 3.5, 1.4).fill(accent);
+      doc.font(f.regular).fontSize(9).fillColor(ink).text(pt, left + 104, y, { width: width - 104, lineGap: 1.2 });
+    }
+    if (c.params.length) doc.moveDown(0.2);
+    for (const p of c.params) text(`${p.changed ? 'LOCAL' : 'Setting'}: ${p.label} ${nice(p.value, p.unit)}${p.changed ? `   (standard ${nice(p.std, p.unit)})` : ''}`, { indent: 92, bold: p.changed, size: 8.5, color: p.changed ? warn : mute });
+    doc.moveDown(0.35);
+    doc.moveTo(left, doc.y).lineTo(left + width, doc.y).lineWidth(changed ? 1 : 0.4).stroke(changed ? warn : rule);
+    doc.moveDown(0.55);
   }
-  text(book.note, { size: 8, color: '#666666' });
+  text(book.note, { size: 8, color: mute });
 
   const range = doc.bufferedPageRange();
   for (let i = 0; i < range.count; i++) {
     doc.switchToPage(range.start + i);
     doc.page.margins.bottom = 0;
-    doc.font(f.regular).fontSize(7).fillColor('#666666').text(`${book.name} rulebook · Page ${i + 1} of ${range.count}`, left, doc.page.height - 28, { width, align: 'right', lineBreak: false });
+    doc.font(f.regular).fontSize(7).fillColor(mute).text(`${book.name} ${handbook ? "officials' handbook" : 'rulebook summary'} - generated ${day} - page ${i + 1} of ${range.count}`, left, doc.page.height - 28, { width, align: 'right', lineBreak: false });
   }
   doc.end();
   await done;

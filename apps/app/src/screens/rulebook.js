@@ -11,6 +11,7 @@ import { useLayout } from '../layout';
 import { Btn, Card, Chip, Empty, ErrorBox, Field, H2, Loading, Seg, T, Tag } from '../ui';
 import { Counter } from '../pickers';
 import { openLink } from './pathways';
+import { t } from '../i18n';
 import { openPdf } from '../open-file';
 import { c } from '../theme';
 
@@ -48,6 +49,12 @@ function RuleCard({ card, draft, setValue, reset }) {
       </View>
       <H2>{card.title}</H2>
       <T>{card.body}</T>
+      {card.points?.length ? (
+        <View style={{ gap: 6, marginTop: 4 }}>
+          <T size={11} weight="800" color={c.mute} style={{ letterSpacing: 0.8 }}>{t('rulebook.points').toUpperCase()}</T>
+          {card.points.map((pt) => <View key={pt} style={{ flexDirection: 'row', gap: 8 }}><T color={c.pink} weight="800">•</T><T size={13.5} style={{ flex: 1, lineHeight: 20 }}>{pt}</T></View>)}
+        </View>
+      ) : null}
       {card.params.length ? (
         <View style={{ gap: 10, marginTop: 4 }}>
           <Btn small title={open || changed ? 'Hide local settings' : 'Localise this rule'} color={c.violet} onPress={() => setOpen(!open)} style={{ alignSelf: 'flex-start' }} />
@@ -79,13 +86,14 @@ export function Rulebook({ sport }) {
   const [err, setErr] = useState(null);
   const book = useLoad(() => api.get(`/rulebook/${sport}`, { format: format ?? undefined, local_id: localId ?? undefined }), [sport, format, localId]);
   const locals = useLoad(() => api.get('/local-rules', { sport }), [sport]);
+  const link = useLoad(() => api.get(`/rulebook/${sport}/official-link`).catch(() => ({ verified: false, url: null })), [sport]);
   const orgs = useLoad(() => (scope === 'organisation' ? api.get('/organisations') : Promise.resolve([])), [scope]);
   const teams = useLoad(() => (scope === 'team' ? api.get('/teams', { mine: true, limit: 50 }) : Promise.resolve([])), [scope]);
   const events = useLoad(() => (scope === 'event' ? api.get('/events', { organizer_id: user.id, limit: 50 }) : Promise.resolve([])), [scope]);
   const b = book.data;
   const current = (locals.data ?? []).find((x) => x.id === localId) ?? null;
 
-  const cards = useMemo(() => (b?.cards ?? []).filter((x) => !q.trim() || `${x.no} ${x.title} ${x.body}`.toLowerCase().includes(q.trim().toLowerCase())), [b, q]);
+  const cards = useMemo(() => (b?.cards ?? []).filter((x) => !q.trim() || `${x.no} ${x.title} ${x.body} ${(x.points ?? []).join(' ')}`.toLowerCase().includes(q.trim().toLowerCase())), [b, q]);
   const merged = useMemo(() => Object.fromEntries((b?.cards ?? []).flatMap((x) => x.params.map((p) => [p.key, p.key in draft ? draft[p.key] : p.value]))), [b, draft]);
   const changes = (b?.cards ?? []).flatMap((x) => x.params.filter((p) => merged[p.key] !== p.std).map((p) => ({ card: x.title, p, value: merged[p.key] })));
   const dirty = Object.keys(draft).length > 0;
@@ -117,8 +125,14 @@ export function Rulebook({ sport }) {
         <T size={28}>{b.emoji}</T>
         <H2>{b.name} rulebook</H2>
         <T size={13} color={c.mute}>Source: {b.body}. {b.note}</T>
+        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 6 }}>
+          <Tag label={t(b.depth === 'handbook' ? 'rulebook.depth_handbook' : 'rulebook.depth_summary')} color={b.depth === 'handbook' ? c.limeSoft : c.sunSoft} />
+          <Tag label={t('rulebook.n_rules', { n: b.cards.length })} color={c.violetSoft} />
+          {link.data && !link.data.verified ? <Tag label={t('rulebook.link_down')} color={c.sunSoft} /> : null}
+        </View>
+        {link.data && !link.data.verified ? <T size={12} color={c.mute}>{t('rulebook.link_down_sub', { body: b.body })}</T> : null}
         <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 6 }}>
-          <Btn small title="Official book ↗" color={c.cyan} onPress={() => openLink(b.official_url)} />
+          {link.data?.verified ? <Btn small title={t(link.data.exact ? 'rulebook.official' : 'rulebook.official_home')} color={c.cyan} onPress={() => openLink(link.data.url)} accessibilityLabel={t('rulebook.official_a11y', { body: b.body })} /> : null}
           <Btn small title="Rulebook PDF" color={c.pink} onPress={() => openBlobPdf(`/rulebook/${sport}/pdf?${new URLSearchParams({ ...(b.format ? { format: b.format } : {}), ...(localId ? { local_id: localId } : {}) })}`, toast, `${sport}-rulebook`)} />
           <Btn small title="Start a scoring sheet" color={c.violet} onPress={() => push('ScoringTool', { tab: 'start', sport, localRulesId: localId, variant: b.format || undefined })} />
         </View>

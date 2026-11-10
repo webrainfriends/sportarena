@@ -15471,7 +15471,7 @@ export default {
   'residency.supported_banner': 'Your data will be stored in {region}',
   'residency.unsupported_banner': 'GotMyGame does not currently have data storage in {country}.',
   'residency.fallback_title': 'Singapore storage consent',
-  'residency.fallback_body': 'GotMyGame does not operate data storage in your home country. With your permission, your account and eligible personal data will be stored and processed in AWS Singapore (ap-southeast-1).',
+  'residency.fallback_body': 'GotMyGame does not operate data storage in your home country. With your permission, your account and eligible personal data will be stored and processed in Singapore.',
   'residency.fallback_agree': 'Agree to Singapore storage',
   'residency.fallback_decline': 'Not now — browse without an account',
   'residency.fallback_waitlist': 'Join waitlist for in-country storage',
@@ -15518,10 +15518,10 @@ export default {
   'residency.policy_hash_label': 'Text hash',
   'residency.policy_region_label': 'Region',
   'residency.affirmation_label': 'What you are agreeing to',
-  'residency.affirmation_body': 'By tapping Agree, you give GotMyGame explicit, affirmative, freely-given consent to store and process the data categories listed above in AWS Singapore. You may withdraw consent at any time from Account -> Data Residency.',
+  'residency.affirmation_body': 'By tapping Agree, you give GotMyGame explicit, affirmative, freely-given consent to store and process the data categories listed above in Singapore. You may withdraw consent at any time from Account -> Data Residency.',
   'residency.no_pretick': 'No pre-ticked boxes. This consent is freely given and freely withdrawable.',
   'residency.consent_success_title': 'Singapore consent recorded',
-  'residency.consent_success_body': 'Your data will be stored in AWS Singapore. You can review or withdraw this consent at any time from Account -> Data Residency.',
+  'residency.consent_success_body': 'Your data will be stored in Singapore. You can review or withdraw this consent at any time from Account -> Data Residency.',
   'residency.status.active': 'Active',
   'residency.status.fallback': 'Fallback',
   'residency.status.in_country': 'In-country',
@@ -15533,14 +15533,14 @@ export default {
   'residency.admin.audit_title': 'Residency audit log',
   'residency.admin.export': 'Export compliance report',
   'residency.set_country_title': 'Where should your data live?',
-  'residency.set_country_body': 'GotMyGame stores your personal data in an AWS region based on your home country. Choose your country to see which region applies — or to consent to Singapore storage if your country is not yet covered.',
+  'residency.set_country_body': 'GotMyGame stores your personal data in a country chosen from your home country. Choose your country to see where your data will live — or to consent to Singapore storage if your country is not yet covered.',
   'residency.set_country_cta': 'Save & check data consent',
   'residency.set_country_skip': 'Skip for now',
   'residency.country_saved': 'Home country saved',
   'residency.country_change_note': 'Changing country may require new storage consent',
   'residency.preview_loading': 'Checking data region…',
   'residency.banner_title': 'Set your data home',
-  'residency.banner_body': 'Tell us your home country so we can store your personal data in the right AWS region — required for data residency compliance.',
+  'residency.banner_body': 'Tell us your home country so we can store your personal data in the right country — required for data residency compliance.',
   'residency.country_required': 'Please choose your home country to set up data storage',
   'residency.country_required_hint': 'Required — choose your home country',
   'pu.title': 'ప్లాట్‌ఫామ్ వినియోగదారులు',
@@ -16058,6 +16058,31 @@ export default {
   'officials.bulk.go_to_board': 'నియామక బోర్డుకు వెళ్ళండి',
   'officials.bulk.selected': 'ఎంచుకోబడ్డాయి',
   'officials.bulk.not_scheduled': 'ఇంకా షెడ్యూల్ చేయలేదు',
+  'officials.arrive_by': 'Arrive by {time}', // reviewed: false
+  'officials.reporting_time': 'Reporting time', // reviewed: false
+  'officials.lock.title': 'Lock Assignment', // reviewed: false
+  'officials.lock.reason_placeholder': 'Why is this assignment being locked? (e.g. Finals confirmed, travel booked)', // reviewed: false
+  'officials.lock.confirm': 'Lock', // reviewed: false
+  'officials.lock.unlock_title': 'Unlock Assignment', // reviewed: false
+  'officials.lock.unlock_reason': 'Override reason (required)', // reviewed: false
+  'officials.lock.unlock_reason_placeholder': 'Provide a mandatory reason to override the lock', // reviewed: false
+  'officials.lock.unlock_confirm': 'Unlock', // reviewed: false
+  'officials.lock.badge': 'Locked', // reviewed: false
+  'officials.lock.locked_by': 'Locked by {name}', // reviewed: false
+  'officials.lock.reason_label': 'Lock reason', // reviewed: false
+  'officials.clash.travel_gap': 'Travel time warning', // reviewed: false
+  'officials.clash.detail_title': 'Clash Detail', // reviewed: false
+  'officials.clash.other_fixture': 'Conflicts with', // reviewed: false
+  'officials.clash.distance': '{km} km apart', // reviewed: false
+  'officials.clash.gap': '{min} min gap', // reviewed: false
+  'officials.clash.required_travel': '{min} min needed to travel', // reviewed: false
+  'officials.clash.override_reason': 'Override reason', // reviewed: false
+  'officials.clash.override_placeholder': 'Why is this clash being overridden? (required)', // reviewed: false
+  'officials.clash.confirm_override': 'Override clash', // reviewed: false
+  'officials.clash.locked_error': 'This assignment is locked', // reviewed: false
+  'officials.clash.locked_error_body': 'Unlock the assignment before making changes.', // reviewed: false
+  'officials.clash.travel_error': 'Insufficient travel time', // reviewed: false
+  'officials.clash.travel_error_body': '{distKm} km between venues — {gapMin} min gap, {reqMin} min needed.', // reviewed: false
 
   'officialEarnings.title': 'ఆదాయాలు & రుసుములు', // reviewed: false
   'officialEarnings.tab.overview': 'అవలోకనం', // reviewed: false
@@ -16791,7 +16816,186 @@ export default {
   'rule_ai.ai_note': 'Explained by AI from the cited sections above.', // reviewed: false
   'rule_ai.no_open_escalations': 'No open escalations.', // reviewed: false
   'rule_ai.no_escalations': 'No escalations.', // reviewed: false
-
+  "more.health_own_sub": "Your recovery, records & fit to play", // reviewed: false
+  "posapp.title": "Application", // reviewed: false
+  "posapp.view": "View application", // reviewed: false
+  "posapp.view_a11y": "View the full application for {title}", // reviewed: false
+  "posapp.pdf": "Download PDF", // reviewed: false
+  "posapp.pdf_a11y": "Download the submitted application as a PDF", // reviewed: false
+  "posapp.submitted": "Submitted {d}", // reviewed: false
+  "posapp.as_posted": "As posted", // reviewed: false
+  "posapp.m_posted": "Posted fee", // reviewed: false
+  "posapp.m_stall_fee": "Stall fee", // reviewed: false
+  "posapp.m_yours": "Your fee", // reviewed: false
+  "posapp.m_docs": "Documents", // reviewed: false
+  "posapp.m_contract": "Contract", // reviewed: false
+  "posapp.contract.none": "Not issued", // reviewed: false
+  "posapp.contract.pending": "To sign", // reviewed: false
+  "posapp.contract.signed": "Signed", // reviewed: false
+  "posapp.contract.declined": "Declined", // reviewed: false
+  "posapp.progress_a11y": "Progress: {step}", // reviewed: false
+  "posapp.step.applied": "Applied", // reviewed: false
+  "posapp.step.contract_sent": "Contract to sign", // reviewed: false
+  "posapp.step.accepted": "Confirmed", // reviewed: false
+  "posapp.step.completed": "Completed", // reviewed: false
+  "posapp.sec.parties": "Parties", // reviewed: false
+  "posapp.sec.statement": "Cover statement", // reviewed: false
+  "posapp.sec.strengths": "What you bring", // reviewed: false
+  "posapp.sec.experience": "Experience", // reviewed: false
+  "posapp.sec.credentials": "Credentials", // reviewed: false
+  "posapp.sec.stall": "Stall details", // reviewed: false
+  "posapp.sec.logistics": "Availability & logistics", // reviewed: false
+  "posapp.sec.additional": "Additional information", // reviewed: false
+  "posapp.sec.documents": "Supporting documents ({n})", // reviewed: false
+  "posapp.sec.timeline": "Progress", // reviewed: false
+  "posapp.applicant": "Applicant", // reviewed: false
+  "posapp.organiser": "Organiser", // reviewed: false
+  "posapp.position": "Position", // reviewed: false
+  "posapp.requirements": "Requirements set by the organiser", // reviewed: false
+  "posapp.no_statement": "No cover statement was sent with this application.", // reviewed: false
+  "posapp.no_docs": "No documents have been added yet.", // reviewed: false
+  "posapp.manage_docs": "Add or manage", // reviewed: false
+  "posapp.yes": "Yes", // reviewed: false
+  "posapp.no": "No", // reviewed: false
+  "posapp.f.strengths": "Key strengths", // reviewed: false
+  "posapp.f.experience_level": "Experience level", // reviewed: false
+  "posapp.f.years_active": "Years in this role", // reviewed: false
+  "posapp.f.has_qualification": "Holds a valid licence or certification", // reviewed: false
+  "posapp.f.qualification_body": "Issuing body", // reviewed: false
+  "posapp.f.qualification_level": "Grade, badge or licence level", // reviewed: false
+  "posapp.f.qualification_ref": "Licence reference", // reviewed: false
+  "posapp.f.qualification_expires": "Expires on", // reviewed: false
+  "posapp.f.stall_name": "Trading or stall name", // reviewed: false
+  "posapp.f.product_category": "Category", // reviewed: false
+  "posapp.f.products_desc": "What is sold", // reviewed: false
+  "posapp.f.stall_width_m": "Stall width", // reviewed: false
+  "posapp.f.power_needed": "Power needed at the stall", // reviewed: false
+  "posapp.f.power_amps": "Power requirement", // reviewed: false
+  "posapp.f.food_cert": "Food safety certificate", // reviewed: false
+  "posapp.f.confirms_dates": "Available for all event dates", // reviewed: false
+  "posapp.f.transport": "Getting there", // reviewed: false
+  "posapp.f.accommodation_needed": "Accommodation needed", // reviewed: false
+  "posapp.f.additional": "Anything else for the organiser", // reviewed: false
+  "posapp.v.experience_level.first_time": "First time in this role", // reviewed: false
+  "posapp.v.experience_level.some": "Some experience", // reviewed: false
+  "posapp.v.experience_level.experienced": "Experienced", // reviewed: false
+  "posapp.v.experience_level.expert": "Expert", // reviewed: false
+  "posapp.v.transport.own_vehicle": "Own vehicle", // reviewed: false
+  "posapp.v.transport.public_transport": "Public transport", // reviewed: false
+  "posapp.v.transport.any": "Either", // reviewed: false
+  "posapp.v.product_category.retail": "Retail", // reviewed: false
+  "posapp.v.product_category.food": "Food", // reviewed: false
+  "posapp.v.product_category.beverage": "Beverage", // reviewed: false
+  "posapp.v.product_category.services": "Services", // reviewed: false
+  "posapp.kind.licence": "Licence", // reviewed: false
+  "posapp.kind.certificate": "Certificate", // reviewed: false
+  "posapp.kind.insurance": "Insurance", // reviewed: false
+  "posapp.kind.identity": "Identity", // reviewed: false
+  "posapp.kind.food_safety": "Food safety", // reviewed: false
+  "posapp.kind.price_list": "Menu or price list", // reviewed: false
+  "posapp.kind.brief": "Brief", // reviewed: false
+  "posapp.kind.other": "Other", // reviewed: false
+  "posapp.docs.title": "Documents", // reviewed: false
+  "posapp.docs.intro": "Share licences, certificates, insurance, menus and briefs with the other side. PDF or photo, up to {mb} MB each. Only you and the other party can open them, files are encrypted, and removing one only hides it.", // reviewed: false
+  "posapp.docs.m_files": "On file", // reviewed: false
+  "posapp.docs.m_left": "Places left", // reviewed: false
+  "posapp.docs.m_size": "Total size", // reviewed: false
+  "posapp.docs.add_title": "Add documents", // reviewed: false
+  "posapp.docs.kind": "Document type", // reviewed: false
+  "posapp.docs.name": "Name", // reviewed: false
+  "posapp.docs.name_ph": "Optional — used when you add a single file", // reviewed: false
+  "posapp.docs.choose": "Choose files", // reviewed: false
+  "posapp.docs.choose_hint": "You can pick several files at once. Each one is sent and checked separately.", // reviewed: false
+  "posapp.docs.untitled": "Document", // reviewed: false
+  "posapp.docs.waiting": "Waiting", // reviewed: false
+  "posapp.docs.sending": "Sending", // reviewed: false
+  "posapp.docs.sent": "Shared", // reviewed: false
+  "posapp.docs.failed": "Not sent", // reviewed: false
+  "posapp.docs.too_big": "Over the {mb} MB limit", // reviewed: false
+  "posapp.docs.shared": "{n} shared", // reviewed: false
+  "posapp.docs.uploading": "Sending your files…", // reviewed: false
+  "posapp.docs.saved_note": "Everything listed is saved.", // reviewed: false
+  "posapp.docs.done_a11y": "Done, close documents", // reviewed: false
+  "posapp.docs.on_file": "On this application ({n})", // reviewed: false
+  "posapp.docs.by_you": "you", // reviewed: false
+  "posapp.docs.open": "Open", // reviewed: false
+  "posapp.docs.remove": "Remove", // reviewed: false
+  "posapp.docs.none": "No documents yet", // reviewed: false
+  "posapp.docs.none_sub": "Add the first one for the other side to read.", // reviewed: false
+  "rulebook.official": "Official book ↗", // reviewed: false
+  "rulebook.official_home": "Governing body site ↗", // reviewed: false
+  "rulebook.official_a11y": "Open the official rules published by {body}", // reviewed: false
+  "rulebook.depth_handbook": "Officials' handbook", // reviewed: false
+  "rulebook.depth_summary": "Summary only", // reviewed: false
+  "rulebook.n_rules": "{n} rules", // reviewed: false
+  "rulebook.link_down": "Official site not answering", // reviewed: false
+  "rulebook.link_down_sub": "We could not reach the official publication of {body} just now, so no link is offered. Ask the governing body for its current edition.", // reviewed: false
+  "rulebook.points": "Decision points for officials", // reviewed: false
+  "opw.f.country_legacy": "On file: {v}. Pick the country to replace it.", // reviewed: false
+  "opw.rates.m_active": "Active cards", // reviewed: false
+  "opw.rates.m_draft": "Drafts", // reviewed: false
+  "opw.rates.m_sports": "Sports priced", // reviewed: false
+  "opw.rates.card": "Rate card", // reviewed: false
+  "opw.rates.edit_a11y": "Edit rate card {name}", // reviewed: false
+  "opw.rates.st_active": "Active", // reviewed: false
+  "opw.rates.st_draft": "Draft", // reviewed: false
+  "opw.rates.empty": "No rate cards yet", // reviewed: false
+  "opw.rates.empty_sub": "Set your fee per match, hour, session or day, with weekend, holiday and travel terms. Organisers see active cards when they ask for you.", // reviewed: false
+  "opw.rates.new": "Create a rate card", // reviewed: false
+  "opw.rates.manage": "Manage all rate cards", // reviewed: false
+  "opw.rates.return_note": "Rate cards open on their own page. Your place in this set-up is saved, so you come back to this step.", // reviewed: false
+  "off.next_match": "Next match", // reviewed: false
+  "off.qa.title": "Quick actions", // reviewed: false
+  "off.qa.matchday": "Match day", // reviewed: false
+  "off.qa.rules": "Rules & conduct", // reviewed: false
+  "off.qa.career": "Career & standing", // reviewed: false
+  "off.qa.money": "Fees & money", // reviewed: false
+  "off.qa.assignments": "My assignments", // reviewed: false
+  "off.qa.this_week": "{n} this week", // reviewed: false
+  "off.qa.requests": "Pending requests", // reviewed: false
+  "off.qa.to_answer": "{n} to answer", // reviewed: false
+  "off.qa.none_waiting": "Nothing waiting", // reviewed: false
+  "off.qa.availability": "My availability", // reviewed: false
+  "off.qa.console": "Match-day console", // reviewed: false
+  "off.qa.no_assignment": "No upcoming assignment", // reviewed: false
+  "off.qa.rulebook": "Rules & interpretations", // reviewed: false
+  "off.qa.history": "Officiating history", // reviewed: false
+  "off.qa.completed": "{n} completed this season", // reviewed: false
+  "off.qa.grade": "Grade, assessments & CPD", // reviewed: false
+  "off.qa.verification": "Verification & renewal", // reviewed: false
+  "off.qa.opportunities": "Opportunities", // reviewed: false
+  "off.qa.earnings": "Earnings & fees", // reviewed: false
+  "off.qa.invoices": "Invoices & expenses", // reviewed: false
+  "off.qa.payout": "Payout account", // reviewed: false
+  "off.qa.tax": "Tax & reports", // reviewed: false
+  "off.setup.kicker": "Referee set-up", // reviewed: false
+  "off.setup.title": "{done} of {total} steps complete", // reviewed: false
+  "off.setup.complete": "You are set up to be asked and paid", // reviewed: false
+  "off.setup.continue": "Continue set-up", // reviewed: false
+  "off.setup.continue_a11y": "Continue the next set-up step", // reviewed: false
+  "off.setup.review": "Review", // reviewed: false
+  "off.setup.hide": "Hide", // reviewed: false
+  "off.setup.done": "Done", // reviewed: false
+  "off.setup.in_progress": "In progress", // reviewed: false
+  "off.setup.todo": "To do", // reviewed: false
+  "off.setup.sport": "Add a sport you officiate", // reviewed: false
+  "off.setup.sport_sub": "So organisers can find and ask you", // reviewed: false
+  "off.setup.profile": "Official profile", // reviewed: false
+  "off.setup.profile_sub": "Experience, credentials, references and privacy", // reviewed: false
+  "off.setup.profile_pct": "{pct}% complete — pick up where you left off", // reviewed: false
+  "off.setup.rates": "Rate cards", // reviewed: false
+  "off.setup.rates_sub": "Your fee per match, hour, session or day", // reviewed: false
+  "off.setup.rates_n": "{n} active · {d} in draft", // reviewed: false
+  "off.setup.payout": "Payout account", // reviewed: false
+  "off.setup.payout_sub": "Where your fees are paid, with identity checks", // reviewed: false
+  "off.setup.tax": "Tax profile", // reviewed: false
+  "off.setup.tax_sub": "Tax country, registration, invoices and reports", // reviewed: false
+  "off.setup.verification": "Verification", // reviewed: false
+  "off.setup.verification_sub": "A verified badge that competitions can rely on", // reviewed: false
+  "residency.policy_chip": "Policy v{v}", // reviewed: false
+  "residency.admin.badge": "Platform admin", // reviewed: false
+  "residency.admin.none": "No active countries yet.", // reviewed: false
+  "rc.catalog_count": "{n} rate cards on file", // reviewed: false,
   'nav.title.OfficialsConsole': 'లైవ్ అధికారుల కన్సోల్',
   'oc.pre_match': 'మ్యాచ్‌కు ముందు',
   'oc.live': 'లైవ్',

@@ -80,18 +80,6 @@ function RateCardItem({ item: rc, onEdit, onDuplicate, onQuote, onActivate, onDe
   );
 }
 
-export function RateCardOnboardingBanner({ onPress }) {
-  const q = useLoad(() => api.get('/me/official-profile/rate-cards/catalog').catch(() => []), []);
-  const cards = Array.isArray(q.data) ? q.data : [];
-  const hasActive = cards.some((r) => r.status === 'active');
-  if (!q.data || hasActive) return null;
-  return (
-    <Banner tone={c.sunSoft} action={t('rc.home_onboard_cta')} onAction={onPress}>
-      {t('rc.home_onboard_title')} — {t('rc.home_onboard_sub')}
-    </Banner>
-  );
-}
-
 export function RateCardCatalog() {
   const { push: go } = useNav();
   const { toast } = useSession();
@@ -144,7 +132,7 @@ export function RateCardCatalog() {
       <GradCard colors={grad.hero}>
         <T size={12} weight="800" color="#fff" style={{ letterSpacing: 0.6 }}>{t('rc.catalog_sub').toUpperCase()}</T>
         <T size={26} weight="800" color="#fff" style={{ letterSpacing: -0.8, marginTop: 4 }}>{t('rc.title')}</T>
-        <T size={13} color="rgba(255,255,255,0.8)" style={{ marginTop: 4 }}>{cards.length} {t('rc.catalog_sub')}</T>
+        <T size={13} color="rgba(255,255,255,0.8)" style={{ marginTop: 4 }}>{t('rc.catalog_count', { n: cards.length })}</T>
       </GradCard>
 
       {/* Onboarding banner */}
@@ -165,7 +153,7 @@ export function RateCardCatalog() {
       {/* Filter chips */}
       <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, paddingHorizontal: 12, paddingBottom: 8 }}>
         {['all','active','draft','archived'].map((s) => (
-          <Chip key={s} label={t(`rc.filter_${s === 'all' ? 'all' : `badge_${s}`}`)} active={filter === s} onPress={() => setFilter(s)} />
+          <Chip key={s} label={t(s === 'all' ? 'rc.filter_all' : `rc.badge_${s}`)} active={filter === s} onPress={() => setFilter(s)} />
         ))}
       </View>
     </View>

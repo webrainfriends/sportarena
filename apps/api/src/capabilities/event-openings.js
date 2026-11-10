@@ -14,7 +14,8 @@ import { AppError, badRequest, conflict, forbidden, notFound, unauthorized } fro
 import { toErrorBody } from '../invoke.js';
 import { audit, isAdmin, mustFind } from '../helpers.js';
 import { DOC_LIMITS, docHeaders, loadEncrypted, readBody, saveEncrypted, sniffDoc } from '../doc-store.js';
-import { toMajor } from '../currency.js';
+import { formatMinor, toMajor } from '../currency.js';
+import { renderApplication } from '../documents/application-pdf.js';
 import { notify } from '../notify.js';
 import { eventForOrganizer } from './events.js';
 import { ROLES, VENDOR_ROLES, assertEligible, confirmVendor, history, lockPerson } from './event-staff.js';
@@ -249,6 +250,70 @@ cap({
   },
 });
 
+// ----------------------------------------------------------------------------------------------------- the submitted application, in full
+const ROLE_LABEL = { referee: 'Referee', umpire: 'Umpire', linesman: 'Assistant referee', scorer: 'Scorer', doctor: 'Doctor', physio: 'Physio', medic: 'Medic', volunteer: 'Volunteer', security: 'Security', other: 'Crew', retail: 'Retail stall', catering: 'Catering', vendor: 'Vendor', assessor: 'Assessor' };
+const STATUS_LABEL = { invited: 'Offer made', applied: 'Applied - awaiting the organiser', contract_sent: 'Contract to sign', accepted: 'Confirmed', rejected: 'Not taken forward', declined: 'Declined', withdrawn: 'Withdrawn', released: 'Released', completed: 'Completed' };
+const CHOICE = {
+  experience_level: { first_time: 'First time in this role', some: 'Some experience', experienced: 'Experienced', expert: 'Expert' },
+  transport: { own_vehicle: 'Own vehicle', public_transport: 'Public transport', any: 'Either' },
+  product_category: { retail: 'Retail', food: 'Food', beverage: 'Beverage', services: 'Services' },
+};
+// Every answer the form can hold, in the order it is asked: [section, key, label, unit]. The screen, the PDF and agents all read this one list.
+const ANSWERS = [
+  ['strengths', 'strengths', 'Key strengths'],
+  ['experience', 'experience_level', 'Experience level'], ['experience', 'years_active', 'Years in this role', 'years'],
+  ['credentials', 'has_qualification', 'Holds a valid licence or certification'], ['credentials', 'qualification_body', 'Issuing body'], ['credentials', 'qualification_level', 'Grade, badge or licence level'],
+  ['credentials', 'qualification_ref', 'Licence reference'], ['credentials', 'qualification_expires', 'Expires on'],
+  ['stall', 'stall_name', 'Trading or stall name'], ['stall', 'product_category', 'Category'], ['stall', 'products_desc', 'What is sold'], ['stall', 'stall_width_m', 'Stall width', 'm'],
+  ['stall', 'power_needed', 'Power needed at the stall'], ['stall', 'power_amps', 'Power requirement', 'A'], ['stall', 'food_cert', 'Food safety certificate'],
+  ['logistics', 'confirms_dates', 'Available for all event dates'], ['logistics', 'transport', 'Getting there'], ['logistics', 'accommodation_needed', 'Accommodation needed'],
+  ['additional', 'additional', 'Anything else for the organiser'],
+];
+const SECTION_TITLE = { strengths: 'What the applicant brings', experience: 'Experience', credentials: 'Credentials', stall: 'Stall details', logistics: 'Availability and logistics', additional: 'Additional information' };
+const answerText = (key, v, unit) => (typeof v === 'boolean' ? (v ? 'Yes' : 'No') : Array.isArray(v) ? v.join(', ') : CHOICE[key]?.[v] ?? `${v}${unit ? ` ${unit}` : ''}`);
+const eventDates = (ev) => (ev.starts_on ? `${String(new Date(ev.starts_on).toISOString()).slice(0, 10)}${ev.ends_on && String(new Date(ev.ends_on).toISOString()).slice(0, 10) !== String(new Date(ev.starts_on).toISOString()).slice(0, 10) ? ` to ${String(new Date(ev.ends_on).toISOString()).slice(0, 10)}` : ''}` : null);
+
+/** One application with everything that was submitted on it, for the applicant or the event's organiser. */
+async function applicationView(user, assignmentId) {
+  const { a, side } = await assignmentAccess(user, assignmentId);
+  const role = await one('SELECT id, role, title, notes, requirements, min_experience, qualifications_required, application_deadline, fee_cents, currency, pay_direction FROM event_staff_roles WHERE id=$1', [a.role_id]);
+  const ev = await one('SELECT e.id, e.name, e.city, e.starts_on, e.ends_on, e.status, e.organizer_id, u.display_name AS organiser_name FROM events e JOIN users u ON u.id=e.organizer_id WHERE e.id=$1', [a.event_id]);
+  const applicant = await one('SELECT id, display_name, handle FROM users WHERE id=$1', [a.user_id]);
+  const documents = await many(`SELECT ${DOC_COLS} FROM event_staff_documents d JOIN users u ON u.id=d.uploaded_by WHERE d.assignment_id=$1 AND d.removed_at IS NULL ORDER BY d.created_at`, [a.id]);
+  const hist = await many('SELECT h.from_status, h.to_status, h.reason, h.at, u.display_name AS actor FROM event_staff_history h LEFT JOIN users u ON u.id=h.actor_id WHERE h.assignment_id=$1 ORDER BY h.at, h.id', [a.id]);
+  const contract = await one("SELECT id, status FROM event_contracts WHERE assignment_id=$1 AND status <> 'void' ORDER BY created_at DESC LIMIT 1", [a.id]);
+  const data = a.application_data ?? {};
+  const sections = [];
+  for (const [sec, key, label, unit] of ANSWERS) {
+    if (data[key] === undefined || data[key] === null || data[key] === '' || (Array.isArray(data[key]) && !data[key].length)) continue;
+    let s = sections.find((x) => x.key === sec);
+    if (!s) sections.push(s = { key: sec, title: SECTION_TITLE[sec], rows: [] });
+    s.rows.push({ key, label, value: data[key], text: answerText(key, data[key], unit) });
+  }
+  const vendor = role.pay_direction === 'applicant_pays';
+  const amount = (c) => (c > 0 ? formatMinor(c, role.currency) : null);
+  return {
+    id: a.id, reference: `APP-${String(a.id).slice(0, 8).toUpperCase()}`, side, status: a.status, status_label: STATUS_LABEL[a.status] ?? a.status, source: a.source, submitted_at: a.created_at,
+    position: { id: role.id, role: role.role, title: role.title || ROLE_LABEL[role.role] || role.role, kind_label: ROLE_LABEL[role.role] ?? role.role, notes: role.notes, requirements: role.requirements, min_experience: role.min_experience, qualifications_required: role.qualifications_required, application_deadline: role.application_deadline, pay_direction: role.pay_direction },
+    event: { id: ev.id, name: ev.name, city: ev.city, starts_on: ev.starts_on, ends_on: ev.ends_on, dates: eventDates(ev), status: ev.status },
+    organiser: { id: ev.organizer_id, display_name: ev.organiser_name },
+    applicant: { id: applicant.id, display_name: applicant.display_name, handle: applicant.handle },
+    fee: { currency: role.currency, posted_cents: role.fee_cents, proposed_cents: a.proposed_fee_cents, agreed_cents: a.fee_cents, vendor,
+      posted: amount(role.fee_cents) ?? (vendor ? 'No stall fee' : 'Unpaid'), proposed: amount(a.proposed_fee_cents), agreed: amount(a.fee_cents) },
+    message: a.message ?? null, sections, documents: documents.map((d) => ({ ...d, kind: d.content_type === 'application/pdf' ? 'PDF' : 'Photo' })),
+    timeline: hist.map((h) => ({ at: h.at, from: h.from_status, to: h.to_status, label: STATUS_LABEL[h.to_status] ?? h.to_status, actor: h.actor, reason: h.reason })),
+    contract: contract ? { id: contract.id, status: contract.status, status_label: `Contract ${String(contract.status).replace(/_/g, ' ')}` } : null,
+    can: { add_documents: LIVE.includes(a.status) || a.status === 'invited', withdraw: side === 'applicant' && LIVE.includes(a.status) },
+  };
+}
+
+cap({
+  name: 'get_staff_application', method: 'GET', path: '/staff-assignments/:id/application', tag: 'Open positions',
+  summary: 'The full submitted application for an event position: the position and event, both parties, the cover statement, every answer grouped as on the form (with a readable label and text for each), the fees posted, proposed and agreed, the documents attached, the status history and any contract. Readable by the applicant and by the event organiser only; anyone else gets 404. Download it as a PDF with GET /staff-assignments/{id}/application.pdf.',
+  input: z.object({ id }),
+  handler: ({ user }, i) => applicationView(user, i.id),
+});
+
 cap({
   name: 'remove_staff_document', method: 'DELETE', path: '/staff-documents/:id', tag: 'Open positions',
   summary: 'Hide a document you uploaded to an application. The encrypted file and audit trail are kept.', input: z.object({ id }),
@@ -292,6 +357,20 @@ export function staffDocsRouter() {
       await notify(null, other, { kind: 'event_staff', title: 'New document on an application', body: `${user.display_name} added “${row.title}”.`, data: { event_id: a.event_id, assignment_id: a.id } });
       res.status(201).json({ ...row, url: `/api/v1/staff-documents/${did}/file` });
     } catch (e) { req.resume(); fail(res, e); }
+  });
+
+  // GET /api/v1/staff-assignments/:id/application.pdf — the submitted application as a document; needs the Authorization header and is audit-logged.
+  r.get('/staff-assignments/:id/application.pdf', limiter, async (req, res) => {
+    try {
+      const user = await authenticate(req.headers.authorization);
+      if (!user) throw unauthorized();
+      if (!/^[0-9a-f-]{36}$/.test(req.params.id)) throw notFound('Application');
+      const view = await applicationView(user, req.params.id);
+      const { buffer } = await renderApplication(view);
+      await audit(null, user.id, 'export_staff_application', 'event_staff_assignments', view.id);
+      res.set({ ...docHeaders('application/pdf', buffer), 'Content-Disposition': `inline; filename="application-${view.reference}.pdf"` });
+      res.end(buffer);
+    } catch (e) { fail(res, e); }
   });
 
   // GET /api/v1/staff-documents/:id/file — needs the Authorization header; every download is audit-logged.
