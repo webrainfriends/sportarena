@@ -157,7 +157,7 @@ export function createApp() {
       try {
         const user = await authenticate(req.headers.authorization);
         if (user?.id) trackApiCall(user.id); // fire-and-forget; never awaited
-        const body = ['POST', 'PATCH'].includes(c.method) ? { ...(req.body ?? {}) } : {};
+        const body = ['POST', 'PATCH', 'PUT'].includes(c.method) ? { ...(req.body ?? {}) } : {}; // PUT carries a body too: without it every full-replace capability saw an empty request
         const web = usesWebCookies(c, req);
         if (web && c.name === 'refresh_session' && !body.refresh_token && req.cookies?.[REFRESH_COOKIE]) body.refresh_token = req.cookies[REFRESH_COOKIE];
         let result = await invoke(c, user, { ...req.query, ...body, ...req.params }, { ip: req.ip, userAgent: req.headers['user-agent'] });

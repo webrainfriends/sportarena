@@ -235,8 +235,8 @@ cap({
     const { description_enc, rejection_reason_enc, ...rest } = exp;
     return {
       ...rest,
-      description: description_enc ? decrypt(description_enc) : null,
-      rejection_reason: rejection_reason_enc ? decrypt(rejection_reason_enc) : null,
+      description: description_enc ? decrypt(description_enc, 'official_expenses.description') : null,
+      rejection_reason: rejection_reason_enc ? decrypt(rejection_reason_enc, 'official_expenses.rejection_reason') : null,
     };
   },
 });
@@ -276,7 +276,7 @@ cap({
       `SELECT oe.id, oe.category, oe.amount_minor, oe.currency, oe.status,
               oe.fixture_official_id, oe.official_id, oe.batch_id, oe.receipt_doc_id,
               oe.submitted_at, oe.approved_at, oe.rejected_at, oe.created_at,
-              fo.role, f.name AS fixture_name, e.name AS event_name
+              fo.role, concat_ws(' v ', (SELECT t.name FROM teams t WHERE t.id=f.home_team_id), (SELECT t.name FROM teams t WHERE t.id=f.away_team_id)) AS fixture_name, e.name AS event_name
        FROM official_expenses oe
        JOIN fixture_officials fo ON fo.id = oe.fixture_official_id
        JOIN fixtures f ON f.id = fo.fixture_id
@@ -369,7 +369,7 @@ cap({
       await c.query(`UPDATE official_expense_batches SET status='submitted', submitted_at=now(), updated_at=now() WHERE id=$1`, [batch.id]);
 
       const orgRow = (await c.query(
-        'SELECT e.organizer_id FROM events e WHERE e.org_id=$1 AND e.organizer_id IS NOT NULL LIMIT 1',
+        'SELECT e.organizer_id FROM events e WHERE e.organisation_id=$1 AND e.organizer_id IS NOT NULL LIMIT 1',
         [batch.organisation_id],
       )).rows[0];
 
@@ -398,7 +398,7 @@ cap({
 
       // verify organiser owns this batch's organisation
       const orgCheck = (await c.query(
-        'SELECT 1 AS y FROM events WHERE org_id=$1 AND organizer_id=$2 LIMIT 1',
+        'SELECT 1 AS y FROM events WHERE organisation_id=$1 AND organizer_id=$2 LIMIT 1',
         [batch.organisation_id, user.id],
       )).rows[0];
       if (!orgCheck && !isAdmin(user)) throw notFound('expense batch');
@@ -424,13 +424,13 @@ cap({
     const batch = await one('SELECT * FROM official_expense_batches WHERE id=$1', [i.id]);
     if (!batch) throw notFound('expense batch');
 
-    const isOrg = !!(await one('SELECT 1 AS y FROM events WHERE org_id=$1 AND organizer_id=$2 LIMIT 1', [batch.organisation_id, user.id]));
+    const isOrg = !!(await one('SELECT 1 AS y FROM events WHERE organisation_id=$1 AND organizer_id=$2 LIMIT 1', [batch.organisation_id, user.id]));
     if (!isAdmin(user) && batch.official_id !== user.id && !isOrg) throw notFound('expense batch');
 
     const expenses = await many(
       `SELECT oe.id, oe.category, oe.amount_minor, oe.currency, oe.status,
               oe.receipt_doc_id, oe.submitted_at, oe.approved_at, oe.created_at,
-              fo.role, f.name AS fixture_name
+              fo.role, concat_ws(' v ', (SELECT t.name FROM teams t WHERE t.id=f.home_team_id), (SELECT t.name FROM teams t WHERE t.id=f.away_team_id)) AS fixture_name
        FROM official_expenses oe
        JOIN fixture_officials fo ON fo.id = oe.fixture_official_id
        JOIN fixtures f ON f.id = fo.fixture_id
@@ -462,7 +462,7 @@ cap({
     const wheres = [];
 
     if (!isAdmin(user)) {
-      wheres.push(`(oeb.official_id=$${params.push(user.id)} OR EXISTS(SELECT 1 FROM events WHERE org_id=oeb.organisation_id AND organizer_id=$${params.push(user.id)} LIMIT 1))`);
+      wheres.push(`(oeb.official_id=$${params.push(user.id)} OR EXISTS(SELECT 1 FROM events WHERE organisation_id=oeb.organisation_id AND organizer_id=$${params.push(user.id)} LIMIT 1))`);
     }
     if (i.official_id) wheres.push(`oeb.official_id=$${params.push(i.official_id)}`);
     if (i.organisation_id) wheres.push(`oeb.organisation_id=$${params.push(i.organisation_id)}`);

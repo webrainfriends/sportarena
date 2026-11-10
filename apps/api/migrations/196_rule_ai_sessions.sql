@@ -85,7 +85,7 @@ CREATE TABLE IF NOT EXISTS rule_ai_escalations (
   -- routing: escalation goes to the event organiser by default
   event_id                uuid        NOT NULL REFERENCES events(id),
   -- optionally routed to an assessor/federation body
-  routed_to_body_id       uuid        REFERENCES official_bodies(id),
+  routed_to_body_id       uuid        REFERENCES governing_bodies(id),
   status                  text        NOT NULL DEFAULT 'open'
                                       CHECK (status IN ('open','resolved','withdrawn')),
   resolved_by             uuid        REFERENCES users(id),
