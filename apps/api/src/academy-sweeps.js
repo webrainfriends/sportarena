@@ -46,12 +46,12 @@ export async function remindIntlDeadlines() {
      LIMIT 500`);
   for (const r of items) {
     for (const uid of await recipients(pool, { applicant_id: r.applicant_id, athlete_id: r.athlete_id })) {
-      await notify(null, uid, { kind: 'academy_intl_deadline', title: 'A relocation item needs attention', body: 'Open Gotmygame to see the details.', data: { organisation_id: r.organisation_id, application_id: r.application_id, case_id: r.case_id }, dedupe_key: `intl:deadline:${r.item_id}:${week}:${uid}` });
+      await notify(null, uid, { kind: 'academy_intl_deadline', title: 'A relocation item needs attention', body: 'Open GotMyGame to see the details.', data: { organisation_id: r.organisation_id, application_id: r.application_id, case_id: r.case_id }, dedupe_key: `intl:deadline:${r.item_id}:${week}:${uid}` });
       n++;
     }
   }
   const tasks = await many("SELECT t.id, t.owner_id, t.case_id, t.organisation_id FROM academy_arrival_tasks t WHERE t.status='open' AND t.owner_id IS NOT NULL AND t.due_on IS NOT NULL AND t.due_on <= CURRENT_DATE + 2 LIMIT 500");
-  for (const t of tasks) { await notify(null, t.owner_id, { kind: 'academy_intl_task', title: 'An arrival task is due soon', body: 'Open Gotmygame to see the details.', data: { organisation_id: t.organisation_id, case_id: t.case_id }, dedupe_key: `intl:task:${t.id}:${week}` }); n++; }
+  for (const t of tasks) { await notify(null, t.owner_id, { kind: 'academy_intl_task', title: 'An arrival task is due soon', body: 'Open GotMyGame to see the details.', data: { organisation_id: t.organisation_id, case_id: t.case_id }, dedupe_key: `intl:task:${t.id}:${week}` }); n++; }
   return n;
 }
 

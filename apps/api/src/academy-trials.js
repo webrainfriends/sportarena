@@ -17,7 +17,7 @@ export const labelOf = (s) => { const v = localView(s); return `${v.local_date} 
 /** Told about a trial change: the people who may hear about this athlete (the guardian for a young person). Generic wording, deep link to the source. */
 export async function tellTrial(c, app, session, kind, title, stamp = '') {
   for (const uid of await recipients(c, app)) {
-    await notify(c, uid, { kind: `academy_trial_${kind}`, title, body: 'Open Gotmygame to see the details.', data: { organisation_id: app.organisation_id, application_id: app.id, programme_id: app.programme_id, session_id: session.id }, dedupe_key: `academy:trial:${kind}:${app.id}:${session.id}:${stamp}:${uid}` });
+    await notify(c, uid, { kind: `academy_trial_${kind}`, title, body: 'Open GotMyGame to see the details.', data: { organisation_id: app.organisation_id, application_id: app.id, programme_id: app.programme_id, session_id: session.id }, dedupe_key: `academy:trial:${kind}:${app.id}:${session.id}:${stamp}:${uid}` });
   }
 }
 

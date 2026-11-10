@@ -160,7 +160,7 @@ cap({
         [i.organisation_id, athleteId, needs, sealNote(i.note, 'note'), i.audience_user_ids, i.audience_roles, user.id, as, `${i.expires_on}T23:59:59Z`, i.context, i.event_id ?? null, i.purpose_key ?? null, i.purpose ?? null],
       )).rows[0];
       await log(c, i.organisation_id, athleteId, 'share_granted', user.id, { type: 'share', id: row.id }, needs.map(typeOfNeed).join(','));
-      for (const u of i.audience_user_ids) await notify(c, u, { kind: 'academy_inclusion', title: 'An athlete shared an operational need with you', body: 'Open the session in Gotmygame to see what was shared with you.', data: { organisation_id: i.organisation_id }, dedupe_key: `incl:share:${row.id}:${u}` });
+      for (const u of i.audience_user_ids) await notify(c, u, { kind: 'academy_inclusion', title: 'An athlete shared an operational need with you', body: 'Open the session in GotMyGame to see what was shared with you.', data: { organisation_id: i.organisation_id }, dedupe_key: `incl:share:${row.id}:${u}` });
       await audit(c, user.id, 'share_accommodation', 'academy_accommodation_shares', row.id);
       return shareView(row, true, 0);
     });

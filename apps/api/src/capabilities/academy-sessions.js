@@ -264,7 +264,7 @@ cap({
       `UPDATE academy_sessions SET starts_at=$2, ends_at=$3, title=coalesce($4,title), capacity=CASE WHEN $5::boolean THEN $6 ELSE capacity END, self_checkin=coalesce($7,self_checkin), duty_roles=coalesce($8,duty_roles), geo_checkin=coalesce($9,geo_checkin), geo_radius_m=coalesce($10,geo_radius_m), row_version=row_version+1, updated_at=now() WHERE id=$1 RETURNING *`,
       [s.id, start, end, i.title ?? null, i.capacity !== undefined, i.capacity ?? null, i.self_checkin ?? null, i.duty_roles ?? null, i.geo_checkin ?? null, i.geo_radius_m ?? null])).rows[0];
     await change(c, s.id, moved ? 'rescheduled' : 'edited', user.id, i.reason, { starts_at: s.starts_at, ends_at: s.ends_at, title: s.title }, { starts_at: next.starts_at, ends_at: next.ends_at, title: next.title });
-    if (moved && s.status === 'published') await tellSession(c, next, 'rescheduled', 'A session was rescheduled', 'Open Gotmygame to see the new time.');
+    if (moved && s.status === 'published') await tellSession(c, next, 'rescheduled', 'A session was rescheduled', 'Open GotMyGame to see the new time.');
     const venue = await heldVenue(c, s.id);
     return { ...(await view(c, next)), venue_needs_review: !!venue && moved, notice: venue && moved ? 'The venue booking was not changed. Move or re-book it from the booking so cancellation and change rules apply.' : undefined };
   }),
@@ -289,7 +289,7 @@ cap({
       if (chk.compliance.level === 'warning' && !i.acknowledge_warnings) { results.push({ session_id: sid, published: false, reason: 'staffing warnings need acknowledgement', compliance: chk.compliance }); continue; }
       const next = (await c.query("UPDATE academy_sessions SET status='published', row_version=row_version+1, updated_at=now() WHERE id=$1 RETURNING *", [sid])).rows[0];
       await change(c, sid, 'published', user.id, chk.compliance.level === 'warning' ? 'published with acknowledged warnings' : null, null, { level: chk.compliance.level });
-      await tellSession(c, next, 'published', 'A session was scheduled', 'Open Gotmygame to see the schedule.', { staff: true, athletes: true });
+      await tellSession(c, next, 'published', 'A session was scheduled', 'Open GotMyGame to see the schedule.', { staff: true, athletes: true });
       results.push({ session_id: sid, published: true, compliance: chk.compliance.level });
     }
     return { results, published: results.filter((r) => r.published).length };
@@ -310,7 +310,7 @@ cap({
     await c.query(
       `INSERT INTO academy_attendance_log(session_id, user_id, from_status, to_status, source, actor_id, reason) SELECT session_id, user_id, status, 'not_held', 'system', $2, 'session cancelled' FROM academy_attendance WHERE session_id=$1 AND status <> 'not_held'`, [s.id, user.id]);
     await c.query("UPDATE academy_attendance SET status='not_held', row_version=row_version+1 WHERE session_id=$1", [s.id]);
-    if (s.status === 'published') await tellSession(c, next, 'cancelled', 'A session was cancelled', 'Open Gotmygame to see what changed.');
+    if (s.status === 'published') await tellSession(c, next, 'cancelled', 'A session was cancelled', 'Open GotMyGame to see what changed.');
     await c.query("UPDATE academy_session_staff SET status='removed', updated_at=now() WHERE session_id=$1 AND status IN ('assigned','confirmed')", [s.id]);
     return { ...(await view(c, next)), venue_booking_to_review: await heldVenue(c, s.id) };
   }),
@@ -341,8 +341,8 @@ cap({
     if (i.role === 'lead') await c.query("UPDATE academy_session_staff SET status='removed', updated_at=now() WHERE session_id=$1 AND role='lead' AND status IN ('assigned','confirmed')", [s.id]);
     await c.query('INSERT INTO academy_session_staff(session_id, user_id, role, duty_label, assigned_by, replaced_for) VALUES ($1,$2,$3,$4,$5,$6)', [s.id, i.user_id, i.role, i.role === 'duty' ? (i.duty_label ?? 'duty') : null, user.id, i.replaces ?? null]);
     await change(c, s.id, i.replaces ? 'staff_replaced' : 'staff_assigned', user.id, null, i.replaces ? { user_id: i.replaces } : null, { user_id: i.user_id, role: i.role });
-    await notify(c, i.user_id, { kind: 'academy_assignment', title: 'You were assigned to an academy session', body: 'Open Gotmygame to confirm.', data: { session_id: s.id, organisation_id: s.organisation_id }, dedupe_key: `academy-assign:${s.id}:${i.user_id}:${s.row_version}:${i.role}` });
-    if (i.replaces) await notify(c, i.replaces, { kind: 'academy_assignment_removed', title: 'You were replaced on an academy session', body: 'Open Gotmygame for details.', data: { session_id: s.id }, dedupe_key: `academy-replaced:${s.id}:${i.replaces}:${s.row_version}` });
+    await notify(c, i.user_id, { kind: 'academy_assignment', title: 'You were assigned to an academy session', body: 'Open GotMyGame to confirm.', data: { session_id: s.id, organisation_id: s.organisation_id }, dedupe_key: `academy-assign:${s.id}:${i.user_id}:${s.row_version}:${i.role}` });
+    if (i.replaces) await notify(c, i.replaces, { kind: 'academy_assignment_removed', title: 'You were replaced on an academy session', body: 'Open GotMyGame for details.', data: { session_id: s.id }, dedupe_key: `academy-replaced:${s.id}:${i.replaces}:${s.row_version}` });
     return view(c, s);
   }),
 });
@@ -356,7 +356,7 @@ cap({
     const r = await c.query("UPDATE academy_session_staff SET status='removed', updated_at=now() WHERE session_id=$1 AND user_id=$2 AND status IN ('assigned','confirmed') RETURNING role", [s.id, i.user_id]);
     if (!r.rowCount) throw notFound('Assignment');
     await change(c, s.id, 'staff_removed', user.id, i.reason, { user_id: i.user_id, role: r.rows[0].role }, null);
-    await notify(c, i.user_id, { kind: 'academy_assignment_removed', title: 'You were removed from an academy session', body: 'Open Gotmygame for details.', data: { session_id: s.id } });
+    await notify(c, i.user_id, { kind: 'academy_assignment_removed', title: 'You were removed from an academy session', body: 'Open GotMyGame for details.', data: { session_id: s.id } });
     return view(c, s);
   }),
 });

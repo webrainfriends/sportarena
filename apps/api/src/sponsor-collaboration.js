@@ -161,7 +161,7 @@ export async function notifyTask(c, userIds, t, milestone, { cycle = t.reminder_
   for (const uid of new Set(userIds)) {
     if (!uid || uid === except) continue;
     const n = await notify(c, uid, {
-      kind, title: TITLE[milestone], body: 'Open Gotmygame to see it.',
+      kind, title: TITLE[milestone], body: 'Open GotMyGame to see it.',
       data: { ...(t.sponsorship_id ? { sponsorship_id: t.sponsorship_id } : { program_id: t.program_id }), task_id: t.id },
       dedupe_key: `sptask:${t.id}:${cycle}:${milestone}:${uid}`,
     });

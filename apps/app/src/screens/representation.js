@@ -131,7 +131,7 @@ function FindAgent({ visible, onClose, athleteId, onDone }) {
   return (
     <>
       <Sheet visible={visible && !form} onClose={onClose} title="Find an agent">
-        <Note tone={c.violetSoft}>Listed agents are verified by SportArena, and the profile says what was checked. Being listed is not an endorsement and gives no access to anything: only a mandate you agree does.</Note>
+        <Note tone={c.violetSoft}>Listed agents are verified by GotMyGame, and the profile says what was checked. Being listed is not an endorsement and gives no access to anything: only a mandate you agree does.</Note>
         <Field value={qText} onChangeText={setQText} placeholder="Search by name" />
         <SportPicker label="Sport" optional value={sport} onChange={setSport} />
         {found.loading ? <Loading /> : found.data?.length ? found.data.map((a) => (

@@ -283,14 +283,14 @@ cap({
 
 cap({
   name: 'get_signature_policy', method: 'GET', path: '/signature-policy', tag: TAG,
-  summary: 'Which signature level a country expects for a sponsorship contract and whether each signing provider meets it (simple = signed in Sportarena; advanced = external vendor such as DocuSign). Use it to choose the provider before send. Providers that are not configured show enabled:false. rules is the per-country table (for a client-side hint).',
+  summary: 'Which signature level a country expects for a sponsorship contract and whether each signing provider meets it (simple = signed in GotMyGame; advanced = external vendor such as DocuSign). Use it to choose the provider before send. Providers that are not configured show enabled:false. rules is the per-country table (for a client-side hint).',
   input: z.object({ country: z.string().length(2).toUpperCase().optional() }),
   async handler(_ctx, i) { return { rule: ruleFor(i.country), rules: POLICY, default_rule: DEFAULT_RULE, providers: providerList().map((p) => ({ ...p, check: checkLevel(i.country, p.level) })) }; },
 });
 
 cap({
   name: 'request_contract_signatures', method: 'POST', path: '/sponsorship-contracts/:id/request-signatures', tag: TAG,
-  summary: 'Send a draft for signature: locks the text and asks every named signatory to sign. Needs at least one signatory on each side and the agreement still at the contract\'s terms version. provider "internal" (default) has people sign in Sportarena (simple electronic signature); "docusign" creates a signing request with the vendor (advanced signature, each signatory is emailed by the vendor) and the vendor\'s callback records the signatures. jurisdiction (ISO country) checks the provider meets that country\'s expected level.',
+  summary: 'Send a draft for signature: locks the text and asks every named signatory to sign. Needs at least one signatory on each side and the agreement still at the contract\'s terms version. provider "internal" (default) has people sign in GotMyGame (simple electronic signature); "docusign" creates a signing request with the vendor (advanced signature, each signatory is emailed by the vendor) and the vendor\'s callback records the signatures. jurisdiction (ISO country) checks the provider meets that country\'s expected level.',
   input: z.object({ id, row_version: z.number().int().min(1), provider: z.enum(['internal', 'docusign']).default('internal'), jurisdiction: z.string().length(2).toUpperCase().optional() }),
   async handler({ user }, i) {
     requireApproved(user);
@@ -322,7 +322,7 @@ cap({
         for (const s of (await c.query("SELECT user_id FROM sponsorship_signatories WHERE contract_id=$1 AND status='pending'", [row.id])).rows)
           await notify(c, s.user_id, { kind: 'sponsorship_contract', title: 'A sponsorship contract needs your signature', body: sent ? `${p.label} has emailed you the contract to sign.` : 'Review the contract and sign it on the agreement.', data: { sponsorship_id: row.sponsorship_id, contract_id: row.id }, dedupe_key: `contract-request:${row.id}:${s.user_id}` });
       } catch (e) {
-        if (sent) await voidDocusignRequest(sent.external_ref, 'Could not be recorded').catch(() => {}); // do not leave a live envelope Sportarena does not know about
+        if (sent) await voidDocusignRequest(sent.external_ref, 'Could not be recorded').catch(() => {}); // do not leave a live envelope GotMyGame does not know about
         throw e;
       }
     });
@@ -333,7 +333,7 @@ cap({
 
 cap({
   name: 'sign_sponsorship_contract', method: 'POST', path: '/sponsorship-contracts/:id/sign', tag: TAG,
-  summary: 'Sign a contract in Sportarena. You must be a named signatory who still has authority to bind your side, and document_sha256 must be the fingerprint of the exact text you reviewed (get_sponsorship_contract returns it); a changed text or revised agreement is refused (409). Signing twice is harmless and returns the existing signature. The last signature seals the contract into an immutable signed PDF.',
+  summary: 'Sign a contract in GotMyGame. You must be a named signatory who still has authority to bind your side, and document_sha256 must be the fingerprint of the exact text you reviewed (get_sponsorship_contract returns it); a changed text or revised agreement is refused (409). Signing twice is harmless and returns the existing signature. The last signature seals the contract into an immutable signed PDF.',
   input: z.object({ id, document_sha256: z.string().regex(/^[0-9a-f]{64}$/), agree: z.literal(true).describe('confirms you have read the contract and intend to be bound by it') }),
   async handler({ user }, i) {
     requireApproved(user);

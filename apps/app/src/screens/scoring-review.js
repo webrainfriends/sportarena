@@ -251,7 +251,7 @@ export function UploadFlow({ onDone, resumeId }) {
   if (!imp) {
     return (
       <View style={{ gap: 12 }}>
-        <T color={c.mute}>Upload a PDF, photo or scan of a completed SportArena sheet. You review what was read before anything is saved, and it stays unofficial until you link it to a game and officials approve it.</T>
+        <T color={c.mute}>Upload a PDF, photo or scan of a completed GotMyGame sheet. You review what was read before anything is saved, and it stays unofficial until you link it to a game and officials approve it.</T>
         <SportSelect label="Sport" value={sport} onChange={setSport} />
         <Btn title="Choose a file" disabled={!sport} loading={busy} onPress={choose} />
         {(pending.data ?? []).length ? (

@@ -436,7 +436,7 @@ cap({
     await licForDeliverables(user, i.id);
     const items = await many(`SELECT ${DEL_VIEW} FROM ${DEL_FROM} WHERE d.licence_id=$1 ORDER BY d.due_at NULLS LAST, d.created_at`, [i.id]);
     const measured = await many('SELECT id, deliverable_id, stream_id, metric, value, period_start, period_end, source_name, source_ref, created_at FROM mr_measurements WHERE licence_id=$1 ORDER BY period_end DESC LIMIT 200', [i.id]);
-    return { items, measurements: measured, note: measured.length ? 'Reach shown is as reported by each named source.' : 'No measured reach has been recorded. SportArena does not estimate impressions or ROI.' };
+    return { items, measurements: measured, note: measured.length ? 'Reach shown is as reported by each named source.' : 'No measured reach has been recorded. GotMyGame does not estimate impressions or ROI.' };
   },
 });
 

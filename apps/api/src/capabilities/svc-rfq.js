@@ -80,7 +80,7 @@ cap({
         if (p.status !== 'active') throw conflict('A supplier you chose is suspended or archived and cannot be invited');
         if (p.owner_id === user.id) throw badRequest('You cannot invite your own supplier profile');
         const inv = (await c.query('INSERT INTO svc_invites(rfq_id, profile_id) VALUES ($1,$2) ON CONFLICT (rfq_id, profile_id) DO NOTHING RETURNING *', [r.id, p.id])).rows[0];
-        if (inv) { out.push(inv); if (r.status !== 'draft') await tell(c, await supplierAudience(c, p.id), { kind: 'svc_rfq_invited', title: 'New request for quotation', body: `${buyer.name} invited you to quote. Open Gotmygame to respond.`, data: { rfq_id: r.id, invite_id: inv.id }, dedupe_key: `svc:inv:${inv.id}` }, user.id); }
+        if (inv) { out.push(inv); if (r.status !== 'draft') await tell(c, await supplierAudience(c, p.id), { kind: 'svc_rfq_invited', title: 'New request for quotation', body: `${buyer.name} invited you to quote. Open GotMyGame to respond.`, data: { rfq_id: r.id, invite_id: inv.id }, dedupe_key: `svc:inv:${inv.id}` }, user.id); }
       }
       return out;
     });
@@ -100,7 +100,7 @@ cap({
       if (!invs.length && r.audience === 'invited') throw badRequest('Invite at least one supplier, or publish the RFQ');
       const row = (await c.query("UPDATE svc_rfqs SET status='issued', row_version=row_version+1, updated_at=now() WHERE id=$1 RETURNING *", [r.id])).rows[0];
       await c.query("UPDATE svc_requirements SET status='needs_quotes', updated_at=now() WHERE id=$1 AND status='draft'", [r.requirement_id]);
-      for (const inv of invs) await tell(c, await supplierAudience(c, inv.profile_id), { kind: 'svc_rfq_invited', title: 'New request for quotation', body: `${buyer.name} invited you to quote. Open Gotmygame to respond.`, data: { rfq_id: r.id, invite_id: inv.id }, dedupe_key: `svc:inv:${inv.id}` }, user.id);
+      for (const inv of invs) await tell(c, await supplierAudience(c, inv.profile_id), { kind: 'svc_rfq_invited', title: 'New request for quotation', body: `${buyer.name} invited you to quote. Open GotMyGame to respond.`, data: { rfq_id: r.id, invite_id: inv.id }, dedupe_key: `svc:inv:${inv.id}` }, user.id);
       await log(c, 'rfq', r.id, user.id, 'issued');
       return row;
     });
@@ -265,7 +265,7 @@ cap({
       const status = { accept: 'accepted', decline: 'declined', request_site_visit: 'site_visit_requested' }[i.action];
       const row = (await c.query('UPDATE svc_invites SET status=$2, reason=$3, site_visit_at=$4, responded_at=now() WHERE id=$1 RETURNING *', [inv.id, status, i.reason ?? null, i.site_visit_at ?? null])).rows[0];
       if (i.action === 'decline') await c.query("UPDATE svc_quotes SET status='withdrawn' WHERE invite_id=$1 AND status IN ('draft','submitted','shortlisted')", [inv.id]);
-      await tell(c, await (await import('./svc-rfq.js')).buyerAudience(c, r.buyer_id, ['requester', 'purchaser']), { kind: 'svc_rfq_response', title: 'A supplier responded to your RFQ', body: 'Open Gotmygame to see the response.', data: { rfq_id: r.id }, dedupe_key: `svc:resp:${inv.id}:${status}` }, user.id);
+      await tell(c, await (await import('./svc-rfq.js')).buyerAudience(c, r.buyer_id, ['requester', 'purchaser']), { kind: 'svc_rfq_response', title: 'A supplier responded to your RFQ', body: 'Open GotMyGame to see the response.', data: { rfq_id: r.id }, dedupe_key: `svc:resp:${inv.id}:${status}` }, user.id);
       return row;
     });
   },
@@ -281,7 +281,7 @@ cap({
       if (buyerSide) {
         if (!['draft', ...OPEN].includes(r.status)) throw conflict(`RFQ is ${r.status}`);
         const row = (await c.query("INSERT INTO svc_clarifications(rfq_id, author_id, author_side, body, shared, answers_id, attachments) VALUES ($1,$2,'buyer',$3,$4,$5,$6) RETURNING *", [r.id, user.id, i.body, i.shared || !i.answers_id, i.answers_id ?? null, JSON.stringify(i.attachments)])).rows[0];
-        if (row.shared) for (const v of (await c.query("SELECT profile_id FROM svc_invites WHERE rfq_id=$1 AND status NOT IN ('declined','closed')", [r.id])).rows) await tell(c, await supplierAudience(c, v.profile_id), { kind: 'svc_rfq_clarification', title: 'RFQ clarification', body: 'The buyer shared a clarification. Open Gotmygame to read it.', data: { rfq_id: r.id }, dedupe_key: `svc:clar:${row.id}:${v.profile_id}` }, user.id);
+        if (row.shared) for (const v of (await c.query("SELECT profile_id FROM svc_invites WHERE rfq_id=$1 AND status NOT IN ('declined','closed')", [r.id])).rows) await tell(c, await supplierAudience(c, v.profile_id), { kind: 'svc_rfq_clarification', title: 'RFQ clarification', body: 'The buyer shared a clarification. Open GotMyGame to read it.', data: { rfq_id: r.id }, dedupe_key: `svc:clar:${row.id}:${v.profile_id}` }, user.id);
         else if (i.answers_id) { const q0 = (await c.query('SELECT invite_id FROM svc_clarifications WHERE id=$1', [i.answers_id])).rows[0]; if (q0?.invite_id) await c.query('UPDATE svc_clarifications SET invite_id=$2 WHERE id=$1', [row.id, q0.invite_id]); }
         return row;
       }
@@ -357,7 +357,7 @@ cap({
         await c.query("UPDATE svc_invites SET status='quoted', responded_at=coalesce(responded_at, now()) WHERE id=$1", [inv.id]);
         await c.query("UPDATE svc_rfqs SET status='quoting', updated_at=now() WHERE id=$1 AND status='issued'", [r.id]);
         await c.query("UPDATE svc_requirements SET status='quoting', updated_at=now() WHERE id=$1 AND status='needs_quotes'", [r.requirement_id]);
-        await tell(c, await buyerAudience(c, r.buyer_id, ['requester', 'evaluator', 'purchaser']), { kind: 'svc_quote_submitted', title: 'A quote arrived', body: 'A supplier submitted a quote. Open Gotmygame to review it.', data: { rfq_id: r.id }, dedupe_key: `svc:quote:${q.id}` }, user.id);
+        await tell(c, await buyerAudience(c, r.buyer_id, ['requester', 'evaluator', 'purchaser']), { kind: 'svc_quote_submitted', title: 'A quote arrived', body: 'A supplier submitted a quote. Open GotMyGame to review it.', data: { rfq_id: r.id }, dedupe_key: `svc:quote:${q.id}` }, user.id);
       }
       await log(c, 'quote', q.id, user.id, i.submit ? 'submitted' : 'drafted', { version: q.version });
       return { ...q, lines: t.lines };
@@ -585,7 +585,7 @@ cap({
       if (needs) {
         const ap = (await c.query("INSERT INTO svc_approvals(buyer_id, subject_type, subject_id, rfq_id, amount_minor, currency, requested_by, payload) VALUES ($1,'award',$2,$2,$3,$4,$5,$6) RETURNING *", [r.buyer_id, r.id, total, sameCur ? r.currency : 'MIXED', user.id, { awards: i.awards, justification: i.justification ?? null, respondents }])).rows[0];
         await c.query("UPDATE svc_rfqs SET status='approval_pending', row_version=row_version+1, updated_at=now() WHERE id=$1", [r.id]);
-        await tell(c, await buyerAudience(c, r.buyer_id, ['approver']), { kind: 'svc_approval_requested', title: 'An award needs your approval', body: 'Open Gotmygame to review and decide.', data: { approval_id: ap.id }, dedupe_key: `svc:ap:${ap.id}` }, user.id);
+        await tell(c, await buyerAudience(c, r.buyer_id, ['approver']), { kind: 'svc_approval_requested', title: 'An award needs your approval', body: 'Open GotMyGame to review and decide.', data: { approval_id: ap.id }, dedupe_key: `svc:ap:${ap.id}` }, user.id);
         return { status: 'approval_pending', approval: ap };
       }
       const orders = await createOrders(c, r, i.awards, user, { justification: i.justification });

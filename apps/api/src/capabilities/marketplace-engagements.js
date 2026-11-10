@@ -271,12 +271,12 @@ async function documentOf(user, engagementId, type) {
       { heading: 'The engagement', kind: 'kv', rows: [['Service', e.title], ['Category', FAMILY[e.family]?.label ?? e.family], ['Agreed amount', amount(e.agreed_minor, e.currency)], ['Offer', q ? `version ${q.version}${q.valid_until ? `, valid until ${day(q.valid_until)}` : ''}` : ''], ['Scheduled', e.starts_at ? `${e.starts_at.toISOString().slice(0, 16).replace('T', ' ')} UTC` : 'to be scheduled']] },
       ...(q?.terms_enc ? [{ heading: 'Scope and conditions', kind: 'text', text: decrypt(q.terms_enc, ctx.terms) }] : []),
       { heading: 'Signed', kind: 'kv', rows: (await many('SELECT s.side, s.signed_at, u.display_name FROM marketplace_contract_signatures s JOIN users u ON u.id=s.user_id WHERE s.engagement_id=$1 ORDER BY s.side DESC', [e.id])).map((x) => [x.side === 'provider' ? 'Provider' : 'Client', `${x.display_name} · ${day(x.signed_at)}`]) },
-      { heading: 'Acceptance', kind: 'text', text: `Both parties accepted these terms in Gotmygame on ${day(e.contracted_at)}. Terms fingerprint (SHA-256): ${e.terms_sha256}.` }], footnote: 'General wording, not legal advice. The agreed terms above are the record of what both parties accepted.' } };
+      { heading: 'Acceptance', kind: 'text', text: `Both parties accepted these terms in GotMyGame on ${day(e.contracted_at)}. Terms fingerprint (SHA-256): ${e.terms_sha256}.` }], footnote: 'General wording, not legal advice. The agreed terms above are the record of what both parties accepted.' } };
   }
   if (!e.invoice_number) throw conflict('There is no invoice yet; it is raised when the buyer accepts delivery');
   return { version: null, doc: { title: 'Invoice', number: e.invoice_number, status: e.paid_at ? `paid ${day(e.paid_at)}` : 'unpaid', issued_at: e.invoiced_at, parties: [{ label: 'From', lines: parties[0].lines }, { label: 'Bill to', lines: parties[1].lines }],
     sections: [{ heading: 'Services', kind: 'table', columns: [{ t: 'Description', w: 4 }, { t: 'Amount', w: 1, a: 'right' }], rows: [[`${e.title} (contract ${e.contract_number})`, amount(e.agreed_minor, e.currency)]] }], totals: [['Total', amount(e.agreed_minor, e.currency), true]],
-    footnote: 'Paid through Gotmygame. Platform commission is settled with the provider separately and is not part of this invoice.' } };
+    footnote: 'Paid through GotMyGame. Platform commission is settled with the provider separately and is not part of this invoice.' } };
 }
 export const marketplaceDocumentAccess = (user, engagementId) => loadEngagement(user, engagementId);
 

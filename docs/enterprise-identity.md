@@ -1,6 +1,6 @@
 # Enterprise identity & provisioning (#521)
 
-One canonical Gotmygame person (`users`) may hold a role in several organisations. An organisation's identity provider (OIDC or SAML 2.0)
+One canonical GotMyGame person (`users`) may hold a role in several organisations. An organisation's identity provider (OIDC or SAML 2.0)
 and directory (SCIM 2.0) only ever add, change or end **that organisation's own `organisation_members` row**. They never write
 `users.roles`, never touch another organisation, and never delete the person or their history.
 

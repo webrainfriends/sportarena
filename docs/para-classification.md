@@ -1,6 +1,6 @@
 # Para-sport classification & eligibility (#488)
 
-A competition class is an **administrative sporting classification, not a medical diagnosis**. SportArena holds the minimum a competition needs
+A competition class is an **administrative sporting classification, not a medical diagnosis**. GotMyGame holds the minimum a competition needs
 (class, status, dates, issuing authority, decision reference, rules version) and keeps the workflow and any supporting evidence apart from it.
 Clinical records and diagnosis stay in Health or approved external systems; nothing here duplicates them (the `para_*` tables have no
 diagnosis, impairment, medication or treatment columns, and a test asserts it).

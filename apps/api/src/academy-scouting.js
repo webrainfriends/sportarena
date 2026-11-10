@@ -157,7 +157,7 @@ export async function presentEntry(row, { withIdentity = true } = {}) {
 /** Tell the athlete (or the guardians of a young person) that scouting activity touched them. Generic wording only. */
 export async function tellAthlete(c, athleteId, kind, title, data, dedupe) {
   const to = (await isYouth(athleteId, c)) ? await guardiansOf(athleteId, c) : [athleteId];
-  for (const uid of to) await notify(c, uid, { kind: `academy_scouting_${kind}`, title, body: 'Open Gotmygame to see the details.', data, dedupe_key: `scouting:${kind}:${dedupe}:${uid}` });
+  for (const uid of to) await notify(c, uid, { kind: `academy_scouting_${kind}`, title, body: 'Open GotMyGame to see the details.', data, dedupe_key: `scouting:${kind}:${dedupe}:${uid}` });
 }
 
 export const stale = () => conflict('This was changed by someone else. Reload and try again.');

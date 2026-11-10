@@ -391,7 +391,7 @@ test('data feeds: only with the data-feed right, credential issued by the partne
   assert.ok(!JSON.stringify(must(await api('GET', `/events/${ev.id}/media/feeds`, { token: org.token }))).includes(tok), 'the secret is never listed');
   const get = (dataset, token = tok, query) => api('GET', `/media/feed/events/${ev.id}/${dataset}`, { token, query });
   const fx = must(await get('fixtures'));
-  assert.equal(fx.data.length, 1); assert.equal(fx.source, 'SportArena official scoring and results');
+  assert.equal(fx.data.length, 1); assert.equal(fx.source, 'GotMyGame official scoring and results');
   assert.ok(!JSON.stringify(fx).match(/email|phone|dob|player/i), 'no player or contact data');
   must(await get('standings'));   // second and last call in the window
   const limited = await get('results');

@@ -123,7 +123,7 @@ export function TermsForm({ value: f, onChange, currency, hasTeam = true, lockSt
       </View>
       {hasTeam ? <Counter label="Games the club expects (for the value only)" value={f.expected_games} onChange={(v) => set({ expected_games: v })} min={0} max={500} /> : null}
       <Counter label="Tax withheld by the club" value={f.withholding_pct} onChange={(v) => set({ withholding_pct: v })} min={0} max={50} step={0.5} suffix="%" />
-      <T size={12} color={c.mute} style={{ marginTop: -8 }}>A rate the club enters. It is recorded on every payment line; SportArena does not calculate or file tax.</T>
+      <T size={12} color={c.mute} style={{ marginTop: -8 }}>A rate the club enters. It is recorded on every payment line; GotMyGame does not calculate or file tax.</T>
       <Field label={`Expense limit per claim (${currency}, optional)`} value={f.expense_cap} onChangeText={(t) => set({ expense_cap: t.replace(/[^0-9.,]/g, '') })} keyboardType="decimal-pad" placeholder="No limit" />
       <Counter label="Days to pay after it is earned" value={f.pay_terms_days} onChange={(v) => set({ pay_terms_days: v })} min={0} max={120} />
     </View>
@@ -152,7 +152,7 @@ export function Ladder({ ladder, currency, compact }) {
         <Tile label="Owed now" value={cash(ladder.owed_cents, cur)} tone={Number(ladder.owed_cents) > 0 ? c.pinkSoft : c.violetSoft} />
       </View>
       {Number(ladder.adjustments_cents) || Number(ladder.refunded_cents) ? <T size={12} color={c.mute}>Adjustments {cash(ladder.adjustments_cents, cur)} · refunds received {cash(ladder.refunded_cents, cur)}</T> : null}
-      {!compact ? <T size={12} color={c.mute}>Contract value is what the terms could pay. It is not income. Earned needs a played game or a due date on the record. Paid means the club recorded a transfer; SportArena does not hold this money.</T> : null}
+      {!compact ? <T size={12} color={c.mute}>Contract value is what the terms could pay. It is not income. Earned needs a played game or a due date on the record. Paid means the club recorded a transfer; GotMyGame does not hold this money.</T> : null}
       {Number(ladder.owed_cents) < 0 ? <T size={12} color={c.orange} weight="700">The balance is negative: this person owes the club. It is settled by the next payment or a refund, and nothing is paid out while it is negative.</T> : null}
     </View>
   );

@@ -1,5 +1,5 @@
 // Official fee and payment status (#88). The organiser records an agreed fee on an official assignment and where it stands; the official confirms
-// receipt or disputes it. This is a record, not a ledger: money that moves through SportArena settles through #71, and a status here never means
+// receipt or disputes it. This is a record, not a ledger: money that moves through GotMyGame settles through #71, and a status here never means
 // a payout happened unless the organiser recorded it. Every change is kept in an append-only log.
 // #701: `paid` is no longer typed in. The organiser marks a fee `due`; the platform team pays it in a payout batch (src/payouts.js), which sets `paid`
 // and links the log entry to the payout that settled it.

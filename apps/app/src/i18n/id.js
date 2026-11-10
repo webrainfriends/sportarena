@@ -2701,7 +2701,7 @@ export default {
   'spl.empty_exposure': 'Belum ada angka yang dicatat',
   'spl.empty_cal': 'Tidak ada yang dijadwalkan pada periode ini',
   'spl.empty_renew': 'Tidak ada perjanjian dalam periode perpanjangan',
-  'spl.prov_note': 'Terukur = dihitung oleh Sportarena. Impor = diberikan penyedia yang disebutkan. Perkiraan = dari asumsi yang Anda tetapkan. ROI tidak pernah dikarang.',
+  'spl.prov_note': 'Terukur = dihitung oleh GotMyGame. Impor = diberikan penyedia yang disebutkan. Perkiraan = dari asumsi yang Anda tetapkan. ROI tidak pernah dikarang.',
   'spl.territory': 'Wilayah',
   'spl.countries': 'Negara',
   'spl.platforms': 'Platform',
@@ -4263,7 +4263,7 @@ export default {
   "tpart.saved": "Tersimpan",
   "tpart.rotate": "Putar rahasia callback",
   "tpart.creds_note": "Kosongkan alamat dan kunci untuk mempertahankan yang tersimpan. Menjeda menghentikan pencarian baru; pemesanan yang sudah dibuat tetap dapat dikonfirmasi atau dibatalkan.",
-  "tpart.contract_note": "Mitra harus memahami kontrak perjalanan SportArena (cari, tahan, pesan, batalkan) pada alamat yang Anda berikan. Kredensial disimpan terenkripsi dan tidak pernah ditampilkan lagi.",
+  "tpart.contract_note": "Mitra harus memahami kontrak perjalanan GotMyGame (cari, tahan, pesan, batalkan) pada alamat yang Anda berikan. Kredensial disimpan terenkripsi dan tidak pernah ditampilkan lagi.",
   "tpart.secret_title": "Rahasia callback",
   "tpart.secret_note": "Hanya ditampilkan sekali. Mitra menandatangani setiap perubahan atau pembatalan dengannya (HMAC-SHA256, header x-sportarena-signature).",
   "tpart.callback": "Alamat callback",
@@ -6564,7 +6564,7 @@ export default {
   'autopay.unavailable': 'Pembayaran otomatis belum tersedia untuk mata uang atau negara ini.',
   'autopay.opened': 'Setujui di halaman penyedia yang terbuka, lalu kembali ke sini.',
   'autopay.check': 'Saya sudah menyetujui, periksa sekarang',
-  'autopay.cardNote': 'Anda memasukkan kartu di halaman milik penyedia pembayaran. Gotmygame tidak pernah melihat atau menyimpan nomor kartu.',
+  'autopay.cardNote': 'Anda memasukkan kartu di halaman milik penyedia pembayaran. GotMyGame tidak pernah melihat atau menyimpan nomor kartu.',
   'autopay.guardian': 'Sebagai wali terverifikasi, Anda mengizinkan ini untuk {name}. Ini berhenti jika tautan wali atau persetujuan pelatihan berakhir.',
   'autopay.stopped': 'Dihentikan',
   'autopay.offNote': 'Nonaktif. Setiap bulan Anda diminta membayar, seperti sebelumnya.',
@@ -7851,7 +7851,7 @@ export default {
   'dp.disc.other': 'Lainnya',
   'dp.school': 'Ringkasan sekolah',
   'dp.school_family_note': 'Pilih catatan sekolah Anda yang boleh ditampilkan rencana ini. Hanya jenis, sekolah, dan tanggal yang muncul; teks ringkasan tidak pernah disalin. Matikan kapan saja.',
-  'dp.school_none_family': 'Anda belum memiliki catatan sekolah di Gotmygame.',
+  'dp.school_none_family': 'Anda belum memiliki catatan sekolah di GotMyGame.',
   'dp.school_none_staff': 'Atlet atau wali belum memilih untuk menampilkan catatan sekolah apa pun.',
   'dp.school_note': 'Dibaca dari catatan atlet sendiri, hanya sesuai pilihan mereka.',
   'dp.school_issued': 'diterbitkan oleh sekolah',
@@ -12344,7 +12344,7 @@ export default {
   'inc.cprefs_sub': 'Shared only with staff holding an active communication need share with you.',
   'inc.cprefs_mode_label': 'Preferred contact mode',
   'inc.cprefs_mode_app': 'In-app notification',
-  'inc.cprefs_mode_app_sub': 'Via Sportarena push notification',
+  'inc.cprefs_mode_app_sub': 'Via GotMyGame push notification',
   'inc.cprefs_mode_email': 'Email',
   'inc.cprefs_mode_email_sub': 'To your registered email address',
   'inc.cprefs_mode_sms': 'SMS / text message',
@@ -13393,7 +13393,7 @@ export default {
   'pl.path.modules': '{n} modules',
   'pl.path.minutes': '{n} min',
   'pl.path.publisher': 'By {name}',
-  'pl.path.platform': 'By Sportarena',
+  'pl.path.platform': 'By GotMyGame',
   'pl.path.objectives': 'What you will learn',
   'pl.path.start': 'Start path',
   'pl.path.resume': 'Resume path',
@@ -16794,7 +16794,7 @@ export default {
   'calendarSync.activeLabel': 'Active', // reviewed: false
   'calendarSync.disabledLabel': 'Switched off', // reviewed: false
   'calendarSync.noFeeds': 'No links yet', // reviewed: false
-  'calendarSync.noFeedsSub': 'Create one to see your Sportarena schedule in Apple Calendar, Google or Outlook.', // reviewed: false
+  'calendarSync.noFeedsSub': 'Create one to see your GotMyGame schedule in Apple Calendar, Google or Outlook.', // reviewed: false
   'calendarSync.addHours': '+ Add hours', // reviewed: false
   'calendarSync.yourTimezone': 'Your time zone', // reviewed: false
   'calendarSync.changeTimezone': 'Change ›', // reviewed: false

@@ -1,4 +1,4 @@
-// Federation & Governing Body OS (#475) 4/4: competition sanctioning. A governing body sanctions an EXISTING SportArena event: the sanction references the
+// Federation & Governing Body OS (#475) 4/4: competition sanctioning. A governing body sanctions an EXISTING GotMyGame event: the sanction references the
 // canonical event (never a second one), checks it against the body's published conditions read live from the event's own venue, officials, insurance
 // and entries, and records an immutable decision with the policy version it was made under.
 import { z } from 'zod';

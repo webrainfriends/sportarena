@@ -157,7 +157,7 @@ function RunDetail({ id, payer, onBack, onChanged }) {
       {['approved', 'exported'].includes(r.status) ? (
         <Card color={c.violetSoft}>
           <T weight="800">Pay it from your bank</T>
-          <T size={13}>Download the bank file, make the transfers, then record each result. SportArena does not move the money.</T>
+          <T size={13}>Download the bank file, make the transfers, then record each result. GotMyGame does not move the money.</T>
           <View style={{ flexDirection: 'row', gap: 8, flexWrap: 'wrap' }}><Btn small title="Download bank file (CSV)" loading={busy} onPress={exportFile} /></View>
         </Card>
       ) : null}
@@ -298,7 +298,7 @@ function ClubConsole({ team_id, event_id }) {
   );
   return (
     <View style={{ gap: 12 }}>
-      <GradCard pad={18}><T weight="800" size={20} color="#fff">{p.name}</T><T size={13} color="rgba(255,255,255,0.8)">Player contracts · pays in {p.currency}. Fees, bonuses, expenses and payments are recorded here; SportArena does not hold the money.</T></GradCard>
+      <GradCard pad={18}><T weight="800" size={20} color="#fff">{p.name}</T><T size={13} color="rgba(255,255,255,0.8)">Player contracts · pays in {p.currency}. Fees, bonuses, expenses and payments are recorded here; GotMyGame does not hold the money.</T></GradCard>
       <Seg options={tabs} value={tab} onChange={(t) => { setTab(t); }} />
       {tab === 'contracts' ? <Split list={rows} selected={sel} detail={<ContractDetail key={sel} id={sel} onBack={() => setSel(null)} onChanged={list.reload} />} />
         : tab === 'approvals' ? <Approvals scope={scope} onOpen={open} onNew={() => setMake(true)} />

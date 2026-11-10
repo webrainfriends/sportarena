@@ -97,7 +97,7 @@ export async function cardPdf(card, { qrValue, asOf = new Date() }) {
   const f = fonts();
   assertGlyphs([card.holder_name, card.licence_no, card.type_name, card.sport_name, card.discipline, card.grade, card.body_name, card.body_abbreviation], f);
   const W = 486, H = 306;                               // 1 mm = 2.835 pt: this is 171.5 x 108 mm
-  const doc = new PDFDocument({ size: [W, H], margin: 0, compress: true, info: { Title: `Licence ${card.licence_no ?? ''}`.trim(), Author: card.body_name ?? 'Sportarena', CreationDate: asOf, Producer: 'Sportarena' } });
+  const doc = new PDFDocument({ size: [W, H], margin: 0, compress: true, info: { Title: `Licence ${card.licence_no ?? ''}`.trim(), Author: card.body_name ?? 'GotMyGame', CreationDate: asOf, Producer: 'GotMyGame' } });
   const chunks = []; doc.on('data', (x) => chunks.push(x));
   const done = new Promise((res, rej) => { doc.on('end', res); doc.on('error', rej); });
   const band = BAND[card.status] ?? DUSK.mute;

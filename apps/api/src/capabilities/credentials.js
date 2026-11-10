@@ -55,7 +55,7 @@ cap({
     } catch (e) { if (e.code === '23505' && /credentials_enrolment_kind/.test(e.constraint ?? '')) throw conflict(`This enrolment already has a ${i.kind}`); throw e; }
     if (i.enquiry_id) await addMessage(c, (await enquiryFor(user, i.enquiry_id, { c, side: 'staff' })).enq, { senderId: user.id, side: 'system', kind: 'status', body: `${org.name} issued you: ${i.title}` });
     for (const uid of youth ? await guardiansOf(holder, c) : [holder]) {
-      await notify(c, uid, { kind: 'credential_issued', title: `${org.name} issued a ${i.kind}`, body: youth ? 'Open Gotmygame to see it. You decide whether it shows on the profile.' : `${i.title}. It is on your profile; you can hide it any time in Pathways.`, data: { credential_id: row.id, organisation_id: org.id } });
+      await notify(c, uid, { kind: 'credential_issued', title: `${org.name} issued a ${i.kind}`, body: youth ? 'Open GotMyGame to see it. You decide whether it shows on the profile.' : `${i.title}. It is on your profile; you can hide it any time in Pathways.`, data: { credential_id: row.id, organisation_id: org.id } });
     }
     await audit(c, user.id, 'issue_credential', 'credentials', row.id);
     return row;

@@ -267,7 +267,7 @@ const BLOCK = z.object({
 
 cap({
   name: 'create_event_room_block', method: 'POST', path: '/events/:event_id/room-blocks', tag: TAG, status: 201,
-  summary: 'Event organiser: publish a room block (stay-to-play) for the event with the property, dates, number of rooms, nightly rate, cut-off date and terms. Teams linked to the event can take rooms from it; SportArena records and allocates, the contract stays between the organiser and the hotel.',
+  summary: 'Event organiser: publish a room block (stay-to-play) for the event with the property, dates, number of rooms, nightly rate, cut-off date and terms. Teams linked to the event can take rooms from it; GotMyGame records and allocates, the contract stays between the organiser and the hotel.',
   input: z.object({ event_id: id, ...BLOCK.shape }),
   async handler({ user }, i) {
     await eventForOrganizer(user, i.event_id, pool);

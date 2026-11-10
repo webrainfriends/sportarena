@@ -177,7 +177,7 @@ async function renderFeed(feed) {
       lastModifiedMs: x.updated_at ? Date.parse(x.updated_at) : undefined,
       createdMs: x.created_at ? Date.parse(x.created_at) : undefined };
   });
-  return { ics: writeIcs({ name: 'Sportarena', tz, events }), count: events.length };
+  return { ics: writeIcs({ name: 'GotMyGame', tz, events }), count: events.length };
 }
 
 cap({

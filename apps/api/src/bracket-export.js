@@ -68,7 +68,7 @@ export async function sheetPdf(sheet) {
   const strings = [sheet.title, sheet.sport_text, ...sheet.stages.flatMap((s) => [s.name, ...s.notes, ...s.sections.flatMap((x) => [x.label, ...x.rounds.flatMap((r) => [r.label, ...r.games.flatMap((g) => [g.home, g.away, g.score])])]), ...s.tables.flatMap((t) => [t.title, ...t.rows.flat().map(String)])])].filter(Boolean).map(String);
   assertGlyphs(strings, f);
   const M = 36;
-  const pdf = new PDFDocument({ size: 'A4', layout: 'landscape', margin: M, bufferPages: true, compress: true, info: { Title: `${sheet.title} — bracket`, Author: 'Sportarena', Producer: 'Sportarena' } });
+  const pdf = new PDFDocument({ size: 'A4', layout: 'landscape', margin: M, bufferPages: true, compress: true, info: { Title: `${sheet.title} — bracket`, Author: 'GotMyGame', Producer: 'GotMyGame' } });
   const chunks = [];
   pdf.on('data', (c) => chunks.push(c));
   const done = new Promise((res, rej) => { pdf.on('end', res); pdf.on('error', rej); });

@@ -1,6 +1,6 @@
 # Migration and guided onboarding (#514)
 
-Two things that make it quick to start on Gotmygame: **bring your people across** from TeamSnap, SportsEngine or a spreadsheet, and a **guided setup** per persona that walks an empty account to a first live transaction.
+Two things that make it quick to start on GotMyGame: **bring your people across** from TeamSnap, SportsEngine or a spreadsheet, and a **guided setup** per persona that walks an empty account to a first live transaction.
 
 Both are API-first: every action is a capability (REST + OpenAPI + MCP from one definition) and the app only calls it. The same flow works on iOS, iPadOS, Android and web.
 

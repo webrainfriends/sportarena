@@ -82,7 +82,7 @@ export const applies = (ent, e) => (ent.scope_type === 'programme' ? ent.scope_i
 /** The people who hear about an athlete's kit: the verified guardians of a young person, otherwise the athlete. Generic wording, never names or amounts. */
 export async function tellAthlete(c, athleteId, orgId, kind, title, dedupe) {
   const to = (await isYouth(athleteId, c)) ? await guardiansOf(athleteId, c) : [athleteId];
-  for (const uid of to) await notify(c, uid, { kind: `academy_kit_${kind}`, title, body: 'Open Gotmygame to see the details.', data: { organisation_id: orgId, athlete_id: athleteId, tab: 'kit' }, dedupe_key: `academy:kit:${kind}:${dedupe}:${uid}` });
+  for (const uid of to) await notify(c, uid, { kind: `academy_kit_${kind}`, title, body: 'Open GotMyGame to see the details.', data: { organisation_id: orgId, athlete_id: athleteId, tab: 'kit' }, dedupe_key: `academy:kit:${kind}:${dedupe}:${uid}` });
 }
 
 async function payerOf(c, e) {

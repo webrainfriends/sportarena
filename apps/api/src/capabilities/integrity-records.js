@@ -94,7 +94,7 @@ cap({
 
 cap({
   name: 'add_custody_event', method: 'POST', path: '/integrity/test-references/:id/custody', tag: TAG, scope: SCOPE, status: 201,
-  summary: 'Append one administrative handoff or status step the source reported for a test reference (integrity officers): the step, who or what reported it, when, and the source\'s own identifier. Append-only. SportArena is not the laboratory chain-of-custody authority and does not claim to be.',
+  summary: 'Append one administrative handoff or status step the source reported for a test reference (integrity officers): the step, who or what reported it, when, and the source\'s own identifier. Append-only. GotMyGame is not the laboratory chain-of-custody authority and does not claim to be.',
   input: z.object({ id, step: text(120).min(2), actor_label: text(120).min(2), occurred_at: moment, external_id: text(120).optional() }).strict(),
   handler: ({ user }, i) => tx(async (c) => {
     const t = (await c.query('SELECT * FROM int_test_refs WHERE id=$1', [i.id])).rows[0];

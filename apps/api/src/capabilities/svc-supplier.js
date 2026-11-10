@@ -30,7 +30,7 @@ export const credentialState = (c, today = new Date()) => {
   const d = (new Date(c.valid_to) - today) / 86400000;
   return d < 0 ? 'expired' : d <= 30 ? 'expiring' : 'valid';
 };
-const badge = { self_declared: 'Self-declared — not checked by Gotmygame', document_seen: 'Document uploaded and seen by Gotmygame', verified_by_admin: 'Verified by a Gotmygame administrator' };
+const badge = { self_declared: 'Self-declared — not checked by GotMyGame', document_seen: 'Document uploaded and seen by GotMyGame', verified_by_admin: 'Verified by a GotMyGame administrator' };
 
 cap({
   name: 'list_service_currencies', method: 'GET', path: '/service-currencies', tag: TAG, auth: 'public',
@@ -216,7 +216,7 @@ cap({
 // ---------------------------------------------------------------- tax configuration (effective-dated, reviewed by the supplier; never one country's rules baked in)
 cap({
   name: 'set_supplier_tax_rule', method: 'POST', path: '/supplier-profiles/:id/tax-rules', tag: TAG, status: 201,
-  summary: 'Configure a tax treatment for your invoices and quotes: code, jurisdiction, rate (basis points), inclusive/exclusive prices, exemption / zero-rate / reverse charge, buyer withholding, rounding policy and the date it applies from. Rules are effective-dated and never edited — add a new one. Gotmygame does not assert any jurisdiction’s tax is correct; you own this configuration.',
+  summary: 'Configure a tax treatment for your invoices and quotes: code, jurisdiction, rate (basis points), inclusive/exclusive prices, exemption / zero-rate / reverse charge, buyer withholding, rounding policy and the date it applies from. Rules are effective-dated and never edited — add a new one. GotMyGame does not assert any jurisdiction’s tax is correct; you own this configuration.',
   input: z.object({ id, code: z.string().min(1).max(24), name: z.string().min(1).max(80), jurisdiction: z.string().min(1).max(40), treatment: z.enum(['standard', 'zero_rated', 'exempt', 'reverse_charge']).default('standard'), rate_bp: z.number().int().min(0).max(10000).default(0), withholding_bp: z.number().int().min(0).max(10000).default(0), prices_include_tax: z.boolean().default(false), rounding: z.enum(['per_line', 'per_document']).default('per_line'), effective_from: day, effective_to: day.optional(), evidence: z.string().max(500).optional() }),
   async handler({ user }, i) {
     await supplierAccess(user, i.id, ['owner', 'finance']);

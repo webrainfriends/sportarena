@@ -14,7 +14,7 @@ const INK = '#2F3242', MUTE = '#5F6580', ACCENT = '#8458B3';
 
 /** @returns {Promise<Buffer>} */
 export async function renderGuidePdf({ persona, title, steps, generatedAt = new Date() }) {
-  const doc = new PDFDocument({ size: 'A4', margin: 40, bufferPages: true, compress: true, info: { Title: title, Author: 'Sportarena', Producer: 'Sportarena', CreationDate: generatedAt } });
+  const doc = new PDFDocument({ size: 'A4', margin: 40, bufferPages: true, compress: true, info: { Title: title, Author: 'GotMyGame', Producer: 'GotMyGame', CreationDate: generatedAt } });
   const chunks = [];
   doc.on('data', (c) => chunks.push(c));
   const done = new Promise((res, rej) => { doc.on('end', res); doc.on('error', rej); });

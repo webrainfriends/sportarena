@@ -1,7 +1,7 @@
 // One lifecycle view of a sponsorship (#589): the rights an agreement holds, what it contracts, what has been delivered with evidence, the hospitality it unlocks and where
 // it stands for renewal. These are READS composed over the canonical records (#519 inventory/deliverables/exposure, finance `list_sponsorship_obligations`, #480 ticket
 // allocations, #482 media-licence deliverables, #299 renewals); nothing is stored here, money is never recomputed, and no ROI figure is produced. Every figure carries its provenance:
-// recorded (counted from platform records), measured (by Sportarena), imported (named provider) or estimated (the customer's own assumption model).
+// recorded (counted from platform records), measured (by GotMyGame), imported (named provider) or estimated (the customer's own assumption model).
 import { z } from 'zod';
 import { cap, capabilities, id } from '../registry.js';
 import { tx, many } from '../db.js';
@@ -64,7 +64,7 @@ cap({
         agreement: { id: d.id, ref: d.agreement_ref ?? null, status: d.status, sponsor: ctx.sp.name, starts_on: d.starts ?? null, ends_on: d.ends ?? null, days_left: left, viewer_side: side ?? 'admin' },
         rights, obligations: { source: 'list_sponsorship_obligations (the finance truth; not recomputed here)', totals: fin.totals, rows: obl },
         activation: { deliverables: dels, media_licence_deliverables: mr, open_tasks: tasks }, hospitality,
-        exposure: { provenance_note: 'measured = counted by Sportarena; imported = supplied by the named provider; estimated = the customer\'s own assumption model. ROI is never invented.', metrics: exposure.metrics, missing: exposure.missing, not_measured: exposure.not_measured },
+        exposure: { provenance_note: 'measured = counted by GotMyGame; imported = supplied by the named provider; estimated = the customer\'s own assumption model. ROI is never invented.', metrics: exposure.metrics, missing: exposure.missing, not_measured: exposure.not_measured },
         renewal: { ...renewalStage({ status: d.status, days_left: renewal.days_left, assessments: renewal.assessments, successor_status: renewal.successor_status }), successor_id: renewal.successor_id, assessments: renewal.assessments, days_left: renewal.days_left },
         matrix,
       };

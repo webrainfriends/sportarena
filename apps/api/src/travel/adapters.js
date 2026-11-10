@@ -1,5 +1,5 @@
 // Travel partner adapters (#704). One small interface over a hotel / flight partner, reached through an Integration Hub install
-// (credentials, sandbox/live mode, rate limit and webhooks are the hub's). This is integration, not a booking engine: SportArena never holds
+// (credentials, sandbox/live mode, rate limit and webhooks are the hub's). This is integration, not a booking engine: GotMyGame never holds
 // inventory. Silence, a timeout, a non-2xx or a malformed answer is "unavailable" and never a booking; the trip keeps its typed references.
 //   search(q)            -> [offer]            offer = { offer_ref, kind, summary, starts_at, ends_at, tz, price_minor, currency, terms, rooms? }
 //   hold(offer_ref, ctx) -> { partner_ref, price_minor, currency, terms, cancel_by }
@@ -89,7 +89,7 @@ export const PRESETS = {
   booking_com: { name: 'Booking.com', kinds: ['stay'] }, makemytrip: { name: 'MakeMyTrip', kinds: ['stay', 'air'] }, trip_com: { name: 'Trip.com', kinds: ['stay', 'air'] },
   agoda: { name: 'Agoda', kinds: ['stay'] }, expedia: { name: 'Expedia Group', kinds: ['stay', 'air'] }, other: { name: 'Other channel partner', kinds: ['stay', 'air'] }, sandbox: { name: 'Sandbox (no real bookings)', kinds: ['stay', 'air'] },
 };
-// Per-site translators. The generic HTTPS adapter speaks the SportArena JSON contract (docs/team-travel.md). A named site whose own API differs is plugged in
+// Per-site translators. The generic HTTPS adapter speaks the GotMyGame JSON contract (docs/team-travel.md). A named site whose own API differs is plugged in
 // here as { search, hold, book, cancel, parseWebhook } without touching the trip code; none is shipped because each needs that site's agreement and credentials.
 export const MAPPERS = {};
 

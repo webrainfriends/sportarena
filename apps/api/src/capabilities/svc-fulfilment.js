@@ -286,7 +286,7 @@ cap({
         await c.query('UPDATE svc_visits SET status=$2, rework_due=$3, row_version=row_version+1 WHERE id=$1', [visit.id, i.decision === 'rejected' ? 'rework' : full ? 'accepted' : 'partially_accepted', i.rework_due ?? null]);
       }
       const order = await refreshOrder(c, o.id);
-      await tell(c, await supplierAudience(c, o.profile_id), { kind: i.decision === 'accepted' ? 'svc_work_accepted' : 'svc_work_rejected', title: i.decision === 'accepted' ? 'Work accepted' : 'Work needs rework', body: `Order ${o.number}: open Gotmygame for details.`, data: { order_id: o.id }, dedupe_key: `svc:acc:${row.id}` }, user.id);
+      await tell(c, await supplierAudience(c, o.profile_id), { kind: i.decision === 'accepted' ? 'svc_work_accepted' : 'svc_work_rejected', title: i.decision === 'accepted' ? 'Work accepted' : 'Work needs rework', body: `Order ${o.number}: open GotMyGame for details.`, data: { order_id: o.id }, dedupe_key: `svc:acc:${row.id}` }, user.id);
       await log(c, 'order', o.id, user.id, `work_${i.decision}`, { line_no: i.line_no, quantity: i.quantity, reason: i.reason ?? null });
       return { acceptance: row, order };
     });

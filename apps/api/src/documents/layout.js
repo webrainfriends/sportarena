@@ -76,7 +76,7 @@ export const starterFor = (family, name) => {
   const blocks = ALLOWED[family] ? s.blocks.filter((b) => ALLOWED[family].includes(b.type)) : s.blocks;
   const thanks = {
     enrolment_letter: 'We look forward to seeing you at the academy.',
-    season_report: 'Prepared from the athlete\'s Sportarena records.',
+    season_report: 'Prepared from the athlete\'s GotMyGame records.',
     federation_document: 'Issued from the federation register.',
     academy_progress_report: 'Prepared from the athlete\'s academy records.',
     academy_management_review: 'Management view prepared from the academy\'s records.',

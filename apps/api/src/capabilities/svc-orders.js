@@ -77,7 +77,7 @@ cap({
         await c.query("UPDATE svc_quotes SET status='rejected' WHERE id=$1", [o.quote_id]);
         const live = (await c.query("SELECT 1 FROM svc_orders WHERE rfq_id=$1 AND status NOT IN ('cancelled','rejected','terminated') AND id <> $2", [o.rfq_id, o.id])).rowCount;
         await c.query("UPDATE svc_rfqs SET status=$2, row_version=row_version+1 WHERE id=$1 AND status IN ('awarded','partially_awarded')", [o.rfq_id, live ? 'partially_awarded' : 'evaluation']);
-        await tell(c, await buyerAudience(c, o.buyer_id, ['purchaser', 'requester']), { kind: 'svc_order_rejected', title: 'A supplier declined your order', body: `Order ${o.number} was declined. Open Gotmygame to re-award.`, data: { order_id: o.id }, dedupe_key: `svc:orderrej:${o.id}` }, user.id);
+        await tell(c, await buyerAudience(c, o.buyer_id, ['purchaser', 'requester']), { kind: 'svc_order_rejected', title: 'A supplier declined your order', body: `Order ${o.number} was declined. Open GotMyGame to re-award.`, data: { order_id: o.id }, dedupe_key: `svc:orderrej:${o.id}` }, user.id);
         return row;
       }
       if (i.action === 'propose_changes') {
@@ -140,7 +140,7 @@ async function settleVariation(c, order, v, buyerUser) {
     if (approvalNeeded(acc.buyer, acc, delta, order.currency)) {
       const ap = await q1(c, "INSERT INTO svc_approvals(buyer_id, subject_type, subject_id, amount_minor, currency, requested_by, payload) VALUES ($1,'variation',$2,$3,$4,$5,$6) RETURNING *", [order.buyer_id, v.id, delta, order.currency, buyerUser.id, { order_id: order.id }]);
       await c.query('UPDATE svc_variations SET approval_id=$2 WHERE id=$1', [v.id, ap.id]);
-      await tell(c, await buyerAudience(c, order.buyer_id, ['approver']), { kind: 'svc_approval_requested', title: 'A change needs your approval', body: 'Open Gotmygame to review and decide.', data: { approval_id: ap.id }, dedupe_key: `svc:ap:${ap.id}` }, buyerUser.id);
+      await tell(c, await buyerAudience(c, order.buyer_id, ['approver']), { kind: 'svc_approval_requested', title: 'A change needs your approval', body: 'Open GotMyGame to review and decide.', data: { approval_id: ap.id }, dedupe_key: `svc:ap:${ap.id}` }, buyerUser.id);
       return { variation: v, approval: ap, order };
     }
   }
@@ -177,7 +177,7 @@ cap({
         await tell(c, await supplierAudience(c, o.profile_id), { kind: 'svc_order_terminated', title: 'An order was ended by the buyer', body: `Order ${o.number} was terminated. Accepted work remains billable.`, data: { order_id: o.id }, dedupe_key: `svc:term:${o.id}` }, user.id);
         return { variation: await q1(c, 'SELECT * FROM svc_variations WHERE id=$1', [v.id]), order: done };
       }
-      await tell(c, side === 'buyer' ? await supplierAudience(c, o.profile_id) : await buyerAudience(c, o.buyer_id, ['purchaser']), { kind: 'svc_variation_proposed', title: 'A change was proposed on an order', body: `Order ${o.number}: open Gotmygame to review.`, data: { order_id: o.id, variation_id: v.id }, dedupe_key: `svc:var:${v.id}` }, user.id);
+      await tell(c, side === 'buyer' ? await supplierAudience(c, o.profile_id) : await buyerAudience(c, o.buyer_id, ['purchaser']), { kind: 'svc_variation_proposed', title: 'A change was proposed on an order', body: `Order ${o.number}: open GotMyGame to review.`, data: { order_id: o.id, variation_id: v.id }, dedupe_key: `svc:var:${v.id}` }, user.id);
       return { variation: v };
     });
   },

@@ -16,7 +16,7 @@ export const NEVER_INCLUDED = ['private_notes', 'health_and_wellness', 'contact_
 export const ROW_CAP = 1000;
 
 const PROVENANCE_TEXT = {
-  matches: 'Matches marked official come from games and fixtures recorded on Sportarena. Matches marked self-reported or imported were entered by the athlete and are not verified.',
+  matches: 'Matches marked official come from games and fixtures recorded on GotMyGame. Matches marked self-reported or imported were entered by the athlete and are not verified.',
   results: 'Results marked approved competition were submitted by one official and approved by another. Self-reported and imported results are the athlete\'s own practice or device data and are not verified.',
   goals: 'Goals, targets and progress are the athlete\'s own claims. A coach\'s rating, where shown, is that coach\'s view and is labelled separately.',
   awards: 'Awards were granted by the organiser named on each row.',
@@ -196,7 +196,7 @@ export async function buildPack({ athleteId, viewer, scope, sections, reportIds 
     never_included: NEVER_INCLUDED,
     ...parts,
     ...(sections.includes('evidence') ? { evidence: evidenceSection(parts) } : {}),
-    notice: 'Prepared from Sportarena records at the time shown. Self-reported items are labelled and are not verified. Private notes, health and wellness data, contact details and date of birth are never included.',
+    notice: 'Prepared from GotMyGame records at the time shown. Self-reported items are labelled and are not verified. Private notes, health and wellness data, contact details and date of birth are never included.',
   };
   return snapshot;
 }

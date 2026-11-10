@@ -1,5 +1,5 @@
 // Signature level per jurisdiction (#386). Levels follow eIDAS: simple < advanced < qualified.
-//  - internal (signed in Sportarena while logged in) is a SIMPLE electronic signature.
+//  - internal (signed in GotMyGame while logged in) is a SIMPLE electronic signature.
 //  - an external vendor (DocuSign, ...) signs with the vendor's ADVANCED flow (signer identity bound to an email-verified envelope + audit trail).
 //  - qualified signatures need a qualified trust service and are not offered by any configured provider.
 // `minimum` is what we refuse to go below; `recommended` is what the sheet suggests. Commercial sponsorship agreements are valid with a

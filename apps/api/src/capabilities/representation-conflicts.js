@@ -1,5 +1,5 @@
 // Sports agent & player representation (issue #484) 5/5b: conflicts of interest, and the agent's home (clients, reports, documents).
-// A conflict is disclosed and decided by people. SportArena flags possible ones and records who decided what and when; it never decides whether
+// A conflict is disclosed and decided by people. GotMyGame flags possible ones and records who decided what and when; it never decides whether
 // a conflict is legally acceptable.
 import { z } from 'zod';
 import { cap, id, page } from '../registry.js';
@@ -21,7 +21,7 @@ const cview = ({ detail_enc, decision_note_enc, ...r }) => ({ ...r, detail: deta
 // ------------------------------------------------------------------ conflicts
 cap({
   name: 'disclose_conflict', method: 'POST', path: '/representation/mandates/:id/conflicts', tag: TAG, status: 201,
-  summary: 'Disclose a conflict of interest under a mandate: representing players on opposing sides of the same negotiation, an interest of the agent or agency in a club, supplier or sponsor, dual representation, or a related-party relationship. Either side can disclose. Until the athlete decides (acknowledge where policy allows, or reject) and the agent can recuse, the affected item stays blocked for the agent. SportArena does not judge whether it is acceptable.',
+  summary: 'Disclose a conflict of interest under a mandate: representing players on opposing sides of the same negotiation, an interest of the agent or agency in a club, supplier or sponsor, dual representation, or a related-party relationship. Either side can disclose. Until the athlete decides (acknowledge where policy allows, or reject) and the agent can recuse, the affected item stays blocked for the agent. GotMyGame does not judge whether it is acceptable.',
   input: z.object({ id, kind: z.enum(CONFLICT_KINDS), subject_type: z.enum(['player_contract', 'sponsorship', 'transfer', 'mandate']).default('mandate'), subject_id: id.optional(), counterparty: text(160).optional(), detail: text(1000).min(5) }),
   async handler({ user }, i) {
     return tx(async (c) => {

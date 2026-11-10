@@ -268,7 +268,7 @@ async function reinstateIfClear(c, enrolmentId, orgId, policy, today) {
     const ch = { enrolment_id: enrolmentId, payer_id: null, athlete_id: e?.user_id };
     const cs = l.case_id ? (await c.query('SELECT payer_id FROM collection_cases WHERE id=$1', [l.case_id])).rows[0] : null;
     for (const uid of await payersToTell(c, { ...ch, payer_id: cs?.payer_id ?? e?.user_id })) {
-      await notify(c, uid, { kind: 'collections_access_restored', title: 'Access restored', body: 'Open Gotmygame to see the details.', data: { organisation_id: orgId }, dedupe_key: `coll:reinstated:${l.id}:${uid}` });
+      await notify(c, uid, { kind: 'collections_access_restored', title: 'Access restored', body: 'Open GotMyGame to see the details.', data: { organisation_id: orgId }, dedupe_key: `coll:reinstated:${l.id}:${uid}` });
     }
     if (l.case_id) await addEvent(c, l.case_id, 'reinstated', { data: { automatic: true }, dedupe: `reinstated:${l.id}` });
   }
@@ -347,7 +347,7 @@ export async function advanceCase(c, caseId, { today = todayStr() } = {}) {
     if (await addEvent(c, cs.id, 'retry_requested', { data: { attempt: k }, dedupe: `retry:${k}` })) {
       state = 'retrying';
       for (const uid of await payersToTell(c, tellWho(f))) {
-        await notify(c, uid, { kind: 'collections_retry', title: 'Your payment did not go through', body: BODY(f, 'Open Gotmygame to try again.'), data: dataOf(cs, f), dedupe_key: `coll:retry:${cs.id}:${k}:${uid}` });
+        await notify(c, uid, { kind: 'collections_retry', title: 'Your payment did not go through', body: BODY(f, 'Open GotMyGame to try again.'), data: dataOf(cs, f), dedupe_key: `coll:retry:${cs.id}:${k}:${uid}` });
       }
     }
   }
@@ -361,7 +361,7 @@ export async function advanceCase(c, caseId, { today = todayStr() } = {}) {
       if (sent == null || sent < due) {
         let n = 0;
         for (const uid of await payersToTell(c, tellWho(f))) {
-          const made = await notify(c, uid, { kind: 'collections_reminder', title: TITLE(due), body: BODY(f, 'Open Gotmygame to see the details and pay.'), data: dataOf(cs, f), dedupe_key: `coll:rem:${cs.id}:${due}:${dueEff}:${uid}`, ...(f.ch ? { comm: { use_case: due > 0 ? 'fee_overdue' : 'fee_due' } } : {}) });
+          const made = await notify(c, uid, { kind: 'collections_reminder', title: TITLE(due), body: BODY(f, 'Open GotMyGame to see the details and pay.'), data: dataOf(cs, f), dedupe_key: `coll:rem:${cs.id}:${due}:${dueEff}:${uid}`, ...(f.ch ? { comm: { use_case: due > 0 ? 'fee_overdue' : 'fee_due' } } : {}) });
           if (made) n++;
         }
         if (await addEvent(c, cs.id, 'reminder_sent', { data: { offset: due, due_on: dueEff, recipients: n }, dedupe: `rem:${due}:${dueEff}` })) reached = new Date();
@@ -376,7 +376,7 @@ export async function advanceCase(c, caseId, { today = todayStr() } = {}) {
       const sid = await suspend(c, { enrolmentId: f.enrolmentId, orgId: cs.owner_id, caseId: cs.id, reason: `Payment ${d} days overdue` });
       if (sid && await addEvent(c, cs.id, 'suspended', { data: { suspension_id: sid, automatic: true }, dedupe: `suspended:${sid}` })) {
         for (const uid of await payersToTell(c, { ...f.ch, athlete_id: f.ch.athlete_id })) {
-          await notify(c, uid, { kind: 'collections_suspended', title: 'Access is paused until payment is made', body: 'Open Gotmygame to see the details.', data: { organisation_id: cs.owner_id, charge_id: f.ch.id }, dedupe_key: `coll:susp:${sid}:${uid}` });
+          await notify(c, uid, { kind: 'collections_suspended', title: 'Access is paused until payment is made', body: 'Open GotMyGame to see the details.', data: { organisation_id: cs.owner_id, charge_id: f.ch.id }, dedupe_key: `coll:susp:${sid}:${uid}` });
         }
       }
     }

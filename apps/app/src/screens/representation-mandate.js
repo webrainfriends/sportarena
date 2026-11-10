@@ -107,11 +107,11 @@ export function MandateDetail({ id, onBack, onChanged, mode }) {
         <Card>
           {m.standing?.verified ? (
             <View style={{ gap: 4 }}>
-              <T weight="800">Checked by the SportArena review team</T>
+              <T weight="800">Checked by the GotMyGame review team</T>
               {m.standing.checked.map((x) => <T key={x.key} size={13}>✓ {x.label}{x.note ? ` - ${x.note}` : ''}</T>)}
               <T size={12} color={c.mute}>Valid until {plainDate(m.standing.expires_at)}. This is not a statement that the agent is licensed everywhere, and not legal advice.</T>
             </View>
-          ) : <T size={13} color={c.mute}>Not verified by SportArena right now.</T>}
+          ) : <T size={13} color={c.mute}>Not verified by GotMyGame right now.</T>}
           {m.standing?.licences?.length ? <View style={{ marginTop: 10, gap: 6 }}>{m.standing.licences.map((l) => <View key={l.id} style={{ flexDirection: 'row', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}><T size={13} style={{ flex: 1 }}>{l.issuing_body} · {l.grade || 'Registration'} · {l.jurisdiction}{l.reference_last4 ? ` · …${l.reference_last4}` : ''}{l.valid_to ? ` · until ${plainDate(l.valid_to)}` : ''}</T><Tag label={l.standing} color={l.standing === 'verified' ? c.mint : l.standing === 'expired' ? c.pinkSoft : c.violetSoft} /></View>)}</View> : null}
         </Card>
       </Section>
@@ -271,7 +271,7 @@ function ConflictsSection({ m, athleteSide, decideSide }) {
         <Card key={cf.id} color={cf.status === 'open' ? c.sunSoft : c.paper}>
           <View style={{ flexDirection: 'row', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}><T weight="800" style={{ flex: 1 }}>{sentence(cf.kind)}{cf.counterparty ? ` · ${cf.counterparty}` : ''}</T><Tag label={cf.status} color={cf.status === 'open' ? c.sun : c.violetSoft} /></View>
           {cf.detail ? <T size={13} style={{ marginTop: 4 }}>{cf.detail}</T> : null}
-          <T size={12} color={c.mute} style={{ marginTop: 4 }}>Flagged by {cf.raised_by === 'system' ? 'SportArena\'s automatic comparison' : cf.raised_by}. SportArena does not decide whether it is acceptable.{cf.can_acknowledge ? '' : ' Under policy it cannot simply be accepted.'}</T>
+          <T size={12} color={c.mute} style={{ marginTop: 4 }}>Flagged by {cf.raised_by === 'system' ? 'GotMyGame\'s automatic comparison' : cf.raised_by}. GotMyGame does not decide whether it is acceptable.{cf.can_acknowledge ? '' : ' Under policy it cannot simply be accepted.'}</T>
           {cf.status === 'open' || cf.status === 'acknowledged' ? (
             <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 8 }}>
               {decideSide && cf.status === 'open' && cf.can_acknowledge ? <Btn small title="I understand and accept" onPress={() => decide(cf, 'acknowledge')} /> : null}

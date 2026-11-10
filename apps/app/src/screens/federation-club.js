@@ -166,7 +166,7 @@ export function OrgAffiliations({ organisation_id, body_id }) {
 // ------------------------------------------------------------------ the person
 const STANDING_NOTE = { good_standing: 'In good standing', suspended: 'Suspended', expired: 'Expired', revoked: 'Revoked', pending: 'Awaiting a decision' };
 async function shareCode(l) {
-  const text = `${l.type_name} licence ${l.licence_no} (${l.body_name}). Check it on Sportarena with code ${l.public_code}.`;
+  const text = `${l.type_name} licence ${l.licence_no} (${l.body_name}). Check it on GotMyGame with code ${l.public_code}.`;
   if (Platform.OS === 'web') {
     if (typeof navigator !== 'undefined' && navigator.share) { try { await navigator.share({ text }); return 'Shared'; } catch { return null; } }
     if (typeof navigator !== 'undefined' && navigator.clipboard) { await navigator.clipboard.writeText(text); return 'Copied to the clipboard'; }

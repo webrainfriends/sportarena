@@ -22,7 +22,7 @@ const today = () => new Date().toISOString().slice(0, 10);
 const ago = (d) => new Date(Date.now() - d * 864e5).toISOString().slice(0, 10);
 const word = (k) => String(k).replace(/_/g, ' ').replace(/^./, (x) => x.toUpperCase());
 const STATE_TONE = { accepted: c.lime, awaiting_review: c.sunSoft, rework: c.pinkSoft, overdue: c.pinkSoft, upcoming: c.violetSoft, excepted: c.paper, cancelled: c.paper };
-const BASIS = { platform_measured: ['Measured by Sportarena', c.lime], provider_reported: ['Imported from a provider', c.sunSoft] };
+const BASIS = { platform_measured: ['Measured by GotMyGame', c.lime], provider_reported: ['Imported from a provider', c.sunSoft] };
 const CATEGORIES = ['beverage', 'nutrition', 'apparel', 'footwear', 'equipment', 'banking_finance', 'insurance', 'telecom', 'automotive', 'technology', 'healthcare', 'education', 'travel_hospitality', 'media', 'retail', 'other'].map((v) => ({ value: v, label: word(v) }));
 const DELIVERABLES = ['appearance', 'content', 'hospitality', 'challenge_reward', 'activation', 'other'].map((v) => ({ value: v, label: word(v) }));
 const PLATFORMS = ['linear_tv', 'ott', 'web', 'mobile_app', 'social', 'radio', 'in_venue', 'print'];
@@ -68,7 +68,7 @@ function Metrics({ exposure }) {
           </View>
         </Card>)) : <Empty emoji="📏" title="Nothing measured yet" sub="Figures appear as placements are served and providers report. Nothing is estimated in their place." />}
       {exposure.missing?.map((m) => <Banner key={`${m.metric}-${m.inventory}`} tone={c.sunSoft}>Missing: {word(m.metric)} for “{m.inventory}” — {m.reason}. It is not shown as zero.</Banner>)}
-      <T size={12} color={c.mute}>Not measured by Sportarena: {exposure.not_measured.join(' · ')}</T>
+      <T size={12} color={c.mute}>Not measured by GotMyGame: {exposure.not_measured.join(' · ')}</T>
     </View>
   );
 }
@@ -147,7 +147,7 @@ function Estimate({ deal }) {
             <Tag label="ESTIMATE — assumption-based, not a measured fact" color={c.paper} />
             <T size={24} weight="800">{fmt(e.estimated_value_cents, e.currency)}</T>
             <T size={12} color={c.mute}>Model “{e.model.name}” version {e.model.version}. Why these rates: {e.model.basis_note}</T>
-            {e.lines.map((l) => <T key={l.metric} size={13}>• {word(l.metric)}: {num(l.measured_value)} {l.measured_basis === 'platform_measured' ? 'measured by Sportarena' : 'imported from a provider'}, at {fmt(l.rate_cents, e.currency)} per {l.rate_per === 1 ? 'unit' : '1,000 units'} = {fmt(l.value_cents, e.currency)}</T>)}
+            {e.lines.map((l) => <T key={l.metric} size={13}>• {word(l.metric)}: {num(l.measured_value)} {l.measured_basis === 'platform_measured' ? 'measured by GotMyGame' : 'imported from a provider'}, at {fmt(l.rate_cents, e.currency)} per {l.rate_per === 1 ? 'unit' : '1,000 units'} = {fmt(l.value_cents, e.currency)}</T>)}
             {e.excluded.length ? <T size={12} color={c.mute}>Not valued by this model: {e.excluded.map(word).join(', ')}.</T> : null}
             <T size={13} weight="700">{e.return_on_spend.ratio != null ? `Estimated value ÷ confirmed spend: ${e.return_on_spend.ratio} (estimate)` : e.return_on_spend.note}</T>
           </View>
@@ -261,7 +261,7 @@ function Portfolio({ brand, onOpen }) {
             </Card>);
         })}
       </Section>
-      <T size={12} color={c.mute}>Not measured by Sportarena: {d.not_measured.join(' · ')}</T>
+      <T size={12} color={c.mute}>Not measured by GotMyGame: {d.not_measured.join(' · ')}</T>
     </View>
   );
 }
@@ -318,7 +318,7 @@ function Valuation({ brand }) {
           <Row><T weight="800" style={{ flex: 1 }}>{m.name}</T><Btn small title="New version" color={c.violet} onPress={() => setForm({ type: 'version', m })} /></Row>
           {m.versions.map((v) => <T key={v.id} size={12} color={c.mute}>v{v.version} · {v.currency} · {Object.entries(v.assumptions).map(([k, a]) => `${word(k)} ${a.value_cents} per ${a.per}`).join('; ')} — {v.basis_note}</T>)}
         </View></Card>))}
-      {!models.data.models.length ? <Empty emoji="🧮" title="No valuation model" sub="Without one, Sportarena shows no monetary value or ROI at all." /> : null}
+      {!models.data.models.length ? <Empty emoji="🧮" title="No valuation model" sub="Without one, GotMyGame shows no monetary value or ROI at all." /> : null}
       <FormSheet visible={form?.type === 'new'} onClose={() => setForm(null)} title="New valuation model" submitLabel="Save" fields={fields(true)} onSubmit={async (v) => { await api.post(`/sponsors/${brand.id}/valuation-models`, { name: v.name, ...build(v) }); models.reload(); return 'Model saved'; }} />
       <FormSheet visible={form?.type === 'version'} onClose={() => setForm(null)} title="New version" submitLabel="Save version" fields={fields(false)}
         onSubmit={async (v) => { await api.post(`/sponsor-valuation-models/${form.m.id}/versions`, { expected_version: form.m.versions[0].version, ...build(v) }); models.reload(); return 'Version saved'; }} />

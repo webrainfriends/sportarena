@@ -22,8 +22,8 @@ self.addEventListener('fetch', (event) => {
 
 self.addEventListener('push', (event) => {
   let p = {};
-  try { p = event.data ? event.data.json() : {}; } catch { p = { title: 'Gotmygame', body: event.data ? event.data.text() : '' }; }
-  event.waitUntil(self.registration.showNotification(p.title || 'Gotmygame', {
+  try { p = event.data ? event.data.json() : {}; } catch { p = { title: 'GotMyGame', body: event.data ? event.data.text() : '' }; }
+  event.waitUntil(self.registration.showNotification(p.title || 'GotMyGame', {
     body: p.body || '', icon: '/icon-192.png', badge: '/icon-192.png', tag: p.data && p.data.notification_id, data: p.data || {},
   }));
 });

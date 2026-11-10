@@ -84,7 +84,7 @@ cap({
       },
       rules, organiser: { name: row.organiser_name, handle: row.organiser_handle, contact: 'in_app' },
       checklist: await checklistFor(f.id, row.slug),
-      safety: 'Follow the venue\'s emergency plan. Stop play if there is any risk and call the venue emergency contact. SportArena does not store medical detail.',
+      safety: 'Follow the venue\'s emergency plan. Stop play if there is any risk and call the venue emergency contact. GotMyGame does not store medical detail.',
     };
   },
 });
@@ -238,7 +238,7 @@ cap({
     const book = resolveBook(sport.slug, format, view ? currentSettings(view) : {});
     const q = new Set(tokens(i.question));
     const scored = book.cards.map((c) => ({ c, score: tokens(`${c.title} ${c.body} ${c.params.map((p) => p.label).join(' ')}`).filter((w) => q.has(w)).length + tokens(c.title).filter((w) => q.has(w)).length })).filter((s) => s.score > 0).sort((a, b) => b.score - a.score || String(a.c.key).localeCompare(String(b.c.key))).slice(0, 3);
-    if (!scored.length) return { ...base, answer: null, insufficient: true, message: `The ${book.name} rulebook in SportArena does not cover that, so I will not guess. Check the governing body's full text.`, citations: [], official_url: book.official_url };
+    if (!scored.length) return { ...base, answer: null, insufficient: true, message: `The ${book.name} rulebook in GotMyGame does not cover that, so I will not guess. Check the governing body's full text.`, citations: [], official_url: book.official_url };
     const citations = scored.map(({ c }, n) => ({ n: n + 1, no: c.no ?? null, title: c.title, text: c.body, settings: c.params.map((p) => ({ label: p.label, value: p.value, standard: p.std, local_change: p.changed })), source: `${book.name} (${book.body})`, official_url: book.official_url }));
     const version = { standard_hash: standardHash(sport.slug, format), local: view ? { id: view.id, name: view.name, version: view.current_version } : null };
     let answer = null;

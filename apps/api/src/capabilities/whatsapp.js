@@ -50,7 +50,7 @@ cap({
     if (gateway.configured()) {
       const sender = await resolveSender(null);
       if (!sender) throw unprocessable('No WhatsApp number is linked yet');
-      await gateway.sendText(sender.openwa_session, digits, `Your Sportarena code is ${code}. It works for ${CODE_TTL_MIN} minutes. If you did not ask for it, ignore this message.`);
+      await gateway.sendText(sender.openwa_session, digits, `Your GotMyGame code is ${code}. It works for ${CODE_TTL_MIN} minutes. If you did not ask for it, ignore this message.`);
     } else if (!(await sendSystem(null, { channel: 'whatsapp', digits, useCase: 'phone_verification', values: { code } }))) throw unprocessable('WhatsApp verification is not set up yet (no approved verification template)');
     await one(
       `INSERT INTO whatsapp_contacts(user_id, phone_enc, phone_idx, code_hash, code_expires_at, code_attempts, code_sent_at) VALUES ($1,$2,$3,$4, now() + make_interval(mins => $5), 0, now())

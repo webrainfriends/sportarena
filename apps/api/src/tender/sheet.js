@@ -31,7 +31,7 @@ export function importSheet(project, lots, text) {
   if (text.length > 500_000) throw badRequest('The pricing sheet is too large');
   const all = parseCsv(text);
   const meta = all[0];
-  if (!meta || meta[0] !== '#schema') throw badRequest('This is not a Sportarena pricing sheet. Export a fresh one from the tender.');
+  if (!meta || meta[0] !== '#schema') throw badRequest('This is not a GotMyGame pricing sheet. Export a fresh one from the tender.');
   if (meta[1] !== SHEET_SCHEMA) throw badRequest('This pricing sheet uses an unsupported version. Export a fresh one from the tender.');
   if (meta[2] !== project.ref || meta[3] !== String(project.version) || meta[4] !== templateHash(project, lots)) throw unprocessable('This pricing sheet is out of date because the tender changed after it was exported. Export a fresh sheet.');
   const head = all[1]?.map((h) => h.trim());

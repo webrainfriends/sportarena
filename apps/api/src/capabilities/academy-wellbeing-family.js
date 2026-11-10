@@ -33,7 +33,7 @@ cap({
       if (removed.includes('checkins') || removed.includes('mentoring')) await c.query("UPDATE academy_wellbeing_checkins SET status='cancelled', row_version=row_version+1 WHERE organisation_id=$1 AND athlete_id=$2 AND status='scheduled'", [i.organisation_id, i.athlete_id]);
       if (removed.includes('mentoring')) {
         const m = await c.query("UPDATE academy_mentor_assignments SET status='paused' WHERE organisation_id=$1 AND athlete_id=$2 AND status='active' RETURNING id, mentor_id", [i.organisation_id, i.athlete_id]);
-        for (const r of m.rows) await notify(c, r.mentor_id, { kind: 'academy_wellbeing', title: 'A mentee\'s sharing choices changed', body: 'Open Wellbeing in Gotmygame. Nothing further is shown to you for that athlete until they choose otherwise.', data: { organisation_id: i.organisation_id }, dedupe_key: `wb:consent-change:${r.id}:${Date.now()}` });
+        for (const r of m.rows) await notify(c, r.mentor_id, { kind: 'academy_wellbeing', title: 'A mentee\'s sharing choices changed', body: 'Open Wellbeing in GotMyGame. Nothing further is shown to you for that athlete until they choose otherwise.', data: { organisation_id: i.organisation_id }, dedupe_key: `wb:consent-change:${r.id}:${Date.now()}` });
       }
       if (removed.includes('referrals')) await c.query("UPDATE academy_wellbeing_referrals SET status='withdrawn', decided_at=now(), row_version=row_version+1 WHERE organisation_id=$1 AND athlete_id=$2 AND status IN ('proposed','consented')", [i.organisation_id, i.athlete_id]);
       await log(c, i.organisation_id, i.athlete_id, !scopes.length ? 'consent_revoked' : prev ? 'consent_changed' : 'consent_granted', user.id, { type: 'consent', id: row?.id ?? prev?.id }, scopes.join(','));
@@ -110,7 +110,7 @@ cap({
         r = (await c.query('UPDATE academy_dev_goals SET athlete_agreed_at=$2, guardian_agreed_at=$3, guardian_agreed_by=CASE WHEN $4 THEN $5::uuid ELSE guardian_agreed_by END, status=CASE WHEN $6 THEN \'agreed\' ELSE status END, updated_at=now(), row_version=row_version+1 WHERE id=$1 RETURNING *', [g.id, athleteAt, guardianAt, who === 'guardian', user.id, agreed])).rows[0];
       }
       await log(c, g.organisation_id, g.athlete_id, `goal_${i.decision === 'agree' ? 'agreed' : 'declined'}`, user.id, { type: 'goal', id: g.id });
-      await notify(c, g.reviewer_id, { kind: 'academy_wellbeing', title: 'A development goal has an answer', body: 'Open Wellbeing in Gotmygame.', data: { organisation_id: g.organisation_id, goal_id: g.id }, dedupe_key: `wb:goal-answer:${g.id}:${r.row_version}` });
+      await notify(c, g.reviewer_id, { kind: 'academy_wellbeing', title: 'A development goal has an answer', body: 'Open Wellbeing in GotMyGame.', data: { organisation_id: g.organisation_id, goal_id: g.id }, dedupe_key: `wb:goal-answer:${g.id}:${r.row_version}` });
       return r;
     });
   },
@@ -132,7 +132,7 @@ cap({
       const next = { consent: 'consented', decline: 'declined', withdraw: 'withdrawn' }[i.decision];
       const r = (await c.query("UPDATE academy_wellbeing_referrals SET status=$2, decided_at=now(), consent_by=CASE WHEN $2='consented' THEN $3::uuid ELSE consent_by END, consent_as=CASE WHEN $2='consented' THEN $4 ELSE consent_as END, consent_at=CASE WHEN $2='consented' THEN now() ELSE consent_at END, row_version=row_version+1 WHERE id=$1 RETURNING id, status, consent_as, consent_at", [rf.id, next, user.id, as])).rows[0];
       await log(c, rf.organisation_id, rf.athlete_id, `referral_${next}`, user.id, { type: 'referral', id: rf.id });
-      await notify(c, rf.proposed_by, { kind: 'academy_wellbeing', title: 'A specialist suggestion has an answer', body: 'Open Wellbeing in Gotmygame.', data: { organisation_id: rf.organisation_id, referral_id: rf.id }, dedupe_key: `wb:referral-answer:${rf.id}:${next}` });
+      await notify(c, rf.proposed_by, { kind: 'academy_wellbeing', title: 'A specialist suggestion has an answer', body: 'Open Wellbeing in GotMyGame.', data: { organisation_id: rf.organisation_id, referral_id: rf.id }, dedupe_key: `wb:referral-answer:${rf.id}:${next}` });
       await audit(c, user.id, `${i.decision}_wellbeing_referral`, 'academy_wellbeing_referrals', rf.id);
       return r;
     });

@@ -204,7 +204,7 @@ function fold(line) {
 
 /** events: [{ uid, startMs, endMs, allDay, summary, description?, cancelled?, tentative?, sequence?, lastModifiedMs?, createdMs? }] -> RFC 5545 text. */
 export function writeIcs({ name, tz, events, now = Date.now() }) {
-  const lines = ['BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//Sportarena//Calendar//EN', 'CALSCALE:GREGORIAN', 'METHOD:PUBLISH', `X-WR-CALNAME:${esc(name)}`, `X-WR-TIMEZONE:${tz}`, 'REFRESH-INTERVAL;VALUE=DURATION:PT1H', 'X-PUBLISHED-TTL:PT1H'];
+  const lines = ['BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//GotMyGame//Calendar//EN', 'CALSCALE:GREGORIAN', 'METHOD:PUBLISH', `X-WR-CALNAME:${esc(name)}`, `X-WR-TIMEZONE:${tz}`, 'REFRESH-INTERVAL;VALUE=DURATION:PT1H', 'X-PUBLISHED-TTL:PT1H'];
   for (const e of events) {
     lines.push('BEGIN:VEVENT', `UID:${e.uid}@sportarena`, `DTSTAMP:${stamp(now)}`);
     if (e.allDay) lines.push(`DTSTART;VALUE=DATE:${dateOnly(e.startMs)}`, `DTEND;VALUE=DATE:${dateOnly(e.endMs)}`);
@@ -261,7 +261,7 @@ const safeLookup = (hostname, opts, cb) => dns.lookup(hostname, { ...opts, all: 
 
 function getOnce(u) {
   return new Promise((resolve, reject) => {
-    const req = https.get({ host: u.hostname, path: u.pathname + u.search, lookup: safeLookup, timeout: 10_000, headers: { accept: 'text/calendar, text/plain;q=0.5', 'user-agent': 'Sportarena-Calendar/1' } }, (res) => {
+    const req = https.get({ host: u.hostname, path: u.pathname + u.search, lookup: safeLookup, timeout: 10_000, headers: { accept: 'text/calendar, text/plain;q=0.5', 'user-agent': 'GotMyGame-Calendar/1' } }, (res) => {
       if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) { res.resume(); return resolve({ redirect: new URL(res.headers.location, u) }); }
       if (res.statusCode !== 200) { res.resume(); return reject(new AppError(502, 'calendar_unreachable', `The calendar server answered ${res.statusCode}`)); }
       const chunks = []; let size = 0;

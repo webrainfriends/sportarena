@@ -26,7 +26,7 @@ table{width:100%;border-collapse:collapse}th,td{padding:10px 8px;text-align:left
 .g{display:flex;justify-content:space-between;gap:12px;padding:12px 0;border-bottom:1px solid rgba(255,255,255,.12)}a.btn{display:inline-block;margin-top:18px;padding:14px 22px;min-height:44px;border-radius:999px;background:#9B72C6;color:#fff;font-weight:800;text-decoration:none}`;
 
 const head = (card, url, indexable, extra = '') => `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>${esc(card.title)} · Gotmygame</title><meta name="description" content="${esc(card.description)}">
+<title>${esc(card.title)} · GotMyGame</title><meta name="description" content="${esc(card.description)}">
 <meta name="robots" content="${indexable ? 'index, follow' : 'noindex, nofollow, noarchive'}">${indexable && url ? `<link rel="canonical" href="${esc(url)}">` : ''}
 <meta property="og:type" content="website"><meta property="og:title" content="${esc(card.title)}"><meta property="og:description" content="${esc(card.description)}">${url ? `<meta property="og:url" content="${esc(url)}">` : ''}
 ${card.image_url ? `<meta property="og:image" content="${esc(card.image_url)}"><meta property="og:image:type" content="image/svg+xml"><meta property="og:image:width" content="1200"><meta property="og:image:height" content="630"><meta name="twitter:image" content="${esc(card.image_url)}">` : ''}
@@ -97,9 +97,9 @@ ${card.app_url ? `<a class="btn" href="${esc(card.app_url)}">Open the live centr
     const payment = String(req.query.payment ?? '');
     const result = String(req.query.result ?? '');
     res.set({ 'Cache-Control': 'no-store', 'Referrer-Policy': 'no-referrer', 'X-Content-Type-Options': 'nosniff', 'X-Robots-Tag': 'noindex, nofollow, noarchive' });
-    if (!UUID.test(payment) || !['success', 'cancel'].includes(result)) return res.status(400).type('html').send('<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Gotmygame</title></head><body><p>This payment link is not valid.</p></body></html>');
+    if (!UUID.test(payment) || !['success', 'cancel'].includes(result)) return res.status(400).type('html').send('<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>GotMyGame</title></head><body><p>This payment link is not valid.</p></body></html>');
     const link = `sportarena://payment?payment=${payment}&result=${result}`;   // fixed scheme and path; only the two validated values are used
-    res.status(302).set('Location', link).type('html').send(`<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex"><title>Gotmygame</title><style>${STYLE}</style></head><body><main><h1>${result === 'success' ? 'Thank you' : 'Payment cancelled'}</h1><p>Return to the Gotmygame app to see the result.</p><a class="btn" style="display:inline-flex;align-items:center;justify-content:center;text-decoration:none" href="${esc(link)}">Open the app</a></main></body></html>`);
+    res.status(302).set('Location', link).type('html').send(`<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex"><title>GotMyGame</title><style>${STYLE}</style></head><body><main><h1>${result === 'success' ? 'Thank you' : 'Payment cancelled'}</h1><p>Return to the GotMyGame app to see the result.</p><a class="btn" style="display:inline-flex;align-items:center;justify-content:center;text-decoration:none" href="${esc(link)}">Open the app</a></main></body></html>`);
   });
   r.get('/share/bracket/:id', async (req, res) => {
     try {

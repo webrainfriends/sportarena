@@ -115,7 +115,7 @@ test('pricing sheet: round-trips, binds to the tender version, rejects formulas,
   assert.throws(() => importSheet(proj, lots, filled.replace('1500.50', '+1500')), /formula/);
   assert.throws(() => importSheet({ ...proj, version: 2 }, lots, filled), /out of date/);
   assert.throws(() => importSheet(proj, lots, filled.replace('sportarena.pricing.v1', 'sportarena.pricing.v0')), /unsupported version/);
-  assert.throws(() => importSheet(proj, lots, 'lot,rate\nL1,1'), /not a Sportarena pricing sheet/);
+  assert.throws(() => importSheet(proj, lots, 'lot,rate\nL1,1'), /not a GotMyGame pricing sheet/);
   assert.throws(() => importSheet(proj, lots, filled.replace('5000.00', '5000.001')), /at most 2 decimals/);
   assert.notEqual(templateHash(proj, lots), templateHash(proj, [{ ...lots[0], qty: 3 }, lots[1]]), 'the template fingerprint changes with the structure');
 });

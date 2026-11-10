@@ -147,7 +147,7 @@ cap({
          VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13, now() + make_interval(days => $14), $15) RETURNING id`,
         [s.organisation_id, v.user_id, v.id, s.id, i.objective_key ?? null, i.dev_objective_id ?? null, i.observation_id ?? null, i.assessment_ref ?? null, actionId, i.start_ms ?? null, i.end_ms ?? null, sealN(i.coach_note, NOTE), i.athlete_visible, i.expires_in_days, user.id])).rows[0];
     } catch (e) { if (e.code === '23505') throw conflict('This clip is already linked to this session'); throw e; }
-    if (i.athlete_visible) for (const to of [v.user_id, ...(await guardiansOf(v.user_id, c))]) await notify(c, to, { kind: 'academy_clip', title: 'A coach shared a video with you', body: 'Open Gotmygame to watch it and respond.', data: { clip_link_id: l.id }, dedupe_key: `academy:clip:${l.id}:${to}` });
+    if (i.athlete_visible) for (const to of [v.user_id, ...(await guardiansOf(v.user_id, c))]) await notify(c, to, { kind: 'academy_clip', title: 'A coach shared a video with you', body: 'Open GotMyGame to watch it and respond.', data: { clip_link_id: l.id }, dedupe_key: `academy:clip:${l.id}:${to}` });
     await audit(c, user.id, 'link_academy_clip', 'academy_clip_links', l.id);
     const row = await linkFor(user, l.id, c);
     return present(row.l, row.v, { annotations: true });
@@ -265,7 +265,7 @@ cap({
     const reason = await gateOf(l);
     if (reason) throw conflict('This clip cannot be viewed right now', { code: 'clip_blocked', reason });
     const r = (await c.query("UPDATE academy_clip_links SET review_state=$2, review_note_enc=$3, reviewed_by=$4, reviewed_at=now(), first_viewed_at=coalesce(first_viewed_at, now()), row_version=row_version+1, updated_at=now() WHERE id=$1 RETURNING id, review_state, reviewed_at", [l.id, i.state, sealN(i.note, `${NOTE}.review`), user.id])).rows[0];
-    if (i.state !== 'understood') await notify(c, l.created_by, { kind: 'academy_clip_reply', title: 'An athlete replied to a video', body: 'Open Gotmygame to read the reply.', data: { clip_link_id: l.id }, dedupe_key: `academy:clip:reply:${l.id}:${i.state}` });
+    if (i.state !== 'understood') await notify(c, l.created_by, { kind: 'academy_clip_reply', title: 'An athlete replied to a video', body: 'Open GotMyGame to read the reply.', data: { clip_link_id: l.id }, dedupe_key: `academy:clip:reply:${l.id}:${i.state}` });
     await audit(c, user.id, 'respond_academy_clip_review', 'academy_clip_links', l.id);
     return r;
   }),

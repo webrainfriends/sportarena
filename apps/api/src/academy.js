@@ -93,7 +93,7 @@ export async function recipients(c, app) {
 /** Generic wording on purpose: no names, fees or youth details in a lock-screen or email preview. Every message deep-links to the source. */
 export async function tell(c, app, kind, title) {
   for (const uid of await recipients(c, app)) {
-    await notify(c, uid, { kind: `academy_${kind}`, title, body: 'Open Gotmygame to see the details.', data: { organisation_id: app.organisation_id, application_id: app.id, programme_id: app.programme_id }, dedupe_key: `academy:${kind}:${app.id}:${app.row_version ?? 0}:${uid}` });
+    await notify(c, uid, { kind: `academy_${kind}`, title, body: 'Open GotMyGame to see the details.', data: { organisation_id: app.organisation_id, application_id: app.id, programme_id: app.programme_id }, dedupe_key: `academy:${kind}:${app.id}:${app.row_version ?? 0}:${uid}` });
   }
 }
 

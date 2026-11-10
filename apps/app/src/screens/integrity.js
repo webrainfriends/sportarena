@@ -46,7 +46,7 @@ export function IntegrityTab({ id }) {
   const shared = { id, cats: cats.data, srcs: srcs.data, sports, push, reloadSetup: () => { cats.reload(); srcs.reload(); } };
   return (
     <View style={{ gap: 12 }}>
-      <Notice>Strictly need-to-know. Everything you open here is recorded. A referral, an allegation or a pending test is not a finding, and SportArena does not interpret test results.</Notice>
+      <Notice>Strictly need-to-know. Everything you open here is recorded. A referral, an allegation or a pending test is not a finding, and GotMyGame does not interpret test results.</Notice>
       <Seg options={tabs} value={view} onChange={setView} />
       {view === 'cases' ? <CasesView {...shared} /> : null}
       {view === 'refs' ? <ReferencesView {...shared} /> : null}
@@ -244,7 +244,7 @@ function ReferencesView({ id, srcs, sports }) {
         fields={[{ key: 'reason', label: 'What the source reported', type: 'multiline' }]}
         onSubmit={async (v) => { await api.post(`/integrity/references/${form.ref.id}/tombstone`, { type: form.type, reason: v.reason }); reload(); return 'Marked withdrawn'; }} />
       <FormSheet visible={!!custody} onClose={() => setCustody(null)} title="Add a handoff" submitLabel="Add" color={c.cyan}
-        notice="Append-only. SportArena is not the laboratory chain-of-custody authority: record only what the source reported."
+        notice="Append-only. GotMyGame is not the laboratory chain-of-custody authority: record only what the source reported."
         fields={[
           { key: 'step', label: 'Step or status' }, { key: 'actor_label', label: 'Who or what reported it' },
           { key: 'occurred_at', label: 'When it happened', type: 'datetime' }, { key: 'external_id', label: "Source's own identifier", optional: true },

@@ -286,7 +286,7 @@ function Start({ presetFixture, presetSport, presetVariant, presetLocal, ctx, on
         ) : null}
         {sport || presetFixture ? (
           <>
-            <T weight="700" size={13}>3 · Is this for a real SportArena game?</T>
+            <T weight="700" size={13}>3 · Is this for a real GotMyGame game?</T>
             <Seg options={[{ label: 'Just for me (standalone)', value: 'standalone' }, { label: 'Link to a game', value: 'link' }]} value={mode} onChange={setMode} />
             {mode === 'standalone' ? (
               <View style={{ gap: 8 }}>

@@ -80,7 +80,7 @@ export async function renderOfficialExtract({ snapshot, createdAt, id, sha256, l
   const accent = '#0F6E56', ink = '#222222', mute = '#666666', rule = '#CCCCCC', wash = '#F1F6F4';
   const MARGIN = 44, TOP = 122, BOTTOM = 64;
   const doc = new PDFDocument({ size: 'A4', margins: { top: TOP, bottom: BOTTOM, left: MARGIN, right: MARGIN }, bufferPages: true, compress: true,
-    info: { Title: `Officiating record · ${M.referee}`, Author: 'Sportarena', CreationDate: createdAt, Producer: 'Sportarena' } });
+    info: { Title: `Officiating record · ${M.referee}`, Author: 'GotMyGame', CreationDate: createdAt, Producer: 'GotMyGame' } });
   const chunks = []; doc.on('data', (c) => chunks.push(c));
   const done = new Promise((res, rej) => { doc.on('end', res); doc.on('error', rej); });
   const W = doc.page.width - 2 * MARGIN, left = MARGIN, limit = () => doc.page.height - BOTTOM;
@@ -128,7 +128,7 @@ export async function renderOfficialExtract({ snapshot, createdAt, id, sha256, l
   for (const o of M.others) { room(50); text(o.title, { bold: true, size: 9.5 }); text(o.meta, { size: 8, color: mute }); for (const l of o.lines) text(l, { size: 8.5, indent: 8 }); doc.moveDown(0.4); }
   h2('Payments');
   for (const t of M.payments) para(t);
-  text('Fees are the amounts recorded by event organisers. A status here means it was recorded, not that SportArena moved the money.', { size: 8, color: mute });
+  text('Fees are the amounts recorded by event organisers. A status here means it was recorded, not that GotMyGame moved the money.', { size: 8, color: mute });
   h2('Feedback');
   for (const t of M.feedback) para(t);
   h2('Disputes linked to these matches');

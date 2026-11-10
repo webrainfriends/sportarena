@@ -1,5 +1,5 @@
 // Signature-provider adapter (#295). A provider turns "this person agrees to this exact text" into evidence the contract keeps.
-//  - internal: the person signs inside Sportarena while logged in (the API call itself is the signature).
+//  - internal: the person signs inside GotMyGame while logged in (the API call itself is the signature).
 //  - webhook:  an external e-signature service signs elsewhere and tells us through a callback authenticated by an HMAC over the raw body
 //              (header `X-Signature: t=<unix seconds>,v1=<hex hmac-sha256 of "<t>.<raw body>">`). Enabled only when SIGNATURE_WEBHOOK_SECRET is set.
 // Neither provider ever decides who may sign: authority is re-checked against the live agreement on every signature, whatever the provider says.
@@ -11,9 +11,9 @@ const env = (k) => process.env[k] || '';
 const DOCUSIGN_KEYS = ['DOCUSIGN_INTEGRATION_KEY', 'DOCUSIGN_USER_ID', 'DOCUSIGN_ACCOUNT_ID', 'DOCUSIGN_PRIVATE_KEY', 'DOCUSIGN_CONNECT_KEY', 'DOCUSIGN_CALLBACK_URL'];
 
 export const PROVIDERS = {
-  internal: { id: 'internal', label: 'Sportarena', level: 'simple', enabled: () => true, intent: 'Signed in Sportarena by the logged-in signatory' },
+  internal: { id: 'internal', label: 'GotMyGame', level: 'simple', enabled: () => true, intent: 'Signed in GotMyGame by the logged-in signatory' },
   webhook: { id: 'webhook', label: 'External e-signature service', level: 'simple', enabled: () => !!process.env.SIGNATURE_WEBHOOK_SECRET, intent: 'Signed with the external e-signature service' },
-  // Outbound vendor: Sportarena creates the signing request itself (`createRequest`) and the vendor's callback (`/webhooks/signatures/docusign`) signs.
+  // Outbound vendor: GotMyGame creates the signing request itself (`createRequest`) and the vendor's callback (`/webhooks/signatures/docusign`) signs.
   docusign: { id: 'docusign', label: 'DocuSign', level: 'advanced', vendor: true, enabled: () => DOCUSIGN_KEYS.every(env), intent: 'Signed with DocuSign (advanced electronic signature)' },
 };
 

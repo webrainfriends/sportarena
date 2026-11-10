@@ -1,6 +1,6 @@
 # Sport Integrity & Anti-Doping Administration (#489)
 
-A tightly controlled administrative domain for governing bodies. SportArena is **not** a laboratory, a medical record or an investigator. It never infers a violation, interprets a result, scores a person, decides guilt or sanction severity, or advises on testing. A referral, an allegation or a pending test is never presented as a finding.
+A tightly controlled administrative domain for governing bodies. GotMyGame is **not** a laboratory, a medical record or an investigator. It never infers a violation, interprets a result, scores a person, decides guilt or sanction severity, or advises on testing. A referral, an allegation or a pending test is never presented as a finding.
 
 One home: the **Integrity** tab of Federation Home (visible only to the body's integrity officers and owners/admins). The person concerned uses **My integrity** (More wheel) and the case screen. Nothing was added next to the federation console; the existing Federation Home, role model, evidence conventions, eligibility check (#477) and generic notifications are reused.
 
@@ -8,15 +8,15 @@ One home: the **Integrity** tab of Federation Home (visible only to the body's i
 
 | Information | Source of truth | Integrity officer / owner-admin | Case panel / reviewer (that one case) | Person concerned (or verified guardian) | Everyone else (platform admin, coach, sponsor, media, club, other bodies, ancestors) |
 |---|---|---|---|---|---|
-| Case, summary, history | SportArena (`int_cases`, append-only `int_events`) | full, audited | full / read-only, audited | status, deadlines, decisions as recorded, own responses; **not** the summary or internal detail | 404 |
+| Case, summary, history | GotMyGame (`int_cases`, append-only `int_events`) | full, audited | full / read-only, audited | status, deadlines, decisions as recorded, own responses; **not** the summary or internal detail | 404 |
 | Testing reference (code, authority, time, context, status, result category) | The authoritative anti-doping organisation. Stored encrypted, exactly as supplied | full, audited | none | none (a case never exposes it to them) | 404 |
-| Custody handoffs | The source. Append-only, with the source's identifier; SportArena is not the chain-of-custody authority | full | none | none | 404 |
+| Custody handoffs | The source. Append-only, with the source's identifier; GotMyGame is not the chain-of-custody authority | full | none | none | 404 |
 | Therapeutic-use exemption (reference, authority, status, validity, scope, last verified) | The issuing authority. Minimum projection only | full, audited | none | own status and validity, not the reference | 404 |
 | Diagnosis, medication, rationale, clinical papers, analytical values | Health or the external authority | **not stored** (no column exists; unknown fields are rejected) | – | – | – |
 | Decision (reference, authority, outcome, dates) | The deciding body / panel | full | full / read-only | as recorded | 404 |
 | Active sporting sanction | Integrity decision, read live by eligibility | yes | yes | yes | only "Suspended until <date>" in competition eligibility, no case, category or source |
-| Appeal grounds / ruling | SportArena | full | full | own | 404 |
-| Education completion | SportArena (links an existing programme) | counts and who is outstanding, no score | – | own | 404 |
+| Appeal grounds / ruling | GotMyGame | full | full | own | 404 |
+| Education completion | GotMyGame (links an existing programme) | counts and who is outstanding, no score | – | own | 404 |
 | Declarations (conflict / betting interest) | The declarant | full, audited, hidden after the retention date | – | own | 404 |
 
 ## Rules the server enforces

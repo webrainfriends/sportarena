@@ -172,7 +172,7 @@ export function payoutStatementRouter() {
       const iid = String(req.params.id); if (!/^[0-9a-f-]{36}$/.test(iid)) throw notFound('Payout item');
       const it = await one("SELECT i.*, u.display_name AS payee, b.batch_no FROM payout_items i JOIN users u ON u.id=i.payee_id JOIN payout_batches b ON b.id=i.batch_id WHERE i.id=$1 AND i.payee_id=$2 AND i.status='paid'", [iid, user.id]);
       if (!it) throw notFound('Payout item');
-      const doc = new PDFDocument({ size: 'A4', margin: 56, info: { Title: `Payout statement ${it.batch_no}`, Producer: 'Sportarena' } });
+      const doc = new PDFDocument({ size: 'A4', margin: 56, info: { Title: `Payout statement ${it.batch_no}`, Producer: 'GotMyGame' } });
       const chunks = []; doc.on('data', (c) => chunks.push(c));
       const done = new Promise((ok, bad) => { doc.on('end', ok); doc.on('error', bad); });
       const m = (v) => `${it.currency} ${toMajor(Number(v), it.currency)}`;

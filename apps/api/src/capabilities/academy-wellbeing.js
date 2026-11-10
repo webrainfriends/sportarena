@@ -132,7 +132,7 @@ cap({
         const r = await c.query("INSERT INTO academy_dev_track_members(track_id, athlete_id, enrolled_by) VALUES ($1,$2,$3) ON CONFLICT (track_id, athlete_id) DO UPDATE SET status='enrolled', ended_at=NULL WHERE academy_dev_track_members.status='withdrawn' RETURNING id", [t.id, athleteId, user.id]);
         if (!r.rowCount) { results.push({ athlete_id: athleteId, result: 'skipped', reason: 'already_in_track' }); continue; }
         await log(c, t.organisation_id, athleteId, 'track_enrolled', user.id, { type: 'track', id: t.id });
-        await tellFamily(c, athleteId, { kind: 'academy_wellbeing', title: 'A personal-development track', body: 'Open Wellbeing in Gotmygame to see what it covers. You can leave at any time.', key: `wb:track:${t.id}:${athleteId}`, data: { organisation_id: t.organisation_id } });
+        await tellFamily(c, athleteId, { kind: 'academy_wellbeing', title: 'A personal-development track', body: 'Open Wellbeing in GotMyGame to see what it covers. You can leave at any time.', key: `wb:track:${t.id}:${athleteId}`, data: { organisation_id: t.organisation_id } });
         results.push({ athlete_id: athleteId, result: 'enrolled' });
       }
       return { results };
@@ -176,7 +176,7 @@ cap({
       let asked = 0;
       for (const athleteId of i.athlete_ids) {
         if (!(await enrolled(c, i.id, athleteId))) continue;
-        await tellFamily(c, athleteId, { kind: 'academy_wellbeing', title: 'Your academy would like your choices', body: 'Open Wellbeing in Gotmygame to choose what you are happy to take part in. You can change or withdraw it at any time.', key: `wb:consent-ask:${i.id}:${athleteId}:${today()}`, data: { organisation_id: i.id } });
+        await tellFamily(c, athleteId, { kind: 'academy_wellbeing', title: 'Your academy would like your choices', body: 'Open Wellbeing in GotMyGame to choose what you are happy to take part in. You can change or withdraw it at any time.', key: `wb:consent-ask:${i.id}:${athleteId}:${today()}`, data: { organisation_id: i.id } });
         await log(c, i.id, athleteId, 'consent_requested', user.id);
         asked++;
       }
@@ -204,7 +204,7 @@ cap({
       if (cur) { await c.query("UPDATE academy_mentor_assignments SET status='ended', ended_at=now(), ended_reason='mentor_change' WHERE id=$1", [cur.id]); await c.query("UPDATE academy_wellbeing_checkins SET status='cancelled', row_version=row_version+1 WHERE assignment_id=$1 AND status='scheduled'", [cur.id]); }
       const r = (await c.query('INSERT INTO academy_mentor_assignments(organisation_id, athlete_id, mentor_id, cadence_days, review_on, assigned_by) VALUES ($1,$2,$3,$4,$5,$6) RETURNING *', [i.id, i.athlete_id, i.mentor_id, i.cadence_days, i.review_on ?? plusDays(90), user.id])).rows[0];
       await log(c, i.id, i.athlete_id, cur ? 'mentor_changed' : 'mentor_assigned', user.id, { type: 'mentor', id: r.id });
-      await tellFamily(c, i.athlete_id, { kind: 'academy_wellbeing', title: 'Your mentor', body: `${await nameOf(c, i.mentor_id)} is your academy mentor. Open Wellbeing in Gotmygame to see how it works and what is shared.`, key: `wb:mentor:${r.id}`, data: { organisation_id: i.id } });
+      await tellFamily(c, i.athlete_id, { kind: 'academy_wellbeing', title: 'Your mentor', body: `${await nameOf(c, i.mentor_id)} is your academy mentor. Open Wellbeing in GotMyGame to see how it works and what is shared.`, key: `wb:mentor:${r.id}`, data: { organisation_id: i.id } });
       await audit(c, user.id, 'assign_mentor', 'academy_mentor_assignments', r.id);
       return r;
     });
@@ -229,7 +229,7 @@ cap({
       const r = (await c.query('UPDATE academy_mentor_assignments SET status=$2, cadence_days=coalesce($3,cadence_days), review_on=coalesce($4,review_on), ended_at=CASE WHEN $2=\'ended\' THEN now() ELSE ended_at END, ended_reason=CASE WHEN $2=\'ended\' THEN $5 ELSE ended_reason END WHERE id=$1 RETURNING *', [m.id, next, i.cadence_days ?? null, i.review_on ?? null, i.reason ?? null])).rows[0];
       if (next === 'ended' || next === 'paused') await c.query("UPDATE academy_wellbeing_checkins SET status='cancelled', row_version=row_version+1 WHERE assignment_id=$1 AND status='scheduled'", [m.id]);
       await log(c, m.organisation_id, m.athlete_id, `mentor_${i.action}`, user.id, { type: 'mentor', id: m.id }, i.reason ?? null);
-      if (next === 'ended') await tellFamily(c, m.athlete_id, { kind: 'academy_wellbeing', title: 'Mentoring has ended', body: 'Open Wellbeing in Gotmygame to see what happens next.', key: `wb:mentor-end:${m.id}`, data: { organisation_id: m.organisation_id } });
+      if (next === 'ended') await tellFamily(c, m.athlete_id, { kind: 'academy_wellbeing', title: 'Mentoring has ended', body: 'Open Wellbeing in GotMyGame to see what happens next.', key: `wb:mentor-end:${m.id}`, data: { organisation_id: m.organisation_id } });
       return r;
     });
   },
@@ -285,7 +285,7 @@ cap({
         ids.push(r.rows[0].id);
       }
       await log(c, i.id, i.athlete_id, 'checkin_scheduled', user.id, { type: 'checkin', id: ids[0] }, String(ids.length));
-      await tellFamily(c, i.athlete_id, { kind: 'academy_wellbeing', title: 'A wellbeing check-in is booked', body: `${await nameOf(c, assignment.mentor_id)} has booked ${ids.length > 1 ? `${ids.length} check-ins` : 'a check-in'}. Open Wellbeing in Gotmygame for the time and place.`, key: `wb:checkin:${series}`, data: { organisation_id: i.id } });
+      await tellFamily(c, i.athlete_id, { kind: 'academy_wellbeing', title: 'A wellbeing check-in is booked', body: `${await nameOf(c, assignment.mentor_id)} has booked ${ids.length > 1 ? `${ids.length} check-ins` : 'a check-in'}. Open Wellbeing in GotMyGame for the time and place.`, key: `wb:checkin:${series}`, data: { organisation_id: i.id } });
       return { replayed: false, series_id: series, ids };
     });
   },
@@ -337,7 +337,7 @@ cap({
       const keys = Object.keys(set);
       const r = (await c.query(`UPDATE academy_wellbeing_checkins SET ${keys.map((x, n) => `${x}=$${n + 3}`).join(', ')}, row_version=row_version+1 WHERE id=$1 AND row_version=$2 RETURNING id, status, outcome, follow_up_status, follow_up_due, scheduled_for, row_version`, [k.id, k.row_version, ...keys.map((x) => set[x])])).rows[0];
       await log(c, k.organisation_id, k.athlete_id, { complete: 'checkin_completed', reschedule: 'checkin_rescheduled', cancel: 'checkin_cancelled', missed: 'checkin_missed', follow_up_done: 'follow_up_done' }[i.action], user.id, { type: 'checkin', id: k.id });
-      if (i.action === 'reschedule' || i.action === 'cancel') await tellFamily(c, k.athlete_id, { kind: 'academy_wellbeing', title: i.action === 'cancel' ? 'A check-in was cancelled' : 'A check-in moved', body: 'Open Wellbeing in Gotmygame for the new details.', key: `wb:checkin-${i.action}:${k.id}:${r.row_version}`, data: { organisation_id: k.organisation_id } });
+      if (i.action === 'reschedule' || i.action === 'cancel') await tellFamily(c, k.athlete_id, { kind: 'academy_wellbeing', title: i.action === 'cancel' ? 'A check-in was cancelled' : 'A check-in moved', body: 'Open Wellbeing in GotMyGame for the new details.', key: `wb:checkin-${i.action}:${k.id}:${r.row_version}`, data: { organisation_id: k.organisation_id } });
       return { ...r, outcome: r.outcome === 'concern_raised' ? 'concern_raised' : r.outcome };
     });
   },
@@ -379,7 +379,7 @@ cap({
       if (i.track_id && !(await c.query('SELECT 1 FROM academy_dev_tracks WHERE id=$1 AND organisation_id=$2', [i.track_id, i.id])).rowCount) throw notFound('Track');
       const r = (await c.query('INSERT INTO academy_dev_goals(organisation_id, athlete_id, track_id, title, measure, target_date, proposed_by, reviewer_id, next_review_on) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING *', [i.id, i.athlete_id, i.track_id ?? null, i.title, i.measure ?? null, i.target_date ?? null, user.id, reviewer, i.next_review_on ?? plusDays(28)])).rows[0];
       await log(c, i.id, i.athlete_id, 'goal_proposed', user.id, { type: 'goal', id: r.id });
-      await tellFamily(c, i.athlete_id, { kind: 'academy_wellbeing', title: 'A development goal to agree', body: 'Open Wellbeing in Gotmygame to read it and agree, or ask for changes.', key: `wb:goal:${r.id}:1`, data: { organisation_id: i.id } });
+      await tellFamily(c, i.athlete_id, { kind: 'academy_wellbeing', title: 'A development goal to agree', body: 'Open Wellbeing in GotMyGame to read it and agree, or ask for changes.', key: `wb:goal:${r.id}:1`, data: { organisation_id: i.id } });
       return r;
     });
   },
@@ -413,7 +413,7 @@ cap({
       const keys = Object.keys(set);
       const r = (await c.query(`UPDATE academy_dev_goals SET ${keys.map((x, n) => `${x}=$${n + 3}`).join(', ')}, updated_at=now(), row_version=row_version+1 WHERE id=$1 AND row_version=$2 RETURNING *`, [g.id, g.row_version, ...keys.map((x) => set[x])])).rows[0];
       await log(c, g.organisation_id, g.athlete_id, `goal_${i.action}`, user.id, { type: 'goal', id: g.id });
-      if (i.action === 'edit') await tellFamily(c, g.athlete_id, { kind: 'academy_wellbeing', title: 'A development goal changed', body: 'Open Wellbeing in Gotmygame to read the new wording and agree again.', key: `wb:goal:${g.id}:${r.row_version}`, data: { organisation_id: g.organisation_id } });
+      if (i.action === 'edit') await tellFamily(c, g.athlete_id, { kind: 'academy_wellbeing', title: 'A development goal changed', body: 'Open Wellbeing in GotMyGame to read the new wording and agree again.', key: `wb:goal:${g.id}:${r.row_version}`, data: { organisation_id: g.organisation_id } });
       return r;
     });
   },
@@ -450,7 +450,7 @@ cap({
       if (i.association_id && !(await c.query("SELECT 1 FROM org_provider_associations WHERE id=$1 AND organisation_id=$2 AND status='active'", [i.association_id, i.id])).rowCount) throw notFound('Provider');
       const r = (await c.query('INSERT INTO academy_wellbeing_referrals(organisation_id, athlete_id, specialty, reason, urgency, association_id, proposed_by) VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING *', [i.id, i.athlete_id, i.specialty, i.reason, i.urgency, i.association_id ?? null, user.id])).rows[0];
       await log(c, i.id, i.athlete_id, 'referral_proposed', user.id, { type: 'referral', id: r.id });
-      await tellFamily(c, i.athlete_id, { kind: 'academy_wellbeing', title: 'Your academy suggests a specialist', body: 'Open Wellbeing in Gotmygame to read the suggestion. Nothing is shared with anyone unless you say yes.', key: `wb:referral:${r.id}`, data: { organisation_id: i.id } });
+      await tellFamily(c, i.athlete_id, { kind: 'academy_wellbeing', title: 'Your academy suggests a specialist', body: 'Open Wellbeing in GotMyGame to read the suggestion. Nothing is shared with anyone unless you say yes.', key: `wb:referral:${r.id}`, data: { organisation_id: i.id } });
       await audit(c, user.id, 'propose_wellbeing_referral', 'academy_wellbeing_referrals', r.id);
       return r;
     });
@@ -513,7 +513,7 @@ cap({
       await requireScope(c, i.id, i.athlete_id, 'guardian_updates');
       screen(i.note);
       const title = { track_progress: 'Progress in a development track', goal_outcome: 'A development goal was reviewed', checkin_rhythm: 'About your wellbeing check-ins', thank_you: 'A thank-you from your academy', review_invitation: 'You are invited to a wellbeing review' }[i.template];
-      const n = await tellFamily(c, i.athlete_id, { kind: 'academy_wellbeing', title, body: `${i.note ? `${i.note} ` : ''}Open Wellbeing in Gotmygame for details.`, key: `wb:update:${i.id}:${i.athlete_id}:${i.template}:${Date.now()}`, data: { organisation_id: i.id } });
+      const n = await tellFamily(c, i.athlete_id, { kind: 'academy_wellbeing', title, body: `${i.note ? `${i.note} ` : ''}Open Wellbeing in GotMyGame for details.`, key: `wb:update:${i.id}:${i.athlete_id}:${i.template}:${Date.now()}`, data: { organisation_id: i.id } });
       await log(c, i.id, i.athlete_id, 'update_sent', user.id, null, i.template);
       return { sent_to: n, template: i.template };
     });

@@ -1,5 +1,5 @@
 // The standard rulebook for each supported sport: plain-language rule cards plus the few settings a competition may localise.
-// This is reference content written for SportArena (a summary, not the governing body's text) with a link to the official book.
+// This is reference content written for GotMyGame (a summary, not the governing body's text) with a link to the official book.
 // A card's params are the only things a local rule set may change; everything else is the standard and is never edited.
 // Pure data, no database. rulebook/apply.js turns local values into scoring-ruleset changes and printed "rules in force" lines.
 
@@ -334,7 +334,7 @@ export const BOOKS = {
 /** Sports that share another sport's rulebook, as { book, format }. Rugby sevens is the Sevens format of the rugby book. */
 export const ALIASES = { 'rugby-sevens': { book: 'rugby', format: 'Sevens' } };
 
-/** The book and format that apply to a sport slug, or null when SportArena has no written rulebook for it yet. */
+/** The book and format that apply to a sport slug, or null when GotMyGame has no written rulebook for it yet. */
 export function bookFor(slugOrBook, format) {
   const a = ALIASES[slugOrBook];
   const slug = a?.book ?? slugOrBook;

@@ -2701,7 +2701,7 @@ export default {
   'spl.empty_exposure': 'තවමත් සංඛ්‍යා ලේඛන සටහන් කර නැත',
   'spl.empty_cal': 'මෙම කාලයේ කිසිවක් සැලසුම් කර නැත',
   'spl.empty_renew': 'අලුත් කිරීමේ කාලයේ ගිවිසුම් නැත',
-  'spl.prov_note': 'මනින ලද = Sportarena ගණන් කළා. ආනයනය = නම් කළ සපයන්නා ලබාදුන්නා. ඇස්තමේන්තු = ඔබ සැකසූ උපකල්පන වලින්. ROI කිසිවිටෙක නිර්මාණය නොකෙරේ.',
+  'spl.prov_note': 'මනින ලද = GotMyGame ගණන් කළා. ආනයනය = නම් කළ සපයන්නා ලබාදුන්නා. ඇස්තමේන්තු = ඔබ සැකසූ උපකල්පන වලින්. ROI කිසිවිටෙක නිර්මාණය නොකෙරේ.',
   'spl.territory': 'භූමිය',
   'spl.countries': 'රටවල්',
   'spl.platforms': 'වේදිකා',
@@ -4263,7 +4263,7 @@ export default {
   "tpart.saved": "සුරැකිණි",
   "tpart.rotate": "කෝල්බැක් රහස වෙනස් කරන්න",
   "tpart.creds_note": "ගබඩා කළ ලිපිනය සහ යතුර තබාගැනීමට ඒවා හිස්ව තබන්න. විරාම කිරීමෙන් නව සෙවුම් නවතී; දැනටමත් කළ වෙන්කිරීම් තවමත් තහවුරු කිරීමට හෝ අවලංගු කිරීමට හැක.",
-  "tpart.contract_note": "ඔබ දෙන ලිපිනයේ හවුල්කරු SportArena සංචාරක ගිවිසුම (සෙවීම, රඳවීම, වෙන්කිරීම, අවලංගුව) තේරුම් ගත යුතුය. අක්තපත්‍ර සංකේතනය කර ගබඩා කර නැවත නොපෙන්වයි.",
+  "tpart.contract_note": "ඔබ දෙන ලිපිනයේ හවුල්කරු GotMyGame සංචාරක ගිවිසුම (සෙවීම, රඳවීම, වෙන්කිරීම, අවලංගුව) තේරුම් ගත යුතුය. අක්තපත්‍ර සංකේතනය කර ගබඩා කර නැවත නොපෙන්වයි.",
   "tpart.secret_title": "කෝල්බැක් රහස",
   "tpart.secret_note": "එක් වරක් පමණක් පෙන්වයි. හවුල්කරු සෑම වෙනසකටම හෝ අවලංගුවකටම මෙයින් අත්සන් කරයි (HMAC-SHA256, header x-sportarena-signature).",
   "tpart.callback": "කෝල්බැක් ලිපිනය",
@@ -6564,7 +6564,7 @@ export default {
   'autopay.unavailable': 'මෙම මුදල් වර්ගය හෝ රට සඳහා ස්වයංක්‍රීය ගෙවීම තවම නොමැත.',
   'autopay.opened': 'විවෘත වූ සපයන්නාගේ පිටුවේ අනුමත කර මෙතැනට ආපසු එන්න.',
   'autopay.check': 'මම අනුමත කළා, දැන් පරීක්ෂා කරන්න',
-  'autopay.cardNote': 'ඔබ කාඩ්පත ගෙවීම් සපයන්නාගේ සිය පිටුවේ ඇතුළත් කරයි. Gotmygame කිසි විටෙක කාඩ්පත් අංකය නොදකින අතර ගබඩා නොකරයි.',
+  'autopay.cardNote': 'ඔබ කාඩ්පත ගෙවීම් සපයන්නාගේ සිය පිටුවේ ඇතුළත් කරයි. GotMyGame කිසි විටෙක කාඩ්පත් අංකය නොදකින අතර ගබඩා නොකරයි.',
   'autopay.guardian': 'සත්‍යාපිත භාරකරුවෙකු ලෙස ඔබ {name} වෙනුවෙන් මෙයට අවසර දෙයි. ඔබේ භාරකාර සබැඳිය හෝ පුහුණු කිරීමේ කැමැත්ත අවසන් වුවහොත් මෙය නවතී.',
   'autopay.stopped': 'නතර විය',
   'autopay.offNote': 'අක්‍රියයි. පෙර මෙන් සෑම මාසයකම ගෙවීමට ඔබෙන් ඉල්ලයි.',
@@ -7851,7 +7851,7 @@ export default {
   'dp.disc.other': 'වෙනත්',
   'dp.school': 'පාසල් සාරාංශ',
   'dp.school_family_note': 'මෙම සැලසුමට පෙන්විය හැකි ඔබේ පාසල් වාර්තා තෝරන්න. වර්ගය, පාසල සහ දින පමණක් දිස්වේ; සාරාංශ පෙළ කිසි විටෙක පිටපත් නොකෙරේ. ඕනෑම වේලාවක අක්‍රිය කරන්න.',
-  'dp.school_none_family': 'Gotmygame හි ඔබට තවම පාසල් වාර්තා නැත.',
+  'dp.school_none_family': 'GotMyGame හි ඔබට තවම පාසල් වාර්තා නැත.',
   'dp.school_none_staff': 'ක්‍රීඩකයා හෝ භාරකරු කිසිදු පාසල් වාර්තාවක් පෙන්වීමට තෝරා නැත.',
   'dp.school_note': 'ක්‍රීඩකයාගේ ම වාර්තා වලින් කියවයි, ඔවුන් තෝරා ඇති ප්‍රමාණයට පමණි.',
   'dp.school_issued': 'පාසල විසින් නිකුත් කළා',
@@ -12344,7 +12344,7 @@ export default {
   'inc.cprefs_sub': 'Shared only with staff holding an active communication need share with you.',
   'inc.cprefs_mode_label': 'Preferred contact mode',
   'inc.cprefs_mode_app': 'In-app notification',
-  'inc.cprefs_mode_app_sub': 'Via Sportarena push notification',
+  'inc.cprefs_mode_app_sub': 'Via GotMyGame push notification',
   'inc.cprefs_mode_email': 'Email',
   'inc.cprefs_mode_email_sub': 'To your registered email address',
   'inc.cprefs_mode_sms': 'SMS / text message',
@@ -13393,7 +13393,7 @@ export default {
   'pl.path.modules': '{n} modules',
   'pl.path.minutes': '{n} min',
   'pl.path.publisher': 'By {name}',
-  'pl.path.platform': 'By Sportarena',
+  'pl.path.platform': 'By GotMyGame',
   'pl.path.objectives': 'What you will learn',
   'pl.path.start': 'Start path',
   'pl.path.resume': 'Resume path',
@@ -16723,7 +16723,7 @@ export default {
   'calendarSync.activeLabel': 'Active', // reviewed: false
   'calendarSync.disabledLabel': 'Switched off', // reviewed: false
   'calendarSync.noFeeds': 'No links yet', // reviewed: false
-  'calendarSync.noFeedsSub': 'Create one to see your Sportarena schedule in Apple Calendar, Google or Outlook.', // reviewed: false
+  'calendarSync.noFeedsSub': 'Create one to see your GotMyGame schedule in Apple Calendar, Google or Outlook.', // reviewed: false
   'calendarSync.addHours': '+ Add hours', // reviewed: false
   'calendarSync.yourTimezone': 'Your time zone', // reviewed: false
   'calendarSync.changeTimezone': 'Change ›', // reviewed: false

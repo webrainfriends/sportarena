@@ -163,7 +163,7 @@ cap({
     const row = (await c.query('UPDATE academy_timesheets SET status=$2, row_version=row_version+1, updated_at=now() WHERE id=$1 RETURNING *', [t.id, next])).rows[0];
     await event(c, t.id, i.action === 'approve' ? 'approved' : i.action === 'reject' ? 'rejected' : 'reopened', user.id, i.reason, snap(t), snap(row));
     await audit(c, user.id, `${i.action}_academy_timesheet`, 'academy_timesheets', t.id);
-    await notify(c, t.user_id, { kind: 'academy_timesheet_decision', title: i.action === 'approve' ? 'Timesheet approved' : i.action === 'reject' ? 'Timesheet needs changes' : 'Timesheet reopened', body: 'Open Gotmygame for details.', data: { timesheet_id: t.id }, dedupe_key: `academy-ts:${t.id}:${row.row_version}` });
+    await notify(c, t.user_id, { kind: 'academy_timesheet_decision', title: i.action === 'approve' ? 'Timesheet approved' : i.action === 'reject' ? 'Timesheet needs changes' : 'Timesheet reopened', body: 'Open GotMyGame for details.', data: { timesheet_id: t.id }, dedupe_key: `academy-ts:${t.id}:${row.row_version}` });
     return row;
   }),
 });

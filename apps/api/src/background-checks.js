@@ -1,4 +1,4 @@
-// Background-check vendor adapter (#703). A provider orders a check and reports back; Sportarena keeps ONLY the mapped state (clear / not_clear / pending)
+// Background-check vendor adapter (#703). A provider orders a check and reports back; GotMyGame keeps ONLY the mapped state (clear / not_clear / pending)
 // and the vendor's reference. The vendor's report is never requested, parsed or stored here. Anything that is not an explicit "clear" or "not_clear" is
 // "pending" (fail closed), and a vendor "clear" never makes a record valid by itself: a reviewer still confirms it through decide_compliance_record.
 import { createHmac, randomBytes, timingSafeEqual } from 'node:crypto';

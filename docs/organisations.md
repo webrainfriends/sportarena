@@ -71,7 +71,7 @@ Evaluators can never report payments or put the brand's name to terms. "Sign" he
 ## Operations and limitations
 
 * Failure modes: 404 for organisations/cohorts you do not belong to (existence is not leaked), 403 for a role that cannot do the action, 409 for archived organisations/cohorts, last-owner and duplicate-membership conflicts.
-* Invitations require an existing Gotmygame account; there are no email invitations to unregistered people yet.
+* Invitations require an existing GotMyGame account; there are no email invitations to unregistered people yet.
 * Consent is an attestation by the enrolling staff member; there is no separate guardian-consent flow.
 * Finance figures come from the team settlement ledger (`team_payouts`) of linked teams; event/venue revenue is not aggregated yet.
 * Cohorts and seasons can be archived but not renamed, and there is no per-session schedule: attendance is recorded by date.

@@ -3,7 +3,7 @@
 One operating loop for a team, club, school, academy, national delegation or event organiser travelling to a competition:
 **fixture/event commitment → trip → travel party → transport and stay → documents and readiness → movement and check-in → per diem and expenses → return and close-out.**
 
-It is a thin operational layer. A trip **points at** canonical records; it never copies them, and it is not a travel agency: SportArena holds no airline or hotel inventory. A typed reference is never shown as verified; only a booking confirmed by a connected travel partner (see *Travel partner adapters*) is.
+It is a thin operational layer. A trip **points at** canonical records; it never copies them, and it is not a travel agency: GotMyGame holds no airline or hotel inventory. A typed reference is never shown as verified; only a booking confirmed by a connected travel partner (see *Travel partner adapters*) is.
 
 ## Where it lives (no overlap)
 

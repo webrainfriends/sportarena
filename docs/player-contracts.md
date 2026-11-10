@@ -26,8 +26,8 @@ covers Billboard-accepted work for a team or an event. Merging the two (moving `
 * **Earned** needs a verified trigger: a played game with *verified* minutes (appearance fee, start bonus), goals on the official record (goal bonus), a won game
   (win bonus), a finished monthly period (pro-rata for a part period and when a contract ends early), or a due date (fixed, signing, retention — retention is lost if the
   person is no longer under contract on that date).
-* **Paid** exists only when the club records a transfer with a bank reference. SportArena exports a bank file; it does not move money. No escrow is stated or implied.
-* Withholding is a **rate the club enters** and a line on every earning. SportArena does not calculate or file tax.
+* **Paid** exists only when the club records a transfer with a bank reference. GotMyGame exports a bank file; it does not move money. No escrow is stated or implied.
+* Withholding is a **rate the club enters** and a line on every earning. GotMyGame does not calculate or file tax.
 * Ledger entries are signed in the payee's favour (`fee`, `withholding`, `expense`, `adjustment`, `payment`, `refund`), append-only (a trigger rejects UPDATE/DELETE), idempotent
   (`UNIQUE(contract_id, idem_key)`) and carry source and reason. A correction (voided goal, retro-dated amendment, unverified minutes) is a compensating line.
 * Which version prices a game: the highest version number whose effective date has arrived. A monthly period is priced on its first day.

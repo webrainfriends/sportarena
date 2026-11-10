@@ -160,7 +160,7 @@ function PathCard({ path, onPress, progress }) {
             <View style={{ flexDirection: 'row', gap: 10, marginTop: 6, flexWrap: 'wrap' }}>
               {path.module_count > 0 && <T size={12} color={c.mute}>{t('pl.path.modules', { n: path.module_count })}</T>}
               {path.estimated_minutes > 0 && <T size={12} color={c.mute}>{t('pl.path.minutes', { n: path.estimated_minutes })}</T>}
-              <T size={12} color={c.mute}>{path.publisher_name && path.publisher_name !== 'Sportarena' ? t('pl.path.publisher', { name: path.publisher_name }) : t('pl.path.platform')}</T>
+              <T size={12} color={c.mute}>{path.publisher_name && path.publisher_name !== 'GotMyGame' ? t('pl.path.publisher', { name: path.publisher_name }) : t('pl.path.platform')}</T>
             </View>
             {pct !== null && <ProgressBar pct={pct} />}
             {progress?.credential_issued && (

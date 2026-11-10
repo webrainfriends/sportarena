@@ -55,7 +55,7 @@ Per open dated task, in the agreement's timezone (programs: UTC): the assignee g
 after downtime only the latest is sent. No assignee, or an assignee who left: the managers are told once (`orphaned`). Two days overdue: escalated once to the
 managers of the side (and the creator if still on the team). Changing the assignee or date starts a new cycle. Rows are locked `SKIP LOCKED` and the notice is
 written in the same transaction as the notification; notification dedupe keys make retries inert. Manual escalation is idempotent per `row_version`.
-Notification wording is generic ("A sponsorship task is overdue", "Open Gotmygame to see it."): never the task text, amounts or names. Kinds:
+Notification wording is generic ("A sponsorship task is overdue", "Open GotMyGame to see it."): never the task text, amounts or names. Kinds:
 `sponsorship_task`, `sponsorship_task_escalation` (mutable in notification preferences). Email still needs `NOTIFY_WEBHOOK_URL`.
 
 ## UI

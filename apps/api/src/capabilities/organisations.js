@@ -204,7 +204,7 @@ cap({
     if (i.department_id) await deptOf(i.id, i.department_id);
     if (i.role === 'owner' && mine !== 'owner') throw forbidden('Only an owner can invite another owner');
     const u = await person(i.person);
-    if (!u) throw notFound('Person (they need a Gotmygame account first)');
+    if (!u) throw notFound('Person (they need a GotMyGame account first)');
     await assertOrgCapacity(i.id, 'staff_seats', { userId: u.id }); // everyone tagged to the organisation (any role) is covered by its plan
     const m = await one("INSERT INTO organisation_members(organisation_id, user_id, role, invited_by, department_id) VALUES ($1,$2,$3,$4,$5) RETURNING id, organisation_id, user_id, role, status, invited_at, department_id", [i.id, u.id, i.role, user.id, i.department_id ?? null]); // live-membership unique index -> 409 on repeat
     await notify(null, u.id, { kind: 'org_invite', title: `Invitation to ${org.name}`, body: `You have been invited to join ${org.name} as ${i.role}.`, data: { organisation_id: i.id } });
