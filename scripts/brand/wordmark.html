@@ -20,9 +20,10 @@ const el=(n,a={},p)=>{const e=document.createElementNS(NS,n);for(const k in a)e.
 const root=document.getElementById('root');
 const SIZE=260, X0=60, BASE=280;
 
-// Flat coloured text — no extrusion
+// Flat coloured text — no extrusion; extra skewX for a steeper italic slant
+const SKEW=-14; // degrees beyond the font's own italic
 const mkFlat=(txt,x,fill,parent)=>{
-  const g=el('g',{transform:`translate(${x},${BASE})`},parent);
+  const g=el('g',{transform:`translate(${x},${BASE}) skewX(${SKEW})`},parent);
   const t=el('text',{x:0,y:0,'font-size':SIZE,'letter-spacing':-4,fill},g);
   t.textContent=txt;
   return g;
