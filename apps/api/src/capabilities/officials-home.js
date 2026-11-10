@@ -101,6 +101,7 @@ cap({
     if (credential.licence && new Date(credential.licence.expires_on) < new Date(now + 30 * DAY)) inbox.push({ kind: 'credential', title: 'Your federation licence is ending', detail: `${credential.licence.licence_type} ends ${credential.licence.expires_on.toISOString?.().slice(0, 10) ?? credential.licence.expires_on}`, at: credential.licence.expires_on });
 
     return {
+      user_id: user.id,
       sports, sport, timezone: tz, credential, setup: await setupFor(user.id, credential),
       next: confirmed[0] ?? null, today, pending_requests: pending,
       stats: { this_week: confirmed.filter((a) => startMs(a) < weekEnd).length, pending: pending.length, completed_this_season: completed.length, actions: inbox.length },

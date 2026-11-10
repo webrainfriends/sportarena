@@ -74,8 +74,8 @@ cap({
   summary: 'Create or update an official profile draft. Auto-saves after each wizard step. row_version required on updates (optimistic concurrency). step_reached is never decremented.',
   input: z.object({
     row_version: z.number().int().optional(),
-    display_name_pref: text(80).optional(),
-    bio: text(1000).optional(),
+    display_name_pref: text(80).optional().nullable(),
+    bio: text(1000).optional().nullable(),
     preferred_pronouns: text(40).optional(),
     nationality: text(80).optional(),
     privacy_show_sports: z.boolean().optional(),
