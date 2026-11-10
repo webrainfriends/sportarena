@@ -17701,3 +17701,68 @@ export default {
   'orgOff.comms.empty_sub': 'ఈ జాబితాలోని అన్ని నిర్ణాయకులకు సందేశం పంపండి.',
   'nav.title.OrgOfficialsCommand': 'నిర్ణాయకులు',
 };
+
+
+  // Session media & resource library
+  'sm.title': 'Session Resources', // reviewed: false
+  'sm.section': 'Resources', // reviewed: false
+  'sm.add_video': 'Add video', // reviewed: false
+  'sm.add_doc': 'Add document', // reviewed: false
+  'sm.add_image': 'Add image', // reviewed: false
+  'sm.add_link': 'Paste external link', // reviewed: false
+  'sm.record': 'Record video', // reviewed: false
+  'sm.empty': 'No resources attached yet', // reviewed: false
+  'sm.empty_sub': 'Add videos, documents or links for the athlete to review.', // reviewed: false
+  'sm.upload_progress': 'Uploading\u2026', // reviewed: false
+  'sm.uploaded': 'Upload complete', // reviewed: false
+  'sm.upload_error': 'Upload failed. Please try again.', // reviewed: false
+  'sm.caption_ph': 'Caption (optional)', // reviewed: false
+  'sm.link_url_ph': 'YouTube, Vimeo, Hudl or any URL', // reviewed: false
+  'sm.link_desc_ph': 'What is this clip showing?', // reviewed: false
+  'sm.kind.video': 'Video', // reviewed: false
+  'sm.kind.document': 'Document', // reviewed: false
+  'sm.kind.image': 'Image', // reviewed: false
+  'sm.kind.link': 'External link', // reviewed: false
+  'sm.remove': 'Remove', // reviewed: false
+  'sm.remove_confirm': 'Remove this resource?', // reviewed: false
+  'sm.removed': 'Resource removed', // reviewed: false
+  'sm.download': 'Download', // reviewed: false
+  'sm.save_offline': 'Save for offline', // reviewed: false
+  'sm.saved_offline': 'Saved offline', // reviewed: false
+  'sm.play': 'Play', // reviewed: false
+  'sm.preview': 'Preview', // reviewed: false
+  'sm.release': 'Release to athlete', // reviewed: false
+  'sm.released': 'Released', // reviewed: false
+  'sm.hold': 'Hold back', // reviewed: false
+  'sm.kpi.count': '{n} resources', // reviewed: false
+  'sm.kpi.video_hours': '{h}h video', // reviewed: false
+  'sm.kpi.storage': '{size} stored', // reviewed: false
+  'sm.notify.title': 'New session resources', // reviewed: false
+  'sm.notify.body': 'Your coach shared a resource for {session}', // reviewed: false
+  'sm.unread': '{n} new', // reviewed: false
+  'sm.size_limit_video': 'Videos must be under 500 MB', // reviewed: false
+  'sm.size_limit_doc': 'Documents must be under 50 MB', // reviewed: false
+  'sm.size_limit_image': 'Images must be under 10 MB', // reviewed: false
+  'sm.max_items': 'Maximum 20 resources per session', // reviewed: false
+  'sm.type_error': 'File type not supported', // reviewed: false
+  'sm.offline_only': 'Available offline', // reviewed: false
+  'sm.link.provider.youtube': 'YouTube', // reviewed: false
+  'sm.link.provider.vimeo': 'Vimeo', // reviewed: false
+  'sm.link.provider.hudl': 'Hudl', // reviewed: false
+  'sm.link.provider.catapult': 'Catapult', // reviewed: false
+  'sm.link.provider.sportscode': 'Sportscode', // reviewed: false
+  'sm.link.provider.other': 'External link', // reviewed: false
+  'sm.coach.feedback_title': 'Session feedback', // reviewed: false
+  'sm.coach.effort': 'Session effort (1\u201310)', // reviewed: false
+  'sm.coach.technical': 'Technical observations', // reviewed: false
+  'sm.coach.tactical': 'Tactical notes', // reviewed: false
+  'sm.coach.physical': 'Physical / load notes', // reviewed: false
+  'sm.coach.next_focus': 'Next session focus', // reviewed: false
+  'sm.coach.summary': 'Overall summary (shared with athlete)', // reviewed: false
+  'sm.coach.technical_hint': 'Technique, skill execution, tactical decisions', // reviewed: false
+  'sm.coach.tactical_hint': 'Game awareness, positioning, decision-making', // reviewed: false
+  'sm.coach.physical_hint': 'Fitness, fatigue, injury flags (no medical diagnoses)', // reviewed: false
+  'sm.coach.next_focus_hint': 'Key priority to carry into the next session', // reviewed: false
+  'sm.coach.summary_hint': 'What to highlight when sharing with the athlete', // reviewed: false
+
+};

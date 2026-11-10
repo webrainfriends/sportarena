@@ -135,6 +135,7 @@ import './venue-facility.js';
 import './venue-command.js';
 import './venue-coaches.js';
 import './training-plans.js';
+import './session-media.js';
 import './coach.js';
 import './coaching-templates.js';
 import './coaching-groups.js';
