@@ -1,23 +1,32 @@
-import React, { useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { Linking, Platform, Share, View } from 'react-native';
 import { api, API } from '../api';
 import { useLoad } from '../hooks';
 import { useSession } from '../session';
 import { useNav } from '../nav';
-import { Btn, Card, Chip, Empty, ErrorBox, Field, Loading, Seg, Sheet, Tag, T } from '../ui';
+import { Btn, Bubble, Card, Chip, Empty, ErrorBox, Field, HScroll, Loading, Section, Seg, Sheet, StatPill, Tag, T, Wrap } from '../ui';
 import { FormSheet } from '../FormSheet';
 import { Counter } from '../pickers';
 import { c } from '../theme';
 import { localDate, localHHMM, localToIso, todayIn, addDays, WEEKDAYS, timeIn } from '../vtime';
 import { locale } from '../locale';
+import { t } from '../i18n';
 
 const deviceTz = (() => { try { return Intl.DateTimeFormat().resolvedOptions().timeZone; } catch { return 'UTC'; } })();
-const FEED_KINDS = [['match', 'Matches'], ['team', 'Team'], ['event', 'Events'], ['training', 'Coaching'], ['venue', 'Venues'], ['duty', 'Duty'], ['recovery', 'Recovery'], ['health', 'Health (shown as Busy)']];
-const BUFFER_KINDS = [['match', 'Matches'], ['team', 'Team fixtures'], ['training', 'Coaching'], ['event', 'Events'], ['venue', 'Venue bookings'], ['duty', 'Duty']];
+const FEED_KINDS = [['match', '⚽ Matches'], ['team', '👥 Team'], ['event', '🗓 Events'], ['training', '🏋 Training'], ['venue', '📍 Venues'], ['duty', '🦺 Duty'], ['recovery', '💚 Recovery'], ['health', '🔒 Health (Busy only)']];
+const BUFFER_KINDS = [['match', '⚽ Matches'], ['team', '👥 Team fixtures'], ['training', '🏋 Training'], ['event', '🗓 Events'], ['venue', '📍 Venues'], ['duty', '🦺 Duty']];
 const TABS = [{ value: 'subscribe', label: 'Subscribe' }, { value: 'import', label: 'Import' }, { value: 'availability', label: 'Availability' }, { value: 'travel', label: 'Travel' }];
 const WEEK = [1, 2, 3, 4, 5, 6, 0];
 const fmt12 = (t) => { const [h, m] = t.split(':').map(Number); return `${h % 12 || 12}:${String(m).padStart(2, '0')} ${h < 12 ? 'AM' : 'PM'}`; };
 const ago = (iso) => { if (!iso) return 'never'; const m = Math.round((Date.now() - Date.parse(iso)) / 60000); return m < 1 ? 'just now' : m < 60 ? `${m} min ago` : m < 1440 ? `${Math.round(m / 60)} h ago` : `${Math.round(m / 1440)} d ago`; };
+
+const detectSource = (u) => {
+  if (!u) return '';
+  if (u.includes('google.com') || u.includes('googleusercontent')) return '🗓 Google';
+  if (u.includes('icloud.com') || u.includes('apple.com')) return '🍎 Apple';
+  if (u.includes('outlook.') || u.includes('office365') || u.includes('live.com')) return '📅 Outlook';
+  return '📥 External';
+};
 
 /** The server only knows its public address when APP_URL is set; otherwise build it from the address this app talks to. */
 const absolute = (m) => {
@@ -29,13 +38,13 @@ const absolute = (m) => {
 /** Copy on the web, the share sheet on iOS / iPadOS / Android (which includes Copy). */
 export async function copyOrShare(text, toast) {
   if (Platform.OS === 'web' && typeof navigator !== 'undefined' && navigator.clipboard?.writeText) {
-    try { await navigator.clipboard.writeText(text); toast?.('Link copied'); return; } catch { /* fall through to a prompt-free message */ }
+    try { await navigator.clipboard.writeText(text); toast?.('Link copied'); return; } catch { /* fall through */ }
   }
   try { await Share.share({ message: text }); } catch (e) { toast?.(e.message); }
 }
 
 /** Run an API call with a busy flag and a toast on failure. */
-function useAct(reload, onChanged) {
+export function useAct(reload, onChanged) {
   const { toast } = useSession();
   const [busy, setBusy] = useState(false);
   const act = async (fn, done) => {
@@ -71,6 +80,8 @@ function Subscribe({ data, athleteId, reload, onChanged }) {
   const [detail, setDetail] = useState('busy');
   const [label, setLabel] = useState('');
   const [made, setMade] = useState(null);
+  const [renamingId, setRenamingId] = useState(null);
+  const [renameVal, setRenameVal] = useState('');
   const toggle = (k) => setKinds((ks) => (ks.includes(k) ? ks.filter((x) => x !== k) : [...ks, k]));
   const create = async () => {
     const r = await act(() => api.post('/me/calendar-feeds', { athlete_id: athleteId, label: label.trim() || undefined, kinds, detail }), 'Link created');
@@ -82,51 +93,101 @@ function Subscribe({ data, athleteId, reload, onChanged }) {
     try { await Linking.openURL(a.webcal ?? a.url); } catch { await copyOrShare(a.url, toast); }
   };
   const feeds = data.feeds;
+
+  // Metric strip derived values
+  const activeCount = feeds.filter(f => f.status === 'active').length;
+  const nextSyncMs = feeds.filter(f => f.status === 'active' && f.last_fetched_at).reduce((min, f) => { const ts = Date.parse(f.last_fetched_at); return ts < min ? ts : min; }, Infinity);
+  const nextSyncLabel = nextSyncMs === Infinity ? '—' : ago(new Date(nextSyncMs).toISOString());
+
   return (
     <View style={{ gap: 12 }}>
+      {/* Metric strip */}
+      <View style={{ flexDirection: 'row', gap: 8 }}>
+        <StatPill value={String(activeCount)} label={t('calendarSync.metricActiveFeeds')} color={c.limeSoft} style={{ flex: 1 }} />
+        <StatPill value={String(data.conflict_count ?? '—')} label={t('calendarSync.metricConflicts')} color={c.sunSoft} style={{ flex: 1 }} />
+        <StatPill value={nextSyncLabel} label={t('calendarSync.metricNextSync')} color={c.cyanSoft} style={{ flex: 1 }} />
+      </View>
+
       {!data.sharing_allowed ? (
-        <Card color={c.cyanSoft}><T weight="700">{data.is_youth ? 'A parent or guardian arranges sharing' : 'Sharing is switched off'}</T><T size={13}>{data.is_youth ? 'Ask your guardian to allow Calendar sharing under Family & guardians. Nothing is shared until they do.' : 'The guardian\'s Calendar sharing permission is not in force for this young person. Allow it under Family & guardians.'}</T></Card>
+        <Card color={c.cyanSoft}>
+          <T weight="700">{data.is_youth ? 'A parent or guardian arranges sharing' : 'Sharing is switched off'}</T>
+          <T size={13}>{data.is_youth ? 'Ask your guardian to allow Calendar sharing under Family & guardians. Nothing is shared until they do.' : "The guardian's Calendar sharing permission is not in force for this young person. Allow it under Family & guardians."}</T>
+        </Card>
       ) : (
         <>
           <T size={13} color={c.mute}>Add a private link to Apple Calendar, Google Calendar or Outlook. It refreshes by itself. You can switch it off at any time.</T>
-          <T weight="800" size={13}>WHAT IT CARRIES</T>
-          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>{FEED_KINDS.map(([k, l]) => <Chip key={k} label={l} active={kinds.includes(k)} onPress={() => toggle(k)} />)}</View>
-          <T weight="800" size={13}>HOW MUCH IT SHOWS</T>
-          <Seg options={[{ value: 'busy', label: 'Busy only' }, { value: 'full', label: 'Full details' }]} value={detail} onChange={setDetail} color={c.pink} />
-          <Field label="Name (optional)" value={label} onChangeText={setLabel} placeholder="My phone" maxLength={60} />
-          <Btn title="Create link" loading={busy} disabled={!kinds.length} onPress={create} />
+
+          <Section title={t('calendarSync.sectionKinds')}>
+            <HScroll gap={8}>
+              {FEED_KINDS.map(([k, l]) => (
+                <Chip
+                  key={k}
+                  label={l}
+                  active={kinds.includes(k)}
+                  style={k === 'duty' && kinds.includes(k) ? { backgroundColor: c.violet, borderColor: c.violet } : undefined}
+                  onPress={() => toggle(k)}
+                />
+              ))}
+            </HScroll>
+            {kinds.includes('duty') ? <T size={12} color={c.mute} style={{ marginTop: 4 }}>{t('calendarSync.tentativeHint')}</T> : null}
+          </Section>
+
+          <Section title={t('calendarSync.sectionVisibility')}>
+            <Seg options={[{ value: 'busy', label: t('calendarSync.busyOnly') }, { value: 'full', label: t('calendarSync.fullDetails') }]} value={detail} onChange={setDetail} color={c.pink} />
+          </Section>
+
+          <Field label={t('calendarSync.feedName')} value={label} onChangeText={setLabel} placeholder={t('calendarSync.feedNamePlaceholder')} maxLength={60} />
+          <Btn title={t('calendarSync.createLink')} loading={busy} disabled={!kinds.length} onPress={create} />
         </>
       )}
+
+      {/* Success card */}
       {made ? (
-        <Card color={c.mintSoft} accessibilityLabel="New calendar link">
-          <T weight="800">✓ Link created</T>
-          <T size={12} color={c.mute}>This is the only time the link is shown. Anyone who has it can see what it carries.</T>
-          <T size={12} selectable numberOfLines={3}>{absolute(made).url ?? made.path}</T>
-          <View style={{ flexDirection: 'row', gap: 8, flexWrap: 'wrap', marginTop: 6 }}>
-            <Btn small title="Add to my calendar app" onPress={() => addToApp(made)} />
-            <Btn small title={Platform.OS === 'web' ? 'Copy link' : 'Share / copy link'} color={c.paper} ink={c.ink} onPress={() => copyOrShare(absolute(made).url ?? made.path, toast)} />
-            {Platform.OS === 'web' && absolute(made).webcal ? <Btn small title="Google Calendar" color={c.paper} ink={c.ink} onPress={() => Linking.openURL(`https://calendar.google.com/calendar/r?cid=${encodeURIComponent(absolute(made).webcal)}`)} /> : null}
+        <Card accessibilityLabel="New calendar link">
+          <View style={{ backgroundColor: c.mintSoft, borderRadius: 14, padding: 12, gap: 8 }}>
+            <T weight="800">✓ {t('calendarSync.linkReady')}</T>
+            <T size={12} color={c.mute}>{t('calendarSync.linkReadySub')}</T>
+            <T size={11} selectable numberOfLines={3} style={{ fontFamily: 'monospace', backgroundColor: c.bg, borderRadius: 8, padding: 8 }}>{absolute(made).url ?? made.path}</T>
+            <View style={{ flexDirection: 'row', gap: 8, flexWrap: 'wrap' }}>
+              <Btn small title={t('calendarSync.addToCalendar')} onPress={() => addToApp(made)} />
+              <Btn small title={Platform.OS === 'web' ? t('calendarSync.copyLink') : t('calendarSync.shareLink')} color={c.paper} ink={c.ink} onPress={() => copyOrShare(absolute(made).url ?? made.path, toast)} />
+              {Platform.OS === 'web' && absolute(made).webcal ? <Btn small title={t('calendarSync.googleCalendar')} color={c.paper} ink={c.ink} onPress={() => Linking.openURL(`https://calendar.google.com/calendar/r?cid=${encodeURIComponent(absolute(made).webcal)}`)} /> : null}
+            </View>
           </View>
         </Card>
       ) : null}
-      <T weight="800" size={13}>YOUR LINKS · {feeds.length}</T>
-      {feeds.length ? feeds.map((f) => (
-        <Card key={f.id} accessibilityLabel={`${f.label || 'Calendar link'}, ${f.status}`}>
-          <View style={{ flexDirection: 'row', gap: 8, alignItems: 'center' }}>
-            <View style={{ flex: 1 }}>
-              <T weight="700">{f.label || 'Calendar link'}</T>
-              <T size={12} color={c.mute}>{f.detail === 'full' ? 'Full details' : 'Busy only'} · {f.kinds.length} kinds · refreshed {ago(f.last_fetched_at)} · {f.fetch_count} fetches</T>
+
+      {/* Feed list */}
+      <Section title={`${t('calendarSync.yourFeeds')} · ${feeds.length}`}>
+        {feeds.length ? feeds.map((f) => (
+          <Card key={f.id} accessibilityLabel={`${f.label || 'Calendar link'}, ${f.status}`}>
+            <View style={{ flexDirection: 'row', gap: 10, alignItems: 'flex-start' }}>
+              <Bubble emoji={f.detail === 'full' ? '📅' : '🔒'} color={c.pinkSoft} size={40} />
+              <View style={{ flex: 1, gap: 2 }}>
+                {renamingId === f.id ? (
+                  <View style={{ flexDirection: 'row', gap: 8, alignItems: 'center' }}>
+                    <Field value={renameVal} onChangeText={setRenameVal} placeholder={t('calendarSync.feedNamePlaceholder')} maxLength={60} style={{ flex: 1, marginBottom: 0 }} />
+                    <Btn small title={t('common.save')} loading={busy} onPress={() => act(() => api.patch(`/me/calendar-feeds/${f.id}`, { version: f.version, label: renameVal.trim() || undefined }), t('common.saved')).then(() => setRenamingId(null))} />
+                    <Btn small title={t('common.cancel')} color={c.paper} ink={c.ink} onPress={() => setRenamingId(null)} />
+                  </View>
+                ) : (
+                  <T weight="700">{f.label || t('calendarSync.defaultFeedName')}</T>
+                )}
+                <T size={12} color={c.mute}>{f.detail === 'full' ? t('calendarSync.fullDetails') : t('calendarSync.busyOnly')} · {f.kinds.length} {t('calendarSync.kinds')}</T>
+                <T size={12} color={(f.error_count ?? 0) > 0 ? c.red : c.mute}>↻ {ago(f.last_fetched_at)} · {f.fetch_count} {t('calendarSync.fetchCount2')} · {(f.error_count ?? 0) > 0 ? `${f.error_count} ${t('calendarSync.errors')}` : t('calendarSync.noErrors')}</T>
+              </View>
+              <Tag label={f.status === 'active' ? t('calendarSync.activeLabel') : t('calendarSync.disabledLabel')} color={f.status === 'active' ? c.limeSoft : c.line} />
             </View>
-            <Tag label={f.status === 'active' ? 'Active' : 'Switched off'} color={f.status === 'active' ? c.mintSoft : c.line} />
-          </View>
-          {f.status === 'active' ? (
-            <View style={{ flexDirection: 'row', gap: 8, marginTop: 8, flexWrap: 'wrap' }}>
-              <Btn small title={f.detail === 'full' ? 'Show only Busy' : 'Show details'} color={c.paper} ink={c.ink} disabled={busy} onPress={() => act(() => api.patch(`/me/calendar-feeds/${f.id}`, { version: f.version, detail: f.detail === 'full' ? 'busy' : 'full' }), 'Updated')} />
-              <Btn small title="Switch off" color={c.paper} ink={c.red} disabled={busy} onPress={() => act(() => api.post(`/me/calendar-feeds/${f.id}/revoke`), 'Link switched off')} />
-            </View>
-          ) : null}
-        </Card>
-      )) : <Empty emoji="🔗" title="No links yet" sub="Create one to see your Sportarena schedule in your own calendar app." />}
+            {f.status === 'active' ? (
+              <View style={{ flexDirection: 'row', gap: 8, marginTop: 10, flexWrap: 'wrap' }}>
+                <Btn small title={f.detail === 'full' ? t('calendarSync.showBusy') : t('calendarSync.showDetails')} color={c.paper} ink={c.ink} disabled={busy} onPress={() => act(() => api.patch(`/me/calendar-feeds/${f.id}`, { version: f.version, detail: f.detail === 'full' ? 'busy' : 'full' }), t('common.saved'))} />
+                <Btn small title={t('calendarSync.rename')} color={c.paper} ink={c.ink} disabled={busy} onPress={() => { setRenamingId(f.id); setRenameVal(f.label || ''); }} />
+                <Btn small title={t('calendarSync.switchOff')} color={c.paper} ink={c.red} disabled={busy} onPress={() => act(() => api.post(`/me/calendar-feeds/${f.id}/revoke`), t('calendarSync.switchedOff'))} />
+              </View>
+            ) : null}
+          </Card>
+        )) : <Empty emoji="🔗" title={t('calendarSync.noFeeds')} sub={t('calendarSync.noFeedsSub')} />}
+      </Section>
     </View>
   );
 }
@@ -144,33 +205,78 @@ function Import({ data, athleteId, reload, onChanged }) {
   return (
     <View style={{ gap: 12 }}>
       {!data.sharing_allowed ? (
-        <Card color={c.cyanSoft}><T weight="700">{data.is_youth ? 'A parent or guardian arranges this' : 'Sharing is switched off'}</T><T size={13}>Importing another calendar needs the guardian's Calendar sharing permission.</T></Card>
+        <Card color={c.cyanSoft}>
+          <T weight="700">{data.is_youth ? 'A parent or guardian arranges this' : 'Sharing is switched off'}</T>
+          <T size={13}>Importing another calendar needs the guardian's Calendar sharing permission.</T>
+        </Card>
       ) : (
         <>
-          <T size={13} color={c.mute}>Bring in your Google, Apple or Outlook calendar as busy time, so clashes show up here. Paste its secret iCal (.ics) address. Only the times are kept, never the titles, places or people.</T>
-          <Field label="Calendar address" value={url} onChangeText={setUrl} keyboardType="url" placeholder="https://… or webcal://…" hint="Google: Settings → your calendar → Secret address in iCal format. Apple: Share calendar → Public calendar." />
-          <Field label="Name (optional)" value={label} onChangeText={setLabel} placeholder="Work" maxLength={60} />
-          <Btn title="Import as busy time" loading={busy} disabled={url.trim().length < 8} onPress={add} />
+          <T size={13} color={c.mute}>{t('calendarSync.importHint')}</T>
+          <Field label={t('calendarSync.importAddress')} value={url} onChangeText={setUrl} keyboardType="url" placeholder="https://… or webcal://…" hint="Google: Settings → your calendar → Secret address in iCal format. Apple: Share calendar → Public calendar." />
+          {url.trim() ? <T size={12} color={c.mute}>{detectSource(url)}</T> : null}
+          <Field label={t('calendarSync.importName')} value={label} onChangeText={setLabel} placeholder="Work" maxLength={60} />
+          <Btn title={t('calendarSync.importAsBusy')} loading={busy} disabled={url.trim().length < 8} onPress={add} />
         </>
       )}
-      <T weight="800" size={13}>IMPORTED CALENDARS · {data.imports.length}</T>
-      {data.imports.length ? data.imports.map((m) => (
-        <Card key={m.id} accessibilityLabel={`${m.label || m.source_host}, ${m.status}`}>
-          <View style={{ flexDirection: 'row', gap: 8, alignItems: 'center' }}>
-            <View style={{ flex: 1 }}>
-              <T weight="700">{m.label || m.source_host}</T>
-              <T size={12} color={m.status === 'error' ? c.red : c.mute}>{m.status === 'error' ? `Could not sync: ${m.last_error}. Your last busy time is kept.` : `${m.event_count} busy blocks · synced ${ago(m.last_synced_at)}`}</T>
-              <T size={12} color={c.mute}>{m.source_host} · busy time only</T>
-            </View>
-            <Tag label={m.status === 'ok' ? 'Synced' : m.status === 'error' ? 'Needs attention' : 'Pending'} color={m.status === 'ok' ? c.mintSoft : m.status === 'error' ? c.redSoft : c.sunSoft} />
-          </View>
-          <View style={{ flexDirection: 'row', gap: 8, marginTop: 8, flexWrap: 'wrap' }}>
-            <Btn small title={m.status === 'error' ? 'Try again' : 'Sync now'} disabled={busy} onPress={() => act(() => api.post(`/me/calendar-imports/${m.id}/sync`), 'Synced')} />
-            <Btn small title="Remove" color={c.paper} ink={c.red} disabled={busy} onPress={() => act(() => api.post(`/me/calendar-imports/${m.id}/remove`), 'Removed. Your history is kept.')} />
+      <Section title={`IMPORTED CALENDARS · ${data.imports.length}`}>
+        {data.imports.length ? data.imports.map((m) => {
+          const sourceEmoji = detectSource(m.source_host).split(' ')[0];
+          return (
+            <Card key={m.id} accessibilityLabel={`${m.label || m.source_host}, ${m.status}`}>
+              <View style={{ flexDirection: 'row', gap: 10, alignItems: 'flex-start' }}>
+                <Bubble emoji={sourceEmoji || '📥'} color={c.cyanSoft} size={40} />
+                <View style={{ flex: 1, gap: 2 }}>
+                  <T weight="700">{m.label || m.source_host}</T>
+                  {m.status === 'error'
+                    ? <T size={12} color={c.red}>Could not sync: {m.last_error}. Your last busy time is kept.</T>
+                    : <T size={12} color={c.mute}>{m.event_count} {t('calendarSync.busyBlocks').replace('{n}', '')} · {t('calendarSync.syncedAt').replace('{ago}', ago(m.last_synced_at))}</T>}
+                  <T size={12} color={c.mute}>{m.source_host} · busy time only</T>
+                </View>
+                <Tag label={m.status === 'ok' ? 'Synced' : m.status === 'error' ? 'Needs attention' : 'Pending'} color={m.status === 'ok' ? c.limeSoft : m.status === 'error' ? c.redSoft : c.sunSoft} />
+              </View>
+              <View style={{ flexDirection: 'row', gap: 8, marginTop: 10, flexWrap: 'wrap' }}>
+                <Btn small title={m.status === 'error' ? t('calendarSync.tryAgain') : t('calendarSync.syncNow')} disabled={busy} onPress={() => act(() => api.post(`/me/calendar-imports/${m.id}/sync`), 'Synced')} />
+                <Btn small title={t('calendarSync.remove')} color={c.paper} ink={c.red} disabled={busy} onPress={() => act(() => api.post(`/me/calendar-imports/${m.id}/remove`), 'Removed. Your history is kept.')} />
+              </View>
+            </Card>
+          );
+        }) : <Empty emoji="📥" title={t('calendarSync.noImports')} sub={t('calendarSync.noImportsSub')} />}
+      </Section>
+    </View>
+  );
+}
+
+/* ---------------------------------------------------------- MiniConflicts ---------------------------------------------------------- */
+
+function MiniConflicts({ athleteId }) {
+  const d = useLoad(() => api.get('/me/schedule-conflicts', { from: todayIn(deviceTz), to: addDays(todayIn(deviceTz), 6), ...(athleteId ? { athlete_id: athleteId } : {}) }), [athleteId]);
+  if (!d.data) return null;
+  const { conflicts, summary } = d.data;
+  const total = (summary.overlap ?? 0) + (summary.travel_buffer ?? 0) + (summary.outside_availability ?? 0);
+  return (
+    <Section title={t('calendarSync.conflictPreview')}>
+      {total === 0 ? (
+        <Card>
+          <View style={{ backgroundColor: c.mintSoft, borderRadius: 14, padding: 12, flexDirection: 'row', gap: 8, alignItems: 'center' }}>
+            <T size={20}>✅</T>
+            <T weight="700" color={c.lime}>{t('calendarSync.conflictClear')}</T>
           </View>
         </Card>
-      )) : <Empty emoji="📥" title="No calendars imported" sub="Import one so personal commitments and conflicts show up in one place." />}
-    </View>
+      ) : conflicts.slice(0, 3).map((cf) => {
+        const item = cf.items[0];
+        const when2 = item ? new Date(item.starts_at).toLocaleDateString(locale, { weekday: 'short', day: 'numeric', month: 'short', timeZone: item.timezone }) : '';
+        const dotColor = cf.severity === 'high' ? c.red : cf.severity === 'medium' ? c.sun : c.cyan;
+        return (
+          <Card key={cf.id}>
+            <View style={{ flexDirection: 'row', gap: 8, alignItems: 'center' }}>
+              <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: dotColor }} />
+              <T style={{ flex: 1 }} size={13} weight="600">{cf.message}</T>
+              {when2 ? <T size={12} color={c.mute}>{when2}</T> : null}
+            </View>
+          </Card>
+        );
+      })}
+    </Section>
   );
 }
 
@@ -186,27 +292,50 @@ function Availability({ data, athleteId, reload, onChanged }) {
   const { save, busy } = usePrefsSave(data, athleteId, reload, onChanged);
   const [adding, setAdding] = useState(false);
   const [zoning, setZoning] = useState(false);
+  const [now, setNow] = useState(() => new Date());
+  useEffect(() => { const id = setInterval(() => setNow(new Date()), 60000); return () => clearInterval(id); }, []);
   const toIn = (w) => ({ weekday: w.weekday, from_time: w.from_time, to_time: w.to_time });
   const remove = (w) => save({ windows: data.windows.filter((x) => x.id !== w.id).map(toIn) }, 'Window removed');
+  const tzLabel = data.version === 0 && data.timezone === 'UTC' ? deviceTz : data.timezone;
+  const utcOffset = (() => { try { const s = new Intl.DateTimeFormat('en', { timeZone: tzLabel, timeZoneName: 'shortOffset' }).formatToParts(now).find(p => p.type === 'timeZoneName'); return s?.value ?? ''; } catch { return ''; } })();
+  const localTime = (() => { try { return now.toLocaleTimeString('en', { timeZone: tzLabel, hour: '2-digit', minute: '2-digit' }); } catch { return ''; } })();
   return (
     <View style={{ gap: 12 }}>
       <T size={13} color={c.mute}>When you are usually free to play, train or travel. Anything scheduled outside these hours is flagged, never cancelled. Hours are local wall-clock time, so they stay put when the clocks change.</T>
-      <Card onPress={() => setZoning(true)} accessibilityLabel={`Time zone ${data.timezone}. Change`}>
-        <T size={12} weight="800" color={c.mute}>YOUR TIME ZONE</T>
-        <T weight="700">{data.version === 0 && data.timezone === 'UTC' ? `${deviceTz} (this device)` : data.timezone} ›</T>
-      </Card>
-      {WEEK.map((d) => {
-        const ws = data.windows.filter((w) => w.weekday === d);
-        return (
-          <View key={d} style={{ flexDirection: 'row', alignItems: 'center', gap: 8, minHeight: 44 }}>
-            <T weight="800" style={{ width: 44 }}>{WEEKDAYS[d]}</T>
-            <View style={{ flex: 1, flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
-              {ws.length ? ws.map((w) => <Chip key={w.id} label={`${fmt12(w.from_time)} – ${fmt12(w.to_time)}  ✕`} active onPress={() => !busy && remove(w)} />) : <T size={13} color={c.mute}>Not set</T>}
-            </View>
+
+      {/* Timezone hero card */}
+      <Card onPress={() => setZoning(true)} accessibilityLabel={`Time zone ${tzLabel}. Change`}>
+        <View style={{ backgroundColor: c.cyanSoft, borderRadius: 14, padding: 12, flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+          <Bubble emoji="🌍" color={c.cyanSoft} size={44} />
+          <View style={{ flex: 1 }}>
+            <T weight="700" size={15}>{tzLabel}</T>
+            <T size={12} color={c.mute}>{utcOffset}{localTime ? ` · ${localTime}` : ''}</T>
           </View>
-        );
-      })}
-      <Btn title="+ Add hours" color={c.paper} ink={c.ink} onPress={() => setAdding(true)} />
+          <T size={13} color={c.pink}>{t('calendarSync.changeTimezone')}</T>
+        </View>
+      </Card>
+
+      {/* Weekly grid */}
+      <Section title={t('calendarSync.sectionWindow')}>
+        {WEEK.map((d) => {
+          const ws = data.windows.filter((w) => w.weekday === d);
+          return (
+            <View key={d} style={{ flexDirection: 'row', alignItems: 'center', gap: 8, minHeight: 44 }}>
+              <T weight="800" style={{ width: 44 }}>{WEEKDAYS[d]}</T>
+              <View style={{ flex: 1, flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
+                {ws.length
+                  ? ws.map((w) => <Chip key={w.id} label={`${fmt12(w.from_time)} – ${fmt12(w.to_time)}  ✕`} active onPress={() => !busy && remove(w)} />)
+                  : <Tag label={t('calendarSync.restDay')} color={c.line} />}
+              </View>
+            </View>
+          );
+        })}
+      </Section>
+
+      <Btn title={t('calendarSync.addHours')} color={c.paper} ink={c.ink} onPress={() => setAdding(true)} />
+
+      <MiniConflicts athleteId={athleteId} />
+
       <FormSheet visible={adding} onClose={() => setAdding(false)} title="Add available hours" submitLabel="Add"
         initial={{ days: [1, 2, 3, 4, 5], from: '18:00', to: '21:00' }}
         fields={[
@@ -223,7 +352,7 @@ function Availability({ data, athleteId, reload, onChanged }) {
           await reload(); await onChanged?.();
           return 'Hours added';
         }} />
-      <FormSheet visible={zoning} onClose={() => setZoning(false)} title="Your time zone" submitLabel="Save" initial={{ timezone: data.version === 0 ? deviceTz : data.timezone }}
+      <FormSheet visible={zoning} onClose={() => setZoning(false)} title={t('calendarSync.yourTimezone')} submitLabel="Save" initial={{ timezone: data.version === 0 ? deviceTz : data.timezone }}
         fields={[{ key: 'timezone', label: 'Time zone', type: 'timezone' }]}
         onSubmit={async (v) => { await api.post('/me/calendar-preferences', { athlete_id: athleteId, version: data.version, timezone: v.timezone }); await reload(); await onChanged?.(); return 'Time zone saved'; }} />
     </View>
@@ -235,17 +364,28 @@ function Travel({ data, athleteId, reload, onChanged }) {
   const start = Object.fromEntries(BUFFER_KINDS.map(([k]) => { const b = data.buffers.find((x) => x.kind === k); return [k, { before_min: b?.before_min ?? 0, after_min: b?.after_min ?? 0 }]; }));
   const [v, setV] = useState(start);
   const set = (k, f, n) => setV((p) => ({ ...p, [k]: { ...p[k], [f]: n } }));
+  const maxMin = 120;
   return (
     <View style={{ gap: 12 }}>
       <T size={13} color={c.mute}>How long you need to get to and from each kind of commitment. If two commitments are closer together than that, you get a travel warning.</T>
-      {BUFFER_KINDS.map(([k, l]) => (
-        <Card key={k} accessibilityLabel={`${l} travel time`}>
-          <T weight="700">{l}</T>
-          <Counter label="Travel before" value={v[k].before_min} min={0} max={480} step={5} suffix=" min" onChange={(n) => set(k, 'before_min', n)} />
-          <Counter label="Travel after" value={v[k].after_min} min={0} max={480} step={5} suffix=" min" onChange={(n) => set(k, 'after_min', n)} />
-        </Card>
-      ))}
-      <Btn title="Save travel times" loading={busy} onPress={() => save({ buffers: BUFFER_KINDS.map(([k]) => ({ kind: k, ...v[k] })) }, 'Travel times saved')} />
+      {BUFFER_KINDS.map(([k, l]) => {
+        const beforeW = Math.min(Math.round((v[k].before_min / maxMin) * 60), 60);
+        const afterW = Math.min(Math.round((v[k].after_min / maxMin) * 60), 60);
+        return (
+          <Card key={k} accessibilityLabel={`${l} travel time`}>
+            <T weight="700">{l}</T>
+            {/* Visual travel bar */}
+            <View style={{ flexDirection: 'row', gap: 2, alignItems: 'center', marginVertical: 8, height: 8 }}>
+              {beforeW > 0 ? <View style={{ width: beforeW, height: 8, borderRadius: 4, backgroundColor: c.cyan, opacity: 0.7 }} /> : null}
+              <View style={{ width: 40, height: 8, borderRadius: 4, backgroundColor: c.ink, opacity: 0.25 }} />
+              {afterW > 0 ? <View style={{ width: afterW, height: 8, borderRadius: 4, backgroundColor: c.mint, opacity: 0.7 }} /> : null}
+            </View>
+            <Counter label={t('calendarSync.beforeTravel')} value={v[k].before_min} min={0} max={480} step={5} suffix=" min" onChange={(n) => set(k, 'before_min', n)} />
+            <Counter label={t('calendarSync.afterTravel')} value={v[k].after_min} min={0} max={480} step={5} suffix=" min" onChange={(n) => set(k, 'after_min', n)} />
+          </Card>
+        );
+      })}
+      <Btn title={t('calendarSync.saveTravelTimes')} loading={busy} onPress={() => save({ buffers: BUFFER_KINDS.map(([k]) => ({ kind: k, ...v[k] })) }, 'Travel times saved')} />
     </View>
   );
 }

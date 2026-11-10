@@ -896,10 +896,8 @@ export default {
   'nav.title.MyAccreditations': 'என் பேட்ஜ்கள்',
   'nav.title.OfficialsDevelopment': 'நடுவர் மேம்பாடு',
   'nav.title.OfficialAssessment': 'Assessment',
-  'crew.completeness_label': 'Crew completeness',
   'crew.ready': 'All required roles filled',
   'crew.incomplete': 'Some required roles are not yet filled',
-  'crew.missing_roles': 'Missing: {roles}',
   'crew.unfilled_role': 'Required · not yet filled',
   'crew.unfilled_title': 'Unfilled required roles',
   'crew.you': 'You',
@@ -920,7 +918,6 @@ export default {
   'crew.select_person': 'Select replacement official',
   'crew.user_id_placeholder': 'Enter official user ID',
   'crew.duties_label': 'Assigned duties',
-  'crew.duties_placeholder': 'e.g. Chief Referee, AR – Home side',
   'crew.reason': 'Reason',
   'crew.reason_placeholder': 'Reason for emergency substitution',
   'crew.reason_required': 'Please give a reason for the substitution',
@@ -940,7 +937,6 @@ export default {
   'crew.substituted_alert': '{name} ({role}) was substituted',
   'crew.requirements_title': 'Crew requirements',
   'crew.broadcast_sent': 'Message sent to crew',
-  'crew.pinned': 'Pinned',
   'nav.title.AssessmentEditor': 'மதிப்பீட்டு அறிக்கை',
   'nav.title.MediaWorkspace': 'ஊடகம் & ஒளிபரப்பு',
   'nav.title.Federations': 'கூட்டமைப்புகள்',
@@ -4273,7 +4269,6 @@ export default {
   "tpart.callback": "கால்பேக் முகவரி",
   "tpart.done": "முடிந்தது",
   "tbook.country_needed": "சரியான பார்ட்னர்கள் தேடப்பட, சேருமிடத்தின் நாட்டைத் தேர்ந்தெடுக்கவும்.",
-  'community.title': 'சமூகங்கள்',
   'community.discover': 'கண்டறி',
   'community.mine': 'என் சமூகங்கள்',
   'community.invitations': 'அழைப்புகள்',
@@ -10154,20 +10149,7 @@ export default {
   'cEdu.mnt.status.paused': 'இடைநிறுத்தம்',
   'cEdu.mnt.status.ended': 'முடிந்தது',
   'cEdu.obs.title': 'கண்காணிப்புகள்',
-  'cEdu.obs.new': 'கண்காணிப்பு சேர்',
-  'cEdu.obs.f.coachId': 'பயிற்சியாளர்',
-  'cEdu.obs.f.sessionDate': 'அமர்வு தேதி',
-  'cEdu.obs.f.context': 'சூழல்',
-  'cEdu.obs.f.pillar': 'தூண்',
-  'cEdu.obs.f.overallRating': 'ஒட்டுமொத்த மதிப்பீடு',
-  'cEdu.obs.f.strengths': 'வலிமைகள்',
-  'cEdu.obs.f.development': 'வளர்ச்சி',
   'cEdu.obs.release': 'பயிற்சியாளருக்கு வெளியிடு',
-  'cEdu.plan.title': 'மேம்பாட்டு திட்டங்கள்',
-  'cEdu.plan.new': 'திட்டம் சேர்',
-  'cEdu.plan.f.focus': 'கவனம்',
-  'cEdu.plan.f.target': 'இலக்கு தேதி',
-  'cEdu.plan.f.actions': 'செயல்கள்',
   'cEdu.pillar.technical': 'தொழில்நுட்பம்',
   'cEdu.pillar.tactical': 'தந்திரம்',
   'cEdu.pillar.physical': 'உடல்',
@@ -12679,7 +12661,6 @@ export default {
   'psf.programme.paraToggleHint': 'பாரா வீரர் உபகரணங்கள், போக்குவரத்து மற்றும் பயிற்சி செலவுகளுக்கு மட்டுமே',
   'psf.programme.costCategories': 'தகுதியான செலவு வகைகள்',
   'psf.programme.privacyNote': 'வீரர்களின் மருத்துவ மற்றும் வகைப்பாடு பதிவுகள் நிதியளிப்பாளர்களுக்கு காட்டப்படாது.',
-  'psf.need.paraType': 'பாரா விளையாட்டு தேவை வகை',
   'psf.need.privacyNote': 'உங்கள் மருத்துவ பதிவுகள் நிதியளிப்பாளர்களுடன் பகிரப்படாது',
   'psf.need.specialisedEquipment': 'சிறப்பு உபகரணங்கள்',
   'psf.need.accessibleTransport': 'அணுகல் போக்குவரத்து',
@@ -13718,25 +13699,6 @@ export default {
   'para.comm.sign_language': 'Sign language',
   'para.comm.augmentative_communication': 'Augmentative communication',
   'para.comm.simplified_language': 'Simplified language',
-  'account.appearance': 'Appearance',
-  'account.language': 'Language & region',
-  'account.theme.light': 'Light',
-  'account.theme.dark': 'Dark',
-  'account.search_language': 'Search language or country',
-  'account.your_choice': 'Your choice',
-  'account.format_note': 'Dates, times, numbers and currency follow this and your time zone.',
-  'common.cancel': 'Cancel',
-  'common.close': 'Close',
-  'common.back': 'Back',
-  'common.next': 'Next',
-  'common.loading': 'Loading…',
-  'common.retry': 'Try again',
-  'common.done': 'Done',
-  'error.network': 'No connection. Check your network and try again.',
-  'nav.search': 'Search',
-  'nav.bookings': 'Bookings',
-  'nav.account': 'Account',
-  'transport.boardEmpty': 'No transport runs active right now.',
   'wizard.season.type': 'Season type',
   'wizard.season.dates': 'Season dates',
   'wizard.season.reg_window': 'Registration window (optional)',
@@ -13773,7 +13735,6 @@ export default {
   'wizard.team.public_sub': 'Other platform users can find and follow the team',
   'wizard.goal.what': 'What do you want to achieve?',
   'wizard.goal.kind': 'Kind of goal',
-  'wizard.goal.target': 'Target number (optional)',
   'wizard.goal.milestones': 'Milestones (optional)',
   'wizard.goal.review_date': 'First review date (optional)',
   'wizard.goal.cadence': 'Review cadence',
@@ -13792,10 +13753,10 @@ export default {
   'coach.sport.wizard.step3Sub': 'கல்லூரிகள் மற்றும் வீரர்கள் உங்களை சரியான காரணத்திற்காக கண்டுபிடிக்க உதவுங்கள்.',
   'coach.sport.wizard.step4Title': 'உங்கள் பயிற்சி வாழ்க்கை',
   'coach.sport.wizard.step4Sub': 'உங்கள் பின்னணி உயரடுக்கு நிரல்கள் மற்றும் தேசிய கல்லூரிகளுடன் நம்பிக்கையை வளர்க்கிறது.',
-  'coach.sport.wizard.step5Title': { value: 'Availability', reviewed: false },
-  'coach.sport.wizard.step5Sub': { value: 'Set your schedule, capacity and location. Add rate cards from your coaching workbench after completing this profile.', reviewed: false },
-  'coach.sport.wizard.rateCardNudgeTitle': { value: 'Set your rates after this step', reviewed: false },
-  'coach.sport.wizard.rateCardNudgeSub': { value: 'Create rate cards — per hour, per session, group packages, subscriptions — from the Rate cards section in your coaching workbench.', reviewed: false },
+  'coach.sport.wizard.step5Title': 'Availability',
+  'coach.sport.wizard.step5Sub': 'Set your schedule, capacity and location. Add rate cards from your coaching workbench after completing this profile.',
+  'coach.sport.wizard.rateCardNudgeTitle': 'Set your rates after this step',
+  'coach.sport.wizard.rateCardNudgeSub': 'Create rate cards — per hour, per session, group packages, subscriptions — from the Rate cards section in your coaching workbench.',
   'coach.sport.wizard.stepOf': '{total}ல் படி {step}',
   'coach.sport.wizard.continue': 'தொடர்',
   'coach.sport.wizard.back': 'பின்செல்',
@@ -15216,8 +15177,6 @@ export default {
   // Injury episode & RTP
   'inj.episode_title': 'காயம் நிகழ்வு', // machine-drafted
   'inj.open_episode': 'நிகழ்வைத் திறக்கவும்', // machine-drafted
-  'inj.new_episode': 'புதிய காயம் நிகழ்வு', // machine-drafted
-  'inj.episode_ref': 'நிகழ்வு குறிப்பு', // machine-drafted
   'inj.status.active': 'செயலில்', // machine-drafted
   'inj.status.rehabilitation': 'மறுவாழ்வு', // machine-drafted
   'inj.status.restricted_training': 'கட்டுப்படுத்தப்பட்ட பயிற்சி', // machine-drafted
@@ -15229,7 +15188,6 @@ export default {
   'inj.mechanism': 'காரணம்', // machine-drafted
   'inj.severity': 'தீவிரம்', // machine-drafted
   'inj.expected_return': 'எதிர்பார்க்கப்படும் திரும்பல்', // machine-drafted
-  'inj.actual_return': 'உண்மையான திரும்பல்', // machine-drafted
   'inj.occurred_on': 'காயம் தேதி', // machine-drafted
   'inj.is_recurrence': 'மீண்டும் நிகழ்வு', // machine-drafted
   'inj.athlete_phase.recovery': 'குணமடைதல்', // machine-drafted
@@ -15247,8 +15205,6 @@ export default {
   'rtp.issue_rtp': 'விளையாட்டுக்குத் திரும்ப அனுமதி வழங்கவும்', // machine-drafted
   'rtp.load_restrictions': 'சுமை கட்டுப்பாடுகள்', // machine-drafted
   'rtp.coach_view_notice': 'பயிற்சியாளர்கள் ஒப்புதல் நிலை மற்றும் சுமை கட்டுப்பாடுகளை மட்டுமே காண்கிறார்கள் — மருத்துவ விவரங்கள் பகிரப்படுவதில்லை.', // machine-drafted
-  'rtp.approval_valid_until': 'வரை செல்லுபடியாகும்', // machine-drafted
-  'rtp.mark_achieved': 'அடையப்பட்டதாக குறிக்கவும்', // machine-drafted
 
   // earnings & seller-onboarding (machine-drafted, reviewed: false)
   'earnings.title': 'Earnings',
@@ -16735,4 +16691,58 @@ export default {
   'ora.err_tiers': "குறைந்தது 2 தொகுதி நிலைகளை சேர்க்கவும்", /* reviewed: false */
   'ora.err_fee': "கட்டண தொகையை உள்ளிடவும்", /* reviewed: false */
   'ora.err_date': "ஒரு தொடக்க தேதியை அமைக்கவும்", /* reviewed: false */
+  'calendarSync.tentativeHint': 'அழைக்கப்பட்ட நடுவர் நியமனங்கள் உங்கள் நாட்காட்டியில் தற்காலிகமாகக் காட்டப்படும்.',
+  'calendarSync.createLink': 'Create private link', // reviewed: false
+  'calendarSync.metricActiveFeeds': 'Active feeds', // reviewed: false
+  'calendarSync.metricConflicts': 'Conflicts', // reviewed: false
+  'calendarSync.metricNextSync': 'Next sync', // reviewed: false
+  'calendarSync.sectionKinds': 'WHAT IT CARRIES', // reviewed: false
+  'calendarSync.sectionVisibility': 'HOW MUCH IT SHOWS', // reviewed: false
+  'calendarSync.busyOnly': 'Busy only', // reviewed: false
+  'calendarSync.fullDetails': 'Full details', // reviewed: false
+  'calendarSync.feedName': 'Name (optional)', // reviewed: false
+  'calendarSync.feedNamePlaceholder': 'My phone', // reviewed: false
+  'calendarSync.linkReady': 'Link ready — add it now', // reviewed: false
+  'calendarSync.linkReadySub': 'One-time display only. Anyone with this link sees what it carries.', // reviewed: false
+  'calendarSync.addToCalendar': 'Add to Calendar', // reviewed: false
+  'calendarSync.copyLink': 'Copy link', // reviewed: false
+  'calendarSync.shareLink': 'Share / copy link', // reviewed: false
+  'calendarSync.googleCalendar': 'Google Calendar', // reviewed: false
+  'calendarSync.yourFeeds': 'YOUR LINKS', // reviewed: false
+  'calendarSync.defaultFeedName': 'Calendar link', // reviewed: false
+  'calendarSync.kinds': 'kinds', // reviewed: false
+  'calendarSync.fetchCount2': 'fetches', // reviewed: false
+  'calendarSync.errors': 'errors', // reviewed: false
+  'calendarSync.noErrors': '0 errors', // reviewed: false
+  'calendarSync.showBusy': 'Show only Busy', // reviewed: false
+  'calendarSync.showDetails': 'Show details', // reviewed: false
+  'calendarSync.rename': 'Rename', // reviewed: false
+  'calendarSync.switchOff': 'Switch off', // reviewed: false
+  'calendarSync.switchedOff': 'Link switched off', // reviewed: false
+  'calendarSync.activeLabel': 'Active', // reviewed: false
+  'calendarSync.disabledLabel': 'Switched off', // reviewed: false
+  'calendarSync.noFeeds': 'No links yet', // reviewed: false
+  'calendarSync.noFeedsSub': 'Create one to see your Sportarena schedule in Apple Calendar, Google or Outlook.', // reviewed: false
+  'calendarSync.addHours': '+ Add hours', // reviewed: false
+  'calendarSync.yourTimezone': 'Your time zone', // reviewed: false
+  'calendarSync.changeTimezone': 'Change ›', // reviewed: false
+  'calendarSync.restDay': 'Rest', // reviewed: false
+  'calendarSync.sectionWindow': 'TRAINING WINDOW', // reviewed: false
+  'calendarSync.conflictPreview': 'CONFLICT PREVIEW · NEXT 7 DAYS', // reviewed: false
+  'calendarSync.conflictClear': 'Next 7 days clear', // reviewed: false
+  'calendarSync.seeAllConflicts': 'See all conflicts →', // reviewed: false
+  'calendarSync.beforeTravel': 'Travel before', // reviewed: false
+  'calendarSync.afterTravel': 'Travel after', // reviewed: false
+  'calendarSync.saveTravelTimes': 'Save travel times', // reviewed: false
+  'calendarSync.importHint': 'Bring in your Google, Apple or Outlook calendar as busy time. Only the times are kept, never the titles, places or people.', // reviewed: false
+  'calendarSync.importAddress': 'Calendar address', // reviewed: false
+  'calendarSync.importName': 'Name (optional)', // reviewed: false
+  'calendarSync.importAsBusy': 'Import as busy time', // reviewed: false
+  'calendarSync.noImports': 'No calendars imported', // reviewed: false
+  'calendarSync.noImportsSub': 'Import one so personal commitments show up here.', // reviewed: false
+  'calendarSync.syncNow': 'Sync now', // reviewed: false
+  'calendarSync.tryAgain': 'Try again', // reviewed: false
+  'calendarSync.remove': 'Remove', // reviewed: false
+  'calendarSync.busyBlocks': '{n} busy blocks', // reviewed: false
+  'calendarSync.syncedAt': 'Synced {ago}', // reviewed: false
 };

@@ -896,10 +896,8 @@ export default {
   'nav.title.MyAccreditations': 'എന്റെ ബാഡ്ജുകൾ',
   'nav.title.OfficialsDevelopment': 'ഒഫീഷ്യൽ വികസനം',
   'nav.title.OfficialAssessment': 'Assessment',
-  'crew.completeness_label': 'Crew completeness',
   'crew.ready': 'All required roles filled',
   'crew.incomplete': 'Some required roles are not yet filled',
-  'crew.missing_roles': 'Missing: {roles}',
   'crew.unfilled_role': 'Required · not yet filled',
   'crew.unfilled_title': 'Unfilled required roles',
   'crew.you': 'You',
@@ -920,7 +918,6 @@ export default {
   'crew.select_person': 'Select replacement official',
   'crew.user_id_placeholder': 'Enter official user ID',
   'crew.duties_label': 'Assigned duties',
-  'crew.duties_placeholder': 'e.g. Chief Referee, AR – Home side',
   'crew.reason': 'Reason',
   'crew.reason_placeholder': 'Reason for emergency substitution',
   'crew.reason_required': 'Please give a reason for the substitution',
@@ -940,7 +937,6 @@ export default {
   'crew.substituted_alert': '{name} ({role}) was substituted',
   'crew.requirements_title': 'Crew requirements',
   'crew.broadcast_sent': 'Message sent to crew',
-  'crew.pinned': 'Pinned',
   'nav.title.AssessmentEditor': 'വിലയിരുത്തൽ റിപ്പോർട്ട്',
   'nav.title.MediaWorkspace': 'മീഡിയയും സംപ്രേഷണവും',
   'nav.title.Federations': 'ഫെഡറേഷനുകൾ',
@@ -4273,7 +4269,6 @@ export default {
   "tpart.callback": "കോൾബാക്ക് വിലാസം",
   "tpart.done": "കഴിഞ്ഞു",
   "tbook.country_needed": "ശരിയായ പാർട്ണർമാരെ തിരയാൻ ലക്ഷ്യസ്ഥാനത്തിന്റെ രാജ്യം തിരഞ്ഞെടുക്കുക.",
-  'community.title': 'കമ്മ്യൂണിറ്റികൾ',
   'community.discover': 'കണ്ടെത്തുക',
   'community.mine': 'എന്റെ കമ്മ്യൂണിറ്റികൾ',
   'community.invitations': 'ക്ഷണങ്ങൾ',
@@ -10154,20 +10149,7 @@ export default {
   'cEdu.mnt.status.paused': 'താൽക്കാലികമായി നിർത്തി',
   'cEdu.mnt.status.ended': 'അവസാനിച്ചു',
   'cEdu.obs.title': 'നിരീക്ഷണങ്ങൾ',
-  'cEdu.obs.new': 'നിരീക്ഷണം ചേർക്കുക',
-  'cEdu.obs.f.coachId': 'കോച്ച്',
-  'cEdu.obs.f.sessionDate': 'സെഷൻ തീയതി',
-  'cEdu.obs.f.context': 'സന്ദർഭം',
-  'cEdu.obs.f.pillar': 'സ്തംഭം',
-  'cEdu.obs.f.overallRating': 'മൊത്തം റേറ്റിംഗ്',
-  'cEdu.obs.f.strengths': 'ശക്തികൾ',
-  'cEdu.obs.f.development': 'വികസനം',
   'cEdu.obs.release': 'കോച്ചിന് റിലീസ് ചെയ്യുക',
-  'cEdu.plan.title': 'വികസന പദ്ധതികൾ',
-  'cEdu.plan.new': 'പദ്ധതി ചേർക്കുക',
-  'cEdu.plan.f.focus': 'ഫോക്കസ്',
-  'cEdu.plan.f.target': 'ലക്ഷ്യ തീയതി',
-  'cEdu.plan.f.actions': 'പ്രവർത്തനങ്ങൾ',
   'cEdu.pillar.technical': 'സാങ്കേതിക',
   'cEdu.pillar.tactical': 'തന്ത്രപര',
   'cEdu.pillar.physical': 'ശാരീരിക',
@@ -12679,7 +12661,6 @@ export default {
   'psf.programme.paraToggleHint': 'പാരാ അത്‌ലറ്റ് ഉപകരണങ്ങൾ, ഗതാഗതം, പരിശീലന ചെലവുകൾ മാത്രം',
   'psf.programme.costCategories': 'യോഗ്യമായ ചെലവ് വിഭാഗങ്ങൾ',
   'psf.programme.privacyNote': 'അത്‌ലറ്റുകളുടെ മെഡിക്കൽ, ക്ലാസിഫിക്കേഷൻ രേഖകൾ സ്പോൺസർമാർക്ക് കാണിക്കില്ല.',
-  'psf.need.paraType': 'പാരാ സ്പോർട്ട് ആവശ്യ തരം',
   'psf.need.privacyNote': 'നിങ്ങളുടെ മെഡിക്കൽ രേഖകൾ സ്പോൺസർമാരുമായി പങ്കിടില്ല',
   'psf.need.specialisedEquipment': 'പ്രത്യേക ഉപകരണങ്ങൾ',
   'psf.need.accessibleTransport': 'ആക്സസബിൾ ഗതാഗതം',
@@ -13719,25 +13700,6 @@ export default {
   'para.comm.sign_language': 'Sign language',
   'para.comm.augmentative_communication': 'Augmentative communication',
   'para.comm.simplified_language': 'Simplified language',
-  'account.appearance': 'Appearance',
-  'account.language': 'Language & region',
-  'account.theme.light': 'Light',
-  'account.theme.dark': 'Dark',
-  'account.search_language': 'Search language or country',
-  'account.your_choice': 'Your choice',
-  'account.format_note': 'Dates, times, numbers and currency follow this and your time zone.',
-  'common.cancel': 'Cancel',
-  'common.close': 'Close',
-  'common.back': 'Back',
-  'common.next': 'Next',
-  'common.loading': 'Loading…',
-  'common.retry': 'Try again',
-  'common.done': 'Done',
-  'error.network': 'No connection. Check your network and try again.',
-  'nav.search': 'Search',
-  'nav.bookings': 'Bookings',
-  'nav.account': 'Account',
-  'transport.boardEmpty': 'No transport runs active right now.',
   'wizard.season.type': 'Season type',
   'wizard.season.dates': 'Season dates',
   'wizard.season.reg_window': 'Registration window (optional)',
@@ -13774,7 +13736,6 @@ export default {
   'wizard.team.public_sub': 'Other platform users can find and follow the team',
   'wizard.goal.what': 'What do you want to achieve?',
   'wizard.goal.kind': 'Kind of goal',
-  'wizard.goal.target': 'Target number (optional)',
   'wizard.goal.milestones': 'Milestones (optional)',
   'wizard.goal.review_date': 'First review date (optional)',
   'wizard.goal.cadence': 'Review cadence',
@@ -13793,10 +13754,10 @@ export default {
   'coach.sport.wizard.step3Sub': 'അക്കാദമികളും അത്‌ലറ്റുകളും നിങ്ങളെ കണ്ടെത്താൻ സഹായിക്കൂ.',
   'coach.sport.wizard.step4Title': 'നിങ്ങളുടെ പരിശീലന ജീവിതം',
   'coach.sport.wizard.step4Sub': 'നിങ്ങളുടെ പശ്ചാത്തലം ഉന്നത പ്രോഗ്രാമുകളിൽ വിശ്വാസ്യത ഉറപ്പാക്കുന്നു.',
-  'coach.sport.wizard.step5Title': { value: 'Availability', reviewed: false },
-  'coach.sport.wizard.step5Sub': { value: 'Set your schedule, capacity and location. Add rate cards from your coaching workbench after completing this profile.', reviewed: false },
-  'coach.sport.wizard.rateCardNudgeTitle': { value: 'Set your rates after this step', reviewed: false },
-  'coach.sport.wizard.rateCardNudgeSub': { value: 'Create rate cards — per hour, per session, group packages, subscriptions — from the Rate cards section in your coaching workbench.', reviewed: false },
+  'coach.sport.wizard.step5Title': 'Availability',
+  'coach.sport.wizard.step5Sub': 'Set your schedule, capacity and location. Add rate cards from your coaching workbench after completing this profile.',
+  'coach.sport.wizard.rateCardNudgeTitle': 'Set your rates after this step',
+  'coach.sport.wizard.rateCardNudgeSub': 'Create rate cards — per hour, per session, group packages, subscriptions — from the Rate cards section in your coaching workbench.',
   'coach.sport.wizard.stepOf': 'ഘട്ടം {step} / {total}',
   'coach.sport.wizard.continue': 'തുടരുക',
   'coach.sport.wizard.back': 'തിരിച്ച്',
@@ -15217,8 +15178,6 @@ export default {
   // Injury episode & RTP
   'inj.episode_title': 'പരിക്ക് എപ്പിസോഡ്', // machine-drafted
   'inj.open_episode': 'എപ്പിസോഡ് തുറക്കുക', // machine-drafted
-  'inj.new_episode': 'പുതിയ പരിക്ക് എപ്പിസോഡ്', // machine-drafted
-  'inj.episode_ref': 'എപ്പിസോഡ് റഫറൻസ്', // machine-drafted
   'inj.status.active': 'സജീവം', // machine-drafted
   'inj.status.rehabilitation': 'പുനരധിവാസം', // machine-drafted
   'inj.status.restricted_training': 'നിയന്ത്രിത പരിശീലനം', // machine-drafted
@@ -15230,7 +15189,6 @@ export default {
   'inj.mechanism': 'സംവിധാനം', // machine-drafted
   'inj.severity': 'തീവ്രത', // machine-drafted
   'inj.expected_return': 'പ്രതീക്ഷിത തിരിച്ചുവരവ്', // machine-drafted
-  'inj.actual_return': 'യഥാർത്ഥ തിരിച്ചുവരവ്', // machine-drafted
   'inj.occurred_on': 'പരിക്ക് തീയതി', // machine-drafted
   'inj.is_recurrence': 'ആവർത്തനം', // machine-drafted
   'inj.athlete_phase.recovery': 'സുഖം പ്രാപിക്കൽ', // machine-drafted
@@ -15248,8 +15206,6 @@ export default {
   'rtp.issue_rtp': 'കളിക്കുന്നതിലേക്ക് മടങ്ങൽ അനുവദിക്കുക', // machine-drafted
   'rtp.load_restrictions': 'ലോഡ് നിയന്ത്രണങ്ങൾ', // machine-drafted
   'rtp.coach_view_notice': 'കോച്ചുകൾ ക്ലിയറൻസ് സ്ഥിതി, ലോഡ് നിയന്ത്രണങ്ങൾ മാത്രം കാണുന്നു — ക്ലിനിക്കൽ വിവരങ്ങൾ ഒരിക്കലും പങ്കിടില്ല.', // machine-drafted
-  'rtp.approval_valid_until': 'വരെ സാധുത', // machine-drafted
-  'rtp.mark_achieved': 'നേടിയതായി അടയാളപ്പെടുത്തുക', // machine-drafted
 
   // earnings & seller-onboarding (machine-drafted, reviewed: false)
   'earnings.title': 'Earnings',
@@ -16735,4 +16691,58 @@ export default {
   'ora.err_tiers': "Add at least 2 volume tiers", /* reviewed: false */
   'ora.err_fee': "Enter the fee amount", /* reviewed: false */
   'ora.err_date': "Set an effective from date", /* reviewed: false */
+  'calendarSync.tentativeHint': 'ക്ഷണിക്കപ്പെട്ട ഔദ്യോഗിക നിയമനങ്ങൾ നിങ്ങളുടെ കലണ്ടറിൽ താൽക്കാലികമായി ദൃശ്യമാകും.',
+  'calendarSync.createLink': 'Create private link', // reviewed: false
+  'calendarSync.metricActiveFeeds': 'Active feeds', // reviewed: false
+  'calendarSync.metricConflicts': 'Conflicts', // reviewed: false
+  'calendarSync.metricNextSync': 'Next sync', // reviewed: false
+  'calendarSync.sectionKinds': 'WHAT IT CARRIES', // reviewed: false
+  'calendarSync.sectionVisibility': 'HOW MUCH IT SHOWS', // reviewed: false
+  'calendarSync.busyOnly': 'Busy only', // reviewed: false
+  'calendarSync.fullDetails': 'Full details', // reviewed: false
+  'calendarSync.feedName': 'Name (optional)', // reviewed: false
+  'calendarSync.feedNamePlaceholder': 'My phone', // reviewed: false
+  'calendarSync.linkReady': 'Link ready — add it now', // reviewed: false
+  'calendarSync.linkReadySub': 'One-time display only. Anyone with this link sees what it carries.', // reviewed: false
+  'calendarSync.addToCalendar': 'Add to Calendar', // reviewed: false
+  'calendarSync.copyLink': 'Copy link', // reviewed: false
+  'calendarSync.shareLink': 'Share / copy link', // reviewed: false
+  'calendarSync.googleCalendar': 'Google Calendar', // reviewed: false
+  'calendarSync.yourFeeds': 'YOUR LINKS', // reviewed: false
+  'calendarSync.defaultFeedName': 'Calendar link', // reviewed: false
+  'calendarSync.kinds': 'kinds', // reviewed: false
+  'calendarSync.fetchCount2': 'fetches', // reviewed: false
+  'calendarSync.errors': 'errors', // reviewed: false
+  'calendarSync.noErrors': '0 errors', // reviewed: false
+  'calendarSync.showBusy': 'Show only Busy', // reviewed: false
+  'calendarSync.showDetails': 'Show details', // reviewed: false
+  'calendarSync.rename': 'Rename', // reviewed: false
+  'calendarSync.switchOff': 'Switch off', // reviewed: false
+  'calendarSync.switchedOff': 'Link switched off', // reviewed: false
+  'calendarSync.activeLabel': 'Active', // reviewed: false
+  'calendarSync.disabledLabel': 'Switched off', // reviewed: false
+  'calendarSync.noFeeds': 'No links yet', // reviewed: false
+  'calendarSync.noFeedsSub': 'Create one to see your Sportarena schedule in Apple Calendar, Google or Outlook.', // reviewed: false
+  'calendarSync.addHours': '+ Add hours', // reviewed: false
+  'calendarSync.yourTimezone': 'Your time zone', // reviewed: false
+  'calendarSync.changeTimezone': 'Change ›', // reviewed: false
+  'calendarSync.restDay': 'Rest', // reviewed: false
+  'calendarSync.sectionWindow': 'TRAINING WINDOW', // reviewed: false
+  'calendarSync.conflictPreview': 'CONFLICT PREVIEW · NEXT 7 DAYS', // reviewed: false
+  'calendarSync.conflictClear': 'Next 7 days clear', // reviewed: false
+  'calendarSync.seeAllConflicts': 'See all conflicts →', // reviewed: false
+  'calendarSync.beforeTravel': 'Travel before', // reviewed: false
+  'calendarSync.afterTravel': 'Travel after', // reviewed: false
+  'calendarSync.saveTravelTimes': 'Save travel times', // reviewed: false
+  'calendarSync.importHint': 'Bring in your Google, Apple or Outlook calendar as busy time. Only the times are kept, never the titles, places or people.', // reviewed: false
+  'calendarSync.importAddress': 'Calendar address', // reviewed: false
+  'calendarSync.importName': 'Name (optional)', // reviewed: false
+  'calendarSync.importAsBusy': 'Import as busy time', // reviewed: false
+  'calendarSync.noImports': 'No calendars imported', // reviewed: false
+  'calendarSync.noImportsSub': 'Import one so personal commitments show up here.', // reviewed: false
+  'calendarSync.syncNow': 'Sync now', // reviewed: false
+  'calendarSync.tryAgain': 'Try again', // reviewed: false
+  'calendarSync.remove': 'Remove', // reviewed: false
+  'calendarSync.busyBlocks': '{n} busy blocks', // reviewed: false
+  'calendarSync.syncedAt': 'Synced {ago}', // reviewed: false
 };

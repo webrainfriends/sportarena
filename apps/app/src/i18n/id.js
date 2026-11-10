@@ -896,10 +896,8 @@ export default {
   'nav.title.MyAccreditations': 'Lencana saya',
   'nav.title.OfficialsDevelopment': 'Pengembangan perangkat pertandingan',
   'nav.title.OfficialAssessment': 'Assessment',
-  'crew.completeness_label': 'Crew completeness',
   'crew.ready': 'All required roles filled',
   'crew.incomplete': 'Some required roles are not yet filled',
-  'crew.missing_roles': 'Missing: {roles}',
   'crew.unfilled_role': 'Required · not yet filled',
   'crew.unfilled_title': 'Unfilled required roles',
   'crew.you': 'You',
@@ -920,7 +918,6 @@ export default {
   'crew.select_person': 'Select replacement official',
   'crew.user_id_placeholder': 'Enter official user ID',
   'crew.duties_label': 'Assigned duties',
-  'crew.duties_placeholder': 'e.g. Chief Referee, AR – Home side',
   'crew.reason': 'Reason',
   'crew.reason_placeholder': 'Reason for emergency substitution',
   'crew.reason_required': 'Please give a reason for the substitution',
@@ -940,7 +937,6 @@ export default {
   'crew.substituted_alert': '{name} ({role}) was substituted',
   'crew.requirements_title': 'Crew requirements',
   'crew.broadcast_sent': 'Message sent to crew',
-  'crew.pinned': 'Pinned',
   'nav.title.AssessmentEditor': 'Laporan penilaian',
   'nav.title.MediaWorkspace': 'Media & siaran',
   'nav.title.Federations': 'Federasi-federasi',
@@ -4273,7 +4269,6 @@ export default {
   "tpart.callback": "Alamat callback",
   "tpart.done": "Selesai",
   "tbook.country_needed": "Pilih negara tujuan agar mitra yang tepat dicari.",
-  'community.title': 'Komunitas',
   'community.discover': 'Jelajahi',
   'community.mine': 'Komunitas saya',
   'community.invitations': 'Undangan',
@@ -10154,20 +10149,7 @@ export default {
   'cEdu.mnt.status.paused': 'Dijeda',
   'cEdu.mnt.status.ended': 'Selesai',
   'cEdu.obs.title': 'Observasi',
-  'cEdu.obs.new': 'Tambah Observasi',
-  'cEdu.obs.f.coachId': 'Pelatih',
-  'cEdu.obs.f.sessionDate': 'Tanggal Sesi',
-  'cEdu.obs.f.context': 'Konteks',
-  'cEdu.obs.f.pillar': 'Pilar',
-  'cEdu.obs.f.overallRating': 'Penilaian Keseluruhan',
-  'cEdu.obs.f.strengths': 'Kekuatan',
-  'cEdu.obs.f.development': 'Pengembangan',
   'cEdu.obs.release': 'Rilis ke Pelatih',
-  'cEdu.plan.title': 'Rencana Pengembangan',
-  'cEdu.plan.new': 'Tambah Rencana',
-  'cEdu.plan.f.focus': 'Fokus',
-  'cEdu.plan.f.target': 'Tanggal Target',
-  'cEdu.plan.f.actions': 'Tindakan',
   'cEdu.pillar.technical': 'Teknis',
   'cEdu.pillar.tactical': 'Taktis',
   'cEdu.pillar.physical': 'Fisik',
@@ -12679,7 +12661,6 @@ export default {
   'psf.programme.paraToggleHint': 'Khusus untuk peralatan, transportasi, dan biaya pelatihan atlet para',
   'psf.programme.costCategories': 'Kategori biaya yang memenuhi syarat',
   'psf.programme.privacyNote': 'Catatan medis dan klasifikasi atlet tidak akan ditampilkan kepada sponsor.',
-  'psf.need.paraType': 'Jenis kebutuhan olahraga para',
   'psf.need.privacyNote': 'Catatan medis Anda tidak akan dibagikan kepada sponsor',
   'psf.need.specialisedEquipment': 'Peralatan khusus',
   'psf.need.accessibleTransport': 'Transportasi aksesibel',
@@ -13719,25 +13700,6 @@ export default {
   'para.comm.sign_language': 'Sign language',
   'para.comm.augmentative_communication': 'Augmentative communication',
   'para.comm.simplified_language': 'Simplified language',
-  'account.appearance': 'Appearance',
-  'account.language': 'Language & region',
-  'account.theme.light': 'Light',
-  'account.theme.dark': 'Dark',
-  'account.search_language': 'Search language or country',
-  'account.your_choice': 'Your choice',
-  'account.format_note': 'Dates, times, numbers and currency follow this and your time zone.',
-  'common.cancel': 'Cancel',
-  'common.close': 'Close',
-  'common.back': 'Back',
-  'common.next': 'Next',
-  'common.loading': 'Loading…',
-  'common.retry': 'Try again',
-  'common.done': 'Done',
-  'error.network': 'No connection. Check your network and try again.',
-  'nav.search': 'Search',
-  'nav.bookings': 'Bookings',
-  'nav.account': 'Account',
-  'transport.boardEmpty': 'No transport runs active right now.',
   'wizard.season.type': 'Season type',
   'wizard.season.dates': 'Season dates',
   'wizard.season.reg_window': 'Registration window (optional)',
@@ -13774,7 +13736,6 @@ export default {
   'wizard.team.public_sub': 'Other platform users can find and follow the team',
   'wizard.goal.what': 'What do you want to achieve?',
   'wizard.goal.kind': 'Kind of goal',
-  'wizard.goal.target': 'Target number (optional)',
   'wizard.goal.milestones': 'Milestones (optional)',
   'wizard.goal.review_date': 'First review date (optional)',
   'wizard.goal.cadence': 'Review cadence',
@@ -13793,10 +13754,10 @@ export default {
   'coach.sport.wizard.step3Sub': 'Bantu akademi dan atlet menemukan Anda untuk keahlian terbaik Anda.',
   'coach.sport.wizard.step4Title': 'Karier pelatihan Anda',
   'coach.sport.wizard.step4Sub': 'Latar belakang Anda membangun kepercayaan dengan program elite.',
-  'coach.sport.wizard.step5Title': { value: 'Availability', reviewed: false },
-  'coach.sport.wizard.step5Sub': { value: 'Set your schedule, capacity and location. Add rate cards from your coaching workbench after completing this profile.', reviewed: false },
-  'coach.sport.wizard.rateCardNudgeTitle': { value: 'Set your rates after this step', reviewed: false },
-  'coach.sport.wizard.rateCardNudgeSub': { value: 'Create rate cards — per hour, per session, group packages, subscriptions — from the Rate cards section in your coaching workbench.', reviewed: false },
+  'coach.sport.wizard.step5Title': 'Availability',
+  'coach.sport.wizard.step5Sub': 'Set your schedule, capacity and location. Add rate cards from your coaching workbench after completing this profile.',
+  'coach.sport.wizard.rateCardNudgeTitle': 'Set your rates after this step',
+  'coach.sport.wizard.rateCardNudgeSub': 'Create rate cards — per hour, per session, group packages, subscriptions — from the Rate cards section in your coaching workbench.',
   'coach.sport.wizard.stepOf': 'Langkah {step} dari {total}',
   'coach.sport.wizard.continue': 'Lanjutkan',
   'coach.sport.wizard.back': 'Kembali',
@@ -15218,8 +15179,6 @@ export default {
   // Injury episode & RTP
   'inj.episode_title': 'Episode Cedera', // machine-drafted
   'inj.open_episode': 'Buka Episode', // machine-drafted
-  'inj.new_episode': 'Episode Cedera Baru', // machine-drafted
-  'inj.episode_ref': 'Referensi Episode', // machine-drafted
   'inj.status.active': 'Aktif', // machine-drafted
   'inj.status.rehabilitation': 'Rehabilitasi', // machine-drafted
   'inj.status.restricted_training': 'Latihan Terbatas', // machine-drafted
@@ -15231,7 +15190,6 @@ export default {
   'inj.mechanism': 'Mekanisme', // machine-drafted
   'inj.severity': 'Tingkat Keparahan', // machine-drafted
   'inj.expected_return': 'Perkiraan Kembali', // machine-drafted
-  'inj.actual_return': 'Kembali Aktual', // machine-drafted
   'inj.occurred_on': 'Tanggal Cedera', // machine-drafted
   'inj.is_recurrence': 'Kekambuhan', // machine-drafted
   'inj.athlete_phase.recovery': 'Pemulihan', // machine-drafted
@@ -15249,8 +15207,6 @@ export default {
   'rtp.issue_rtp': 'Keluarkan Izin Kembali Bermain', // machine-drafted
   'rtp.load_restrictions': 'Pembatasan Beban', // machine-drafted
   'rtp.coach_view_notice': 'Pelatih hanya melihat status izin dan pembatasan beban — tidak ada detail klinis yang dibagikan.', // machine-drafted
-  'rtp.approval_valid_until': 'Berlaku Hingga', // machine-drafted
-  'rtp.mark_achieved': 'Tandai Tercapai', // machine-drafted
 
   // earnings & seller-onboarding (machine-drafted, reviewed: false)
   'earnings.title': 'Earnings',
@@ -16807,4 +16763,58 @@ export default {
   'ora.err_tiers': "Add at least 2 volume tiers", /* reviewed: false */
   'ora.err_fee': "Enter the fee amount", /* reviewed: false */
   'ora.err_date': "Set an effective from date", /* reviewed: false */
+  'calendarSync.tentativeHint': 'Penugasan wasit yang diundang akan muncul sebagai Tentatif di kalender Anda.',
+  'calendarSync.createLink': 'Create private link', // reviewed: false
+  'calendarSync.metricActiveFeeds': 'Active feeds', // reviewed: false
+  'calendarSync.metricConflicts': 'Conflicts', // reviewed: false
+  'calendarSync.metricNextSync': 'Next sync', // reviewed: false
+  'calendarSync.sectionKinds': 'WHAT IT CARRIES', // reviewed: false
+  'calendarSync.sectionVisibility': 'HOW MUCH IT SHOWS', // reviewed: false
+  'calendarSync.busyOnly': 'Busy only', // reviewed: false
+  'calendarSync.fullDetails': 'Full details', // reviewed: false
+  'calendarSync.feedName': 'Name (optional)', // reviewed: false
+  'calendarSync.feedNamePlaceholder': 'My phone', // reviewed: false
+  'calendarSync.linkReady': 'Link ready — add it now', // reviewed: false
+  'calendarSync.linkReadySub': 'One-time display only. Anyone with this link sees what it carries.', // reviewed: false
+  'calendarSync.addToCalendar': 'Add to Calendar', // reviewed: false
+  'calendarSync.copyLink': 'Copy link', // reviewed: false
+  'calendarSync.shareLink': 'Share / copy link', // reviewed: false
+  'calendarSync.googleCalendar': 'Google Calendar', // reviewed: false
+  'calendarSync.yourFeeds': 'YOUR LINKS', // reviewed: false
+  'calendarSync.defaultFeedName': 'Calendar link', // reviewed: false
+  'calendarSync.kinds': 'kinds', // reviewed: false
+  'calendarSync.fetchCount2': 'fetches', // reviewed: false
+  'calendarSync.errors': 'errors', // reviewed: false
+  'calendarSync.noErrors': '0 errors', // reviewed: false
+  'calendarSync.showBusy': 'Show only Busy', // reviewed: false
+  'calendarSync.showDetails': 'Show details', // reviewed: false
+  'calendarSync.rename': 'Rename', // reviewed: false
+  'calendarSync.switchOff': 'Switch off', // reviewed: false
+  'calendarSync.switchedOff': 'Link switched off', // reviewed: false
+  'calendarSync.activeLabel': 'Active', // reviewed: false
+  'calendarSync.disabledLabel': 'Switched off', // reviewed: false
+  'calendarSync.noFeeds': 'No links yet', // reviewed: false
+  'calendarSync.noFeedsSub': 'Create one to see your Sportarena schedule in Apple Calendar, Google or Outlook.', // reviewed: false
+  'calendarSync.addHours': '+ Add hours', // reviewed: false
+  'calendarSync.yourTimezone': 'Your time zone', // reviewed: false
+  'calendarSync.changeTimezone': 'Change ›', // reviewed: false
+  'calendarSync.restDay': 'Rest', // reviewed: false
+  'calendarSync.sectionWindow': 'TRAINING WINDOW', // reviewed: false
+  'calendarSync.conflictPreview': 'CONFLICT PREVIEW · NEXT 7 DAYS', // reviewed: false
+  'calendarSync.conflictClear': 'Next 7 days clear', // reviewed: false
+  'calendarSync.seeAllConflicts': 'See all conflicts →', // reviewed: false
+  'calendarSync.beforeTravel': 'Travel before', // reviewed: false
+  'calendarSync.afterTravel': 'Travel after', // reviewed: false
+  'calendarSync.saveTravelTimes': 'Save travel times', // reviewed: false
+  'calendarSync.importHint': 'Bring in your Google, Apple or Outlook calendar as busy time. Only the times are kept, never the titles, places or people.', // reviewed: false
+  'calendarSync.importAddress': 'Calendar address', // reviewed: false
+  'calendarSync.importName': 'Name (optional)', // reviewed: false
+  'calendarSync.importAsBusy': 'Import as busy time', // reviewed: false
+  'calendarSync.noImports': 'No calendars imported', // reviewed: false
+  'calendarSync.noImportsSub': 'Import one so personal commitments show up here.', // reviewed: false
+  'calendarSync.syncNow': 'Sync now', // reviewed: false
+  'calendarSync.tryAgain': 'Try again', // reviewed: false
+  'calendarSync.remove': 'Remove', // reviewed: false
+  'calendarSync.busyBlocks': '{n} busy blocks', // reviewed: false
+  'calendarSync.syncedAt': 'Synced {ago}', // reviewed: false
 };
