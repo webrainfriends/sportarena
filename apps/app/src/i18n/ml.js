@@ -15471,7 +15471,7 @@ export default {
   'residency.supported_banner': 'Your data will be stored in {region}',
   'residency.unsupported_banner': 'GotMyGame does not currently have data storage in {country}.',
   'residency.fallback_title': 'Singapore storage consent',
-  'residency.fallback_body': 'GotMyGame does not operate data storage in your home country. With your permission, your account and eligible personal data will be stored and processed in Singapore.',
+  'residency.fallback_body': 'GotMyGame does not operate data storage in your home country. With your permission, your account and eligible personal data will be stored and processed in AWS Singapore (ap-southeast-1).',
   'residency.fallback_agree': 'Agree to Singapore storage',
   'residency.fallback_decline': 'Not now — browse without an account',
   'residency.fallback_waitlist': 'Join waitlist for in-country storage',
@@ -15518,10 +15518,10 @@ export default {
   'residency.policy_hash_label': 'Text hash',
   'residency.policy_region_label': 'Region',
   'residency.affirmation_label': 'What you are agreeing to',
-  'residency.affirmation_body': 'By tapping Agree, you give GotMyGame explicit, affirmative, freely-given consent to store and process the data categories listed above in Singapore. You may withdraw consent at any time from Account -> Data Residency.',
+  'residency.affirmation_body': 'By tapping Agree, you give GotMyGame explicit, affirmative, freely-given consent to store and process the data categories listed above in AWS Singapore. You may withdraw consent at any time from Account -> Data Residency.',
   'residency.no_pretick': 'No pre-ticked boxes. This consent is freely given and freely withdrawable.',
   'residency.consent_success_title': 'Singapore consent recorded',
-  'residency.consent_success_body': 'Your data will be stored in Singapore. You can review or withdraw this consent at any time from Account -> Data Residency.',
+  'residency.consent_success_body': 'Your data will be stored in AWS Singapore. You can review or withdraw this consent at any time from Account -> Data Residency.',
   'residency.status.active': 'Active',
   'residency.status.fallback': 'Fallback',
   'residency.status.in_country': 'In-country',
@@ -15533,14 +15533,14 @@ export default {
   'residency.admin.audit_title': 'Residency audit log',
   'residency.admin.export': 'Export compliance report',
   'residency.set_country_title': 'Where should your data live?',
-  'residency.set_country_body': 'GotMyGame stores your personal data in a country chosen from your home country. Choose your country to see where your data will live — or to consent to Singapore storage if your country is not yet covered.',
+  'residency.set_country_body': 'GotMyGame stores your personal data in an AWS region based on your home country. Choose your country to see which region applies — or to consent to Singapore storage if your country is not yet covered.',
   'residency.set_country_cta': 'Save & check data consent',
   'residency.set_country_skip': 'Skip for now',
   'residency.country_saved': 'Home country saved',
   'residency.country_change_note': 'Changing country may require new storage consent',
   'residency.preview_loading': 'Checking data region…',
   'residency.banner_title': 'Set your data home',
-  'residency.banner_body': 'Tell us your home country so we can store your personal data in the right country — required for data residency compliance.',
+  'residency.banner_body': 'Tell us your home country so we can store your personal data in the right AWS region — required for data residency compliance.',
   'residency.country_required': 'Please choose your home country to set up data storage',
   'residency.country_required_hint': 'Required — choose your home country',
   'pu.title': 'പ്ലാറ്റ്‌ഫോം ഉപയോക്താക്കൾ',
@@ -17046,4 +17046,380 @@ export default {
   'oc.sync_pending': 'സേവ് ചെയ്യുന്നു…',
   'oc.sync_ok': 'എല്ലാം സേവ് ചെയ്തു',
   'oc.ask_rules': 'നിയമങ്ങൾ ചോദിക്കുക',
+
+  // #994 official availability and calendar: machine draft, reviewed: false
+  'oav.day.0': 'ഞായർ',
+  'oav.day.1': 'തിങ്കൾ',
+  'oav.day.2': 'ചൊവ്വ',
+  'oav.day.3': 'ബുധൻ',
+  'oav.day.4': 'വ്യാഴം',
+  'oav.day.5': 'വെള്ളി',
+  'oav.day.6': 'ശനി',
+  'oav.all_day': 'ദിവസം മുഴുവൻ',
+  'oav.any': 'ഏതും',
+  'oav.none': 'ഒന്നുമില്ല',
+  'oav.not_set': 'സജ്ജമാക്കിയിട്ടില്ല',
+  'oav.remove': 'നീക്കുക',
+  'oav.min': 'മിനി',
+  'oav.h': 'മണി',
+  'oav.km': 'km',
+  'oav.n_min': '{n} മിനിറ്റ്',
+  'oav.n_hours': '{n} മണിക്കൂർ',
+  'oav.n_km': '{n} km',
+  'oav.m.open': 'ആഴ്ചയിൽ ലഭ്യമായ മണിക്കൂർ',
+  'oav.m.any': 'ഏത് സമയവും',
+  'oav.m.hours': '{n} മണി',
+  'oav.m.blocked': 'തടഞ്ഞ ദിവസങ്ങൾ, അടുത്ത 90',
+  'oav.m.tentative': 'താൽക്കാലിക ഹോൾഡുകൾ',
+  'oav.m.confirmed': 'വരാനിരിക്കുന്ന സ്ഥിരീകരിച്ച മത്സരങ്ങൾ',
+  'oav.m.week': 'ഈ ആഴ്ചയിലെ ഭാരം',
+  'oav.m.week_sub': 'കൂടാതെ {n} താൽക്കാലികം',
+  'oav.m.attention': 'ശ്രദ്ധ വേണം',
+  'oav.att.title': '{n} മത്സരത്തിൽ തീരുമാനം വേണം',
+  'oav.att.time_off': 'നിങ്ങളുടെ അവധിയിൽ',
+  'oav.att.outside': 'നിങ്ങളുടെ സമയത്തിന് പുറത്ത്',
+  'oav.att.hint': 'ഒന്നും സ്വയം ഒഴിവാക്കപ്പെടില്ല. മത്സരം തുറന്ന് സ്വീകരിക്കുക, നിരസിക്കുക അല്ലെങ്കിൽ പിന്മാറുക, അല്ലെങ്കിൽ നിങ്ങളുടെ ലഭ്യത മാറ്റുക.',
+  'oav.week.title': 'എന്റെ ഒഫീഷ്യേറ്റിംഗ് ആഴ്ച',
+  'oav.week.sub': 'ഞാൻ മത്സരം നിയന്ത്രിക്കാൻ ലഭ്യമായ സമയം, {tz} പ്രകാരം',
+  'oav.week.add': 'സമയം ചേർക്കുക',
+  'oav.week.season': 'സീസണിൽ മാത്രം',
+  'oav.week.none': 'പ്രതിവാര സമയം ഇതുവരെ ചേർത്തിട്ടില്ല, അതിനാൽ നിങ്ങൾ ഏത് സമയത്തും ലഭ്യമായി കണക്കാക്കും. ചില സമയങ്ങളിൽ മാത്രമാണ് മത്സരം നിയന്ത്രിക്കുന്നതെങ്കിൽ സമയം ചേർക്കുക.',
+  'oav.grid.open': 'ലഭ്യം',
+  'oav.grid.any': 'ലഭ്യം (സമയം സജ്ജമാക്കിയിട്ടില്ല)',
+  'oav.grid.blocked': 'ആവർത്തിക്കുന്ന അവധി',
+  'oav.grid.closed': 'ഒഫീഷ്യേറ്റിംഗ് ഇല്ല',
+  'oav.load.title': 'മത്സര ഭാരം',
+  'oav.load.sub': 'പന്ത്രണ്ട് ആഴ്ച: കഴിഞ്ഞ ആറ്, ഈ ആഴ്ച, വരുന്ന അഞ്ച്',
+  'oav.load.confirmed': 'സ്ഥിരീകരിച്ചത്',
+  'oav.load.this_week': 'ഈ ആഴ്ച',
+  'oav.load.tentative': 'താൽക്കാലികം',
+  'oav.load.cap': 'നിങ്ങളുടെ പ്രതിവാര പരിധി: {n}',
+  'oav.load.a11y': '{weeks} ആഴ്ചയിൽ {total} സ്ഥിരീകരിച്ച മത്സരങ്ങൾ',
+  'oav.load.empty_title': 'ഈ കാലയളവിൽ ഇതുവരെ മത്സരങ്ങളില്ല',
+  'oav.load.empty_sub': 'സംഘാടകർ നിങ്ങളെ നിയമിക്കുമ്പോൾ സ്ഥിരീകരിച്ചതും താൽക്കാലികവുമായ മത്സരങ്ങൾ ആഴ്ചതോറും ഇവിടെ ചാർട്ടായി കാണാം.',
+  'oav.off.title': 'അവധി',
+  'oav.off.block': 'അവധി തടയുക',
+  'oav.off.repeat': 'ആവർത്തിക്കുന്ന ബ്ലോക്ക്',
+  'oav.off.holidays': 'പൊതു അവധികൾ',
+  'oav.off.tag': 'അവധി',
+  'oav.off.empty_title': 'അവധിയൊന്നും ചേർത്തിട്ടില്ല',
+  'oav.off.empty_sub': 'ഒരു കാലയളവോ ആവർത്തിക്കുന്ന ക്രമമോ പൊതു അവധികളോ തടയുക. തടഞ്ഞ സമയത്തിനുള്ളിൽ സംഘാടകർക്ക് നിങ്ങളോട് മത്സരം ആവശ്യപ്പെടാനാവില്ല.',
+  'oav.rep.tag': 'ആവർത്തിക്കുന്നു',
+  'oav.rep.every': 'എല്ലാ ആഴ്ചയും',
+  'oav.rep.every_n': 'ഓരോ {n} ആഴ്ചയിലും',
+  'oav.rep.span': '{from} മുതൽ {to} വരെ',
+  'oav.rep.skip': 'ഒരു തീയതി ഒഴിവാക്കുക',
+  'oav.rep.skipped': '{n} തീയതി ഒഴിവാക്കി',
+  'oav.hol.tag': 'പൊതു അവധി',
+  'oav.hol.work': 'ഈ ദിവസം ഞാൻ ജോലി ചെയ്യും',
+  'oav.hol.days': 'അവധിയെടുക്കേണ്ട പൊതു അവധികൾ',
+  'oav.hol.hint': 'ഓരോന്നും നിങ്ങളുടെ സ്വന്തം സമയമേഖലയിൽ ഒരു മുഴുവൻ ദിവസത്തെ അവധിയാകും.',
+  'oav.hol.pick_country': 'പൊതു അവധികൾ കാണാൻ ഒരു രാജ്യം തിരഞ്ഞെടുക്കുക.',
+  'oav.hol.none_title': 'ചേർക്കാൻ പൊതു അവധികളില്ല',
+  'oav.hol.none_sub': 'ഈ രാജ്യത്തിന്റെ പൊതു അവധികൾ ഇതുവരെ രേഖയിലില്ല. പകരം ആ തീയതികൾ അവധിയായി തടയുക.',
+  'oav.hol.all_taken': 'ഈ രാജ്യത്തിന്റെ രേഖയിലുള്ള എല്ലാ അവധികളും നിങ്ങൾ ഇതിനകം എടുത്തിട്ടുണ്ട്.',
+  'oav.extra.title': 'അധിക ലഭ്യത',
+  'oav.extra.add': 'ഒരു സമയജാലകം തുറക്കുക',
+  'oav.extra.tag': 'അധിക ലഭ്യത',
+  'oav.extra.empty': 'പ്രതിവാര സമയത്തിന് പുറത്ത് ഒറ്റത്തവണ സമയജാലകം തുറക്കുക, ഉദാഹരണത്തിന് ഒരു ടൂർണമെന്റ് വാരാന്ത്യം. അവധിക്കും സ്ഥിരീകരിച്ച മത്സരങ്ങൾക്കും തന്നെയാണ് മുൻഗണന.',
+  'oav.pref.title': 'ഷെഡ്യൂളിംഗ് മുൻഗണനകൾ',
+  'oav.pref.rules': 'ഷെഡ്യൂളിംഗ് നിയമങ്ങൾ',
+  'oav.pref.what': 'ഞാൻ നിയന്ത്രിക്കുന്നവ',
+  'oav.pref.travel': 'ഞാൻ യാത്ര ചെയ്യുന്ന ഇടം',
+  'oav.pref.timezone': 'സമയമേഖല',
+  'oav.pref.gap': 'മത്സരങ്ങൾക്കിടയിലെ ഇടവേള',
+  'oav.pref.gap_hint': 'യാത്രയ്ക്കും വിശ്രമത്തിനുമുള്ള സമയം. നിങ്ങളോട് ആവശ്യപ്പെടുമ്പോഴും സ്ഥിരീകരിക്കുമ്പോഴും ഓരോ തവണയും പരിശോധിക്കും.',
+  'oav.pref.same_venue_q': 'ഒരേ വേദിയിൽ കുറഞ്ഞ ഇടവേള മതി',
+  'oav.pref.gap_same': 'ഒരേ വേദിയിലെ ഇടവേള',
+  'oav.pref.same_as_gap': 'സാധാരണ ഇടവേള തന്നെ',
+  'oav.pref.notice': 'കുറഞ്ഞ മുൻകൂർ അറിയിപ്പ്',
+  'oav.pref.notice_hint': 'മത്സരത്തിന് ഇതിലും അടുത്ത് വരുന്ന പുതിയ അഭ്യർത്ഥനകൾ നിരസിക്കപ്പെടും.',
+  'oav.pref.caps': 'ഭാര പരിധികൾ',
+  'oav.pref.per_day': 'ദിവസം {n}',
+  'oav.pref.per_week': 'ആഴ്ചയിൽ {n}',
+  'oav.pref.in_a_row': 'തുടർച്ചയായി {n} ദിവസം',
+  'oav.pref.max_day': 'ഒരു ദിവസം പരമാവധി മത്സരങ്ങൾ',
+  'oav.pref.max_week': 'ഒരാഴ്ച പരമാവധി മത്സരങ്ങൾ',
+  'oav.pref.max_row': 'തുടർച്ചയായി പരമാവധി ദിവസങ്ങൾ',
+  'oav.pref.zero_none': '0 എന്നാൽ പരിധിയില്ല.',
+  'oav.pref.outside': 'എന്റെ സമയത്തിന് പുറത്തുള്ള അഭ്യർത്ഥനകൾ',
+  'oav.pref.block_outside': 'എന്റെ സമയത്തിന് പുറത്തുള്ള അഭ്യർത്ഥനകൾ നിരസിക്കുക',
+  'oav.pref.block_outside_hint': 'ഓഫ്: അഭ്യർത്ഥന ഒരു മുന്നറിയിപ്പോടെ നിങ്ങളിലെത്തും. ഓൺ: ആ സമയത്ത് നിങ്ങൾ ലഭ്യമല്ലെന്ന് സംഘാടകനെ അറിയിക്കും.',
+  'oav.policy.warn': 'മുന്നറിയിപ്പോടെ എന്നിലെത്തട്ടെ',
+  'oav.policy.block': 'നിരസിക്കും',
+  'oav.pref.tentative': 'ഒരേ സമയത്തെ അഭ്യർത്ഥനകൾ',
+  'oav.pref.one_per_slot': 'ഒരു സമയത്തിന് ഒരു അഭ്യർത്ഥന മാത്രം ഹോൾഡ് ചെയ്യുക',
+  'oav.pref.one_per_slot_hint': 'ഓൺ: നിങ്ങൾ ഇതിനകം ഒരു അഭ്യർത്ഥന ഹോൾഡ് ചെയ്യുന്ന സമയത്തിന് മറ്റൊരു സംഘാടകന് ആവശ്യപ്പെടാനാവില്ല.',
+  'oav.tpolicy.allow': 'പലത് ഹോൾഡ് ചെയ്യാം',
+  'oav.tpolicy.one_per_slot': 'ഒരു സമയം ഒന്ന്',
+  'oav.pref.sports': 'ഇഷ്ട കായിക ഇനങ്ങൾ',
+  'oav.pref.sports_hint': 'നിങ്ങൾ നിയന്ത്രിക്കുന്ന കായിക ഇനങ്ങളിൽ നിന്ന്. എല്ലാം വേണമെങ്കിൽ ഒഴിച്ചിടുക.',
+  'oav.pref.levels': 'മത്സര തലങ്ങൾ',
+  'oav.pref.roles': 'റോളുകൾ',
+  'oav.pref.ages': 'പ്രായ വിഭാഗങ്ങൾ',
+  'oav.pref.region': 'ഞാൻ കവർ ചെയ്യുന്ന പ്രദേശം',
+  'oav.pref.region_hint': 'നഗരമോ പ്രദേശമോ മാത്രം. നിങ്ങളുടെ വിലാസം ഒരിക്കലും വേണ്ട.',
+  'oav.pref.range': 'യാത്രാ പരിധി',
+  'oav.pref.country': 'പൊതു അവധികൾക്കുള്ള രാജ്യം',
+  'oav.pref.country_hint': 'ആ രാജ്യത്തെ പൊതു അവധികൾ നിങ്ങൾക്ക് നിർദേശിക്കാൻ മാത്രം ഉപയോഗിക്കുന്നു.',
+  'oav.priv.title': 'സംഘാടകർക്ക് കാണാവുന്നത്',
+  'oav.priv.see': 'അവർ കാണുന്നത്: നിങ്ങൾ ഒഴിവാണോ, തിരക്കിലാണോ, ലഭ്യമല്ലയോ എന്നത്; നിങ്ങളുടെ പ്രദേശം; ഒരു ദൂര ബാൻഡ് (ഉദാഹരണത്തിന് 25 മുതൽ 50 km വരെ); നിങ്ങൾ ഇഷ്ടപ്പെടുന്ന കായിക ഇനങ്ങൾ, തലങ്ങൾ, റോളുകൾ.',
+  'oav.priv.never': 'അവർ ഒരിക്കലും കാണാത്തത്: നിങ്ങളുടെ കുറിപ്പുകളോ കാരണങ്ങളോ, വീട്ടുവിലാസമോ കോർഡിനേറ്റുകളോ, കൃത്യമായ ദൂരമോ, നിങ്ങളുടെ മറ്റ് മത്സരങ്ങളുടെ വിവരങ്ങളോ.',
+  'oav.hist.title': 'മാറ്റങ്ങളുടെ ചരിത്രം',
+  'oav.hist.show': 'കാണിക്കുക',
+  'oav.hist.hide': 'മറയ്ക്കുക',
+  'oav.hist.sub': 'നിങ്ങളുടെ ലഭ്യതയിലെ ഓരോ മാറ്റവും തീയതിയോടെ രേഖപ്പെടുത്തുന്നു. സ്വകാര്യ കുറിപ്പുകൾ ഒരിക്കലും ഇതിന്റെ ഭാഗമല്ല.',
+  'oav.hist.empty': 'ഇതുവരെ മാറ്റങ്ങളൊന്നും രേഖപ്പെടുത്തിയിട്ടില്ല.',
+  'oav.hist.created': 'ചേർത്തു',
+  'oav.hist.updated': 'മാറ്റി',
+  'oav.hist.replaced': 'പകരം വെച്ചു',
+  'oav.hist.removed': 'നീക്കി',
+  'oav.hist.e_prefs': 'ഷെഡ്യൂളിംഗ് മുൻഗണനകൾ',
+  'oav.hist.e_weekly': 'പ്രതിവാര സമയം',
+  'oav.hist.e_block': 'അവധി അല്ലെങ്കിൽ തുറന്ന സമയജാലകം',
+  'oav.f.hours_title': 'പ്രതിവാര സമയം ചേർക്കുക',
+  'oav.f.add': 'ചേർക്കുക',
+  'oav.f.days': 'ദിവസങ്ങൾ',
+  'oav.f.from': 'മുതൽ',
+  'oav.f.until': 'വരെ',
+  'oav.f.seasonal': 'വർഷത്തിന്റെ ഒരു ഭാഗത്തേക്ക് മാത്രം',
+  'oav.f.seasonal_hint': 'ഒരു സീസണിൽ മാത്രം ബാധകമായ സമയത്തിന്.',
+  'oav.f.season': 'സീസൺ തീയതികൾ',
+  'oav.f.block_title': 'അവധി തടയുക',
+  'oav.f.repeat_title': 'ആവർത്തിക്കുന്ന അവധി',
+  'oav.f.block_edit': 'അവധി മാറ്റുക',
+  'oav.f.block_notice': 'സേവ് ചെയ്യും മുമ്പ്, നിങ്ങളോട് ആവശ്യപ്പെട്ടതും സ്ഥിരീകരിച്ചതുമായ ഏതെല്ലാം മത്സരങ്ങളെ ഇത് ബാധിക്കുമെന്ന് ഞങ്ങൾ പരിശോധിക്കും.',
+  'oav.f.check_save': 'പരിശോധിച്ച് സേവ് ചെയ്യുക',
+  'oav.f.all_day': 'മുഴുവൻ ദിവസങ്ങൾ',
+  'oav.f.dates': 'തീയതികൾ',
+  'oav.f.between': 'ആവർത്തിക്കുന്ന കാലയളവ്',
+  'oav.f.on_days': 'ഈ ദിവസങ്ങളിൽ',
+  'oav.f.every': 'ആവർത്തന ഇടവേള',
+  'oav.f.weeks': 'ആഴ്ച',
+  'oav.f.category': 'അവധിയുടെ തരം',
+  'oav.f.category_hint': 'നിങ്ങളുടെ സ്വന്തം ആസൂത്രണത്തിന്. ഇത് ഒരിക്കലും പങ്കിടില്ല.',
+  'oav.f.note': 'സ്വകാര്യ കുറിപ്പ്',
+  'oav.f.note_hint': 'ഇത് നിങ്ങൾക്ക് മാത്രമേ വായിക്കാനാകൂ. എൻക്രിപ്റ്റ് ചെയ്താണ് സൂക്ഷിക്കുന്നത്.',
+  'oav.f.skip_title': 'ഒരു തീയതി ഒഴിവാക്കുക',
+  'oav.f.skip_date': 'ഈ ബ്ലോക്കിൽ നിന്ന് ഒഴിവാക്കേണ്ട തീയതി',
+  'oav.f.hol_title': 'പൊതു അവധികളിൽ അവധിയെടുക്കുക',
+  'oav.f.extra_title': 'അധിക സമയജാലകം തുറക്കുക',
+  'oav.f.extra_notice': 'പ്രതിവാര സമയത്തിന് പുറത്താണെങ്കിലും ഈ സമയജാലകത്തിൽ സംഘാടകർ നിങ്ങളെ ലഭ്യമായി കാണും.',
+  'oav.err.dates': 'തീയതികൾ തിരഞ്ഞെടുക്കുക',
+  'oav.err.days': 'കുറഞ്ഞത് ഒരു ദിവസം തിരഞ്ഞെടുക്കുക',
+  'oav.err.times': 'അവസാന സമയം തുടക്കത്തിന് ശേഷമായിരിക്കണം',
+  'oav.err.holidays': 'കുറഞ്ഞത് ഒരു അവധി തിരഞ്ഞെടുക്കുക',
+  'oav.saved.hours': 'പ്രതിവാര സമയം സേവ് ചെയ്തു',
+  'oav.saved.block': 'അവധി സേവ് ചെയ്തു',
+  'oav.saved.removed': 'നീക്കി',
+  'oav.saved.skipped': 'ആ തീയതി വീണ്ടും ഒഴിവായി',
+  'oav.saved.holidays': 'പൊതു അവധികൾ അവധിയാക്കി',
+  'oav.saved.extra': 'അധിക സമയജാലകം തുറന്നു',
+  'oav.saved.prefs': 'മുൻഗണനകൾ സേവ് ചെയ്തു',
+  'oav.imp.title': 'ഇത് നിങ്ങളുടെ മത്സരങ്ങളെ ബാധിക്കുന്നു',
+  'oav.imp.lead': 'ആവശ്യപ്പെട്ടതോ സ്ഥിരീകരിച്ചതോ ആയ {n} മത്സരം ഈ അവധിക്കുള്ളിൽ വരുന്നു.',
+  'oav.imp.hint': 'സേവ് ചെയ്താൽ അവ ഒഴിവാകില്ല. നിങ്ങൾക്ക് ചെയ്യാനാകാത്തവ നിരസിക്കുകയോ അവയിൽ നിന്ന് പിന്മാറുകയോ ചെയ്യുക, അപ്പോൾ സംഘാടകന് മറ്റൊരാളെ നിയമിക്കാം.',
+  'oav.imp.back': 'തിരികെ പോകുക',
+  'oav.imp.save': 'എന്തായാലും സേവ് ചെയ്യുക',
+  'oav.hold.reserved': 'സ്ഥിരീകരിച്ചത്',
+  'oav.hold.tentative': 'താൽക്കാലികം',
+  'oav.cat.holiday': 'അവധിക്കാലം',
+  'oav.cat.work': 'ജോലി',
+  'oav.cat.family': 'കുടുംബം',
+  'oav.cat.injury': 'പരിക്ക് അല്ലെങ്കിൽ വിശ്രമം',
+  'oav.cat.travel': 'യാത്ര',
+  'oav.cat.study': 'പഠനം അല്ലെങ്കിൽ പരീക്ഷ',
+  'oav.cat.faith': 'വിശ്വാസം അല്ലെങ്കിൽ ഉത്സവം',
+  'oav.cat.federation_duty': 'ഫെഡറേഷൻ ചുമതല',
+  'oav.cat.other_sport': 'മറ്റ് കായിക ചുമതലകൾ',
+  'oav.cat.personal': 'വ്യക്തിപരം',
+  'oav.level.grassroots': 'ഗ്രാസ്റൂട്ട്',
+  'oav.level.local': 'പ്രാദേശികം',
+  'oav.level.district': 'ജില്ല',
+  'oav.level.county': 'കൗണ്ടി',
+  'oav.level.regional': 'മേഖലാ',
+  'oav.level.national': 'ദേശീയം',
+  'oav.level.international': 'അന്താരാഷ്ട്രം',
+  'oav.level.olympic': 'ഒളിമ്പിക്',
+  'oav.role.referee': 'റഫറി',
+  'oav.role.umpire': 'അമ്പയർ',
+  'oav.role.linesman': 'അസിസ്റ്റന്റ് റഫറി',
+  'oav.role.scorer': 'സ്കോറർ',
+  'oav.role.video_assistant_referee': 'വീഡിയോ അസിസ്റ്റന്റ് റഫറി',
+  'oav.role.fourth_official': 'ഫോർത്ത് ഒഫീഷ്യൽ',
+  'oav.role.reserve_assistant_referee': 'റിസർവ് അസിസ്റ്റന്റ് റഫറി',
+  'oav.role.shot_clock_operator': 'ഷോട്ട് ക്ലോക്ക് ഓപ്പറേറ്റർ',
+  'oav.role.timekeeper': 'ടൈംകീപ്പർ',
+  'oav.role.goal_line_official': 'ഗോൾ-ലൈൻ ഒഫീഷ്യൽ',
+  'oav.role.technical_official': 'ടെക്നിക്കൽ ഒഫീഷ്യൽ',
+  'oav.age.u8': '8 വയസ്സിൽ താഴെ',
+  'oav.age.u10': '10 വയസ്സിൽ താഴെ',
+  'oav.age.u12': '12 വയസ്സിൽ താഴെ',
+  'oav.age.u14': '14 വയസ്സിൽ താഴെ',
+  'oav.age.u16': '16 വയസ്സിൽ താഴെ',
+  'oav.age.u18': '18 വയസ്സിൽ താഴെ',
+  'oav.age.u21': '21 വയസ്സിൽ താഴെ',
+  'oav.age.senior': 'സീനിയർ',
+  'oav.age.masters': 'മാസ്റ്റേഴ്സ്',
+  'oav.band.under_25': '25 km-ൽ താഴെ',
+  'oav.band.25_50': '25 മുതൽ 50 km വരെ',
+  'oav.band.50_100': '50 മുതൽ 100 km വരെ',
+  'oav.band.100_200': '100 മുതൽ 200 km വരെ',
+  'oav.band.200_400': '200 മുതൽ 400 km വരെ',
+  'oav.band.over_400': '400 km-ൽ കൂടുതൽ',
+  'oav.state.available': 'ലഭ്യം',
+  'oav.state.limited': 'അവരുടെ പരിധിക്ക് പുറത്ത്',
+  'oav.state.check': 'അവരോട് ചോദിക്കുക',
+  'oav.state.unavailable': 'ലഭ്യമല്ല',
+  'oav.wiz.hint': 'നിങ്ങളുടെ ലഭ്യത ഒരിടത്താണ്: ഒഫീഷ്യൽസ് ഹോമിലെ ലഭ്യത ടാബ്. ഇപ്പോൾ അവിടെ സേവ് ചെയ്തിരിക്കുന്നത് ഇതാണ്. സമയം, അവധി, മുൻഗണനകൾ എന്നിവ എപ്പോൾ വേണമെങ്കിലും അവിടെ പുതുക്കാം.',
+  'oav.wiz.empty_title': 'ലഭ്യത ഇതുവരെ സേവ് ചെയ്തിട്ടില്ല',
+  'oav.wiz.empty_sub': 'ഈ വിസാർഡിന് ശേഷം, ലഭ്യത ടാബ് തുറന്ന് നിങ്ങളുടെ സമയം, അവധി, മുൻഗണനകൾ എന്നിവ ചേർക്കുക.',
+  'ocal.view.today': 'ഇന്ന്',
+  'ocal.view.week': 'ആഴ്ച',
+  'ocal.view.month': 'മാസം',
+  'ocal.show.all': 'എല്ലാം',
+  'ocal.show.off': 'അവധി',
+  'ocal.role': 'റോൾ',
+  'ocal.all_roles': 'എല്ലാ റോളുകളും',
+  'ocal.m.reserved': 'സ്ഥിരീകരിച്ചു, സ്ലോട്ട് റിസർവ് ചെയ്തു',
+  'ocal.m.tentative': 'താൽക്കാലിക അഭ്യർത്ഥനകൾ',
+  'ocal.m.blocked': 'അവധി ബ്ലോക്കുകൾ',
+  'ocal.m.conflicts': 'പൊരുത്തക്കേടുകൾ',
+  'ocal.conflict_banner': '{n} എൻട്രി മറ്റൊരു മത്സരവുമായോ നിങ്ങളുടെ അവധിയുമായോ ഏറ്റുമുട്ടുന്നു. കാർഡിലെ മുന്നറിയിപ്പ് നോക്കുക.',
+  'ocal.kind.time_off': 'അവധി',
+  'ocal.kind.holiday': 'പൊതു അവധി',
+  'ocal.kind.open_window': 'അധിക ലഭ്യത',
+  'ocal.kind.deadline': 'അവസാന തീയതി',
+  'ocal.completed': 'പൂർത്തിയായി',
+  'ocal.unavailable': 'ലഭ്യമല്ല',
+  'ocal.flag.changed': 'മാറി: സ്ഥിരീകരിക്കുക',
+  'ocal.flag.clash': 'മറ്റൊരു മത്സരവുമായി ഏറ്റുമുട്ടുന്നു',
+  'ocal.flag.time_off': 'നിങ്ങളുടെ അവധിക്കിടെ',
+  'ocal.flag.rival': 'ഈ സമയത്തിന് മറ്റ് {n} അഭ്യർത്ഥന',
+  'ocal.flag.outside': 'നിങ്ങളുടെ സമയത്തിന് പുറത്ത്',
+  'ocal.venue_time': 'വേദിയിൽ {time} ({zone})',
+  'ocal.today': 'ഇന്ന്',
+  'ocal.day_count': '{n} മത്സരം',
+  'ocal.empty_title': 'ഒന്നും ഷെഡ്യൂൾ ചെയ്തിട്ടില്ല',
+  'ocal.empty_day': 'ഈ ദിവസം മത്സരങ്ങളോ അവധിയോ ഇല്ല.',
+  'ocal.empty_range': 'ഈ കാലയളവിൽ മത്സരങ്ങളോ അവധിയോ ഇല്ല. സംഘാടകരുടെ അഭ്യർത്ഥനകൾ താൽക്കാലിക ഹോൾഡുകളായി ഇവിടെ കാണാം.',
+  'ocal.foot': 'സമയങ്ങൾ {tz} പ്രകാരമാണ്. മത്സരങ്ങൾക്കിടയിലെ നിങ്ങളുടെ ഇടവേള {n} മിനിറ്റ്. എൻട്രികൾ നിങ്ങളുടെ നിയമനങ്ങളിൽ നിന്ന് തത്സമയം വായിക്കുന്നതിനാൽ സംഘാടകന്റെ മാറ്റം ഉടൻ കാണാം.',
+  'guide.officials_availability.title': 'ഒഫീഷ്യൽസ്: ലഭ്യത, അവധി, ഷെഡ്യൂളിംഗ് മുൻഗണനകൾ',
+  'guide.officials_availability.why': 'എല്ലാവരും കലണ്ടറിനെ വിശ്വസിക്കുമ്പോൾ മാത്രമേ ഒഫീഷ്യൽസിനെ നിയമിക്കൽ ശരിയായി നടക്കൂ. ഓരോ ഒഫീഷ്യലും ഒരൊറ്റ ലഭ്യതാ രേഖ സൂക്ഷിക്കുന്നു, പ്ലാറ്റ്ഫോം അത് ഓരോ അഭ്യർത്ഥനയിലും നടപ്പാക്കുന്നു. സംഘാടകർ ഒഴിവോ തിരക്കോ മാത്രം കാണുന്നു: കാരണമോ കുറിപ്പോ വീട്ടുവിലാസമോ ഒരിക്കലും കാണില്ല.',
+  'guide.officials_availability.s1': 'ഒഫീഷ്യൽസ് ആദ്യം ഒഫീഷ്യൽസ് ഹോമും പിന്നെ ലഭ്യതയും തുറന്ന്, ഓരോ ആഴ്ചയും മത്സരം നിയന്ത്രിക്കുന്ന സമയം സ്വന്തം സമയമേഖലയിൽ ചേർക്കുന്നു. സമയം ഒരു സീസണിലേക്ക് പരിമിതപ്പെടുത്താം. ലഭ്യമായ സമയവും ആവർത്തിക്കുന്ന അവധിയും വീക്ക് പ്ലാനറിൽ ഒറ്റനോട്ടത്തിൽ കാണാം.',
+  'guide.officials_availability.s2': 'അവധി ഒരു കാലയളവായോ, ആവർത്തിക്കുന്ന ക്രമമായോ (ഉദാഹരണത്തിന് ഒന്നിടവിട്ട ചൊവ്വാഴ്ച വൈകുന്നേരം), അവധി കലണ്ടറിൽ നിന്ന് പൊതു അവധികൾ എടുത്തോ തടയുക. എന്തെങ്കിലും സേവ് ചെയ്യും മുമ്പ്, അത് ബാധിക്കുന്ന ആവശ്യപ്പെട്ടതും സ്ഥിരീകരിച്ചതുമായ മത്സരങ്ങൾ ആപ്പ് പട്ടികപ്പെടുത്തും. സ്വകാര്യ കുറിപ്പ് എൻക്രിപ്റ്റ് ചെയ്ത് സൂക്ഷിക്കുന്നു, ഒരിക്കലും പങ്കിടില്ല.',
+  'guide.officials_availability.s3': 'ഷെഡ്യൂളിംഗ് മുൻഗണനകളിൽ ഷെഡ്യൂളിംഗ് നിയമങ്ങൾ സജ്ജമാക്കുക: മത്സരങ്ങൾക്കിടയിൽ വേണ്ട ഇടവേള (ഒരേ വേദിയിൽ കുറഞ്ഞത്), കുറഞ്ഞ മുൻകൂർ അറിയിപ്പ്, ഒരു ദിവസമോ ആഴ്ചയോ പരമാവധി മത്സരങ്ങൾ, തുടർച്ചയായ ദിവസങ്ങൾ, പറഞ്ഞ സമയത്തിന് പുറത്തുള്ള അഭ്യർത്ഥനകൾ നിരസിക്കണോ മുന്നറിയിപ്പോടെ എത്തണോ എന്നത്.',
+  'guide.officials_availability.s4': 'നിങ്ങൾ എന്ത്, എവിടെ നിയന്ത്രിക്കുന്നു എന്ന് പറയുക: ഇഷ്ട കായിക ഇനങ്ങൾ, മത്സര തലങ്ങൾ, റോളുകൾ, പ്രായ വിഭാഗങ്ങൾ, നിങ്ങൾ കവർ ചെയ്യുന്ന പ്രദേശം, എത്ര ദൂരം യാത്ര ചെയ്യും എന്നത്. നഗരമോ പ്രദേശമോ മാത്രമേ സൂക്ഷിക്കൂ, വിലാസം ഒരിക്കലും ഇല്ല.',
+  'guide.officials_availability.s5': 'സംഘാടകർ മുമ്പത്തെപ്പോലെ അസൈൻമെന്റ് ബോർഡിൽ നിന്നോ ബൾക്ക് ഇൻവൈറ്റ് വഴിയോ നിയമിക്കുന്നു. ഓരോ ഒഫീഷ്യലും ഇപ്പോൾ ലഭ്യം, അവരുടെ പരിധിക്ക് പുറത്ത് അല്ലെങ്കിൽ ലഭ്യമല്ല എന്ന് കാണിക്കും, ലളിതമായ കാരണവും ദൂര ബാൻഡും സഹിതം. ഒഫീഷ്യലിന്റെ നിയമങ്ങൾ ലംഘിക്കുന്ന അഭ്യർത്ഥന ആ കാരണം കാണിച്ച് നിരസിക്കപ്പെടും.',
+  'guide.officials_availability.s6': 'ഒഫീഷ്യൽ സ്വീകരിക്കും വരെ അഭ്യർത്ഥന ഒരു താൽക്കാലിക ഹോൾഡാണ്. സ്വീകരിക്കുമ്പോൾ സ്ലോട്ട് റിസർവ് ആകും, അതേ സമയത്തിനായി കാത്തിരിക്കുന്ന മറ്റ് സംഘാടകരെ അറിയിക്കും. മത്സരം റദ്ദാക്കിയാൽ സ്ലോട്ട് വീണ്ടും ഒഴിവാകും. കലണ്ടർ ടാബ് ഇതെല്ലാം ഒഫീഷ്യലിന്റെ സമയമേഖലയിൽ കാണിക്കുന്നു, വ്യത്യാസമുണ്ടെങ്കിൽ വേദിയിലെ സമയവും സഹിതം.',
+  'oav.edit': 'എഡിറ്റ് ചെയ്യുക',
+
+
+  // ─── Official eligibility (oe.*) — issue #1000 REF-R09 ───────────────────
+  'oe.header_label': 'OFFICIALS · ELIGIBILITY', // reviewed: false
+  'oe.heading': 'Your eligibility', // reviewed: false
+  'oe.sub': 'All factors checked for this assignment', // reviewed: false
+  'oe.crew.heading': 'Crew eligibility', // reviewed: false
+  'oe.crew.sub': 'Eligibility status for all assigned officials', // reviewed: false
+  'oe.crew.title': 'Crew panel', // reviewed: false
+  'oe.crew.all_eligible': 'All eligible', // reviewed: false
+  'oe.crew.issues': 'issue(s)', // reviewed: false
+  'oe.crew.empty': 'No officials assigned', // reviewed: false
+  'oe.crew.empty_sub': 'Assign officials from the crew panel to see their eligibility status.', // reviewed: false
+  'oe.section.eligibility': 'Eligibility factors', // reviewed: false
+  'oe.section.overrides': 'Active overrides', // reviewed: false
+  'oe.eligibility_note': 'All factors must be clear before this assignment can be confirmed.', // reviewed: false
+  'oe.privacy_note': 'Eligibility decisions are based on your verified profile. Sanction details are never disclosed.', // reviewed: false
+  'oe.state.eligible': 'Eligible', // reviewed: false
+  'oe.state.pending': 'Pending', // reviewed: false
+  'oe.state.ineligible': 'Ineligible', // reviewed: false
+  'oe.state.overridden': 'Overridden', // reviewed: false
+  'oe.badge.eligible': 'Eligible', // reviewed: false
+  'oe.badge.ineligible': 'Ineligible', // reviewed: false
+  'oe.override_active': 'Override active', // reviewed: false
+  'oe.override.factor': 'Override: {factor}', // reviewed: false
+  'oe.override.by': 'Granted by {name}', // reviewed: false
+  'oe.override.expires': 'Expires {date}', // reviewed: false
+  'oe.override.granted': 'Override granted.', // reviewed: false
+  'oe.override.title': 'Grant override — {factor}', // reviewed: false
+  'oe.override.submit': 'Grant override', // reviewed: false
+  'oe.override.notice': 'Overrides are audit-logged and visible to governing bodies. Suspension sanctions cannot be overridden.', // reviewed: false
+  'oe.override.reason_label': 'Reason for override', // reviewed: false
+  'oe.override.expires_label': 'Override expires at', // reviewed: false
+  'oe.btn.declare_conflict': 'Declare conflict of interest', // reviewed: false
+  'oe.btn.appeal': 'Submit appeal', // reviewed: false
+  'oe.btn.grant_override_for': 'Grant override — {factor}', // reviewed: false
+  'oe.btn.view_conflicts': 'View conflicts', // reviewed: false
+  'oe.appeal.title': 'Appeal ineligibility decision', // reviewed: false
+  'oe.appeal.submit': 'Submit appeal', // reviewed: false
+  'oe.appeal.sent': 'Appeal submitted. The event organiser has been notified.', // reviewed: false
+  'oe.appeal.notice': 'Appeals are reviewed by the event organiser. Provide as much detail as possible.', // reviewed: false
+  'oe.appeal.grounds_label': 'Grounds for appeal', // reviewed: false
+  'oe.appeal.note_label': 'Supporting notes (optional)', // reviewed: false
+  'oe.empty': 'Nothing to review', // reviewed: false
+  'oe.empty_sub': 'Open this screen from an assignment or fixture to check eligibility.', // reviewed: false
+
+  // ─── Official conflict of interest (oci.*) — issue #1000 REF-R09 ─────────
+  'oci.header_label': 'OFFICIALS · CONFLICT OF INTEREST', // reviewed: false
+  'oci.heading.official': 'Your declarations', // reviewed: false
+  'oci.heading.organiser': 'Conflict declarations', // reviewed: false
+  'oci.sub.official': 'Declare any conflict of interest for this assignment', // reviewed: false
+  'oci.sub.organiser': 'Review and decide pending conflict declarations', // reviewed: false
+  'oci.kind.team_relationship': 'Team relationship', // reviewed: false
+  'oci.kind.family_member': 'Family member', // reviewed: false
+  'oci.kind.club_membership': 'Club membership', // reviewed: false
+  'oci.kind.financial_interest': 'Financial interest', // reviewed: false
+  'oci.kind.association_connection': 'Association connection', // reviewed: false
+  'oci.kind.previous_involvement': 'Previous involvement', // reviewed: false
+  'oci.kind.other': 'Other', // reviewed: false
+  'oci.status.open': 'Open', // reviewed: false
+  'oci.status.waived': 'Waived', // reviewed: false
+  'oci.status.reassigned': 'Reassigned', // reviewed: false
+  'oci.status.escalated': 'Escalated', // reviewed: false
+  'oci.status.withdrawn': 'Withdrawn', // reviewed: false
+  'oci.serious': 'Serious', // reviewed: false
+  'oci.raised_at': 'Raised {date}', // reviewed: false
+  'oci.show_detail': 'Show detail', // reviewed: false
+  'oci.section.my_declarations': 'My declarations', // reviewed: false
+  'oci.section.pending': 'Pending decision', // reviewed: false
+  'oci.section.decided': 'Decided', // reviewed: false
+  'oci.empty.official': 'No declarations', // reviewed: false
+  'oci.empty.official_sub': 'If you have a conflict of interest for this assignment, declare it here.', // reviewed: false
+  'oci.empty.organiser': 'No pending declarations', // reviewed: false
+  'oci.empty.organiser_sub': 'All conflict declarations for this assignment have been decided.', // reviewed: false
+  'oci.btn.declare': 'Declare a conflict', // reviewed: false
+  'oci.btn.withdraw': 'Withdraw declaration', // reviewed: false
+  'oci.declare.sent': 'Declaration submitted. The event organiser has been notified.', // reviewed: false
+  'oci.withdrawn': 'Declaration withdrawn.', // reviewed: false
+  'oci.privacy_note': 'Conflict details are encrypted and visible only to you and the event organiser.', // reviewed: false
+  'oci.wizard.step1': 'What type of conflict?', // reviewed: false
+  'oci.wizard.step1_sub': 'Select the category that best describes the conflict.', // reviewed: false
+  'oci.wizard.step2': 'Who is involved?', // reviewed: false
+  'oci.wizard.counterparty_label': 'Team or person name (optional)', // reviewed: false
+  'oci.wizard.counterparty_hint': 'e.g. FC Barcelona, John Smith', // reviewed: false
+  'oci.wizard.detail_label': 'Describe the conflict', // reviewed: false
+  'oci.wizard.detail_hint': 'Explain the nature of the conflict in detail. This is encrypted.', // reviewed: false
+  'oci.wizard.step3': 'Review and submit', // reviewed: false
+  'oci.wizard.serious_label': 'Incompatible with impartiality?', // reviewed: false
+  'oci.wizard.serious_hint': 'Mark this if you believe the conflict could compromise your impartiality.', // reviewed: false
+  'oci.wizard.serious_yes': 'Yes', // reviewed: false
+  'oci.wizard.serious_no': 'No', // reviewed: false
+  'oci.wizard.review_heading': 'Your declaration', // reviewed: false
+  'oci.wizard.privacy_note': 'The detail you provide will be encrypted. Only you and the event organiser will be able to read it.', // reviewed: false
+  'oci.wizard.submit': 'Submit declaration', // reviewed: false
+  'oci.decide.waive': 'Waive', // reviewed: false
+  'oci.decide.reassign': 'Release & reassign', // reviewed: false
+  'oci.decide.escalate': 'Escalate', // reviewed: false
+  'oci.decide.form_title.waive': 'Waive conflict declaration', // reviewed: false
+  'oci.decide.form_title.reassign': 'Release and reassign official', // reviewed: false
+  'oci.decide.form_title.escalate': 'Escalate to governing body', // reviewed: false
+  'oci.decide.form_submit.waive': 'Confirm waiver', // reviewed: false
+  'oci.decide.form_submit.reassign': 'Confirm release', // reviewed: false
+  'oci.decide.form_submit.escalate': 'Confirm escalation', // reviewed: false
+  'oci.decide.note_label': 'Decision note (optional, encrypted)', // reviewed: false
+  'oci.decide.reassign_notice': 'The official will be released from this assignment immediately.', // reviewed: false
+  'oci.decide.done.waive': 'Conflict waived. The official has been notified.', // reviewed: false
+  'oci.decide.done.reassign': 'Official released and reassigned. They have been notified.', // reviewed: false
+  'oci.decide.done.escalate': 'Escalated to governing body.', // reviewed: false
+
 };

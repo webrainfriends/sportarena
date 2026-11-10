@@ -17,6 +17,7 @@ import { LoadError } from '../access';
 import { c, grad, r } from '../theme';
 import { t } from '../i18n';
 import { money } from '../federation-ui';
+import { useSession } from '../session';
 
 const ROLE_LABEL = {
   referee: t('officials.role.referee'),
@@ -59,22 +60,25 @@ function CoverageRing({ pct, size = 56 }) {
 
 // ─── Official pill (one slot in the grid) ────────────────────────────────────
 function OfficialPill({ assignment, onPress, hasConflict, isDragging }) {
-  const bgColor = hasConflict ? c.orangeSoft : STATUS_COLOR[assignment.status] ?? c.paper;
-  const icon = hasConflict ? '⚠️' : STATUS_ICON[assignment.status] ?? '';
+  const isLocked = !!assignment.locked_at;
+  const isTravelClash = hasConflict && assignment.clash_type === 'travel_gap';
+  const bgColor = hasConflict ? (isTravelClash ? c.orangeSoft : c.orangeSoft) : isLocked ? c.pinkSoft : STATUS_COLOR[assignment.status] ?? c.paper;
+  const icon = hasConflict ? (isTravelClash ? '🚗' : '⚠️') : isLocked ? '🔒' : STATUS_ICON[assignment.status] ?? '';
   return (
     <Pressable
       onPress={onPress}
       accessibilityRole="button"
-      accessibilityLabel={`${assignment.display_name}, ${ROLE_LABEL[assignment.role]}, ${assignment.status}${hasConflict ? ', conflict' : ''}`}
+      accessibilityLabel={`${assignment.display_name}, ${ROLE_LABEL[assignment.role]}, ${assignment.status}${hasConflict ? ', conflict' : ''}${isLocked ? ', locked' : ''}`}
       style={({ pressed }) => ({
         flexDirection: 'row', alignItems: 'center', gap: 6, paddingVertical: 6, paddingHorizontal: 10,
         borderRadius: r.card / 2, backgroundColor: bgColor,
         opacity: pressed || isDragging ? 0.7 : 1,
-        borderWidth: hasConflict ? 1 : 0, borderColor: hasConflict ? c.orange : 'transparent',
+        borderWidth: hasConflict || isLocked ? 1 : 0,
+        borderColor: hasConflict ? c.orange : isLocked ? c.pink : 'transparent',
         minHeight: 44,
       })}
     >
-      <View style={{ width: 22, height: 22, borderRadius: 11, backgroundColor: c.pink, alignItems: 'center', justifyContent: 'center' }}>
+      <View style={{ width: 22, height: 22, borderRadius: 11, backgroundColor: isLocked ? c.pink : c.pink, alignItems: 'center', justifyContent: 'center' }}>
         <T size={10} weight="800" color={c.on}>
           {(assignment.display_name ?? '?').split(' ').map((w) => w[0]).join('').slice(0, 2).toUpperCase()}
         </T>
@@ -83,6 +87,76 @@ function OfficialPill({ assignment, onPress, hasConflict, isDragging }) {
       {assignment.grade_name ? <Chip label={assignment.grade_name.slice(0, 4)} color={c.pinkSoft} small /> : null}
       <T size={12}>{icon}</T>
     </Pressable>
+  );
+}
+
+/** Bottom sheet showing full clash detail — venue distance, gap, travel time needed. */
+function ClashDetailSheet({ assignment, clashInfo, visible, onClose, onOverride, isOrganizer }) {
+  const [reason, setReason] = useState('');
+  const [busy, setBusy] = useState(false);
+  const { toast } = useSession?.() ?? { toast: () => {} };
+  if (!visible || !assignment) return null;
+  const isTravelGap = clashInfo?.clash_type === 'travel_gap';
+  const isLocked = !!assignment.locked_at;
+
+  const handleOverride = async () => {
+    if (!reason.trim() || reason.trim().length < 10) return;
+    setBusy(true);
+    try {
+      await onOverride(reason.trim());
+      onClose();
+    } catch (e) { toast?.(e?.message ?? 'Override failed'); }
+    finally { setBusy(false); }
+  };
+
+  return (
+    <Sheet visible={visible} onClose={onClose} title={t(isLocked ? 'officials.lock.unlock_title' : 'officials.clash.detail_title')}>
+      <View style={{ gap: 14, padding: 4 }}>
+        {isLocked && (
+          <View style={{ gap: 8, padding: 14, backgroundColor: c.pinkSoft, borderRadius: r.card }}>
+            <T weight="700" size={14}>{t('officials.clash.locked_error')}</T>
+            <T size={13} color={c.mute}>{assignment.lock_reason}</T>
+          </View>
+        )}
+        {isTravelGap && (
+          <View style={{ gap: 8, padding: 14, backgroundColor: c.orangeSoft, borderRadius: r.card }}>
+            <T weight="700" size={14}>{t('officials.clash.travel_error')}</T>
+            <T size={13} color={c.mute}>
+              {t('officials.clash.travel_error_body', {
+                distKm: clashInfo.venue_distance_km,
+                gapMin: clashInfo.computed_gap_min,
+                reqMin: clashInfo.required_travel_min,
+              })}
+            </T>
+            {clashInfo.clash_fixture_name ? (
+              <T size={13}>{t('officials.clash.other_fixture')}: <T weight="700">{clashInfo.clash_fixture_name}</T></T>
+            ) : null}
+          </View>
+        )}
+        {!isTravelGap && !isLocked && clashInfo?.clash_fixture_name ? (
+          <T size={13}>{t('officials.clash.other_fixture')}: <T weight="700">{clashInfo.clash_fixture_name}</T></T>
+        ) : null}
+        {isOrganizer && (
+          <View style={{ gap: 8 }}>
+            <Field
+              label={t('officials.clash.override_reason')}
+              placeholder={t(isLocked ? 'officials.lock.unlock_reason_placeholder' : 'officials.clash.override_placeholder')}
+              value={reason}
+              onChange={setReason}
+              multiline
+              minHeight={80}
+            />
+            <Btn
+              label={t(isLocked ? 'officials.lock.unlock_confirm' : 'officials.clash.confirm_override')}
+              onPress={handleOverride}
+              loading={busy}
+              disabled={reason.trim().length < 10}
+              color={c.pink}
+            />
+          </View>
+        )}
+      </View>
+    </Sheet>
   );
 }
 
@@ -159,7 +233,8 @@ function SuggestSheet({ fixtureId, roleVal, fixtureName, onInvite, onShortlist, 
                   <T weight="700">{s.display_name}</T>
                   <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 4 }}>
                     {s.grade_name ? <Chip label={s.grade_name} color={c.pinkSoft} small /> : null}
-                    {s.dist_km != null ? <Chip label={`${s.dist_km} km`} color={c.cyanSoft} small /> : null}
+                    {s.dist_band && s.dist_band !== 'unknown' ? <Chip label={t(`oav.band.${s.dist_band}`)} color={c.cyanSoft} small /> : null}
+                    {s.availability_state && s.availability_state !== 'unknown' ? <Chip label={t(`oav.state.${s.availability_state}`)} color={s.availability_state === 'available' ? c.mintSoft : s.availability_state === 'unavailable' ? c.redSoft : c.sunSoft} small /> : null}
                     {s.has_conflict ? <Chip label="⚠️ Neutrality" color={c.orangeSoft} small /> : <Chip label="Neutral ✓" color={c.mintSoft} small />}
                   </View>
                   <T size={11} color={c.mute} numberOfLines={3}>{s.explanation}</T>
@@ -310,6 +385,8 @@ export function AssignmentBoard({ event_id }) {
   const [swapCtx, setSwapCtx] = useState(null); // { fo, toFixture }
   const [pendingSwapFo, setPendingSwapFo] = useState(null); // first leg of a drag-swap
   const [bulkBusy, setBulkBusy] = useState(false);
+  const [clashSheet, setClashSheet] = useState(null); // { assignment, clashInfo }
+  const { toast } = useSession();
 
   const q = useLoad(
     () => api.get(`/events/${event_id}/officials/board`, {
@@ -516,10 +593,13 @@ export function AssignmentBoard({ event_id }) {
                           <OfficialPill
                             key={o.id}
                             assignment={o}
-                            hasConflict={o.neutrality_conflict}
+                            hasConflict={o.neutrality_conflict || o.clash_type === 'travel_gap'}
                             isDragging={pendingSwapFo?.id === o.id}
                             onPress={() => {
-                              if (pendingSwapFo && pendingSwapFo.id !== o.id) {
+                              if (o.neutrality_conflict || o.clash_type === 'travel_gap' || o.locked_at) {
+                                // Show clash/lock detail sheet on tap when conflict or locked
+                                setClashSheet({ assignment: o, clashInfo: o.clash_type ? { clash_type: o.clash_type, clash_fixture_id: o.clash_fixture_id, clash_fixture_name: o.clash_fixture_name, venue_distance_km: o.venue_distance_km, computed_gap_min: o.computed_gap_min, required_travel_min: o.required_travel_min } : null });
+                              } else if (pendingSwapFo && pendingSwapFo.id !== o.id) {
                                 // Second tap on a different pill triggers swap
                                 setSwapCtx({ fo: pendingSwapFo, toFixture: f });
                                 setPendingSwapFo(null);
@@ -591,6 +671,25 @@ export function AssignmentBoard({ event_id }) {
           onClose={() => setSwapCtx(null)}
         />
       ) : null}
+
+      {/* Clash / lock detail sheet */}
+      <ClashDetailSheet
+        assignment={clashSheet?.assignment ?? null}
+        clashInfo={clashSheet?.clashInfo ?? null}
+        visible={!!clashSheet}
+        onClose={() => setClashSheet(null)}
+        isOrganizer
+        onOverride={async (overrideReason) => {
+          const fo = clashSheet?.assignment;
+          if (!fo) return;
+          if (fo.locked_at) {
+            await api.post(`/official-assignments/${fo.id}/unlock`, { override_reason: overrideReason });
+            toast(t('officials.lock.unlock_confirm') + ' — assignment unlocked');
+          }
+          await reload();
+          setClashSheet(null);
+        }}
+      />
     </Screen>
   );
 }

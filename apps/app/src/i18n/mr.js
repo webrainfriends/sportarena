@@ -15471,7 +15471,7 @@ export default {
   'residency.supported_banner': 'Your data will be stored in {region}',
   'residency.unsupported_banner': 'GotMyGame does not currently have data storage in {country}.',
   'residency.fallback_title': 'Singapore storage consent',
-  'residency.fallback_body': 'GotMyGame does not operate data storage in your home country. With your permission, your account and eligible personal data will be stored and processed in Singapore.',
+  'residency.fallback_body': 'GotMyGame does not operate data storage in your home country. With your permission, your account and eligible personal data will be stored and processed in AWS Singapore (ap-southeast-1).',
   'residency.fallback_agree': 'Agree to Singapore storage',
   'residency.fallback_decline': 'Not now — browse without an account',
   'residency.fallback_waitlist': 'Join waitlist for in-country storage',
@@ -15518,10 +15518,10 @@ export default {
   'residency.policy_hash_label': 'Text hash',
   'residency.policy_region_label': 'Region',
   'residency.affirmation_label': 'What you are agreeing to',
-  'residency.affirmation_body': 'By tapping Agree, you give GotMyGame explicit, affirmative, freely-given consent to store and process the data categories listed above in Singapore. You may withdraw consent at any time from Account -> Data Residency.',
+  'residency.affirmation_body': 'By tapping Agree, you give GotMyGame explicit, affirmative, freely-given consent to store and process the data categories listed above in AWS Singapore. You may withdraw consent at any time from Account -> Data Residency.',
   'residency.no_pretick': 'No pre-ticked boxes. This consent is freely given and freely withdrawable.',
   'residency.consent_success_title': 'Singapore consent recorded',
-  'residency.consent_success_body': 'Your data will be stored in Singapore. You can review or withdraw this consent at any time from Account -> Data Residency.',
+  'residency.consent_success_body': 'Your data will be stored in AWS Singapore. You can review or withdraw this consent at any time from Account -> Data Residency.',
   'residency.status.active': 'Active',
   'residency.status.fallback': 'Fallback',
   'residency.status.in_country': 'In-country',
@@ -15533,14 +15533,14 @@ export default {
   'residency.admin.audit_title': 'Residency audit log',
   'residency.admin.export': 'Export compliance report',
   'residency.set_country_title': 'Where should your data live?',
-  'residency.set_country_body': 'GotMyGame stores your personal data in a country chosen from your home country. Choose your country to see where your data will live — or to consent to Singapore storage if your country is not yet covered.',
+  'residency.set_country_body': 'GotMyGame stores your personal data in an AWS region based on your home country. Choose your country to see which region applies — or to consent to Singapore storage if your country is not yet covered.',
   'residency.set_country_cta': 'Save & check data consent',
   'residency.set_country_skip': 'Skip for now',
   'residency.country_saved': 'Home country saved',
   'residency.country_change_note': 'Changing country may require new storage consent',
   'residency.preview_loading': 'Checking data region…',
   'residency.banner_title': 'Set your data home',
-  'residency.banner_body': 'Tell us your home country so we can store your personal data in the right country — required for data residency compliance.',
+  'residency.banner_body': 'Tell us your home country so we can store your personal data in the right AWS region — required for data residency compliance.',
   'residency.country_required': 'Please choose your home country to set up data storage',
   'residency.country_required_hint': 'Required — choose your home country',
   'pu.title': 'प्लॅटफॉर्म वापरकर्ते',
@@ -17046,4 +17046,380 @@ export default {
   'oc.sync_pending': 'जतन होत आहे…',
   'oc.sync_ok': 'सर्व जतन केले',
   'oc.ask_rules': 'नियम विचारा',
+
+  // #994 official availability and calendar: machine draft, reviewed: false
+  'oav.day.0': 'रवि',
+  'oav.day.1': 'सोम',
+  'oav.day.2': 'मंगळ',
+  'oav.day.3': 'बुध',
+  'oav.day.4': 'गुरु',
+  'oav.day.5': 'शुक्र',
+  'oav.day.6': 'शनि',
+  'oav.all_day': 'पूर्ण दिवस',
+  'oav.any': 'कोणतेही',
+  'oav.none': 'काही नाही',
+  'oav.not_set': 'ठरवलेले नाही',
+  'oav.remove': 'काढा',
+  'oav.min': 'मि',
+  'oav.h': 'ता',
+  'oav.km': 'km',
+  'oav.n_min': '{n} मिनिटे',
+  'oav.n_hours': '{n} तास',
+  'oav.n_km': '{n} km',
+  'oav.m.open': 'आठवड्याचे खुले तास',
+  'oav.m.any': 'कोणत्याही वेळी',
+  'oav.m.hours': '{n} ता',
+  'oav.m.blocked': 'ब्लॉक दिवस, पुढील 90',
+  'oav.m.tentative': 'तात्पुरते होल्ड',
+  'oav.m.confirmed': 'पुढील निश्चित सामने',
+  'oav.m.week': 'या आठवड्याचा भार',
+  'oav.m.week_sub': 'शिवाय {n} तात्पुरते',
+  'oav.m.attention': 'लक्ष हवे',
+  'oav.att.title': '{n} सामन्यांवर निर्णय बाकी',
+  'oav.att.time_off': 'तुमच्या सुट्टीच्या काळात',
+  'oav.att.outside': 'तुमच्या तासांच्या बाहेर',
+  'oav.att.hint': 'तुमच्यासाठी काहीही आपोआप काढले जात नाही. सामना उघडून स्वीकारा, नकार द्या किंवा माघार घ्या, किंवा तुमची उपलब्धता बदला.',
+  'oav.week.title': 'माझा ऑफिशिएटिंग आठवडा',
+  'oav.week.sub': 'मी ऑफिशिएटिंगसाठी उपलब्ध असलेले तास, {tz} मध्ये',
+  'oav.week.add': 'तास जोडा',
+  'oav.week.season': 'फक्त हंगामात',
+  'oav.week.none': 'अजून साप्ताहिक तास नाहीत, त्यामुळे तुम्ही कोणत्याही वेळी उपलब्ध मानले जाता. तुम्ही ठराविक वेळीच ऑफिशिएटिंग करत असाल तर तास जोडा.',
+  'oav.grid.open': 'उपलब्ध',
+  'oav.grid.any': 'उपलब्ध (तास ठरवलेले नाहीत)',
+  'oav.grid.blocked': 'पुनरावृत्त सुट्टी',
+  'oav.grid.closed': 'ऑफिशिएटिंग नाही',
+  'oav.load.title': 'सामन्यांचा भार',
+  'oav.load.sub': 'बारा आठवडे: सहा मागचे, हा आठवडा, पाच पुढचे',
+  'oav.load.confirmed': 'निश्चित',
+  'oav.load.this_week': 'हा आठवडा',
+  'oav.load.tentative': 'तात्पुरते',
+  'oav.load.cap': 'तुमची साप्ताहिक मर्यादा: {n}',
+  'oav.load.a11y': '{weeks} आठवड्यांत {total} निश्चित सामने',
+  'oav.load.empty_title': 'या कालावधीत अजून सामने नाहीत',
+  'oav.load.empty_sub': 'आयोजक तुमची नियुक्ती करतील तसे तुमचे निश्चित आणि तात्पुरते सामने इथे आठवड्यानुसार आलेखात दिसतील.',
+  'oav.off.title': 'सुट्टी',
+  'oav.off.block': 'सुट्टी ब्लॉक करा',
+  'oav.off.repeat': 'पुनरावृत्त ब्लॉक',
+  'oav.off.holidays': 'सार्वजनिक सुट्ट्या',
+  'oav.off.tag': 'सुट्टी',
+  'oav.off.empty_title': 'कोणतीही सुट्टी नोंदवलेली नाही',
+  'oav.off.empty_sub': 'एखादा कालावधी, पुनरावृत्त पॅटर्न किंवा सार्वजनिक सुट्ट्या ब्लॉक करा. ब्लॉक केलेल्या वेळेत आयोजक तुम्हाला सामन्यासाठी विचारू शकत नाहीत.',
+  'oav.rep.tag': 'पुनरावृत्ती',
+  'oav.rep.every': 'दर आठवड्याला',
+  'oav.rep.every_n': 'दर {n} आठवड्यांनी',
+  'oav.rep.span': '{from} ते {to}',
+  'oav.rep.skip': 'एक तारीख वगळा',
+  'oav.rep.skipped': '{n} तारखा वगळल्या',
+  'oav.hol.tag': 'सार्वजनिक सुट्टी',
+  'oav.hol.work': 'मी या दिवशी काम करेन',
+  'oav.hol.days': 'सुट्टी घ्यायच्या सार्वजनिक सुट्ट्या',
+  'oav.hol.hint': 'प्रत्येक सुट्टी तुमच्या स्वतःच्या टाइम झोनमध्ये पूर्ण दिवसाची सुट्टी होते.',
+  'oav.hol.pick_country': 'सार्वजनिक सुट्ट्या पाहण्यासाठी देश निवडा.',
+  'oav.hol.none_title': 'जोडण्यासाठी सार्वजनिक सुट्ट्या नाहीत',
+  'oav.hol.none_sub': 'या देशासाठी अजून सार्वजनिक सुट्ट्यांची नोंद नाही. त्याऐवजी त्या तारखा सुट्टी म्हणून ब्लॉक करा.',
+  'oav.hol.all_taken': 'या देशासाठी नोंद असलेल्या सर्व सुट्ट्या तुम्ही आधीच घेतल्या आहेत.',
+  'oav.extra.title': 'अतिरिक्त उपलब्धता',
+  'oav.extra.add': 'विंडो उघडा',
+  'oav.extra.tag': 'अतिरिक्त उपलब्धता',
+  'oav.extra.empty': 'तुमच्या साप्ताहिक तासांच्या बाहेर एकदाच लागू होणारी विंडो उघडा, उदाहरणार्थ स्पर्धेचा शनिवार-रविवार. सुट्टी आणि निश्चित सामने तरीही आधी येतात.',
+  'oav.pref.title': 'वेळापत्रक प्राधान्ये',
+  'oav.pref.rules': 'वेळापत्रकाचे नियम',
+  'oav.pref.what': 'मी काय ऑफिशिएट करतो/करते',
+  'oav.pref.travel': 'मी कुठपर्यंत प्रवास करतो/करते',
+  'oav.pref.timezone': 'टाइम झोन',
+  'oav.pref.gap': 'सामन्यांमधील अंतर',
+  'oav.pref.gap_hint': 'प्रवास आणि विश्रांतीचा वेळ. तुम्हाला विचारले जाते किंवा निश्चित केले जाते तेव्हा प्रत्येक वेळी तपासले जाते.',
+  'oav.pref.same_venue_q': 'त्याच ठिकाणी कमी अंतर ठेवा',
+  'oav.pref.gap_same': 'त्याच ठिकाणी अंतर',
+  'oav.pref.same_as_gap': 'नेहमीच्या अंतराइतकेच',
+  'oav.pref.notice': 'किमान पूर्वसूचना',
+  'oav.pref.notice_hint': 'सामन्याला यापेक्षा कमी वेळ उरला असताना आलेल्या नव्या विनंत्या नाकारल्या जातात.',
+  'oav.pref.caps': 'भार मर्यादा',
+  'oav.pref.per_day': 'दिवसाला {n}',
+  'oav.pref.per_week': 'आठवड्याला {n}',
+  'oav.pref.in_a_row': 'सलग {n} दिवस',
+  'oav.pref.max_day': 'एका दिवसात कमाल सामने',
+  'oav.pref.max_week': 'एका आठवड्यात कमाल सामने',
+  'oav.pref.max_row': 'सलग कमाल दिवस',
+  'oav.pref.zero_none': '0 म्हणजे मर्यादा नाही.',
+  'oav.pref.outside': 'माझ्या तासांबाहेरील विनंत्या',
+  'oav.pref.block_outside': 'माझ्या तासांबाहेरील विनंत्या नाकारा',
+  'oav.pref.block_outside_hint': 'बंद: विनंती इशाऱ्यासह तुमच्यापर्यंत पोहोचते. चालू: त्या वेळी तुम्ही उपलब्ध नाही असे आयोजकाला कळवले जाते.',
+  'oav.policy.warn': 'इशाऱ्यासह माझ्यापर्यंत पोहोचू द्या',
+  'oav.policy.block': 'नाकारली',
+  'oav.pref.tentative': 'एकाच वेळेच्या अनेक विनंत्या',
+  'oav.pref.one_per_slot': 'एका वेळेसाठी एकच विनंती होल्ड करा',
+  'oav.pref.one_per_slot_hint': 'चालू: ज्या वेळेसाठी तुमच्याकडे आधीच विनंती होल्डवर आहे, त्या वेळेसाठी दुसरा आयोजक विचारू शकत नाही.',
+  'oav.tpolicy.allow': 'अनेक होल्ड करता येतात',
+  'oav.tpolicy.one_per_slot': 'एका वेळी एक',
+  'oav.pref.sports': 'पसंतीचे खेळ',
+  'oav.pref.sports_hint': 'तुम्ही ऑफिशिएटिंग करता त्या खेळांमधून. सर्वांसाठी रिकामे ठेवा.',
+  'oav.pref.levels': 'स्पर्धा स्तर',
+  'oav.pref.roles': 'भूमिका',
+  'oav.pref.ages': 'वयोगट',
+  'oav.pref.region': 'माझे कार्यक्षेत्र',
+  'oav.pref.region_hint': 'फक्त शहर किंवा परिसर. तुमचा पत्ता कधीच नाही.',
+  'oav.pref.range': 'प्रवासाची मर्यादा',
+  'oav.pref.country': 'सार्वजनिक सुट्ट्यांसाठी देश',
+  'oav.pref.country_hint': 'फक्त त्या देशाच्या सार्वजनिक सुट्ट्या तुम्हाला सुचवण्यासाठी वापरले जाते.',
+  'oav.priv.title': 'आयोजकांना काय दिसते',
+  'oav.priv.see': 'त्यांना दिसते: तुम्ही केव्हा मोकळे, व्यस्त किंवा अनुपलब्ध आहात; तुमचा परिसर; अंतराचा टप्पा (उदाहरणार्थ 25 ते 50 km); आणि तुमच्या पसंतीचे खेळ, स्तर आणि भूमिका.',
+  'oav.priv.never': 'त्यांना कधीच दिसत नाही: तुमच्या नोंदी किंवा कारणे, तुमच्या घराचा पत्ता किंवा निर्देशांक, अचूक अंतर, किंवा तुमच्या इतर सामन्यांचे तपशील.',
+  'oav.hist.title': 'बदलांचा इतिहास',
+  'oav.hist.show': 'दाखवा',
+  'oav.hist.hide': 'लपवा',
+  'oav.hist.sub': 'तुमच्या उपलब्धतेतील प्रत्येक बदल तारखेसह नोंदवला जातो. खाजगी नोंदी यात कधीच समाविष्ट नसतात.',
+  'oav.hist.empty': 'अजून कोणतेही बदल नोंदवलेले नाहीत.',
+  'oav.hist.created': 'जोडले',
+  'oav.hist.updated': 'बदलले',
+  'oav.hist.replaced': 'बदलून नवे ठेवले',
+  'oav.hist.removed': 'काढले',
+  'oav.hist.e_prefs': 'वेळापत्रक प्राधान्ये',
+  'oav.hist.e_weekly': 'साप्ताहिक तास',
+  'oav.hist.e_block': 'सुट्टी किंवा खुली विंडो',
+  'oav.f.hours_title': 'साप्ताहिक तास जोडा',
+  'oav.f.add': 'जोडा',
+  'oav.f.days': 'दिवस',
+  'oav.f.from': 'पासून',
+  'oav.f.until': 'पर्यंत',
+  'oav.f.seasonal': 'वर्षाच्या काही भागासाठीच',
+  'oav.f.seasonal_hint': 'फक्त एका हंगामात लागू होणाऱ्या तासांसाठी.',
+  'oav.f.season': 'हंगामाच्या तारखा',
+  'oav.f.block_title': 'सुट्टी ब्लॉक करा',
+  'oav.f.repeat_title': 'पुनरावृत्त सुट्टी',
+  'oav.f.block_edit': 'सुट्टी बदला',
+  'oav.f.block_notice': 'जतन करण्यापूर्वी, ही सुट्टी तुमच्या कोणत्या विनंती केलेल्या आणि निश्चित सामन्यांवर येते ते आम्ही तपासतो.',
+  'oav.f.check_save': 'तपासा आणि जतन करा',
+  'oav.f.all_day': 'पूर्ण दिवस',
+  'oav.f.dates': 'तारखा',
+  'oav.f.between': 'या दरम्यान पुनरावृत्ती',
+  'oav.f.on_days': 'या दिवशी',
+  'oav.f.every': 'दर इतक्याने पुनरावृत्ती',
+  'oav.f.weeks': 'आठ.',
+  'oav.f.category': 'सुट्टीचा प्रकार',
+  'oav.f.category_hint': 'तुमच्या स्वतःच्या नियोजनासाठी. हे कधीच शेअर केले जात नाही.',
+  'oav.f.note': 'खाजगी नोंद',
+  'oav.f.note_hint': 'हे फक्त तुम्ही वाचू शकता. ते एन्क्रिप्ट करून साठवले जाते.',
+  'oav.f.skip_title': 'एक तारीख वगळा',
+  'oav.f.skip_date': 'या ब्लॉकमधून मोकळी ठेवायची तारीख',
+  'oav.f.hol_title': 'सार्वजनिक सुट्ट्यांना सुट्टी घ्या',
+  'oav.f.extra_title': 'अतिरिक्त विंडो उघडा',
+  'oav.f.extra_notice': 'या विंडोमध्ये आयोजकांना तुम्ही साप्ताहिक तासांच्या बाहेरही उपलब्ध दिसाल.',
+  'oav.err.dates': 'तारखा निवडा',
+  'oav.err.days': 'किमान एक दिवस निवडा',
+  'oav.err.times': 'शेवट सुरुवातीनंतर असायला हवा',
+  'oav.err.holidays': 'किमान एक सुट्टी निवडा',
+  'oav.saved.hours': 'साप्ताहिक तास जतन झाले',
+  'oav.saved.block': 'सुट्टी जतन झाली',
+  'oav.saved.removed': 'काढले',
+  'oav.saved.skipped': 'ती तारीख पुन्हा मोकळी आहे',
+  'oav.saved.holidays': 'सुट्ट्या घेतल्या',
+  'oav.saved.extra': 'अतिरिक्त विंडो उघडली',
+  'oav.saved.prefs': 'प्राधान्ये जतन झाली',
+  'oav.imp.title': 'हे तुमच्या सामन्यांवर येते',
+  'oav.imp.lead': '{n} विनंती केलेले किंवा निश्चित सामने या सुट्टीच्या काळात येतात.',
+  'oav.imp.hint': 'जतन केल्याने ते काढले जाणार नाहीत. जे सामने तुम्हाला जमणार नाहीत त्यांना नकार द्या किंवा त्यांतून माघार घ्या, म्हणजे आयोजक दुसऱ्या कोणाची नियुक्ती करू शकेल.',
+  'oav.imp.back': 'मागे जा',
+  'oav.imp.save': 'तरीही जतन करा',
+  'oav.hold.reserved': 'निश्चित',
+  'oav.hold.tentative': 'तात्पुरते',
+  'oav.cat.holiday': 'सुट्ट्या',
+  'oav.cat.work': 'काम',
+  'oav.cat.family': 'कुटुंब',
+  'oav.cat.injury': 'दुखापत किंवा रिकव्हरी',
+  'oav.cat.travel': 'प्रवास',
+  'oav.cat.study': 'अभ्यास किंवा परीक्षा',
+  'oav.cat.faith': 'श्रद्धा किंवा सण',
+  'oav.cat.federation_duty': 'फेडरेशनची जबाबदारी',
+  'oav.cat.other_sport': 'इतर खेळांच्या जबाबदाऱ्या',
+  'oav.cat.personal': 'वैयक्तिक',
+  'oav.level.grassroots': 'तळागाळातील',
+  'oav.level.local': 'स्थानिक',
+  'oav.level.district': 'जिल्हा',
+  'oav.level.county': 'काउंटी',
+  'oav.level.regional': 'विभागीय',
+  'oav.level.national': 'राष्ट्रीय',
+  'oav.level.international': 'आंतरराष्ट्रीय',
+  'oav.level.olympic': 'ऑलिंपिक',
+  'oav.role.referee': 'रेफरी',
+  'oav.role.umpire': 'पंच',
+  'oav.role.linesman': 'सहाय्यक रेफरी',
+  'oav.role.scorer': 'स्कोअरर',
+  'oav.role.video_assistant_referee': 'व्हिडिओ सहाय्यक रेफरी',
+  'oav.role.fourth_official': 'चौथे अधिकारी',
+  'oav.role.reserve_assistant_referee': 'राखीव सहाय्यक रेफरी',
+  'oav.role.shot_clock_operator': 'शॉट क्लॉक ऑपरेटर',
+  'oav.role.timekeeper': 'टाइमकीपर',
+  'oav.role.goal_line_official': 'गोल-लाइन अधिकारी',
+  'oav.role.technical_official': 'तांत्रिक अधिकारी',
+  'oav.age.u8': '8 वर्षांखालील',
+  'oav.age.u10': '10 वर्षांखालील',
+  'oav.age.u12': '12 वर्षांखालील',
+  'oav.age.u14': '14 वर्षांखालील',
+  'oav.age.u16': '16 वर्षांखालील',
+  'oav.age.u18': '18 वर्षांखालील',
+  'oav.age.u21': '21 वर्षांखालील',
+  'oav.age.senior': 'वरिष्ठ',
+  'oav.age.masters': 'मास्टर्स',
+  'oav.band.under_25': '25 km पेक्षा कमी',
+  'oav.band.25_50': '25 ते 50 km',
+  'oav.band.50_100': '50 ते 100 km',
+  'oav.band.100_200': '100 ते 200 km',
+  'oav.band.200_400': '200 ते 400 km',
+  'oav.band.over_400': '400 km पेक्षा जास्त',
+  'oav.state.available': 'उपलब्ध',
+  'oav.state.limited': 'त्यांच्या मर्यादेबाहेर',
+  'oav.state.check': 'त्यांना विचारून घ्या',
+  'oav.state.unavailable': 'अनुपलब्ध',
+  'oav.wiz.hint': 'तुमची उपलब्धता एकाच ठिकाणी असते: ऑफिशियल्स होममधील उपलब्धता टॅब. सध्या तिथे हेच जतन केलेले आहे. तास, सुट्टी आणि प्राधान्ये तुम्ही तिथे केव्हाही बदलू शकता.',
+  'oav.wiz.empty_title': 'अजून उपलब्धता जतन केलेली नाही',
+  'oav.wiz.empty_sub': 'या विझार्डनंतर उपलब्धता टॅब उघडून तुमचे तास, सुट्टी आणि प्राधान्ये जोडा.',
+  'ocal.view.today': 'आज',
+  'ocal.view.week': 'आठवडा',
+  'ocal.view.month': 'महिना',
+  'ocal.show.all': 'सर्व काही',
+  'ocal.show.off': 'सुट्टी',
+  'ocal.role': 'भूमिका',
+  'ocal.all_roles': 'सर्व भूमिका',
+  'ocal.m.reserved': 'निश्चित, स्लॉट राखीव',
+  'ocal.m.tentative': 'तात्पुरत्या विनंत्या',
+  'ocal.m.blocked': 'सुट्टीचे ब्लॉक',
+  'ocal.m.conflicts': 'संघर्ष',
+  'ocal.conflict_banner': '{n} नोंदी दुसऱ्या सामन्याशी किंवा तुमच्या सुट्टीशी टक्कर देत आहेत. कार्डवरील इशारा पाहा.',
+  'ocal.kind.time_off': 'सुट्टी',
+  'ocal.kind.holiday': 'सार्वजनिक सुट्टी',
+  'ocal.kind.open_window': 'अतिरिक्त उपलब्धता',
+  'ocal.kind.deadline': 'अंतिम मुदत',
+  'ocal.completed': 'पूर्ण झाले',
+  'ocal.unavailable': 'अनुपलब्ध',
+  'ocal.flag.changed': 'बदलले: पोच द्या',
+  'ocal.flag.clash': 'दुसऱ्या सामन्याशी टक्कर',
+  'ocal.flag.time_off': 'तुमच्या सुट्टीच्या काळात',
+  'ocal.flag.rival': 'या वेळेसाठी आणखी {n} विनंत्या',
+  'ocal.flag.outside': 'तुमच्या तासांच्या बाहेर',
+  'ocal.venue_time': 'ठिकाणी {time} ({zone})',
+  'ocal.today': 'आज',
+  'ocal.day_count': '{n} सामने',
+  'ocal.empty_title': 'काहीही नियोजित नाही',
+  'ocal.empty_day': 'या दिवशी सामने किंवा सुट्टी नाही.',
+  'ocal.empty_range': 'या कालावधीत सामने किंवा सुट्टी नाही. आयोजकांच्या विनंत्या इथे तात्पुरते होल्ड म्हणून दिसतील.',
+  'ocal.foot': 'वेळा {tz} मध्ये आहेत. सामन्यांमधील तुमचे अंतर {n} मिनिटे आहे. नोंदी तुमच्या नियुक्त्यांमधून थेट वाचल्या जातात, त्यामुळे आयोजकाने केलेला बदल लगेच दिसतो.',
+  'guide.officials_availability.title': 'ऑफिशियल्स: उपलब्धता, सुट्टी आणि वेळापत्रक प्राधान्ये',
+  'guide.officials_availability.why': 'सर्वांचा कॅलेंडरवर विश्वास असेल तरच ऑफिशियल्सची नियुक्ती नीट चालते. प्रत्येक ऑफिशियल एकच उपलब्धता नोंद ठेवतो, ती प्लॅटफॉर्म प्रत्येक विनंतीवर लागू करतो, आणि आयोजकांना फक्त मोकळे किंवा व्यस्त एवढेच दिसते: कारण, नोंद किंवा घराचा पत्ता कधीच नाही.',
+  'guide.officials_availability.s1': 'ऑफिशियल्स आधी ऑफिशियल्स होम आणि मग उपलब्धता उघडतात, आणि स्वतःच्या टाइम झोनमध्ये दर आठवड्याचे ऑफिशिएटिंगचे तास जोडतात. तास एखाद्या हंगामापुरते मर्यादित ठेवता येतात. वीक प्लॅनरमध्ये खुले तास आणि पुनरावृत्त सुट्टी एका नजरेत दिसते.',
+  'guide.officials_availability.s2': 'सुट्टी एक कालावधी म्हणून, पुनरावृत्त पॅटर्न म्हणून (उदाहरणार्थ दर दुसऱ्या मंगळवारी संध्याकाळी) किंवा सुट्ट्यांच्या कॅलेंडरमधून सार्वजनिक सुट्ट्या घेऊन ब्लॉक करा. काहीही जतन होण्यापूर्वी, ती ज्या विनंती केलेल्या आणि निश्चित सामन्यांवर येईल त्यांची यादी ॲप दाखवते. खाजगी नोंद एन्क्रिप्ट करून साठवली जाते आणि कधीच शेअर केली जात नाही.',
+  'guide.officials_availability.s3': 'वेळापत्रक प्राधान्यांमध्ये वेळापत्रकाचे नियम ठरवा: सामन्यांमध्ये लागणारे अंतर (त्याच ठिकाणी कमी), किमान पूर्वसूचना, एका दिवसात किंवा आठवड्यात कमाल सामने आणि सलग दिवस, आणि ठरवलेल्या तासांबाहेरील विनंत्या नाकारायच्या की इशाऱ्यासह येऊ द्यायच्या.',
+  'guide.officials_availability.s4': 'तुम्ही काय आणि कुठे ऑफिशिएट करता ते सांगा: पसंतीचे खेळ, स्पर्धा स्तर, भूमिका आणि वयोगट, तुमचे कार्यक्षेत्र आणि तुम्ही किती दूर प्रवास करता. फक्त शहर किंवा परिसर साठवला जातो, पत्ता कधीच नाही.',
+  'guide.officials_availability.s5': 'आयोजक पूर्वीप्रमाणेच असाइनमेंट बोर्ड किंवा बल्क इन्व्हाइटमधून नियुक्ती करतात. आता प्रत्येक ऑफिशियल उपलब्ध, त्यांच्या मर्यादेबाहेर किंवा अनुपलब्ध असा दिसतो, सोबत साधे कारण आणि अंतराचा टप्पा. ऑफिशियलचे नियम मोडणारी विनंती त्याच कारणासह नाकारली जाते.',
+  'guide.officials_availability.s6': 'ऑफिशियल स्वीकारेपर्यंत विनंती हा तात्पुरता होल्ड असतो. स्वीकारल्यावर स्लॉट राखीव होतो, आणि त्याच वेळेची वाट पाहणाऱ्या इतर प्रत्येक आयोजकाला कळवले जाते. सामना रद्द झाल्यास स्लॉट पुन्हा मोकळा होतो. कॅलेंडर टॅब हे सर्व ऑफिशियलच्या टाइम झोनमध्ये दाखवतो, आणि ठिकाणाची वेळ वेगळी असल्यास तीही.',
+  'oav.edit': 'संपादित करा',
+
+
+  // ─── Official eligibility (oe.*) — issue #1000 REF-R09 ───────────────────
+  'oe.header_label': 'OFFICIALS · ELIGIBILITY', // reviewed: false
+  'oe.heading': 'Your eligibility', // reviewed: false
+  'oe.sub': 'All factors checked for this assignment', // reviewed: false
+  'oe.crew.heading': 'Crew eligibility', // reviewed: false
+  'oe.crew.sub': 'Eligibility status for all assigned officials', // reviewed: false
+  'oe.crew.title': 'Crew panel', // reviewed: false
+  'oe.crew.all_eligible': 'All eligible', // reviewed: false
+  'oe.crew.issues': 'issue(s)', // reviewed: false
+  'oe.crew.empty': 'No officials assigned', // reviewed: false
+  'oe.crew.empty_sub': 'Assign officials from the crew panel to see their eligibility status.', // reviewed: false
+  'oe.section.eligibility': 'Eligibility factors', // reviewed: false
+  'oe.section.overrides': 'Active overrides', // reviewed: false
+  'oe.eligibility_note': 'All factors must be clear before this assignment can be confirmed.', // reviewed: false
+  'oe.privacy_note': 'Eligibility decisions are based on your verified profile. Sanction details are never disclosed.', // reviewed: false
+  'oe.state.eligible': 'Eligible', // reviewed: false
+  'oe.state.pending': 'Pending', // reviewed: false
+  'oe.state.ineligible': 'Ineligible', // reviewed: false
+  'oe.state.overridden': 'Overridden', // reviewed: false
+  'oe.badge.eligible': 'Eligible', // reviewed: false
+  'oe.badge.ineligible': 'Ineligible', // reviewed: false
+  'oe.override_active': 'Override active', // reviewed: false
+  'oe.override.factor': 'Override: {factor}', // reviewed: false
+  'oe.override.by': 'Granted by {name}', // reviewed: false
+  'oe.override.expires': 'Expires {date}', // reviewed: false
+  'oe.override.granted': 'Override granted.', // reviewed: false
+  'oe.override.title': 'Grant override — {factor}', // reviewed: false
+  'oe.override.submit': 'Grant override', // reviewed: false
+  'oe.override.notice': 'Overrides are audit-logged and visible to governing bodies. Suspension sanctions cannot be overridden.', // reviewed: false
+  'oe.override.reason_label': 'Reason for override', // reviewed: false
+  'oe.override.expires_label': 'Override expires at', // reviewed: false
+  'oe.btn.declare_conflict': 'Declare conflict of interest', // reviewed: false
+  'oe.btn.appeal': 'Submit appeal', // reviewed: false
+  'oe.btn.grant_override_for': 'Grant override — {factor}', // reviewed: false
+  'oe.btn.view_conflicts': 'View conflicts', // reviewed: false
+  'oe.appeal.title': 'Appeal ineligibility decision', // reviewed: false
+  'oe.appeal.submit': 'Submit appeal', // reviewed: false
+  'oe.appeal.sent': 'Appeal submitted. The event organiser has been notified.', // reviewed: false
+  'oe.appeal.notice': 'Appeals are reviewed by the event organiser. Provide as much detail as possible.', // reviewed: false
+  'oe.appeal.grounds_label': 'Grounds for appeal', // reviewed: false
+  'oe.appeal.note_label': 'Supporting notes (optional)', // reviewed: false
+  'oe.empty': 'Nothing to review', // reviewed: false
+  'oe.empty_sub': 'Open this screen from an assignment or fixture to check eligibility.', // reviewed: false
+
+  // ─── Official conflict of interest (oci.*) — issue #1000 REF-R09 ─────────
+  'oci.header_label': 'OFFICIALS · CONFLICT OF INTEREST', // reviewed: false
+  'oci.heading.official': 'Your declarations', // reviewed: false
+  'oci.heading.organiser': 'Conflict declarations', // reviewed: false
+  'oci.sub.official': 'Declare any conflict of interest for this assignment', // reviewed: false
+  'oci.sub.organiser': 'Review and decide pending conflict declarations', // reviewed: false
+  'oci.kind.team_relationship': 'Team relationship', // reviewed: false
+  'oci.kind.family_member': 'Family member', // reviewed: false
+  'oci.kind.club_membership': 'Club membership', // reviewed: false
+  'oci.kind.financial_interest': 'Financial interest', // reviewed: false
+  'oci.kind.association_connection': 'Association connection', // reviewed: false
+  'oci.kind.previous_involvement': 'Previous involvement', // reviewed: false
+  'oci.kind.other': 'Other', // reviewed: false
+  'oci.status.open': 'Open', // reviewed: false
+  'oci.status.waived': 'Waived', // reviewed: false
+  'oci.status.reassigned': 'Reassigned', // reviewed: false
+  'oci.status.escalated': 'Escalated', // reviewed: false
+  'oci.status.withdrawn': 'Withdrawn', // reviewed: false
+  'oci.serious': 'Serious', // reviewed: false
+  'oci.raised_at': 'Raised {date}', // reviewed: false
+  'oci.show_detail': 'Show detail', // reviewed: false
+  'oci.section.my_declarations': 'My declarations', // reviewed: false
+  'oci.section.pending': 'Pending decision', // reviewed: false
+  'oci.section.decided': 'Decided', // reviewed: false
+  'oci.empty.official': 'No declarations', // reviewed: false
+  'oci.empty.official_sub': 'If you have a conflict of interest for this assignment, declare it here.', // reviewed: false
+  'oci.empty.organiser': 'No pending declarations', // reviewed: false
+  'oci.empty.organiser_sub': 'All conflict declarations for this assignment have been decided.', // reviewed: false
+  'oci.btn.declare': 'Declare a conflict', // reviewed: false
+  'oci.btn.withdraw': 'Withdraw declaration', // reviewed: false
+  'oci.declare.sent': 'Declaration submitted. The event organiser has been notified.', // reviewed: false
+  'oci.withdrawn': 'Declaration withdrawn.', // reviewed: false
+  'oci.privacy_note': 'Conflict details are encrypted and visible only to you and the event organiser.', // reviewed: false
+  'oci.wizard.step1': 'What type of conflict?', // reviewed: false
+  'oci.wizard.step1_sub': 'Select the category that best describes the conflict.', // reviewed: false
+  'oci.wizard.step2': 'Who is involved?', // reviewed: false
+  'oci.wizard.counterparty_label': 'Team or person name (optional)', // reviewed: false
+  'oci.wizard.counterparty_hint': 'e.g. FC Barcelona, John Smith', // reviewed: false
+  'oci.wizard.detail_label': 'Describe the conflict', // reviewed: false
+  'oci.wizard.detail_hint': 'Explain the nature of the conflict in detail. This is encrypted.', // reviewed: false
+  'oci.wizard.step3': 'Review and submit', // reviewed: false
+  'oci.wizard.serious_label': 'Incompatible with impartiality?', // reviewed: false
+  'oci.wizard.serious_hint': 'Mark this if you believe the conflict could compromise your impartiality.', // reviewed: false
+  'oci.wizard.serious_yes': 'Yes', // reviewed: false
+  'oci.wizard.serious_no': 'No', // reviewed: false
+  'oci.wizard.review_heading': 'Your declaration', // reviewed: false
+  'oci.wizard.privacy_note': 'The detail you provide will be encrypted. Only you and the event organiser will be able to read it.', // reviewed: false
+  'oci.wizard.submit': 'Submit declaration', // reviewed: false
+  'oci.decide.waive': 'Waive', // reviewed: false
+  'oci.decide.reassign': 'Release & reassign', // reviewed: false
+  'oci.decide.escalate': 'Escalate', // reviewed: false
+  'oci.decide.form_title.waive': 'Waive conflict declaration', // reviewed: false
+  'oci.decide.form_title.reassign': 'Release and reassign official', // reviewed: false
+  'oci.decide.form_title.escalate': 'Escalate to governing body', // reviewed: false
+  'oci.decide.form_submit.waive': 'Confirm waiver', // reviewed: false
+  'oci.decide.form_submit.reassign': 'Confirm release', // reviewed: false
+  'oci.decide.form_submit.escalate': 'Confirm escalation', // reviewed: false
+  'oci.decide.note_label': 'Decision note (optional, encrypted)', // reviewed: false
+  'oci.decide.reassign_notice': 'The official will be released from this assignment immediately.', // reviewed: false
+  'oci.decide.done.waive': 'Conflict waived. The official has been notified.', // reviewed: false
+  'oci.decide.done.reassign': 'Official released and reassigned. They have been notified.', // reviewed: false
+  'oci.decide.done.escalate': 'Escalated to governing body.', // reviewed: false
+
 };

@@ -4,12 +4,13 @@
 // All extend the existing officials.js single-invite flow; no finance tables are duplicated.
 import { z } from 'zod';
 import { cap, id, page, money as moneySchema } from '../registry.js';
-import { many, one, tx } from '../db.js';
+import { many, one, tx, pool } from '../db.js';
 import { badRequest, conflict, forbidden, notFound } from '../errors.js';
 import { isAdmin, hasRole, audit } from '../helpers.js';
 import { notify } from '../notify.js';
-import { OFFICIAL_ROLES, lockOfficial, assertOfficialEligible, recordHistory, credentialFor, closeOfficial } from '../officials.js';
+import { OFFICIAL_ROLES, lockOfficial, assertOfficialEligible, recordHistory, credentialFor, closeOfficial, recordClashException } from '../officials.js';
 import { eventForOrganizer, inviteOfficial } from './events.js';
+import { assess, dayStates, travelKm, distanceBand, BAND_LABEL } from '../official-availability.js';
 
 const role = z.enum(OFFICIAL_ROLES);
 
@@ -46,23 +47,19 @@ async function scoreOfficial(c, { userId, role: roleVal, fixture, event, minGrad
   }
   score += gradeScore;
 
-  // 2. Travel distance (max 24) ───────────────────────────────────────────────
+  // 2. Travel (max 24): distance is only ever a band, and the official's own stated range is honoured (#994) ──
   let travelScore = 12; // default: unknown distance, give partial credit
-  const userLoc = (await c.query('SELECT base_lat, base_lng FROM sport_profiles WHERE user_id=$1 AND base_lat IS NOT NULL LIMIT 1', [userId])).rows[0];
-  const venLoc = fixture.venue_id
-    ? (await c.query('SELECT lat, lng FROM venues WHERE id=$1', [fixture.venue_id])).rows[0]
-    : null;
-  let distKm = null;
-  if (userLoc && venLoc) {
-    const R = 6371;
-    const dLat = ((venLoc.lat - userLoc.base_lat) * Math.PI) / 180;
-    const dLon = ((venLoc.lng - userLoc.base_lng) * Math.PI) / 180;
-    const a = Math.sin(dLat / 2) ** 2 + Math.cos((userLoc.base_lat * Math.PI) / 180) * Math.cos((venLoc.lat * Math.PI) / 180) * Math.sin(dLon / 2) ** 2;
-    distKm = Math.round(R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a)));
-    travelScore = distKm < 50 ? 24 : distKm < 100 ? 18 : distKm < 200 ? 12 : distKm < 400 ? 6 : 2;
-    reasons.travel = { label: `${distKm} km from home base`, score: travelScore, dist_km: distKm };
+  const venueId = fixture.venue_id ?? (fixture.resource_id ? (await c.query('SELECT venue_id FROM resources WHERE id=$1', [fixture.resource_id])).rows[0]?.venue_id : null) ?? null;
+  const km = await travelKm(c, userId, venueId);
+  const oprefs = (await c.query('SELECT travel_km, sport_ids, roles FROM official_prefs WHERE user_id=$1', [userId])).rows[0];
+  const distBand = distanceBand(km);
+  if (km != null) {
+    travelScore = km < 50 ? 24 : km < 100 ? 18 : km < 200 ? 12 : km < 400 ? 6 : 2;
+    const beyond = oprefs?.travel_km != null && km > oprefs.travel_km;
+    if (beyond) travelScore = 0;
+    reasons.travel = { label: beyond ? `${BAND_LABEL[distBand]} · beyond the range they travel` : BAND_LABEL[distBand], score: travelScore, band: distBand, beyond_range: beyond };
   } else {
-    reasons.travel = { label: 'Distance unknown', score: travelScore };
+    reasons.travel = { label: 'Distance unknown', score: travelScore, band: distBand };
   }
   score += travelScore;
 
@@ -108,25 +105,21 @@ async function scoreOfficial(c, { userId, role: roleVal, fixture, event, minGrad
   }
   score += costScore;
 
-  // 6. Availability (max 4) ──────────────────────────────────────────────────
-  let availScore = 0;
+  // 6. Availability (max 4): the same engine that guards invite and accept (time off of every kind, hours, buffers, caps, tentative holds) ──
+  let availScore = 0, availState = 'unknown';
   if (fixture.scheduled_at) {
-    const start = new Date(fixture.scheduled_at).toISOString();
-    const end = new Date(new Date(fixture.scheduled_at).getTime() + (fixture.duration_min ?? 90) * 60000).toISOString();
-    const blackout = await c.query(
-      `SELECT 1 FROM official_availability WHERE user_id=$1 AND kind='blackout' AND archived_at IS NULL AND starts_at < $3 AND ends_at > $2 LIMIT 1`,
-      [userId, start, end]
-    );
-    const avail = await c.query(
-      `SELECT 1 FROM official_availability WHERE user_id=$1 AND kind='available' AND archived_at IS NULL AND starts_at <= $2 AND ends_at >= $3 LIMIT 1`,
-      [userId, start, end]
-    );
-    if (blackout.rowCount) { availScore = 0; reasons.availability = { label: 'Marked as unavailable', score: 0 }; }
-    else if (avail.rowCount) { availScore = 4; reasons.availability = { label: 'Explicitly available', score: 4 }; }
-    else { availScore = 2; reasons.availability = { label: 'No explicit availability set', score: 2 }; }
+    const a = await assess(c, { userId, start: fixture.scheduled_at, durationMin: fixture.duration_min ?? 90, fixtureId: fixture.id ?? null, venueId });
+    availState = a.state;
+    const why = (a.hard[0] ?? a.soft[0] ?? a.notes[0])?.message;
+    if (a.state === 'unavailable') reasons.availability = { label: why, score: 0, state: a.state };
+    else if (a.state === 'limited') { availScore = 1; reasons.availability = { label: why, score: 1, state: a.state }; }
+    else if (a.inside_hours === true) { availScore = a.state === 'check' ? 3 : 4; reasons.availability = { label: a.state === 'check' ? why : 'Inside the hours they officiate', score: availScore, state: a.state }; }
+    else { availScore = 2; reasons.availability = { label: a.state === 'check' ? why : 'No weekly hours set', score: 2, state: a.state }; }
   } else {
     availScore = 2; reasons.availability = { label: 'Fixture not yet scheduled', score: 2 };
   }
+  if (oprefs?.sport_ids?.length) reasons.preference = { label: oprefs.sport_ids.includes(event.sport_id) ? 'A sport they prefer' : 'Not one of their preferred sports', preferred: oprefs.sport_ids.includes(event.sport_id) };
+  if (oprefs?.roles?.length) reasons.role_preference = { label: oprefs.roles.includes(roleVal) ? 'A role they prefer' : 'Not one of their preferred roles', preferred: oprefs.roles.includes(roleVal) };
   score += availScore;
 
   return {
@@ -138,7 +131,10 @@ async function scoreOfficial(c, { userId, role: roleVal, fixture, event, minGrad
     score_cost: costScore,
     score_avail: availScore,
     reasons,
-    dist_km: distKm,
+    dist_km: null, // an exact distance is never returned: see dist_band (#994)
+    dist_band: distBand,
+    dist_label: BAND_LABEL[distBand],
+    availability_state: availState,
     has_conflict: reasons.neutral?.conflict ?? false,
     grade_rank: cred.licence?.grade_rank ?? null,
     grade_name: cred.licence?.name ?? null,
@@ -167,7 +163,7 @@ cap({
 
     const rows = await many(
       `SELECT DISTINCT u.id, u.display_name, u.handle, u.avatar_emoji, u.avatar_color,
-              sp.base_lat, sp.base_lng, sp.base_city, sp.hourly_rate_cents,
+              op.region AS base_city, op.timezone AS official_timezone, sp.hourly_rate_cents,
               fl.grade_rank, fl.name AS grade_name, fl.grade AS grade_code,
               vc.expires_at AS verification_expires_at,
               (SELECT count(*) FROM fixture_officials fo JOIN fixtures f ON f.id=fo.fixture_id
@@ -175,6 +171,7 @@ cap({
          FROM active_sport_profiles asp
          JOIN users u ON u.id=asp.user_id
          LEFT JOIN sport_profiles sp ON sp.user_id=u.id AND sp.sport_id=asp.sport_id
+         LEFT JOIN official_prefs op ON op.user_id=u.id
          LEFT JOIN LATERAL (
            SELECT t.grade_rank, t.name, t.grade FROM fed_licences l
            JOIN fed_licence_types t ON t.id=l.type_id
@@ -204,28 +201,15 @@ cap({
         })
       : [];
 
-    const userIds = rows.map((r) => r.id);
-    const avails = userIds.length && days.length
-      ? await many(
-          `SELECT user_id, starts_at::date::text AS day, kind
-             FROM official_availability
-            WHERE user_id = ANY($1::uuid[])
-              AND archived_at IS NULL
-              AND starts_at::date = ANY($2::date[])`,
-          [userIds, days]
-        )
-      : [];
-
+    // each day is read through the availability engine in the official's own timezone: time off of every kind, weekly hours, confirmed and tentative work (#994)
     const availMap = {};
-    for (const a of avails) {
-      if (!availMap[a.user_id]) availMap[a.user_id] = {};
-      availMap[a.user_id][a.day] = a.kind;
-    }
+    if (days.length) for (const r of rows) availMap[r.id] = (await dayStates(pool, r.id, days[0], days[days.length - 1])).days;
 
     return {
       officials: rows.map((r) => ({
         ...r,
-        availability: days.reduce((acc, d) => ({ ...acc, [d]: availMap[r.id]?.[d] ?? 'unknown' }), {}),
+        availability: days.reduce((acc, d) => ({ ...acc, [d]: availMap[r.id]?.[d]?.state ?? 'unknown' }), {}),
+        availability_detail: availMap[r.id] ?? {},
       })),
       days,
       total: rows.length,
@@ -743,5 +727,78 @@ cap({
       stats: { total: fixtures.length, confirmed: totalConfirmed, pending: totalPending, uncovered_slots: totalUncoveredSlots, conflicts: totalConflicts },
       event: { id: ev.id, name: ev.name, sport_id: ev.sport_id, starts_at: ev.starts_at, ends_at: ev.ends_at },
     };
+  },
+});
+
+// ─── Lock / Unlock fixture official assignment ───────────────────────────────
+
+cap({
+  name: 'lock_fixture_official',
+  method: 'POST',
+  path: '/official-assignments/:id/lock',
+  tag: 'officials',
+  summary: 'Lock an accepted official assignment so it cannot be released or swapped without an authorised override.',
+  input: z.object({
+    id,
+    lock_reason: z.string().min(5).max(500).describe('Why this assignment is being locked (e.g. "confirmed for final, travel booked")'),
+  }),
+  output: z.object({ id, locked_at: z.string(), locked_by: id, lock_reason: z.string() }),
+  async handler({ user }, i) {
+    return tx(async (c) => {
+      const fo = (await c.query(
+        `SELECT fo.*, f.event_id FROM fixture_officials fo JOIN fixtures f ON f.id=fo.fixture_id WHERE fo.id=$1`,
+        [i.id])).rows[0];
+      if (!fo) throw notFound('assignment');
+      await eventForOrganizerOrAdmin(user, fo.event_id, c);
+      if (fo.status !== 'accepted') throw badRequest('Only accepted assignments can be locked');
+      if (fo.locked_at) throw conflict('Assignment is already locked');
+
+      await c.query(
+        'UPDATE fixture_officials SET locked_at=now(), locked_by=$2, lock_reason=$3 WHERE id=$1',
+        [fo.id, user.id, i.lock_reason]);
+      await recordHistory(c, fo.id, user.id, fo.status, fo.status, `locked: ${i.lock_reason}`);
+      await audit(c, user.id, 'official_assignment_locked', { fixture_official_id: fo.id, lock_reason: i.lock_reason });
+
+      return { id: fo.id, locked_at: new Date().toISOString(), locked_by: user.id, lock_reason: i.lock_reason };
+    });
+  },
+});
+
+cap({
+  name: 'unlock_fixture_official',
+  method: 'POST',
+  path: '/official-assignments/:id/unlock',
+  tag: 'officials',
+  summary: 'Unlock a locked official assignment, requiring a documented override reason. Records an exception audit row.',
+  input: z.object({
+    id,
+    override_reason: z.string().min(10).max(500).describe('Mandatory reason for overriding the lock (min 10 chars)'),
+  }),
+  output: z.object({ id, unlocked_at: z.string() }),
+  async handler({ user }, i) {
+    return tx(async (c) => {
+      const fo = (await c.query(
+        `SELECT fo.*, f.event_id FROM fixture_officials fo JOIN fixtures f ON f.id=fo.fixture_id WHERE fo.id=$1`,
+        [i.id])).rows[0];
+      if (!fo) throw notFound('assignment');
+      await eventForOrganizerOrAdmin(user, fo.event_id, c);
+      if (!fo.locked_at) throw badRequest('Assignment is not locked');
+
+      await c.query(
+        'UPDATE fixture_officials SET locked_at=NULL, locked_by=NULL, lock_reason=NULL WHERE id=$1',
+        [fo.id]);
+      await recordHistory(c, fo.id, user.id, fo.status, fo.status, `unlocked: ${i.override_reason}`);
+      await recordClashException(c, {
+        foId: fo.id,
+        overridingFoId: null,
+        actorId: user.id,
+        overrideReason: i.override_reason,
+        gapMin: null,
+        distKm: null,
+      });
+      await audit(c, user.id, 'official_assignment_unlocked', { fixture_official_id: fo.id, override_reason: i.override_reason });
+
+      return { id: fo.id, unlocked_at: new Date().toISOString() };
+    });
   },
 });

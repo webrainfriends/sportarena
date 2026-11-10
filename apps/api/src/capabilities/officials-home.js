@@ -1,11 +1,12 @@
 // Officials Home (#88): the match official's own operating view over the canonical assignment, fixture, verification and licence data.
 // Nothing here copies fixtures into a second calendar: every entry carries source_type + source_id and is read live. Availability is the
-// one new thing an official owns (weekly windows, time off, travel buffer); the server enforces it in assertOfficialEligible.
+// one new thing an official owns; it lives in officials-availability.js (#994) and the server enforces it in assertOfficialEligible.
 import { z } from 'zod';
 import { cap, id, page } from '../registry.js';
-import { many, one, tx, pool } from '../db.js';
-import { badRequest, notFound } from '../errors.js';
-import { ASSIGNMENT_SQL, credentialFor } from '../officials.js';
+import { many, one, pool } from '../db.js';
+import { badRequest } from '../errors.js';
+import { ASSIGNMENT_SQL, OFFICIAL_ROLES, credentialFor } from '../officials.js';
+import { BLOCK_KINDS, loadAvailability, expandBlocks, withinHours, bufferMs, localDate, noteOf } from '../official-availability.js';
 import { ACTIVE } from '../cases.js';
 import { checklistFor } from '../officials-checklist.js';
 
@@ -14,14 +15,6 @@ const DAY = 864e5;
 const dt = z.string().datetime({ offset: true });
 const STATUSES = ['invited', 'accepted', 'declined', 'withdrawn', 'released', 'cancelled', 'completed'];
 const OPEN_FIXTURE = ['scheduled', 'live', 'paused'];
-const validZone = (tz) => { try { new Intl.DateTimeFormat('en', { timeZone: tz }); return true; } catch { return false; } };
-
-/** Minutes since local midnight and weekday (0 = Sunday) of an instant in an IANA zone. */
-export function localParts(iso, tz) {
-  const p = Object.fromEntries(new Intl.DateTimeFormat('en-US', { timeZone: tz, weekday: 'short', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).formatToParts(new Date(iso)).map((x) => [x.type, x.value]));
-  return { weekday: ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].indexOf(p.weekday), minute: Number(p.hour) * 60 + Number(p.minute) };
-}
-
 const myAssignments = (userId, where = 'TRUE', args = [], tail = 'ORDER BY x.scheduled_at, x.id') =>
   many(`SELECT x.* FROM (${ASSIGNMENT_SQL} WHERE fo.user_id=$1) x WHERE ${where} ${tail}`, [userId, ...args]);
 
@@ -120,106 +113,62 @@ cap({
 // ------------------------------------------------------------------ calendar
 cap({
   name: 'get_official_calendar', method: 'GET', path: '/me/officials/calendar', tag: TAG,
-  summary: 'My officiating calendar for a date range (up to 62 days): confirmed and pending assignments, time off and dispute deadlines, each pointing at its source record, with clash and outside-availability flags.',
-  input: z.object({ from: dt, to: dt, sport_id: id.optional(), role: z.enum(['referee', 'umpire', 'linesman', 'scorer']).optional(), status: z.enum(STATUSES).optional() }),
+  summary: 'My officiating calendar for a date range (up to 62 days): confirmed matches (a reserved slot), requests I have not answered (a tentative hold), time off of every kind (one-off, repeating, public holidays), extra open windows and dispute deadlines, each pointing at its source record. Flags clashes (including my buffer), matches on time off and matches outside my hours; gives the venue\'s timezone when it differs from mine, and a per-day load summary in my timezone.',
+  input: z.object({ from: dt, to: dt, sport_id: id.optional(), role: z.enum(OFFICIAL_ROLES).optional(), status: z.enum(STATUSES).optional() }),
   async handler({ user }, i) {
     const from = new Date(i.from), to = new Date(i.to);
     if (!(to > from)) throw badRequest('to must be after from');
     if (to - from > 62 * DAY) throw badRequest('Ask for at most 62 days at a time');
-    const prefs = await one('SELECT * FROM official_prefs WHERE user_id=$1', [user.id]);
-    const tz = prefs?.timezone ?? 'UTC', buffer = (prefs?.buffer_min ?? 0) * 60000;
-    const weekly = await many("SELECT weekday, start_minute, end_minute FROM official_availability WHERE user_id=$1 AND kind='weekly' AND archived_at IS NULL ORDER BY weekday, start_minute", [user.id]);
-    const off = await many("SELECT id, starts_at, ends_at, note FROM official_availability WHERE user_id=$1 AND kind='blackout' AND archived_at IS NULL AND starts_at < $3 AND ends_at > $2 ORDER BY starts_at", [user.id, from, to]);
+    const { prefs, rows: avail } = await loadAvailability(pool, user.id);
+    const tz = prefs.timezone;
+    const off = expandBlocks(avail.filter((r) => BLOCK_KINDS.includes(r.kind)), from.getTime(), to.getTime(), tz);
+    const byId = Object.fromEntries(avail.map((r) => [r.id, r]));
     const rows = await myAssignments(user.id, `x.scheduled_at < $2 AND x.scheduled_at + x.duration_min * interval '1 minute' > $3 AND x.status IN ('invited','accepted','completed') AND ($4::uuid IS NULL OR x.sport_id=$4) AND ($5::text IS NULL OR x.role=$5) AND ($6::text IS NULL OR x.status=$6)`,
       [to, from, i.sport_id ?? null, i.role ?? null, i.status ?? null]);
     const span = (a) => [new Date(a.scheduled_at).getTime(), new Date(a.scheduled_at).getTime() + a.duration_min * 60000];
+    const gap = (a, b) => bufferMs(prefs, a.venue_id, b.venue_id);
     const entries = rows.map((a) => {
       const [s, e] = span(a);
-      const clashes = rows.filter((b) => b.id !== a.id && b.status !== 'completed' && a.status !== 'completed' && (a.status === 'accepted' || b.status === 'accepted') && (() => { const [bs, be] = span(b); return bs < e + buffer && be > s - buffer; })()).map((b) => b.id);
-      const blocked = off.filter((o) => new Date(o.starts_at) < e && new Date(o.ends_at) > s).map((o) => o.id);
-      const lp = localParts(a.scheduled_at, tz);
-      const inside = !weekly.length || weekly.some((w) => w.weekday === lp.weekday && lp.minute >= w.start_minute && lp.minute + a.duration_min <= w.end_minute);
+      const clashes = rows.filter((b) => b.id !== a.id && b.fixture_id !== a.fixture_id && b.status !== 'completed' && a.status !== 'completed' && (a.status === 'accepted' || b.status === 'accepted') && (() => { const [bs, be] = span(b); const g = gap(a, b); return bs < e + g && be > s - g; })()).map((b) => b.id);
+      const rivals = a.status === 'invited' ? rows.filter((b) => b.id !== a.id && b.fixture_id !== a.fixture_id && b.status === 'invited' && (() => { const [bs, be] = span(b); return bs < e && be > s; })()).map((b) => b.id) : [];
+      const blocked = [...new Set(off.filter((o) => o.startMs < e && o.endMs > s).map((o) => o.id))];
+      const inside = withinHours(avail, s, a.duration_min, tz);
       return {
         source_type: 'fixture_official', source_id: a.id, fixture_id: a.fixture_id, kind: 'assignment', status: a.status, role: a.role, needs_ack: a.needs_ack,
-        starts_at: a.scheduled_at, ends_at: new Date(e).toISOString(), title: `${a.home_name ?? 'TBD'} v ${a.away_name ?? 'TBD'}`, subtitle: a.event_name,
+        hold: a.status === 'accepted' ? 'reserved' : a.status === 'invited' ? 'tentative' : null,
+        locked_at: a.locked_at ?? null, reporting_min: a.reporting_min ?? 0,
+        starts_at: a.scheduled_at, ends_at: new Date(e).toISOString(), local_date: localDate(s, tz), title: `${a.home_name ?? 'TBD'} v ${a.away_name ?? 'TBD'}`, subtitle: a.event_name,
         sport: { id: a.sport_id, slug: a.sport_slug, name: a.sport_name, emoji: a.sport_emoji }, venue: a.resource_name ?? a.venue_name ?? null,
-        clash_with: clashes, unavailable_with: blocked, outside_availability: !inside && !blocked.length,
+        venue_timezone: a.venue_timezone && a.venue_timezone !== tz ? a.venue_timezone : null,
+        clash_with: clashes, rival_requests: rivals, unavailable_with: blocked, outside_availability: inside === false && !blocked.length,
       };
     });
-    for (const o of off) entries.push({ source_type: 'official_availability', source_id: o.id, kind: 'time_off', status: 'blocked', starts_at: o.starts_at, ends_at: o.ends_at, title: 'Unavailable', subtitle: o.note ?? null });
+    for (const o of off) {
+      const r = byId[o.id];
+      entries.push({
+        source_type: 'official_availability', source_id: o.id, kind: o.kind === 'holiday' ? 'holiday' : 'time_off', status: 'blocked', repeats: o.kind === 'recurring', occurrence: o.date, all_day: o.all_day, category: o.category,
+        starts_at: new Date(o.startMs).toISOString(), ends_at: new Date(o.endMs).toISOString(), local_date: localDate(o.startMs, tz), title: o.kind === 'holiday' ? (o.label ?? 'Public holiday') : 'Unavailable', subtitle: o.kind === 'holiday' ? null : noteOf(r),
+      });
+    }
+    for (const r of avail.filter((x) => x.kind === 'available' && new Date(x.starts_at) < to && new Date(x.ends_at) > from)) entries.push({ source_type: 'official_availability', source_id: r.id, kind: 'open_window', status: 'open', starts_at: new Date(r.starts_at).toISOString(), ends_at: new Date(r.ends_at).toISOString(), local_date: localDate(new Date(r.starts_at).getTime(), tz), title: 'Extra availability', subtitle: null });
     const deadlines = await many(
       `SELECT DISTINCT c.id, c.case_no, c.subject, c.resolution_due, l.entity_id AS fixture_id FROM cases c JOIN case_links l ON l.case_id=c.id AND l.entity_type='fixture' JOIN fixtures f ON f.id=l.entity_id
         WHERE c.routed_to='game_officials' AND c.requester_id <> $1 AND c.status = ANY($2) AND c.resolution_due >= $3 AND c.resolution_due < $4
           AND (f.referee_id=$1 OR EXISTS (SELECT 1 FROM fixture_officials fo WHERE fo.fixture_id=f.id AND fo.user_id=$1 AND fo.status='accepted'))`, [user.id, ACTIVE, from, to]);
-    for (const d of deadlines) entries.push({ source_type: 'case', source_id: d.id, fixture_id: d.fixture_id, kind: 'deadline', status: 'open', starts_at: d.resolution_due, ends_at: d.resolution_due, title: `Dispute #${d.case_no} due`, subtitle: d.subject });
+    for (const d of deadlines) entries.push({ source_type: 'case', source_id: d.id, fixture_id: d.fixture_id, kind: 'deadline', status: 'open', starts_at: d.resolution_due, ends_at: d.resolution_due, local_date: localDate(new Date(d.resolution_due).getTime(), tz), title: `Dispute #${d.case_no} due`, subtitle: d.subject });
     entries.sort((a, b) => new Date(a.starts_at) - new Date(b.starts_at) || String(a.source_id).localeCompare(String(b.source_id)));
-    return { timezone: tz, from: from.toISOString(), to: to.toISOString(), buffer_min: prefs?.buffer_min ?? 0, entries, conflicts: entries.filter((e) => e.clash_with?.length || e.unavailable_with?.length).length };
-  },
-});
-
-// ------------------------------------------------------------------ availability
-cap({
-  name: 'get_my_official_availability', method: 'GET', path: '/me/officials/availability', tag: TAG,
-  summary: 'My availability: weekly windows, time off, preferred sports and levels, the minimum gap I need between matches and a coarse region (never an address).',
-  async handler({ user }) {
-    const prefs = (await one('SELECT * FROM official_prefs WHERE user_id=$1', [user.id])) ?? { user_id: user.id, timezone: 'UTC', buffer_min: 0, travel_km: null, region: null, sport_ids: [], levels: [] };
+    const days = {};
+    for (const e of entries) {
+      const d = (days[e.local_date] ??= { date: e.local_date, reserved: 0, tentative: 0, blocked: 0, conflicts: 0 });
+      if (e.hold === 'reserved') d.reserved++; else if (e.hold === 'tentative') d.tentative++; else if (e.kind === 'time_off' || e.kind === 'holiday') d.blocked++;
+      if (e.clash_with?.length || e.unavailable_with?.length) d.conflicts++;
+    }
     return {
-      prefs,
-      weekly: await many("SELECT id, weekday, start_minute, end_minute FROM official_availability WHERE user_id=$1 AND kind='weekly' AND archived_at IS NULL ORDER BY weekday, start_minute", [user.id]),
-      time_off: await many("SELECT id, starts_at, ends_at, note FROM official_availability WHERE user_id=$1 AND kind='blackout' AND archived_at IS NULL AND ends_at > now() ORDER BY starts_at", [user.id]),
+      timezone: tz, from: from.toISOString(), to: to.toISOString(), buffer_min: prefs.buffer_min ?? 0, buffer_same_venue_min: prefs.buffer_same_venue_min ?? null, entries,
+      days: Object.values(days).sort((a, b) => a.date.localeCompare(b.date)),
+      totals: { reserved: entries.filter((e) => e.hold === 'reserved').length, tentative: entries.filter((e) => e.hold === 'tentative').length, blocked: entries.filter((e) => e.kind === 'time_off' || e.kind === 'holiday').length },
+      conflicts: entries.filter((e) => e.clash_with?.length || e.unavailable_with?.length).length,
     };
-  },
-});
-
-cap({
-  name: 'save_my_official_prefs', method: 'POST', path: '/me/officials/availability/prefs', tag: TAG,
-  summary: 'Set my timezone, the minimum minutes I need between matches (enforced when I am assigned), travel range, a coarse region, preferred sports and levels.',
-  input: z.object({
-    timezone: z.string().min(1).max(60), buffer_min: z.number().int().min(0).max(240).default(0), travel_km: z.number().int().min(1).max(1000).nullable().optional(),
-    region: z.string().trim().max(80).nullable().optional(), sport_ids: z.array(id).max(30).default([]), levels: z.array(z.string().trim().min(1).max(30)).max(12).default([]),
-  }),
-  async handler({ user }, i) {
-    if (!validZone(i.timezone)) throw badRequest('That is not a known timezone');
-    return one(
-      `INSERT INTO official_prefs(user_id, timezone, buffer_min, travel_km, region, sport_ids, levels) VALUES ($1,$2,$3,$4,$5,$6,$7)
-       ON CONFLICT (user_id) DO UPDATE SET timezone=$2, buffer_min=$3, travel_km=$4, region=$5, sport_ids=$6, levels=$7, updated_at=now() RETURNING *`,
-      [user.id, i.timezone, i.buffer_min, i.travel_km ?? null, i.region || null, i.sport_ids, i.levels]);
-  },
-});
-
-cap({
-  name: 'set_my_weekly_availability', method: 'POST', path: '/me/officials/availability/weekly', tag: TAG,
-  summary: 'Replace my weekly windows (weekday 0 = Sunday, minutes from local midnight). Earlier windows are archived, not deleted. An empty list means "no weekly restriction".',
-  input: z.object({ windows: z.array(z.object({ weekday: z.number().int().min(0).max(6), start_minute: z.number().int().min(0).max(1439), end_minute: z.number().int().min(1).max(1440) }).refine((w) => w.end_minute > w.start_minute, 'A window must end after it starts')).max(28) }),
-  async handler({ user }, i) {
-    return tx(async (c) => {
-      await c.query("UPDATE official_availability SET archived_at=now() WHERE user_id=$1 AND kind='weekly' AND archived_at IS NULL", [user.id]);
-      for (const w of i.windows) await c.query("INSERT INTO official_availability(user_id, kind, weekday, start_minute, end_minute) VALUES ($1,'weekly',$2,$3,$4)", [user.id, w.weekday, w.start_minute, w.end_minute]);
-      return (await c.query("SELECT id, weekday, start_minute, end_minute FROM official_availability WHERE user_id=$1 AND kind='weekly' AND archived_at IS NULL ORDER BY weekday, start_minute", [user.id])).rows;
-    });
-  },
-});
-
-cap({
-  name: 'add_my_time_off', method: 'POST', path: '/me/officials/availability/time-off', tag: TAG, status: 201,
-  summary: 'Block a period (holiday, work, injury: no reason is shared beyond your own note). Returns any confirmed matches that fall inside it so you can withdraw from them; it never silently drops an assignment.',
-  input: z.object({ starts_at: dt, ends_at: dt, note: z.string().trim().max(200).optional() }),
-  async handler({ user }, i) {
-    if (!(new Date(i.ends_at) > new Date(i.starts_at))) throw badRequest('ends_at must be after starts_at');
-    const row = await one("INSERT INTO official_availability(user_id, kind, starts_at, ends_at, note) VALUES ($1,'blackout',$2,$3,$4) RETURNING id, starts_at, ends_at, note", [user.id, i.starts_at, i.ends_at, i.note ?? null]);
-    const affected = await myAssignments(user.id, `x.status IN ('invited','accepted') AND x.scheduled_at < $2 AND x.scheduled_at + x.duration_min * interval '1 minute' > $3`, [i.ends_at, i.starts_at]);
-    return { ...row, affected_assignments: affected.map((a) => ({ id: a.id, fixture_id: a.fixture_id, status: a.status, role: a.role, scheduled_at: a.scheduled_at, event_name: a.event_name })) };
-  },
-});
-
-cap({
-  name: 'remove_my_time_off', method: 'POST', path: '/me/officials/availability/:id/remove', tag: TAG,
-  summary: 'Remove a time-off block (it is archived, so the history is kept).',
-  input: z.object({ id }),
-  async handler({ user }, i) {
-    const r = await one("UPDATE official_availability SET archived_at=now() WHERE id=$1 AND user_id=$2 AND kind='blackout' AND archived_at IS NULL RETURNING id", [i.id, user.id]);
-    if (!r) throw notFound('time off');
-    return { id: r.id, removed: true };
   },
 });
 

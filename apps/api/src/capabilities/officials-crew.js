@@ -2,7 +2,7 @@ import { z } from 'zod';
 import { cap, id, page } from '../registry.js';
 import { many, one, tx } from '../db.js';
 import { badRequest, conflict, forbidden, notFound } from '../errors.js';
-import { OFFICIAL_ROLES, lockOfficial, assertOfficialEligible, recordHistory, closeOfficial } from '../officials.js';
+import { OFFICIAL_ROLES, lockOfficial, assertOfficialEligible, recordHistory, closeOfficial, recordClashException } from '../officials.js';
 import { eventForOrganizer } from './events.js';
 import { notify } from '../notify.js';
 
@@ -177,13 +177,23 @@ cap({
         start: f.scheduled_at, durationMin: f.duration_min, checkClash: false,
       });
 
-      await closeOfficial(c, fo, user.id, 'substituted', i.reason);
+      // locked assignments require an override reason to close; emergency substitute always provides one
+      await closeOfficial(c, fo, user.id, 'substituted', i.reason, { overrideReason: i.reason });
 
       const newFo = (await c.query(
         `INSERT INTO fixture_officials(fixture_id, user_id, role, status, duties, emergency_accept, substitution_of, responded_at, fee_minor, fee_currency)
          VALUES ($1,$2,$3,'accepted',$4,true,$5,now(),$6,$7) RETURNING *`,
         [f.id, i.replacement_user_id, fo.role, fo.duties, fo.id, fo.fee_minor, fo.fee_currency])).rows[0];
       await recordHistory(c, newFo.id, user.id, null, 'accepted', `Emergency substitution: ${i.reason}`);
+      // Audit the clash bypass — every emergency override is permanently recorded
+      await recordClashException(c, {
+        foId: newFo.id,
+        overridingFoId: fo.id,
+        actorId: user.id,
+        overrideReason: `Emergency substitution: ${i.reason}`,
+        gapMin: null,
+        distKm: null,
+      });
 
       if (fo.role === 'referee') {
         await c.query('UPDATE fixtures SET referee_id=$1 WHERE id=$2', [i.replacement_user_id, f.id]);

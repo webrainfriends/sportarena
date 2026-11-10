@@ -15472,7 +15472,7 @@ export default {
   'residency.supported_banner': 'Your data will be stored in {region}',
   'residency.unsupported_banner': 'GotMyGame does not currently have data storage in {country}.',
   'residency.fallback_title': 'Singapore storage consent',
-  'residency.fallback_body': 'GotMyGame does not operate data storage in your home country. With your permission, your account and eligible personal data will be stored and processed in Singapore.',
+  'residency.fallback_body': 'GotMyGame does not operate data storage in your home country. With your permission, your account and eligible personal data will be stored and processed in AWS Singapore (ap-southeast-1).',
   'residency.fallback_agree': 'Agree to Singapore storage',
   'residency.fallback_decline': 'Not now — browse without an account',
   'residency.fallback_waitlist': 'Join waitlist for in-country storage',
@@ -15519,10 +15519,10 @@ export default {
   'residency.policy_hash_label': 'Text hash',
   'residency.policy_region_label': 'Region',
   'residency.affirmation_label': 'What you are agreeing to',
-  'residency.affirmation_body': 'By tapping Agree, you give GotMyGame explicit, affirmative, freely-given consent to store and process the data categories listed above in Singapore. You may withdraw consent at any time from Account -> Data Residency.',
+  'residency.affirmation_body': 'By tapping Agree, you give GotMyGame explicit, affirmative, freely-given consent to store and process the data categories listed above in AWS Singapore. You may withdraw consent at any time from Account -> Data Residency.',
   'residency.no_pretick': 'No pre-ticked boxes. This consent is freely given and freely withdrawable.',
   'residency.consent_success_title': 'Singapore consent recorded',
-  'residency.consent_success_body': 'Your data will be stored in Singapore. You can review or withdraw this consent at any time from Account -> Data Residency.',
+  'residency.consent_success_body': 'Your data will be stored in AWS Singapore. You can review or withdraw this consent at any time from Account -> Data Residency.',
   'residency.status.active': 'Active',
   'residency.status.fallback': 'Fallback',
   'residency.status.in_country': 'In-country',
@@ -15534,14 +15534,14 @@ export default {
   'residency.admin.audit_title': 'Residency audit log',
   'residency.admin.export': 'Export compliance report',
   'residency.set_country_title': 'Where should your data live?',
-  'residency.set_country_body': 'GotMyGame stores your personal data in a country chosen from your home country. Choose your country to see where your data will live — or to consent to Singapore storage if your country is not yet covered.',
+  'residency.set_country_body': 'GotMyGame stores your personal data in an AWS region based on your home country. Choose your country to see which region applies — or to consent to Singapore storage if your country is not yet covered.',
   'residency.set_country_cta': 'Save & check data consent',
   'residency.set_country_skip': 'Skip for now',
   'residency.country_saved': 'Home country saved',
   'residency.country_change_note': 'Changing country may require new storage consent',
   'residency.preview_loading': 'Checking data region…',
   'residency.banner_title': 'Set your data home',
-  'residency.banner_body': 'Tell us your home country so we can store your personal data in the right country — required for data residency compliance.',
+  'residency.banner_body': 'Tell us your home country so we can store your personal data in the right AWS region — required for data residency compliance.',
   'residency.country_required': 'Please choose your home country to set up data storage',
   'residency.country_required_hint': 'Required — choose your home country',
   'pu.title': 'Pengguna platform',
@@ -17118,4 +17118,380 @@ export default {
   'oc.sync_pending': 'Menyimpan…',
   'oc.sync_ok': 'Semua tersimpan',
   'oc.ask_rules': 'Tanya aturan',
+
+  // #994 official availability and calendar: machine draft, reviewed: false
+  'oav.day.0': 'Min',
+  'oav.day.1': 'Sen',
+  'oav.day.2': 'Sel',
+  'oav.day.3': 'Rab',
+  'oav.day.4': 'Kam',
+  'oav.day.5': 'Jum',
+  'oav.day.6': 'Sab',
+  'oav.all_day': 'Sepanjang hari',
+  'oav.any': 'Bebas',
+  'oav.none': 'Tidak ada',
+  'oav.not_set': 'Belum diatur',
+  'oav.remove': 'Hapus',
+  'oav.min': 'mnt',
+  'oav.h': 'j',
+  'oav.km': 'km',
+  'oav.n_min': '{n} mnt',
+  'oav.n_hours': '{n} jam',
+  'oav.n_km': '{n} km',
+  'oav.m.open': 'Jam tersedia per minggu',
+  'oav.m.any': 'Kapan saja',
+  'oav.m.hours': '{n} j',
+  'oav.m.blocked': 'Hari diblokir, 90 hari ke depan',
+  'oav.m.tentative': 'Reservasi sementara',
+  'oav.m.confirmed': 'Pertandingan terkonfirmasi mendatang',
+  'oav.m.week': 'Beban minggu ini',
+  'oav.m.week_sub': 'ditambah {n} sementara',
+  'oav.m.attention': 'Perlu perhatian',
+  'oav.att.title': '{n} pertandingan perlu keputusan',
+  'oav.att.time_off': 'Saat Anda libur',
+  'oav.att.outside': 'Di luar jam Anda',
+  'oav.att.hint': 'Tidak ada yang dibatalkan secara otomatis. Buka pertandingan untuk menerima, menolak, atau mengundurkan diri, atau ubah ketersediaan Anda.',
+  'oav.week.title': 'Minggu perwasitan saya',
+  'oav.week.sub': 'Jam saya bersedia bertugas, dalam {tz}',
+  'oav.week.add': 'Tambah jam',
+  'oav.week.season': 'hanya musim',
+  'oav.week.none': 'Belum ada jam mingguan, jadi Anda dianggap tersedia kapan saja. Tambahkan jam jika Anda hanya bertugas pada waktu tertentu.',
+  'oav.grid.open': 'Tersedia',
+  'oav.grid.any': 'Tersedia (jam belum diatur)',
+  'oav.grid.blocked': 'Libur berulang',
+  'oav.grid.closed': 'Tidak bertugas',
+  'oav.load.title': 'Beban pertandingan',
+  'oav.load.sub': 'Dua belas minggu: enam ke belakang, minggu ini, lima ke depan',
+  'oav.load.confirmed': 'Terkonfirmasi',
+  'oav.load.this_week': 'Minggu ini',
+  'oav.load.tentative': 'Sementara',
+  'oav.load.cap': 'Batas mingguan Anda: {n}',
+  'oav.load.a11y': '{total} pertandingan terkonfirmasi dalam {weeks} minggu',
+  'oav.load.empty_title': 'Belum ada pertandingan dalam rentang ini',
+  'oav.load.empty_sub': 'Pertandingan terkonfirmasi dan sementara Anda akan tampil di grafik ini per minggu saat penyelenggara menugaskan Anda.',
+  'oav.off.title': 'Waktu libur',
+  'oav.off.block': 'Blokir waktu libur',
+  'oav.off.repeat': 'Blokir berulang',
+  'oav.off.holidays': 'Hari libur nasional',
+  'oav.off.tag': 'Libur',
+  'oav.off.empty_title': 'Belum ada waktu libur',
+  'oav.off.empty_sub': 'Blokir satu periode, pola berulang, atau hari libur nasional. Penyelenggara tidak dapat meminta Anda bertugas pada waktu yang diblokir.',
+  'oav.rep.tag': 'Berulang',
+  'oav.rep.every': 'Setiap minggu',
+  'oav.rep.every_n': 'Setiap {n} minggu',
+  'oav.rep.span': '{from} sampai {to}',
+  'oav.rep.skip': 'Lewati satu tanggal',
+  'oav.rep.skipped': '{n} tanggal dilewati',
+  'oav.hol.tag': 'Hari libur nasional',
+  'oav.hol.work': 'Saya bertugas pada hari ini',
+  'oav.hol.days': 'Hari libur yang diambil',
+  'oav.hol.hint': 'Masing-masing menjadi libur sehari penuh di zona waktu Anda sendiri.',
+  'oav.hol.pick_country': 'Pilih negara untuk melihat hari libur nasionalnya.',
+  'oav.hol.none_title': 'Tidak ada hari libur nasional untuk ditambahkan',
+  'oav.hol.none_sub': 'Belum ada data hari libur nasional untuk negara ini. Blokir tanggalnya sebagai waktu libur saja.',
+  'oav.hol.all_taken': 'Anda sudah mengambil semua hari libur yang tercatat untuk negara ini.',
+  'oav.extra.title': 'Ketersediaan tambahan',
+  'oav.extra.add': 'Buka jendela waktu',
+  'oav.extra.tag': 'Ketersediaan tambahan',
+  'oav.extra.empty': 'Buka jendela waktu sekali saja di luar jam mingguan Anda, misalnya akhir pekan turnamen. Waktu libur dan pertandingan terkonfirmasi tetap diutamakan.',
+  'oav.pref.title': 'Preferensi penjadwalan',
+  'oav.pref.rules': 'Aturan penjadwalan',
+  'oav.pref.what': 'Yang saya pimpin',
+  'oav.pref.travel': 'Jangkauan perjalanan saya',
+  'oav.pref.timezone': 'Zona waktu',
+  'oav.pref.gap': 'Jeda antarpertandingan',
+  'oav.pref.gap_hint': 'Waktu perjalanan dan pemulihan. Diperiksa setiap kali Anda diminta atau dikonfirmasi.',
+  'oav.pref.same_venue_q': 'Pakai jeda lebih pendek di venue yang sama',
+  'oav.pref.gap_same': 'Jeda di venue yang sama',
+  'oav.pref.same_as_gap': 'Sama dengan jeda biasa',
+  'oav.pref.notice': 'Pemberitahuan minimum',
+  'oav.pref.notice_hint': 'Permintaan baru yang lebih dekat ke pertandingan daripada ini akan ditolak.',
+  'oav.pref.caps': 'Batas beban',
+  'oav.pref.per_day': '{n} per hari',
+  'oav.pref.per_week': '{n} per minggu',
+  'oav.pref.in_a_row': '{n} hari berturut-turut',
+  'oav.pref.max_day': 'Maksimum pertandingan per hari',
+  'oav.pref.max_week': 'Maksimum pertandingan per minggu',
+  'oav.pref.max_row': 'Maksimum hari berturut-turut',
+  'oav.pref.zero_none': '0 berarti tanpa batas.',
+  'oav.pref.outside': 'Permintaan di luar jam saya',
+  'oav.pref.block_outside': 'Tolak permintaan di luar jam saya',
+  'oav.pref.block_outside_hint': 'Mati: permintaan sampai ke Anda dengan peringatan. Nyala: penyelenggara diberi tahu bahwa Anda tidak tersedia saat itu.',
+  'oav.policy.warn': 'Sampaikan dengan peringatan',
+  'oav.policy.block': 'Ditolak',
+  'oav.pref.tentative': 'Permintaan yang tumpang tindih',
+  'oav.pref.one_per_slot': 'Tahan hanya satu permintaan per waktu',
+  'oav.pref.one_per_slot_hint': 'Nyala: penyelenggara kedua tidak dapat meminta waktu yang permintaannya sedang Anda tahan.',
+  'oav.tpolicy.allow': 'Boleh menahan beberapa',
+  'oav.tpolicy.one_per_slot': 'Satu per waktu',
+  'oav.pref.sports': 'Olahraga pilihan',
+  'oav.pref.sports_hint': 'Dari olahraga yang Anda pimpin. Kosongkan untuk semuanya.',
+  'oav.pref.levels': 'Tingkat kompetisi',
+  'oav.pref.roles': 'Peran',
+  'oav.pref.ages': 'Kelompok usia',
+  'oav.pref.region': 'Wilayah tugas saya',
+  'oav.pref.region_hint': 'Kota atau wilayah saja. Jangan pernah alamat Anda.',
+  'oav.pref.range': 'Jarak tempuh',
+  'oav.pref.country': 'Negara untuk hari libur nasional',
+  'oav.pref.country_hint': 'Hanya dipakai untuk menawarkan hari libur nasional negara tersebut.',
+  'oav.priv.title': 'Yang dapat dilihat penyelenggara',
+  'oav.priv.see': 'Mereka melihat: kapan Anda kosong, sibuk, atau tidak tersedia; wilayah Anda; rentang jarak (misalnya 25 sampai 50 km); serta olahraga, tingkat, dan peran pilihan Anda.',
+  'oav.priv.never': 'Mereka tidak pernah melihat: catatan atau alasan Anda, alamat rumah atau koordinat, jarak persisnya, atau detail pertandingan Anda yang lain.',
+  'oav.hist.title': 'Riwayat perubahan',
+  'oav.hist.show': 'Tampilkan',
+  'oav.hist.hide': 'Sembunyikan',
+  'oav.hist.sub': 'Setiap perubahan pada ketersediaan Anda dicatat beserta tanggalnya. Catatan pribadi tidak pernah ikut dicatat.',
+  'oav.hist.empty': 'Belum ada perubahan tercatat.',
+  'oav.hist.created': 'Ditambahkan',
+  'oav.hist.updated': 'Diubah',
+  'oav.hist.replaced': 'Diganti',
+  'oav.hist.removed': 'Dihapus',
+  'oav.hist.e_prefs': 'Preferensi penjadwalan',
+  'oav.hist.e_weekly': 'Jam mingguan',
+  'oav.hist.e_block': 'Waktu libur atau jendela tambahan',
+  'oav.f.hours_title': 'Tambah jam mingguan',
+  'oav.f.add': 'Tambah',
+  'oav.f.days': 'Hari',
+  'oav.f.from': 'Dari',
+  'oav.f.until': 'Sampai',
+  'oav.f.seasonal': 'Hanya sebagian tahun',
+  'oav.f.seasonal_hint': 'Untuk jam yang berlaku pada satu musim saja.',
+  'oav.f.season': 'Tanggal musim',
+  'oav.f.block_title': 'Blokir waktu libur',
+  'oav.f.repeat_title': 'Libur berulang',
+  'oav.f.block_edit': 'Ubah waktu libur',
+  'oav.f.block_notice': 'Sebelum menyimpan, kami memeriksa pertandingan yang diminta dan terkonfirmasi mana yang akan terkena.',
+  'oav.f.check_save': 'Periksa dan simpan',
+  'oav.f.all_day': 'Sehari penuh',
+  'oav.f.dates': 'Tanggal',
+  'oav.f.between': 'Berulang antara',
+  'oav.f.on_days': 'Pada hari-hari ini',
+  'oav.f.every': 'Ulangi setiap',
+  'oav.f.weeks': 'mgg',
+  'oav.f.category': 'Jenis waktu libur',
+  'oav.f.category_hint': 'Untuk perencanaan Anda sendiri. Tidak pernah dibagikan.',
+  'oav.f.note': 'Catatan pribadi',
+  'oav.f.note_hint': 'Hanya Anda yang dapat membacanya. Disimpan terenkripsi.',
+  'oav.f.skip_title': 'Lewati satu tanggal',
+  'oav.f.skip_date': 'Tanggal yang dibebaskan dari blokir ini',
+  'oav.f.hol_title': 'Ambil libur nasional',
+  'oav.f.extra_title': 'Buka jendela tambahan',
+  'oav.f.extra_notice': 'Penyelenggara akan melihat Anda tersedia pada jendela ini meski di luar jam mingguan Anda.',
+  'oav.err.dates': 'Pilih tanggalnya',
+  'oav.err.days': 'Pilih minimal satu hari',
+  'oav.err.times': 'Waktu selesai harus setelah waktu mulai',
+  'oav.err.holidays': 'Pilih minimal satu hari libur',
+  'oav.saved.hours': 'Jam mingguan disimpan',
+  'oav.saved.block': 'Waktu libur disimpan',
+  'oav.saved.removed': 'Dihapus',
+  'oav.saved.skipped': 'Tanggal itu kosong kembali',
+  'oav.saved.holidays': 'Hari libur diambil',
+  'oav.saved.extra': 'Jendela tambahan dibuka',
+  'oav.saved.prefs': 'Preferensi disimpan',
+  'oav.imp.title': 'Ini mengenai pertandingan Anda',
+  'oav.imp.lead': '{n} pertandingan yang diminta atau terkonfirmasi jatuh dalam waktu libur ini.',
+  'oav.imp.hint': 'Menyimpan tidak akan membatalkannya. Tolak atau undurkan diri dari yang tidak bisa Anda jalani agar penyelenggara dapat menunjuk orang lain.',
+  'oav.imp.back': 'Kembali',
+  'oav.imp.save': 'Tetap simpan',
+  'oav.hold.reserved': 'Terkonfirmasi',
+  'oav.hold.tentative': 'Sementara',
+  'oav.cat.holiday': 'Liburan',
+  'oav.cat.work': 'Pekerjaan',
+  'oav.cat.family': 'Keluarga',
+  'oav.cat.injury': 'Cedera atau pemulihan',
+  'oav.cat.travel': 'Perjalanan',
+  'oav.cat.study': 'Studi atau ujian',
+  'oav.cat.faith': 'Ibadah atau hari raya',
+  'oav.cat.federation_duty': 'Tugas federasi',
+  'oav.cat.other_sport': 'Komitmen olahraga lain',
+  'oav.cat.personal': 'Pribadi',
+  'oav.level.grassroots': 'Akar rumput',
+  'oav.level.local': 'Lokal',
+  'oav.level.district': 'Kecamatan',
+  'oav.level.county': 'Kabupaten',
+  'oav.level.regional': 'Regional',
+  'oav.level.national': 'Nasional',
+  'oav.level.international': 'Internasional',
+  'oav.level.olympic': 'Olimpiade',
+  'oav.role.referee': 'Wasit',
+  'oav.role.umpire': 'Wasit (umpire)',
+  'oav.role.linesman': 'Asisten wasit',
+  'oav.role.scorer': 'Pencatat skor',
+  'oav.role.video_assistant_referee': 'Asisten wasit video',
+  'oav.role.fourth_official': 'Ofisial keempat',
+  'oav.role.reserve_assistant_referee': 'Asisten wasit cadangan',
+  'oav.role.shot_clock_operator': 'Operator shot clock',
+  'oav.role.timekeeper': 'Pencatat waktu',
+  'oav.role.goal_line_official': 'Ofisial garis gawang',
+  'oav.role.technical_official': 'Ofisial teknis',
+  'oav.age.u8': 'Di bawah 8',
+  'oav.age.u10': 'Di bawah 10',
+  'oav.age.u12': 'Di bawah 12',
+  'oav.age.u14': 'Di bawah 14',
+  'oav.age.u16': 'Di bawah 16',
+  'oav.age.u18': 'Di bawah 18',
+  'oav.age.u21': 'Di bawah 21',
+  'oav.age.senior': 'Senior',
+  'oav.age.masters': 'Veteran',
+  'oav.band.under_25': 'Kurang dari 25 km',
+  'oav.band.25_50': '25 sampai 50 km',
+  'oav.band.50_100': '50 sampai 100 km',
+  'oav.band.100_200': '100 sampai 200 km',
+  'oav.band.200_400': '200 sampai 400 km',
+  'oav.band.over_400': 'Lebih dari 400 km',
+  'oav.state.available': 'Tersedia',
+  'oav.state.limited': 'Di luar batas mereka',
+  'oav.state.check': 'Tanyakan kepada mereka',
+  'oav.state.unavailable': 'Tidak tersedia',
+  'oav.wiz.hint': 'Ketersediaan Anda berada di satu tempat: tab Ketersediaan di beranda Ofisial. Inilah yang tersimpan di sana saat ini. Anda dapat menyempurnakan jam, waktu libur, dan preferensi di sana kapan saja.',
+  'oav.wiz.empty_title': 'Belum ada ketersediaan tersimpan',
+  'oav.wiz.empty_sub': 'Setelah panduan ini, buka tab Ketersediaan untuk menambahkan jam, waktu libur, dan preferensi Anda.',
+  'ocal.view.today': 'Hari ini',
+  'ocal.view.week': 'Minggu',
+  'ocal.view.month': 'Bulan',
+  'ocal.show.all': 'Semua',
+  'ocal.show.off': 'Waktu libur',
+  'ocal.role': 'Peran',
+  'ocal.all_roles': 'Semua peran',
+  'ocal.m.reserved': 'Terkonfirmasi, slot dipesan',
+  'ocal.m.tentative': 'Permintaan sementara',
+  'ocal.m.blocked': 'Blokir waktu libur',
+  'ocal.m.conflicts': 'Bentrok',
+  'ocal.conflict_banner': '{n} entri bentrok dengan pertandingan lain atau dengan waktu libur Anda. Cari tanda peringatan pada kartunya.',
+  'ocal.kind.time_off': 'Waktu libur',
+  'ocal.kind.holiday': 'Hari libur nasional',
+  'ocal.kind.open_window': 'Ketersediaan tambahan',
+  'ocal.kind.deadline': 'Tenggat',
+  'ocal.completed': 'Selesai',
+  'ocal.unavailable': 'Tidak tersedia',
+  'ocal.flag.changed': 'Berubah: konfirmasi',
+  'ocal.flag.clash': 'Bentrok dengan pertandingan lain',
+  'ocal.flag.time_off': 'Saat Anda libur',
+  'ocal.flag.rival': '{n} permintaan lain untuk waktu ini',
+  'ocal.flag.outside': 'Di luar jam Anda',
+  'ocal.venue_time': '{time} di venue ({zone})',
+  'ocal.today': 'Hari ini',
+  'ocal.day_count': '{n} pertandingan',
+  'ocal.empty_title': 'Tidak ada jadwal',
+  'ocal.empty_day': 'Tidak ada pertandingan atau waktu libur pada hari ini.',
+  'ocal.empty_range': 'Tidak ada pertandingan atau waktu libur pada periode ini. Permintaan dari penyelenggara akan muncul di sini sebagai reservasi sementara.',
+  'ocal.foot': 'Waktu ditampilkan dalam {tz}. Jeda antarpertandingan Anda {n} mnt. Entri dibaca langsung dari penugasan Anda, sehingga perubahan dari penyelenggara langsung terlihat.',
+  'guide.officials_availability.title': 'Ofisial: ketersediaan, waktu libur, dan preferensi penjadwalan',
+  'guide.officials_availability.why': 'Penunjukan ofisial hanya berjalan baik jika semua orang memercayai kalender. Setiap ofisial memiliki satu catatan ketersediaan yang diterapkan platform pada setiap permintaan, dan penyelenggara hanya melihat kosong atau sibuk: tidak pernah alasan, catatan, atau alamat rumah.',
+  'guide.officials_availability.s1': 'Ofisial membuka beranda Ofisial, lalu Ketersediaan, dan menambahkan jam bertugas setiap minggu dalam zona waktu mereka sendiri. Jam dapat dibatasi untuk satu musim. Perencana mingguan menampilkan jam tersedia dan libur berulang secara sekilas.',
+  'guide.officials_availability.s2': 'Blokir waktu libur sebagai satu periode, sebagai pola berulang (misalnya setiap Selasa malam dua minggu sekali), atau dengan mengambil hari libur nasional dari kalender libur. Sebelum apa pun disimpan, aplikasi menampilkan daftar pertandingan yang diminta dan terkonfirmasi yang akan terkena. Catatan pribadi disimpan terenkripsi dan tidak pernah dibagikan.',
+  'guide.officials_availability.s3': 'Atur aturan penjadwalan di Preferensi penjadwalan: jeda yang dibutuhkan antarpertandingan (lebih pendek di venue yang sama), pemberitahuan minimum, maksimum pertandingan per hari atau per minggu dan hari berturut-turut, serta apakah permintaan di luar jam yang ditetapkan ditolak atau sampai dengan peringatan.',
+  'guide.officials_availability.s4': 'Sebutkan apa yang Anda pimpin dan di mana: olahraga pilihan, tingkat kompetisi, peran dan kelompok usia, wilayah tugas Anda, dan seberapa jauh Anda bepergian. Hanya kota atau wilayah yang disimpan, tidak pernah alamat.',
+  'guide.officials_availability.s5': 'Penyelenggara menunjuk dari papan penugasan atau undangan massal seperti biasa. Setiap ofisial kini tampil sebagai tersedia, di luar batas mereka, atau tidak tersedia, dengan alasan yang jelas dan rentang jarak. Permintaan yang melanggar aturan seorang ofisial ditolak dengan alasan tersebut.',
+  'guide.officials_availability.s6': 'Permintaan adalah reservasi sementara sampai ofisial menerimanya. Menerima akan memesan slot tersebut, dan penyelenggara lain yang menunggu waktu yang sama diberi tahu. Membatalkan pertandingan membebaskan slot itu kembali. Tab Kalender menampilkan semuanya dalam zona waktu ofisial, beserta waktu venue jika berbeda.',
+  'oav.edit': 'Ubah',
+
+
+  // ─── Official eligibility (oe.*) — issue #1000 REF-R09 ───────────────────
+  'oe.header_label': 'OFFICIALS · ELIGIBILITY', // reviewed: false
+  'oe.heading': 'Your eligibility', // reviewed: false
+  'oe.sub': 'All factors checked for this assignment', // reviewed: false
+  'oe.crew.heading': 'Crew eligibility', // reviewed: false
+  'oe.crew.sub': 'Eligibility status for all assigned officials', // reviewed: false
+  'oe.crew.title': 'Crew panel', // reviewed: false
+  'oe.crew.all_eligible': 'All eligible', // reviewed: false
+  'oe.crew.issues': 'issue(s)', // reviewed: false
+  'oe.crew.empty': 'No officials assigned', // reviewed: false
+  'oe.crew.empty_sub': 'Assign officials from the crew panel to see their eligibility status.', // reviewed: false
+  'oe.section.eligibility': 'Eligibility factors', // reviewed: false
+  'oe.section.overrides': 'Active overrides', // reviewed: false
+  'oe.eligibility_note': 'All factors must be clear before this assignment can be confirmed.', // reviewed: false
+  'oe.privacy_note': 'Eligibility decisions are based on your verified profile. Sanction details are never disclosed.', // reviewed: false
+  'oe.state.eligible': 'Eligible', // reviewed: false
+  'oe.state.pending': 'Pending', // reviewed: false
+  'oe.state.ineligible': 'Ineligible', // reviewed: false
+  'oe.state.overridden': 'Overridden', // reviewed: false
+  'oe.badge.eligible': 'Eligible', // reviewed: false
+  'oe.badge.ineligible': 'Ineligible', // reviewed: false
+  'oe.override_active': 'Override active', // reviewed: false
+  'oe.override.factor': 'Override: {factor}', // reviewed: false
+  'oe.override.by': 'Granted by {name}', // reviewed: false
+  'oe.override.expires': 'Expires {date}', // reviewed: false
+  'oe.override.granted': 'Override granted.', // reviewed: false
+  'oe.override.title': 'Grant override — {factor}', // reviewed: false
+  'oe.override.submit': 'Grant override', // reviewed: false
+  'oe.override.notice': 'Overrides are audit-logged and visible to governing bodies. Suspension sanctions cannot be overridden.', // reviewed: false
+  'oe.override.reason_label': 'Reason for override', // reviewed: false
+  'oe.override.expires_label': 'Override expires at', // reviewed: false
+  'oe.btn.declare_conflict': 'Declare conflict of interest', // reviewed: false
+  'oe.btn.appeal': 'Submit appeal', // reviewed: false
+  'oe.btn.grant_override_for': 'Grant override — {factor}', // reviewed: false
+  'oe.btn.view_conflicts': 'View conflicts', // reviewed: false
+  'oe.appeal.title': 'Appeal ineligibility decision', // reviewed: false
+  'oe.appeal.submit': 'Submit appeal', // reviewed: false
+  'oe.appeal.sent': 'Appeal submitted. The event organiser has been notified.', // reviewed: false
+  'oe.appeal.notice': 'Appeals are reviewed by the event organiser. Provide as much detail as possible.', // reviewed: false
+  'oe.appeal.grounds_label': 'Grounds for appeal', // reviewed: false
+  'oe.appeal.note_label': 'Supporting notes (optional)', // reviewed: false
+  'oe.empty': 'Nothing to review', // reviewed: false
+  'oe.empty_sub': 'Open this screen from an assignment or fixture to check eligibility.', // reviewed: false
+
+  // ─── Official conflict of interest (oci.*) — issue #1000 REF-R09 ─────────
+  'oci.header_label': 'OFFICIALS · CONFLICT OF INTEREST', // reviewed: false
+  'oci.heading.official': 'Your declarations', // reviewed: false
+  'oci.heading.organiser': 'Conflict declarations', // reviewed: false
+  'oci.sub.official': 'Declare any conflict of interest for this assignment', // reviewed: false
+  'oci.sub.organiser': 'Review and decide pending conflict declarations', // reviewed: false
+  'oci.kind.team_relationship': 'Team relationship', // reviewed: false
+  'oci.kind.family_member': 'Family member', // reviewed: false
+  'oci.kind.club_membership': 'Club membership', // reviewed: false
+  'oci.kind.financial_interest': 'Financial interest', // reviewed: false
+  'oci.kind.association_connection': 'Association connection', // reviewed: false
+  'oci.kind.previous_involvement': 'Previous involvement', // reviewed: false
+  'oci.kind.other': 'Other', // reviewed: false
+  'oci.status.open': 'Open', // reviewed: false
+  'oci.status.waived': 'Waived', // reviewed: false
+  'oci.status.reassigned': 'Reassigned', // reviewed: false
+  'oci.status.escalated': 'Escalated', // reviewed: false
+  'oci.status.withdrawn': 'Withdrawn', // reviewed: false
+  'oci.serious': 'Serious', // reviewed: false
+  'oci.raised_at': 'Raised {date}', // reviewed: false
+  'oci.show_detail': 'Show detail', // reviewed: false
+  'oci.section.my_declarations': 'My declarations', // reviewed: false
+  'oci.section.pending': 'Pending decision', // reviewed: false
+  'oci.section.decided': 'Decided', // reviewed: false
+  'oci.empty.official': 'No declarations', // reviewed: false
+  'oci.empty.official_sub': 'If you have a conflict of interest for this assignment, declare it here.', // reviewed: false
+  'oci.empty.organiser': 'No pending declarations', // reviewed: false
+  'oci.empty.organiser_sub': 'All conflict declarations for this assignment have been decided.', // reviewed: false
+  'oci.btn.declare': 'Declare a conflict', // reviewed: false
+  'oci.btn.withdraw': 'Withdraw declaration', // reviewed: false
+  'oci.declare.sent': 'Declaration submitted. The event organiser has been notified.', // reviewed: false
+  'oci.withdrawn': 'Declaration withdrawn.', // reviewed: false
+  'oci.privacy_note': 'Conflict details are encrypted and visible only to you and the event organiser.', // reviewed: false
+  'oci.wizard.step1': 'What type of conflict?', // reviewed: false
+  'oci.wizard.step1_sub': 'Select the category that best describes the conflict.', // reviewed: false
+  'oci.wizard.step2': 'Who is involved?', // reviewed: false
+  'oci.wizard.counterparty_label': 'Team or person name (optional)', // reviewed: false
+  'oci.wizard.counterparty_hint': 'e.g. FC Barcelona, John Smith', // reviewed: false
+  'oci.wizard.detail_label': 'Describe the conflict', // reviewed: false
+  'oci.wizard.detail_hint': 'Explain the nature of the conflict in detail. This is encrypted.', // reviewed: false
+  'oci.wizard.step3': 'Review and submit', // reviewed: false
+  'oci.wizard.serious_label': 'Incompatible with impartiality?', // reviewed: false
+  'oci.wizard.serious_hint': 'Mark this if you believe the conflict could compromise your impartiality.', // reviewed: false
+  'oci.wizard.serious_yes': 'Yes', // reviewed: false
+  'oci.wizard.serious_no': 'No', // reviewed: false
+  'oci.wizard.review_heading': 'Your declaration', // reviewed: false
+  'oci.wizard.privacy_note': 'The detail you provide will be encrypted. Only you and the event organiser will be able to read it.', // reviewed: false
+  'oci.wizard.submit': 'Submit declaration', // reviewed: false
+  'oci.decide.waive': 'Waive', // reviewed: false
+  'oci.decide.reassign': 'Release & reassign', // reviewed: false
+  'oci.decide.escalate': 'Escalate', // reviewed: false
+  'oci.decide.form_title.waive': 'Waive conflict declaration', // reviewed: false
+  'oci.decide.form_title.reassign': 'Release and reassign official', // reviewed: false
+  'oci.decide.form_title.escalate': 'Escalate to governing body', // reviewed: false
+  'oci.decide.form_submit.waive': 'Confirm waiver', // reviewed: false
+  'oci.decide.form_submit.reassign': 'Confirm release', // reviewed: false
+  'oci.decide.form_submit.escalate': 'Confirm escalation', // reviewed: false
+  'oci.decide.note_label': 'Decision note (optional, encrypted)', // reviewed: false
+  'oci.decide.reassign_notice': 'The official will be released from this assignment immediately.', // reviewed: false
+  'oci.decide.done.waive': 'Conflict waived. The official has been notified.', // reviewed: false
+  'oci.decide.done.reassign': 'Official released and reassigned. They have been notified.', // reviewed: false
+  'oci.decide.done.escalate': 'Escalated to governing body.', // reviewed: false
+
 };

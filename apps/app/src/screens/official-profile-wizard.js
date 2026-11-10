@@ -443,33 +443,33 @@ function ReferencesStep({ profile, onSave, onBack, nextLabel }) {
   );
 }
 
-// ---------------------------------------------------------------- Availability step (proxies to official_prefs)
+// ---------------------------------------------------------------- Availability step
+// Availability has one home: the Availability tab of Officials Home (#994). This step shows what is saved there and moves on;
+// it no longer keeps a second copy of the timezone, travel range and gap between matches.
 function AvailabilityStep({ onSave, onBack, nextLabel }) {
-  const prefs = useLoad(() => api.get('/me/official-prefs').catch(() => null), []);
+  const q = useLoad(() => api.get('/me/officials/availability').catch(() => null), []);
   const [err, setErr] = useState(null);
-  if (!prefs.data && !prefs.error) return <Loading />;
+  if (q.loading && !q.data) return <Loading />;
+  const p = q.data?.prefs, s = q.data?.summary;
+  const rows = p ? [
+    [t('oav.pref.timezone'), p.timezone],
+    [t('oav.m.open'), s.open_minutes_week == null ? t('oav.m.any') : t('oav.m.hours', { n: Math.round(s.open_minutes_week / 6) / 10 })],
+    [t('oav.pref.gap'), p.buffer_min ? t('oav.n_min', { n: p.buffer_min }) : t('oav.none')],
+    [t('oav.pref.range'), p.travel_km ? t('oav.n_km', { n: p.travel_km }) : t('oav.not_set')],
+    [t('oav.pref.region'), p.region || t('oav.not_set')],
+    [t('oav.m.blocked'), String(s.blocked_days_90)],
+  ] : [];
   return (
     <View style={{ gap: 12 }}>
-      <Card color={c.cyanSoft}><T size={13}>{t('opw.avail.hint')}</T></Card>
-      <FormSheet inline visible
-        initial={{ timezone: prefs.data?.timezone ?? deviceZone ?? 'UTC', travel_km: prefs.data?.travel_km ?? 50, buffer_min: prefs.data?.buffer_min ?? 60, region: prefs.data?.region ?? '' }}
-        submitLabel={nextLabel}
-        onBack={onBack}
-        onClose={() => {}}
-        fields={[
-          { key: 'timezone', label: t('opw.f.timezone'), hint: t('opw.f.timezone_hint'), optional: true },
-          { key: 'travel_km', label: t('opw.f.travel_km'), type: 'stepper', min: 1, max: 1000, step: 10 },
-          { key: 'buffer_min', label: t('opw.f.buffer'), type: 'stepper', min: 0, max: 240, step: 15, hint: t('opw.f.buffer_hint') },
-          { key: 'region', label: t('opw.f.region'), optional: true, hint: t('opw.f.region_hint') },
-        ]}
-        onSubmit={async (x) => {
-          try {
-            await api.put('/me/official-prefs', { timezone: x.timezone || 'UTC', travel_km: x.travel_km, buffer_min: x.buffer_min, region: x.region || null });
-            await onSave(null, 7);
-          } catch (e) { setErr(explain(e)); }
-        }}
-      />
+      <Card color={c.cyanSoft}><T size={13}>{t('oav.wiz.hint')}</T></Card>
+      {rows.length ? <Card><View style={{ gap: 6 }}>{rows.map(([k, v]) => (
+        <View key={k} style={{ flexDirection: 'row', gap: 12 }} accessible accessibilityLabel={`${k}: ${v}`}><T size={13} color={c.mute} style={{ flex: 1 }}>{k}</T><T size={13.5} weight="700" style={{ flex: 1 }}>{v}</T></View>
+      ))}</View></Card> : <Empty emoji="🗓️" title={t('oav.wiz.empty_title')} sub={t('oav.wiz.empty_sub')} />}
       {err ? <T color={c.red} size={13}>{err}</T> : null}
+      <View style={{ flexDirection: 'row', gap: 10 }}>
+        {onBack ? <View style={{ flex: 1 }}><Btn title={t('common.back')} color={c.paper} ink={c.ink} onPress={onBack} /></View> : null}
+        <View style={{ flex: 1 }}><Btn title={nextLabel} onPress={async () => { try { await onSave(null, 7); } catch (e) { setErr(explain(e)); } }} /></View>
+      </View>
     </View>
   );
 }
