@@ -6,16 +6,30 @@ text{font-family:'Exo2Black';font-weight:900;font-style:normal}
 </style></head><body>
 <svg id="s" xmlns="http://www.w3.org/2000/svg" width="1800" height="620" viewBox="0 0 1800 620">
 <defs>
- <linearGradient id="silver" x1="0" y1="0" x2="0" y2="1">
-  <stop offset="0" stop-color="#FFFFFF"/><stop offset=".28" stop-color="#E4E8F0"/><stop offset=".48" stop-color="#9BA2B4"/>
-  <stop offset=".52" stop-color="#C9CEDA"/><stop offset=".8" stop-color="#F1F3F8"/><stop offset="1" stop-color="#B8BECD"/>
- </linearGradient>
+ <!-- Purple gradient for "GotMy" -->
  <linearGradient id="purple" x1="0" y1="0" x2="0" y2="1">
-  <stop offset="0" stop-color="#C79BFF"/><stop offset=".32" stop-color="#8A3FF0"/><stop offset=".5" stop-color="#5E1FC9"/>
+  <stop offset="0" stop-color="#C97EFF"/><stop offset=".28" stop-color="#8A3FE8"/><stop offset=".5" stop-color="#6520C8"/>
   <stop offset=".56" stop-color="#7B33E3"/><stop offset=".85" stop-color="#4A12A8"/><stop offset="1" stop-color="#6B2BD0"/>
  </linearGradient>
- <linearGradient id="side" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#4B5066"/><stop offset="1" stop-color="#1B1E30"/></linearGradient>
+ <!-- Amber/gold gradient for "G" -->
+ <linearGradient id="amber" x1="0" y1="0" x2="0" y2="1">
+  <stop offset="0" stop-color="#FFE066"/><stop offset=".25" stop-color="#F5A820"/><stop offset=".5" stop-color="#E07800"/>
+  <stop offset=".75" stop-color="#C86000"/><stop offset="1" stop-color="#A04800"/>
+ </linearGradient>
+ <!-- Deep indigo gradient for "ame" -->
+ <linearGradient id="indigo" x1="0" y1="0" x2="0" y2="1">
+  <stop offset="0" stop-color="#6668D8"/><stop offset=".28" stop-color="#3535B8"/><stop offset=".5" stop-color="#2020A0"/>
+  <stop offset=".56" stop-color="#2A2AB0"/><stop offset=".85" stop-color="#181880"/><stop offset="1" stop-color="#222298"/>
+ </linearGradient>
+ <!-- Side extrusions -->
  <linearGradient id="pside" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#4A1AA0"/><stop offset="1" stop-color="#1E0B55"/></linearGradient>
+ <linearGradient id="aside" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#8B5000"/><stop offset="1" stop-color="#3D2000"/></linearGradient>
+ <linearGradient id="iside" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#1A1A70"/><stop offset="1" stop-color="#0A0A3A"/></linearGradient>
+ <!-- Flame gradient (radial, centre bright) -->
+ <radialGradient id="flame" cx="0.4" cy="0.6" r="0.6">
+  <stop offset="0" stop-color="#FFE87A"/><stop offset=".4" stop-color="#F5A820"/><stop offset="1" stop-color="#D06000"/>
+ </radialGradient>
+ <!-- Tagline swoosh -->
  <linearGradient id="swoosh" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#7B2FF0" stop-opacity="0"/><stop offset=".25" stop-color="#7B2FF0"/><stop offset="1" stop-color="#4A12A8"/></linearGradient>
 </defs>
 <g id="root"></g>
@@ -24,7 +38,7 @@ text{font-family:'Exo2Black';font-weight:900;font-style:normal}
 const NS='http://www.w3.org/2000/svg';
 const el=(n,a={},p)=>{const e=document.createElementNS(NS,n);for(const k in a)e.setAttribute(k,a[k]);p&&p.appendChild(e);return e};
 const root=document.getElementById('root');
-const SIZE=250, SX=1.1, X0=80, BASE=290, D=11; // D = extrusion depth
+const SIZE=250, SX=1.1, X0=80, BASE=290, D=11;
 const mk=(txt,x,face,side,outline,rim,parent)=>{
   const g=el('g',{transform:`translate(${x},${BASE}) scale(${SX},1)`},parent);
   const t=(o)=>{const e=el('text',{x:0,y:0,'font-size':SIZE,'letter-spacing':-5,...o},g);e.textContent=txt;return e};
@@ -36,14 +50,33 @@ const mk=(txt,x,face,side,outline,rim,parent)=>{
 window.build=async(variant,mode='full')=>{
   await document.fonts.load('900 300px Exo2Black');
   root.innerHTML='';
-  // measure
-  const probe=el('text',{'font-size':SIZE,'letter-spacing':-5,x:0,y:-999},root);probe.textContent='GotMy';
-  const w1=probe.getComputedTextLength()*SX;probe.remove();
-  const g1=mk('GotMy',X0,'silver','side','#12142A','#FFFFFF',root);
-  const g2=mk('Game',X0+w1+4,'purple','pside','#12142A','#E6D4FF',root);
-  const probe2=el('text',{'font-size':SIZE,'letter-spacing':-5,x:0,y:-999},root);probe2.textContent='Game';
-  const w2=probe2.getComputedTextLength()*SX;probe2.remove();
-  const right=X0+w1+4+w2;
+  // measure widths
+  const measure=(txt)=>{const p=el('text',{'font-size':SIZE,'letter-spacing':-5,x:0,y:-999},root);p.textContent=txt;const w=p.getComputedTextLength()*SX;p.remove();return w;};
+  const w1=measure('GotMy');
+  const wG=measure('G');
+  const w3=measure('ame');
+  // "GotMy" in purple
+  mk('GotMy',X0,'purple','pside','#12142A','#E6D4FF',root);
+  // "G" in amber/gold
+  const gx=X0+w1+4;
+  mk('G',gx,'amber','aside','#12142A','#FFE090',root);
+  // Flame swoosh above the G: a teardrop arc from upper-left of G curving over and tapering to a point
+  // Positioned relative to the G's top-right: BASE-SIZE ≈ 40 is the cap height
+  const capTop=BASE-SIZE*0.92; // roughly the top of uppercase letters
+  const gRight=gx+wG;         // right edge of G
+  const flX=gx+wG*0.55;       // flame starts near the G's right shoulder
+  const flY=capTop+20;
+  el('path',{
+    // A bezier-based teardrop/flame shape curving upward and to the right, then tapering to a tip
+    d:`M ${flX} ${flY}
+       C ${flX+40} ${flY-110}, ${flX+140} ${flY-170}, ${flX+180} ${flY-220}
+       C ${flX+200} ${flY-250}, ${flX+170} ${flY-270}, ${flX+130} ${flY-240}
+       C ${flX+80}  ${flY-190}, ${flX+30}  ${flY-130}, ${flX}     ${flY} Z`,
+    fill:'url(#flame)',stroke:'none',opacity:0.95
+  },root);
+  // "ame" in deep indigo
+  mk('ame',gx+wG+2,'indigo','iside','#12142A','#A8A8FF',root);
+  const right=gx+wG+2+w3;
   const total=right-X0, cx=(X0+right)/2;
   if(mode==='name') return {right,tw:0};
   el('path',{d:`M ${X0-30} ${BASE+150} C ${X0+200} ${BASE+88}, ${X0+560} ${BASE+62}, ${X0+w1*0.92} ${BASE+62} C ${X0+w1*0.6} ${BASE+88}, ${X0+260} ${BASE+120}, ${X0-30} ${BASE+150} Z`,fill:'url(#swoosh)'},root);
