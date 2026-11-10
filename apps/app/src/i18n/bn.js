@@ -16746,4 +16746,50 @@ export default {
   'calendarSync.remove': 'Remove', // reviewed: false
   'calendarSync.busyBlocks': '{n} busy blocks', // reviewed: false
   'calendarSync.syncedAt': 'Synced {ago}', // reviewed: false
+
+  // ── rule_ai: versioned rules assistant (#1021) ──────────────────────────
+  'rule_ai.title': 'Rule Assistant', // reviewed: false
+  'rule_ai.session_start': 'Start rules session', // reviewed: false
+  'rule_ai.ask_placeholder': 'Ask a rules question…', // reviewed: false
+  'rule_ai.answer_header': 'Answer', // reviewed: false
+  'rule_ai.clarification_header': 'Clarifying question', // reviewed: false
+  'rule_ai.citation_prefix': 'rule', // reviewed: false
+  'rule_ai.local_override': 'Local adaptation', // reviewed: false
+  'rule_ai.effective': 'Effective', // reviewed: false
+  'rule_ai.version_banner': '{sport} · {pack} v{version}', // reviewed: false
+  'rule_ai.offline_cached': 'Cached for offline use', // reviewed: false
+  'rule_ai.offline_unavailable': 'Rules not cached offline', // reviewed: false
+  'rule_ai.escalate': 'Escalate for human review', // reviewed: false
+  'rule_ai.escalate_reason_placeholder': 'Describe why this needs human review…', // reviewed: false
+  'rule_ai.escalate_success': 'Escalated to your assessor', // reviewed: false
+  'rule_ai.escalated_label': 'Escalated', // reviewed: false
+  'rule_ai.escalation_inbox': 'Rulings inbox', // reviewed: false
+  'rule_ai.resolve': 'Resolve', // reviewed: false
+  'rule_ai.resolution_placeholder': 'Enter your clarification or ruling…', // reviewed: false
+  'rule_ai.resolved_success': 'Escalation resolved', // reviewed: false
+  'rule_ai.session_history': 'Session history', // reviewed: false
+  'rule_ai.turn_count_short': 'questions', // reviewed: false
+  'rule_ai.policy_note': 'This assistant provides rule references only. It cannot make rulings, issue cards or change scores.', // reviewed: false
+  'rule_ai.policy_note_short': 'Reference only — no rulings', // reviewed: false
+  'rule_ai.declined_label': 'On-field call declined', // reviewed: false
+  'rule_ai.declined': 'That is a call for the match official. I can explain what the rulebook says, but I do not make, signal or record decisions.', // reviewed: false
+  'rule_ai.insufficient_label': 'No matching rules', // reviewed: false
+  'rule_ai.insufficient': 'No matching rules found in the governing rulebook.', // reviewed: false
+  'rule_ai.no_sessions': 'No rule sessions yet for this fixture.', // reviewed: false
+  'rule_ai.start_first': 'Start a session to ask rules questions about your upcoming match.', // reviewed: false
+  'rule_ai.start_first_sub': 'Your session is anchored to the governing rule pack for this fixture.', // reviewed: false
+  'rule_ai.pack_label': 'Governing rule pack', // reviewed: false
+  'rule_ai.cache_rules': 'Cache rules for offline', // reviewed: false
+  'rule_ai.cached_at': 'Cached {when}', // reviewed: false
+  'rule_ai.citation_source': 'Source', // reviewed: false
+  'rule_ai.citation_section': 'Section {no}', // reviewed: false
+  'rule_ai.context_note': 'Answers are grounded in the governing rule pack for your fixture.', // reviewed: false
+  'rule_ai.session_closed': 'This session is closed.', // reviewed: false
+  'rule_ai.loading_session': 'Loading session…', // reviewed: false
+  'rule_ai.no_turns': 'No questions yet.', // reviewed: false
+  'rule_ai.ask_first': 'Type a question below to begin.', // reviewed: false
+  'rule_ai.ai_note': 'Explained by AI from the cited sections above.', // reviewed: false
+  'rule_ai.no_open_escalations': 'No open escalations.', // reviewed: false
+  'rule_ai.no_escalations': 'No escalations.', // reviewed: false
+
 };

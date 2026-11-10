@@ -23,6 +23,7 @@ import { RateCardOnboardingBanner } from './rate-card-catalog';
 import { Cols } from '../federation-bits';
 import { VerificationSection } from './verification';
 import { MatchDayPack } from './match-day-pack';
+import { RulesTab } from './rule-session';
 
 export const ROLE_LABEL = {
   referee: 'Referee', umpire: 'Umpire', linesman: 'Assistant referee', scorer: 'Scorer / timekeeper',
@@ -557,9 +558,8 @@ export function OfficialsHome({ tab: tab0 }) {
     : tab === 'history' ? <HistoryTab go={go} tz={tz} />
     : tab === 'reports' ? <ReportsTab go={go} />
     : tab === 'record' ? <RecordTab sports={h.sports} />
-    : tab === 'rules' ? <Section title="Rules & interpretations" color={c.violet}>
-        {h.next ? <T size={13} color={c.mute}>Answers use the rulebook and local rules for your next match: {h.next.event_name}.</T> : null}
-        <AskRules fixtureId={h.next?.fixture_id} sport={h.sport?.slug} />
+    : tab === 'rules' ? <Section title={t('off.tab_rules')} color={c.violet}>
+        <RulesTab fixtureId={h.next?.fixture_id} sport={h.sport?.slug} isOrg={false} />
       </Section>
     : <Section title="Credential" color={c.lime}>
         <Card><View style={{ gap: 6 }}>
