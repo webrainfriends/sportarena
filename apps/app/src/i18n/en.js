@@ -17442,6 +17442,28 @@ export default {
   'official.report.filed_by': 'Filed by',
   'official.report.submitted_at': 'Submitted',
 
+  // REF-R10: Official requirements tab
+  'official.requirements.title': 'AI Requirements',
+  'official.requirements.auto_detected': 'Auto-detected from sport governing body',
+  'official.requirements.governing_body': 'Governing body',
+  'official.requirements.source_ref': 'Source reference',
+  'official.requirements.role_required': 'Role required',
+  'official.requirements.min_grade': 'Minimum grade',
+  'official.requirements.fulfilled': '{{n}}/{{total}} assigned',
+  'official.requirements.deficit_alert': 'Crew deficit — match at risk',
+  'official.requirements.deficit_count': '{{n}} required role(s) unfilled',
+  'official.deficit.proceed_degraded': 'Proceed (degraded)',
+  'official.deficit.postpone': 'Postpone match',
+  'official.deficit.cancelled': 'Cancel match',
+  'official.deficit.organiser_note_placeholder': 'Add organiser note (optional)…',
+  'official.deficit.accept_degradation': 'Accept & proceed with degradation',
+  'official.degraded.report_banner_title': 'Degraded result — points impact',
+  'official.degraded.report_banner_body': 'This match proceeded with insufficient officials. Results carry a degradation multiplier.',
+  'official.degraded.multiplier_label': 'Degradation factor',
+  'official.degraded.points_impact_title': 'Points impact',
+  'official.degraded.standard_pts': 'Standard points',
+  'official.degraded.adjusted_pts': 'Adjusted points',
+
   // REF-R10: AI crew requirements
   'crew.requirements.title': 'AI Crew Requirements',
   'crew.requirements.subtitle': 'Based on {{sport}} governing body rules',

@@ -17422,6 +17422,29 @@ export default {
   'official.report.revise': 'Revise report', // reviewed: false
   'official.report.filed_by': 'Filed by', // reviewed: false
   'official.report.submitted_at': 'Submitted', // reviewed: false
+
+  // REF-R10: Official requirements tab
+  'official.requirements.title': 'AI Requirements', // reviewed: false
+  'official.requirements.auto_detected': 'Auto-detected from sport governing body', // reviewed: false
+  'official.requirements.governing_body': 'Governing body', // reviewed: false
+  'official.requirements.source_ref': 'Source reference', // reviewed: false
+  'official.requirements.role_required': 'Role required', // reviewed: false
+  'official.requirements.min_grade': 'Minimum grade', // reviewed: false
+  'official.requirements.fulfilled': '{{n}}/{{total}} assigned', // reviewed: false
+  'official.requirements.deficit_alert': 'Crew deficit — match at risk', // reviewed: false
+  'official.requirements.deficit_count': '{{n}} required role(s) unfilled', // reviewed: false
+  'official.deficit.proceed_degraded': 'Proceed (degraded)', // reviewed: false
+  'official.deficit.postpone': 'Postpone match', // reviewed: false
+  'official.deficit.cancelled': 'Cancel match', // reviewed: false
+  'official.deficit.organiser_note_placeholder': 'Add organiser note (optional)…', // reviewed: false
+  'official.deficit.accept_degradation': 'Accept & proceed with degradation', // reviewed: false
+  'official.degraded.report_banner_title': 'Degraded result — points impact', // reviewed: false
+  'official.degraded.report_banner_body': 'This match proceeded with insufficient officials. Results carry a degradation multiplier.', // reviewed: false
+  'official.degraded.multiplier_label': 'Degradation factor', // reviewed: false
+  'official.degraded.points_impact_title': 'Points impact', // reviewed: false
+  'official.degraded.standard_pts': 'Standard points', // reviewed: false
+  'official.degraded.adjusted_pts': 'Adjusted points', // reviewed: false
+
   'crew.requirements.title': 'AI Crew Requirements', // reviewed: false
   'crew.requirements.subtitle': 'Based on {{sport}} governing body rules', // reviewed: false
   'crew.requirements.compliant': 'Fully staffed', // reviewed: false
