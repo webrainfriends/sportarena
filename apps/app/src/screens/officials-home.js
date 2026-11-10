@@ -3,7 +3,7 @@
 // The live scoring console is the existing Match Centre and the result goes through the existing score sheet; this screen links to them rather than copying them.
 // The server decides every permission; this only shows what comes back and keeps touch targets large for pitch-side use.
 import { FixtureParaSummary } from './para-competition';
-import React, { useMemo, useState } from 'react';
+import React, { useState } from 'react';
 import { View, Pressable } from 'react-native';
 import { api } from '../api';
 import { useLoad } from '../hooks';
@@ -12,7 +12,7 @@ import { useSession } from '../session';
 import { useLayout } from '../layout';
 import { Btn, Card, Chip, Empty, Field, GradCard, H1, Loading, Screen, Section, Seg, Sheet, T, Tag } from '../ui';
 import { FormSheet } from '../FormSheet';
-import { Calendar, monthOf, todayLocal } from '../pickers';
+import { todayLocal } from '../pickers';
 import { explain, LoadError } from '../access';
 import { c, grad } from '../theme';
 import { Banner, Metric, money } from '../federation-ui';
@@ -23,6 +23,8 @@ import { Cols } from '../federation-bits';
 import { VerificationSection } from './verification';
 import { MatchDayPack } from './match-day-pack';
 import { RulesTab } from './rule-session';
+import { AvailabilityTab } from './officials-availability';
+import { CalendarTab } from './officials-calendar';
 
 export const ROLE_LABEL = {
   referee: 'Referee', umpire: 'Umpire', linesman: 'Assistant referee', scorer: 'Scorer / timekeeper',
@@ -37,7 +39,6 @@ const CRED = {
   verified: ['✅ Verified official', c.mintSoft], expiring: ['⚠️ Verification ending soon', c.sunSoft], expired: ['⛔ Verification expired', c.sunSoft], revoked: ['⛔ Verification revoked', c.sunSoft],
   pending: ['⏳ Verification in review', c.cyanSoft], rejected: ['Verification not approved', c.paper], self_declared: ['Self-declared referee profile', c.paper], none: ['No referee profile yet', c.paper],
 };
-const DAYS = [[1, 'Mon'], [2, 'Tue'], [3, 'Wed'], [4, 'Thu'], [5, 'Fri'], [6, 'Sat'], [0, 'Sun']];
 const DECLINE_REASONS = ['Not available then', 'Too far to travel', 'Clash with another match', 'Not my level or sport'];
 const REPORT_TYPES = [
   { value: 'match_report', label: 'Match report' }, { value: 'misconduct', label: 'Misconduct' }, { value: 'send_off', label: 'Send-off / ejection' }, { value: 'abandonment', label: 'Abandonment / suspension' },
@@ -46,12 +47,8 @@ const REPORT_TYPES = [
 
 const PAY = { agreed: ['Fee agreed', c.cyanSoft], due: ['Payment due', c.sunSoft], paid: ['Paid', c.mintSoft], disputed: ['Payment disputed', c.sunSoft] };
 const payTag = (a) => (a.fee_minor != null && PAY[a.pay_status] ? <Tag label={`💰 ${money(a.fee_minor, a.fee_currency)} · ${PAY[a.pay_status][0]}${a.pay_confirmed_at ? ' · receipt confirmed' : ''}`} color={PAY[a.pay_status][1]} /> : null);
-const mins = (m) => `${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`;
-const toMin = (t) => { const [h, m] = String(t).split(':').map(Number); return h * 60 + (m || 0); };
 const when = (iso, tz) => (iso ? new Date(iso).toLocaleString(undefined, { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit', ...(tz ? { timeZone: tz } : {}) }) : '');
 const clock = (iso, tz) => (iso ? new Date(iso).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit', ...(tz ? { timeZone: tz } : {}) }) : '');
-const dayOf = (iso, tz) => { try { return new Intl.DateTimeFormat('en-CA', { timeZone: tz || 'UTC' }).format(new Date(iso)); } catch { return String(iso).slice(0, 10); } };
-const isoAt = (day, t) => new Date(`${day}T${t}:00`).toISOString();
 const statusTag = (s) => <Tag label={STATUS[s]?.[0] ?? s} color={STATUS[s]?.[1] ?? c.paper} />;
 const roleTag = (r) => <Tag label={ROLE_LABEL[r] ?? r} color={c.violetSoft} />;
 /** Returns "HH:MM" string for arrive-by time (kickoff minus reportingMin), in the fixture's timezone. */
@@ -223,111 +220,6 @@ function Today({ h, reload, go, tz }) {
     </View>
   );
 }
-
-// ------------------------------------------------------------------ Calendar
-function CalendarTab({ tz, go, sportId }) {
-  const [view, setView] = useState('week');
-  const [role, setRole] = useState(null);
-  const [month, setMonth] = useState(monthOf(todayLocal()));
-  const [day, setDay] = useState(todayLocal());
-  const range = useMemo(() => {
-    if (view === 'month') { const [y, m] = month.split('-').map(Number); return [new Date(Date.UTC(y, m - 1, 1)), new Date(Date.UTC(y, m, 1))]; }
-    const start = new Date(); start.setHours(0, 0, 0, 0);
-    return [start, new Date(start.getTime() + (view === 'today' ? 1 : 7) * 864e5)];
-  }, [view, month]);
-  const q = useLoad(() => api.get('/me/officials/calendar', { from: range[0].toISOString(), to: range[1].toISOString(), ...(sportId ? { sport_id: sportId } : {}), ...(role ? { role } : {}) }), [range[0].getTime(), range[1].getTime(), sportId, role]);
-  const entries = q.data?.entries ?? [];
-  const shown = view === 'month' ? entries.filter((e) => dayOf(e.starts_at, tz) === day) : entries;
-  const marks = useMemo(() => { const m = new Map(); for (const e of entries) { const d = dayOf(e.starts_at, tz); m.set(d, e.clash_with?.length || e.unavailable_with?.length || e.status === 'invited' ? 'limited' : m.get(d) ?? 'available'); } return [...m].map(([date, status]) => ({ date, status })); }, [entries, tz]);
-  return (
-    <View style={{ gap: 12 }}>
-      <Seg options={[{ value: 'today', label: 'Today' }, { value: 'week', label: 'Week' }, { value: 'month', label: 'Month' }]} value={view} onChange={setView} />
-      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
-        <Chip label="All roles" active={!role} onPress={() => setRole(null)} />
-        {Object.entries(ROLE_LABEL).map(([k, l]) => <Chip key={k} label={l} active={role === k} onPress={() => setRole(role === k ? null : k)} />)}
-      </View>
-      {q.data?.conflicts ? <Banner tone={c.sunSoft}>⚠️ {q.data.conflicts} entr{q.data.conflicts === 1 ? 'y clashes' : 'ies clash'} with another match or your time off. Look for the warning on the card.</Banner> : null}
-      {view === 'month' ? <Card><Calendar month={month} onMonth={setMonth} value={day} onChange={setDay} days={marks} /></Card> : null}
-      {q.error && !q.data ? <LoadError error={q.error} onRetry={q.reload} /> : !q.data ? <Loading /> : shown.length ? (
-        <View style={{ gap: 10 }}>{shown.map((e) => (
-          <Card key={`${e.source_type}${e.source_id}`} onPress={e.fixture_id ? () => go('OfficialMatch', { id: e.fixture_id }) : undefined} pad={14} accessibilityLabel={`${e.title}, ${when(e.starts_at, tz)}`}>
-            <View style={{ gap: 6 }}>
-              <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
-                {e.kind === 'assignment' ? <>{roleTag(e.role)}{statusTag(e.status)}</> : <Tag label={e.kind === 'time_off' ? '🌴 Time off' : '⚖️ Deadline'} color={c.cyanSoft} />}
-                {e.locked_at ? <Tag label={`🔒 ${t('officials.lock.badge')}`} color={c.pinkSoft} /> : null}
-                {e.clash_with?.some((x) => x.clash_type === 'travel_gap') ? <Tag label={`🚗 ${t('officials.clash.travel_gap')}`} color={c.orangeSoft} /> : e.clash_with?.length ? <Tag label="⚠️ Clashes with another match" color={c.sunSoft} /> : null}
-                {e.unavailable_with?.length ? <Tag label="⚠️ During your time off" color={c.sunSoft} /> : null}
-                {e.outside_availability ? <Tag label="Outside your usual hours" color={c.sunSoft} /> : null}
-                {e.status === 'accepted' && e.reporting_min > 0 && e.starts_at ? (
-                  <Tag label={`⏱ ${t('officials.arrive_by', { time: arriveByTime(e.starts_at, e.reporting_min, tz) })}`} color={c.cyanSoft} />
-                ) : null}
-              </View>
-              <T weight="800" size={16}>{e.title}</T>
-              <T size={12.5} color={c.mute}>{when(e.starts_at, tz)}{e.kind === 'assignment' ? ` – ${clock(e.ends_at, tz)}` : ''}{e.subtitle ? ` · ${e.subtitle}` : ''}</T>
-            </View>
-          </Card>
-        ))}</View>
-      ) : <Empty emoji="📅" title="Nothing here" sub={view === 'month' ? 'No matches or time off on this day.' : 'No matches in this period.'} />}
-      <T size={12} color={c.mute}>Times are shown in {tz}. Entries come straight from your assignments, so a change by the organiser appears here at once.</T>
-    </View>
-  );
-}
-
-// ------------------------------------------------------------------ Availability
-function AvailabilityTab({ sports }) {
-  const { toast } = useSession();
-  const q = useLoad(() => api.get('/me/officials/availability'), []);
-  const [form, setForm] = useState(null); // 'window' | 'off' | 'prefs'
-  if (q.error && !q.data) return <LoadError error={q.error} onRetry={q.reload} />;
-  if (!q.data) return <Loading />;
-  const { prefs, weekly, time_off: off } = q.data;
-  const save = async (fn, msg) => { try { await fn(); toast(msg); await q.reload(); } catch (e) { toast(explain(e)); throw e; } };
-  const addWindow = (v) => save(async () => {
-    const next = [...weekly.map((w) => ({ weekday: w.weekday, start_minute: w.start_minute, end_minute: w.end_minute })), ...v.days.map((d) => ({ weekday: d, start_minute: toMin(v.start), end_minute: toMin(v.end) }))];
-    await api.post('/me/officials/availability/weekly', { windows: next });
-  }, 'Weekly hours saved');
-  const dropWindow = (w) => save(() => api.post('/me/officials/availability/weekly', { windows: weekly.filter((x) => x.id !== w.id).map((x) => ({ weekday: x.weekday, start_minute: x.start_minute, end_minute: x.end_minute })) }), 'Removed');
-  const grouped = DAYS.map(([d, label]) => [label, weekly.filter((w) => w.weekday === d)]).filter(([, l]) => l.length);
-  return (
-    <View style={{ gap: 14 }}>
-      <Section title="Weekly hours" color={c.mint} action="Add hours" onAction={() => setForm('window')}>
-        {grouped.length ? <Card><View style={{ gap: 8 }}>{grouped.map(([label, list]) => (
-          <View key={label} style={{ flexDirection: 'row', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-            <T weight="800" style={{ width: 46 }}>{label}</T>
-            {list.map((w) => <Chip key={w.id} label={`${mins(w.start_minute)}–${mins(w.end_minute)}  ✕`} onPress={() => dropWindow(w)} />)}
-          </View>
-        ))}</View></Card> : <Empty emoji="🕒" title="No weekly limits" sub="You count as available any time. Add hours if you only officiate at certain times; matches outside them get a warning." />}
-      </Section>
-      <Section title="Time off" color={c.sun} action="Block time" onAction={() => setForm('off')}>
-        {off.length ? <View style={{ gap: 8 }}>{off.map((o) => (
-          <Card key={o.id} pad={14}><View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
-            <View style={{ flex: 1 }}><T weight="800">{when(o.starts_at, prefs.timezone)} → {when(o.ends_at, prefs.timezone)}</T>{o.note ? <T size={12.5} color={c.mute}>{o.note}</T> : null}</View>
-            <Btn small title="Remove" color={c.paper} ink={c.ink} style={{ minHeight: 44 }} onPress={() => save(() => api.post(`/me/officials/availability/${o.id}/remove`, {}), 'Time off removed')} />
-          </View></Card>
-        ))}</View> : <Empty emoji="🌴" title="No time off booked" sub="Organisers cannot assign you during blocked time." />}
-      </Section>
-      <Section title="Preferences" color={c.cyan} action="Edit" onAction={() => setForm('prefs')}>
-        <Card><View style={{ gap: 4 }}>
-          <T>🌍 Timezone: <T weight="800">{prefs.timezone}</T></T>
-          <T>↔️ Gap between matches: <T weight="800">{prefs.buffer_min ? `${prefs.buffer_min} min` : 'none'}</T></T>
-          <T>🚗 Travel range: <T weight="800">{prefs.travel_km ? `${prefs.travel_km} km` : 'not set'}</T></T>
-          <T>📍 Area: <T weight="800">{prefs.region || 'not set'}</T></T>
-          <T size={12} color={c.mute} style={{ marginTop: 4 }}>Only a coarse area is stored, never an address. The gap between matches is checked whenever you are asked to officiate.</T>
-        </View></Card>
-      </Section>
-      <FormSheet visible={form === 'window'} onClose={() => setForm(null)} title="Add weekly hours" submitLabel="Add" onSubmit={async (v) => { if (!v.days?.length) throw new Error('Pick at least one day'); await addWindow(v); setForm(null); }}
-        fields={[{ key: 'days', label: 'Days', type: 'weekdays' }, { key: 'start', label: 'From', type: 'time' }, { key: 'end', label: 'Until', type: 'time' }]} initial={{ days: [], start: '08:00', end: '18:00' }} />
-      <FormSheet visible={form === 'off'} onClose={() => setForm(null)} title="Block time off" submitLabel="Block" onSubmit={async (v) => {
-        const r = await api.post('/me/officials/availability/time-off', { starts_at: v.starts, ends_at: v.ends, note: v.note || undefined });
-        toast(r.affected_assignments.length ? `Blocked. ${r.affected_assignments.length} confirmed match(es) fall inside it: withdraw from them if you cannot go.` : 'Time off saved'); setForm(null); await q.reload();
-      }} fields={[{ key: 'starts', label: 'From', type: 'datetime' }, { key: 'ends', label: 'Until', type: 'datetime' }, { key: 'note', label: 'Note for yourself', optional: true }]} />
-      <FormSheet visible={form === 'prefs'} onClose={() => setForm(null)} title="Preferences" onSubmit={async (v) => { await save(() => api.post('/me/officials/availability/prefs', { timezone: v.timezone, buffer_min: v.buffer_min, travel_km: v.travel_km || null, region: v.region?.[0] || null, sport_ids: prefs.sport_ids, levels: prefs.levels }), 'Preferences saved'); setForm(null); }}
-        fields={[{ key: 'timezone', label: 'Your timezone', type: 'timezone' }, { key: 'buffer_min', label: 'Minimum gap between matches (minutes)', type: 'stepper', min: 0, max: 240, step: 15, suffix: 'min' }, { key: 'travel_km', label: 'How far will you travel (km)', type: 'stepper', min: 0, max: 1000, step: 5, suffix: 'km', optional: true }, { key: 'region', label: 'City or area you cover (optional)', type: 'regions', optional: true }]}
-        initial={{ timezone: prefs.timezone, buffer_min: prefs.buffer_min, travel_km: prefs.travel_km ?? 0, region: prefs.region ? [prefs.region] : [] }} />
-    </View>
-  );
-}
-
 
 // ------------------------------------------------------------------ payment actions (the official's side)
 function PayActions({ a, reload }) {
@@ -655,7 +547,7 @@ export function OfficialsHome({ tab: tab0 }) {
   const cred = CRED[h.credential.state] ?? CRED.none;
   const body = tab === 'today' ? <Today h={h} reload={q.reload} go={go} tz={tz} />
     : tab === 'calendar' ? <CalendarTab tz={tz} go={go} sportId={sportId} />
-    : tab === 'availability' ? <AvailabilityTab sports={h.sports} />
+    : tab === 'availability' ? <AvailabilityTab sports={h.sports} go={go} />
     : tab === 'history' ? <HistoryTab go={go} tz={tz} />
     : tab === 'reports' ? <ReportsTab go={go} />
     : tab === 'record' ? <RecordTab sports={h.sports} />

@@ -31,7 +31,7 @@ Capabilities: request_fixture_official, respond_fixture_official, release_fixtur
 * Re-timing a fixture re-validates every open official; confirmed officials get `needs_ack` and are notified, and re-accept to acknowledge. Cancelling closes all open assignments.
 * Accepting mirrors an active `associations` row on the fixture's game (if one exists) so game-official permissions keep working.
 
-Not yet built (follow-up slices): referee verification type, availability/calendar, Officials Home UI, idempotent match console, result sign-off, incident reports.
+Built since (see the officials docs): referee verification, Officials Home, the match console, result sign-off and incident reports. Availability, time off, tentative holds and scheduling preferences are described in [`officials-availability.md`](officials-availability.md); the time rules above are evaluated by one engine, `src/official-availability.js`.
 
 ## Tournament management (migration 029)
 One organiser console (the **Event console**, `EventCommand` screen, reached from the event page → **⚡ Event console**; it replaced the former Tournament console and Plan & budget screens) over these capabilities (REST + OpenAPI + MCP, tag *Tournament*, *Event staff*, *Event vendors*):

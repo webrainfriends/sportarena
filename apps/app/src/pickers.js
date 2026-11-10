@@ -27,7 +27,7 @@ const NO_PICK = new Set(['past', 'closed', 'full', 'too_far']);
  * cheapest price per day and only lets you pick bookable days; with `range` it highlights a from–to span.
  * `month` is 'YYYY-MM' and controlled by the parent so it can fetch that month's availability.
  */
-export function Calendar({ month, onMonth, value, onChange, days, minDate, maxDate, range, currency, today = todayLocal() }) {
+export function Calendar({ month, onMonth, value, onChange, days, minDate, maxDate, range, currency, today = todayLocal(), legend }) {
   const [y, mo] = month.split('-').map(Number);
   const first = new Date(Date.UTC(y, mo - 1, 1));
   const lead = first.getUTCDay();
@@ -74,7 +74,7 @@ export function Calendar({ month, onMonth, value, onChange, days, minDate, maxDa
       </View>
       {days ? (
         <View style={{ flexDirection: 'row', gap: 14, marginTop: 10, flexWrap: 'wrap' }}>
-          {[['available', 'Available'], ['limited', 'Filling fast'], ['full', 'Full'], ['closed', 'Closed']].map(([k, l]) => <View key={k} style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}><View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: DOT[k] }} /><T size={11} color={c.mute}>{l}</T></View>)}
+          {(legend ?? [['available', 'Available'], ['limited', 'Filling fast'], ['full', 'Full'], ['closed', 'Closed']]).map(([k, l]) => <View key={k} style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}><View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: DOT[k] }} /><T size={11} color={c.mute}>{l}</T></View>)}
         </View>
       ) : null}
       </>}

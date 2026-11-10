@@ -64,6 +64,15 @@ cap({
           `INSERT INTO associations(user_id, role, target_type, target_id, status, invited_by, started_at)
            SELECT $1, $2, 'game', g.id, 'active', $4, now() FROM games g WHERE g.fixture_id=$3 ON CONFLICT DO NOTHING`, [user.id, fo.role, f.id, fo.requested_by]);
         await notify(c, ev.organizer_id, { kind: 'official_assignment', title: 'Official accepted', body: `A ${fo.role} accepted ${ev.name}.`, data: { fixture_id: f.id, official_id: fo.id } });
+        // the slot is now reserved: any other request this official was holding for the same time can no longer be accepted, so its organiser is told (nothing is declined for them)
+        const buf = (await c.query('SELECT greatest(buffer_min, coalesce(buffer_same_venue_min, 0)) AS m FROM official_prefs WHERE user_id=$1', [user.id])).rows[0]?.m ?? 0;
+        const rivals = (await c.query(
+          `SELECT o.id, o.role, o.fixture_id, e2.organizer_id, e2.name FROM fixture_officials o JOIN fixtures f2 ON f2.id=o.fixture_id JOIN events e2 ON e2.id=f2.event_id
+            WHERE o.user_id=$1 AND o.status='invited' AND o.fixture_id <> $2 AND f2.status IN ('scheduled','live')
+              AND f2.scheduled_at < $4::timestamptz + $5 * interval '1 minute' AND f2.scheduled_at + f2.duration_min * interval '1 minute' > $3::timestamptz - $5 * interval '1 minute'
+            ORDER BY o.created_at, o.id`,
+          [user.id, f.id, f.scheduled_at, new Date(new Date(f.scheduled_at).getTime() + f.duration_min * 60000), buf])).rows;
+        for (const r of rivals) await notify(c, r.organizer_id, { kind: 'official_assignment', title: 'Official no longer free', body: `The ${r.role} you asked for ${r.name} has confirmed another match at that time. Your request is still open but cannot be accepted; consider asking someone else.`, data: { fixture_id: r.fixture_id, official_id: r.id, superseded: true } });
       }
       return (await c.query('SELECT * FROM fixture_officials WHERE id=$1', [fo.id])).rows[0];
     });
