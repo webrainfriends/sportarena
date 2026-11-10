@@ -76,6 +76,13 @@ CERT_DIR="$LE_DIR/live/$DOMAIN"
 proxy_block() {
   cat <<EOF
     location / {
+        # compress the JS/CSS/JSON/SVG the Expo web build ships (nginx's default only compresses HTML, so the multi-MB bundle went out raw)
+        gzip on;
+        gzip_vary on;
+        gzip_proxied any;
+        gzip_comp_level 6;
+        gzip_min_length 1024;
+        gzip_types text/css text/plain text/javascript application/javascript application/json application/manifest+json image/svg+xml application/xml;
         proxy_pass http://127.0.0.1:${UPSTREAM_PORT};
         proxy_http_version 1.1;
         proxy_set_header Host \$host;
