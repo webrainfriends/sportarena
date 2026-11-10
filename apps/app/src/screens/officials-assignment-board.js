@@ -16,8 +16,10 @@ import { FormSheet } from '../FormSheet';
 import { LoadError } from '../access';
 import { c, grad, r } from '../theme';
 import { t } from '../i18n';
-import { money } from '../federation-ui';
+import { Metric, money } from '../federation-ui';
+import { MenuField } from '../menu-field';
 import { useSession } from '../session';
+import { OfficialAvailabilitySheet } from './official-availability-sheet';
 
 const ROLE_LABEL = {
   referee: t('officials.role.referee'),
@@ -34,16 +36,18 @@ const STATUS_COLOR = {
 const STATUS_ICON = { accepted: '✅', invited: '⏳', shortlisted: '📋' };
 
 // ─── Coverage ring ────────────────────────────────────────────────────────────
-function CoverageRing({ pct, size = 56 }) {
+function CoverageRing({ pct, size = 56, onDark }) {
   const radius = (size - 10) / 2;
   const circ = 2 * Math.PI * radius;
   const filled = (pct / 100) * circ;
-  const color = pct >= 100 ? c.lime : pct >= 60 ? c.sun : c.red;
+  // on the coloured hero the ring and its number are white, so they stay readable in the light and the dark theme
+  const color = onDark ? c.on : pct >= 100 ? c.lime : pct >= 60 ? c.sun : c.red;
+  const track = onDark ? 'rgba(255,255,255,0.28)' : c.line;
   if (Platform.OS === 'web') {
     return (
       <View style={{ width: size, height: size, alignItems: 'center', justifyContent: 'center' }}>
         <svg width={size} height={size} style={{ transform: 'rotate(-90deg)', position: 'absolute' }}>
-          <circle cx={size / 2} cy={size / 2} r={radius} fill="none" stroke={c.line} strokeWidth={8} />
+          <circle cx={size / 2} cy={size / 2} r={radius} fill="none" stroke={track} strokeWidth={8} />
           <circle cx={size / 2} cy={size / 2} r={radius} fill="none" stroke={color} strokeWidth={8}
             strokeDasharray={`${filled} ${circ}`} strokeLinecap="round" />
         </svg>
@@ -184,6 +188,7 @@ function SuggestSheet({ fixtureId, roleVal, fixtureName, onInvite, onShortlist, 
   const [selected, setSelected] = useState(null);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState(null);
+  const [availFor, setAvailFor] = useState(null); // user id whose free / busy the organiser is looking at (#994)
 
   const handleInvite = async () => {
     if (!selected) return;
@@ -235,9 +240,10 @@ function SuggestSheet({ fixtureId, roleVal, fixtureName, onInvite, onShortlist, 
                     {s.grade_name ? <Chip label={s.grade_name} color={c.pinkSoft} small /> : null}
                     {s.dist_band && s.dist_band !== 'unknown' ? <Chip label={t(`oav.band.${s.dist_band}`)} color={c.cyanSoft} small /> : null}
                     {s.availability_state && s.availability_state !== 'unknown' ? <Chip label={t(`oav.state.${s.availability_state}`)} color={s.availability_state === 'available' ? c.mintSoft : s.availability_state === 'unavailable' ? c.redSoft : c.sunSoft} small /> : null}
-                    {s.has_conflict ? <Chip label="⚠️ Neutrality" color={c.orangeSoft} small /> : <Chip label="Neutral ✓" color={c.mintSoft} small />}
+                    {s.has_conflict ? <Chip label="⚠️ Neutrality" color={c.orangeSoft} small /> : s.reasons?.neutral?.checked !== false ? <Chip label="Neutral ✓" color={c.mintSoft} small /> : null}
                   </View>
                   <T size={11} color={c.mute} numberOfLines={3}>{s.explanation}</T>
+                  <View style={{ flexDirection: 'row' }}><Btn small title={'🗓 ' + t('oavo.open')} color={c.paper} ink={c.ink} onPress={() => setAvailFor(s.user_id)} style={{ minHeight: 44 }} /></View>
                 </View>
                 <View style={{ alignItems: 'center', gap: 4 }}>
                   <View style={{ width: 36, height: 36, borderRadius: 18, backgroundColor: scoreColor(s.score), alignItems: 'center', justifyContent: 'center' }}>
@@ -277,6 +283,7 @@ function SuggestSheet({ fixtureId, roleVal, fixtureName, onInvite, onShortlist, 
           <Btn title={t('officials.board.manual_override')} onPress={onClose} color={c.paper} ink={c.mute} small />
         </View>
       )}
+      <OfficialAvailabilitySheet visible={!!availFor} onClose={() => setAvailFor(null)} fixtures={[{ id: fixtureId, label: fixtureName }]} userId={availFor} />
     </Sheet>
   );
 }
@@ -413,6 +420,9 @@ export function AssignmentBoard({ event_id }) {
 
   // All roles expected
   const roles = ['referee', 'umpire', 'linesman', 'scorer'];
+  // slots on this board with nobody asked or confirmed: counted over the roles the board shows, so the number matches the grid
+  const isOpen = (o) => o.status === 'invited' || o.status === 'accepted';
+  const uncoveredShown = fixtures.reduce((n, f) => n + roles.filter((rol) => !(f.crew?.[rol] ?? []).some(isOpen)).length, 0);
 
   const handleInvite = useCallback(async ({ fixtureId, userId, roleVal, featureSource }) => {
     await api.post(`/fixtures/${fixtureId}/officials`, { user_id: userId, role: roleVal });
@@ -445,13 +455,13 @@ export function AssignmentBoard({ event_id }) {
   const toggleSelect = (fixtureId) =>
     setSelectedFos((prev) => { const s = new Set(prev); s.has(fixtureId) ? s.delete(fixtureId) : s.add(fixtureId); return s; });
 
-  const isWide = L.wide;
+  const isWide = L.width >= 1024;
 
-  if (q.loading && !q.data) return <Screen><Loading /></Screen>;
-  if (q.error) return <Screen><LoadError error={q.error} onRetry={reload} /></Screen>;
+  if (q.loading && !q.data) return <Screen wide><Loading /></Screen>;
+  if (q.error) return <Screen wide><LoadError error={q.error} onRetry={reload} /></Screen>;
 
   return (
-    <Screen>
+    <Screen wide>
       {/* Hero */}
       <GradCard colors={grad.hero} style={{ margin: 16, marginBottom: 0 }}>
         <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 16 }}>
@@ -462,16 +472,21 @@ export function AssignmentBoard({ event_id }) {
             <T size={13} color="rgba(255,255,255,0.8)" style={{ marginTop: 4 }}>
               {t('officials.board.subtitle', { count: stats.total ?? 0 })}
             </T>
-            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 10 }}>
-              {stats.confirmed > 0 ? <Chip label={`✅ ${stats.confirmed} confirmed`} color="rgba(255,255,255,0.18)" textColor={c.on} small /> : null}
-              {stats.pending > 0 ? <Chip label={`⏳ ${stats.pending} pending`} color="rgba(255,255,255,0.18)" textColor={c.on} small /> : null}
-              {stats.uncovered_slots > 0 ? <Chip label={`⚠️ ${stats.uncovered_slots} uncovered`} color="rgba(255,255,255,0.3)" textColor={c.on} small /> : null}
-              {stats.conflicts > 0 ? <Chip label={`⚡ ${stats.conflicts} conflicts`} color="rgba(255,255,255,0.3)" textColor={c.on} small /> : null}
-            </View>
           </View>
-          <CoverageRing pct={coveragePct} size={60} />
+          <View style={{ alignItems: 'center', gap: 4 }}>
+            <CoverageRing pct={coveragePct} size={64} onDark />
+            <T size={11} weight="700" color={c.on}>{t('oavo.board.m_coverage')}</T>
+          </View>
         </View>
       </GradCard>
+
+      {/* Key numbers: what is settled, what is waiting and what still needs an official */}
+      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginHorizontal: 16, marginTop: 12 }}>
+        <Metric value={stats.confirmed ?? 0} label={t('oavo.board.m_confirmed')} tone={c.mintSoft} />
+        <Metric value={stats.pending ?? 0} label={t('oavo.board.m_pending')} tone={stats.pending ? c.sunSoft : undefined} />
+        <Metric value={uncoveredShown} label={t('oavo.board.m_uncovered')} tone={uncoveredShown ? c.redSoft : undefined} onPress={() => setUncoveredOnly(true)} />
+        <Metric value={stats.conflicts ?? 0} label={t('oavo.board.m_conflicts')} tone={stats.conflicts ? c.redSoft : undefined} />
+      </View>
 
       {/* Tabs */}
       <View style={{ marginHorizontal: 16, marginTop: 16 }}>
@@ -487,25 +502,16 @@ export function AssignmentBoard({ event_id }) {
       </View>
 
       {/* Filter bar */}
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8, padding: 16, paddingBottom: 8 }}>
-        <Pressable
-          onPress={() => setUncoveredOnly((x) => !x)}
-          accessibilityRole="checkbox" accessibilityState={{ checked: uncoveredOnly }}
-          style={{ paddingHorizontal: 14, paddingVertical: 7, borderRadius: 999, backgroundColor: uncoveredOnly ? c.pink : c.paper, borderWidth: 1.5, borderColor: uncoveredOnly ? c.pink : c.line, minHeight: 44, justifyContent: 'center' }}
-        >
-          <T size={12} weight="700" color={uncoveredOnly ? c.on : c.ink}>🔴 {t('officials.board.filter_uncovered')}</T>
-        </Pressable>
-        {days.map((d) => (
-          <Pressable
-            key={d}
-            onPress={() => setDayFilter(dayFilter === d ? null : d)}
-            accessibilityRole="radio" accessibilityState={{ checked: dayFilter === d }}
-            style={{ paddingHorizontal: 14, paddingVertical: 7, borderRadius: 999, backgroundColor: dayFilter === d ? c.violet : c.paper, borderWidth: 1.5, borderColor: dayFilter === d ? c.violet : c.line, minHeight: 44, justifyContent: 'center' }}
-          >
-            <T size={12} weight="700" color={dayFilter === d ? c.on : c.ink}>{new Date(d + 'T12:00:00').toLocaleDateString(undefined, { weekday: 'short', day: 'numeric', month: 'short' })}</T>
-          </Pressable>
-        ))}
-      </ScrollView>
+      {/* A competition can run for many days, so the day is a dropdown rather than a row of chips that grows without end */}
+      <View style={{ flexDirection: 'row', flexWrap: 'wrap', alignItems: 'flex-end', gap: 12, marginHorizontal: 16, marginTop: 14, marginBottom: 10 }}>
+        <View style={{ flexGrow: 1, flexBasis: 240, maxWidth: 360 }}>
+          <MenuField label={t('oavo.board.day')} value={dayFilter ?? ''} onChange={(d) => setDayFilter(d || null)}
+            options={[{ value: '', label: t('oavo.board.all_days') }, ...days.map((d) => ({ value: d, label: new Date(d + 'T12:00:00').toLocaleDateString(undefined, { weekday: 'long', day: 'numeric', month: 'short' }) }))]} />
+        </View>
+        <View style={{ minHeight: 50, justifyContent: 'center' }}>
+          <Chip label={t('officials.board.filter_uncovered')} active={uncoveredOnly} onPress={() => setUncoveredOnly((x) => !x)} />
+        </View>
+      </View>
 
       {/* Bulk action bar */}
       {selectedFos.size > 0 ? (
@@ -520,9 +526,9 @@ export function AssignmentBoard({ event_id }) {
       ) : null}
 
       {/* Board: scrollable horizontal grid */}
-      <ScrollView style={{ flex: 1 }}>
-        <ScrollView horizontal showsHorizontalScrollIndicator={true} contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 32 }}>
-          <View style={{ minWidth: isWide ? 900 : 680 }}>
+      <View style={{ marginHorizontal: 16 }}>
+        <ScrollView horizontal showsHorizontalScrollIndicator={true} contentContainerStyle={{ paddingBottom: 32, flexGrow: 1 }}>
+          <View style={{ flexGrow: 1, minWidth: isWide ? 900 : 680 }}>
             {/* Header row */}
             <View style={{ flexDirection: 'row', backgroundColor: c.violet, borderRadius: r.card, marginBottom: 6, overflow: 'hidden' }}>
               <View style={{ width: isWide ? 240 : 180, padding: 12 }}>
@@ -534,7 +540,7 @@ export function AssignmentBoard({ event_id }) {
                 </View>
               ))}
               <View style={{ width: 70, padding: 12, borderLeftWidth: 1, borderLeftColor: 'rgba(255,255,255,0.1)', alignItems: 'center' }}>
-                <T size={11} weight="700" color={c.on} style={{ letterSpacing: 0.4 }}>COV</T>
+                <T size={11} weight="700" color={c.on} style={{ letterSpacing: 0.4 }}>{t('oavo.board.coverage_short').toUpperCase()}</T>
               </View>
             </View>
 
@@ -576,9 +582,11 @@ export function AssignmentBoard({ event_id }) {
                         ) : null}
                         {f.resource_name ? <T size={11} color={c.mute}>📍 {f.venue_name ?? ''}{f.resource_name ? ` · ${f.resource_name}` : ''}</T> : null}
                         {/* Coverage status chip */}
-                        {covCount === 0 ? <Chip label={`⚠️ ${t('officials.board.uncovered')}`} color={c.redSoft} textColor={c.red} small style={{ marginTop: 4 }} />
-                          : covCount === totalCov ? <Chip label={`✅ ${t('officials.board.all_covered')}`} color={c.mintSoft} small style={{ marginTop: 4 }} />
-                          : <Chip label={`⏳ ${covCount}/${totalCov}`} color={c.sunSoft} small style={{ marginTop: 4 }} />}
+                        <View style={{ flexDirection: 'row', marginTop: 6 }}>
+                          {covCount === 0 ? <Tag label={t('officials.board.uncovered')} color={c.red} />
+                            : covCount === totalCov ? <Tag label={t('officials.board.all_covered')} color={c.mint} />
+                            : <Tag label={[covCount, totalCov].join(' / ')} color={c.sun} />}
+                        </View>
                       </View>
                     </View>
                   </Pressable>
@@ -648,7 +656,7 @@ export function AssignmentBoard({ event_id }) {
         <Card color={c.cyanSoft} style={{ margin: 16, marginTop: 0 }}>
           <T size={12} color={c.ink}>ℹ️ {t('officials.board.drag_hint')}</T>
         </Card>
-      </ScrollView>
+      </View>
 
       {/* Suggest sheet */}
       {suggestCtx ? (

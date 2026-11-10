@@ -144,6 +144,11 @@ try {
     if (only && !only.includes(`${dev}-${theme}`)) continue;
     const { ctx, page } = await session(ref, size, theme);
     const tag = `${dev}-${theme}`;
+    // the Overview tab first: every label must be real text, never a raw catalogue key such as "off.qa.title"
+    await navTo(page, 'OfficialsHome', { tab: 'today' });
+    const raw = ((await page.content()).match(/>[a-z]{2,8}(\.[a-z0-9_]+){1,3}</g) ?? []).filter((x) => !/\.(com|dev|org|png|js)</.test(x));
+    check(raw.length === 0, `${tag}: no raw label key on Officials home${raw.length ? ' (' + raw.slice(0, 4).join(' ') + ')' : ''}`);
+    await longShot(page, `00-overview-${tag}`, size);
     await navTo(page, 'OfficialsHome', { tab: 'availability' });
     check(await vis(page, 'My officiating week'), `${tag}: the Availability tab opens on the week planner`);
     check(await vis(page, 'Tentative holds') && await vis(page, 'Match load'), `${tag}: key metrics and the load chart are shown`);
@@ -162,6 +167,14 @@ try {
       await page.getByText(/^Edit\s+›$/).last().click(); await page.waitForTimeout(1100);
       check(await vis(page, 'Use a shorter gap at the same venue'), `${tag}: scheduling preferences open as one ordered form`);
       await shot(page, `04-preferences-form-${tag}`);
+      // the time zone is a searchable dropdown of every zone, not a row of chips
+      const t0 = Date.now();
+      await page.getByLabel(/^Time zone: Europe\/Madrid/).last().click(); await page.waitForTimeout(900);
+      check(await vis(page, 'Pacific/Auckland') || await vis(page, 'Africa/Abidjan'), `${tag}: the time-zone dropdown lists every zone (opened in ${Date.now() - t0} ms)`);
+      await page.getByPlaceholder('Search').last().fill('tokyo'); await page.waitForTimeout(500);
+      check(await vis(page, 'Asia/Tokyo') && await vis(page, 'UTC+09:00'), `${tag}: searching finds a zone and shows its offset`);
+      await shot(page, `10-timezone-dropdown-${tag}`);
+      await page.keyboard.press('Escape'); await page.waitForTimeout(300);
       await page.keyboard.press('Escape'); await page.waitForTimeout(400);
     }
 
@@ -174,6 +187,28 @@ try {
     await tap(page, 'Month');
     await page.waitForTimeout(1500);
     await shot(page, `07-calendar-month-${tag}`);
+    await ctx.close();
+  }
+
+  // the organiser's side: from the assignment board, open the free / busy view of an official for a match that sits on their time off
+  for (const theme of ['light', 'dark']) for (const [dev, size] of Object.entries(SIZES)) {
+    const tag = `${dev}-${theme}`;
+    if (only && !only.includes(`org-${tag}`) && !only.includes(tag)) continue;
+    if (theme === 'dark' && dev !== 'phone') continue;
+    const { ctx, page } = await session(orgB, size, theme);
+    await navTo(page, 'AssignmentBoard', { event_id: cup.ev.id });
+    if (process.env.DEBUG_BOARD) log('[board]', await page.evaluate(async (id) => { const r = await fetch('/api/v1/events/' + id + '/officials/board?uncovered_only=false&limit=100', { credentials: 'include', headers: { 'x-sa-client': 'web' } }); const j = await r.json(); return r.status + ' ' + JSON.stringify(Object.keys(j)) + ' ' + JSON.stringify(j.event ?? j.error ?? null); }, cup.ev.id));
+    await longShot(page, `09-organiser-board-${tag}`, size);
+    await page.getByLabel('Add Referee').first().click({ timeout: 6000 }); await page.waitForTimeout(2500);
+    check(await vis(page, 'Elena Marín'), `${tag}: the organiser's suggestions list the official`);
+    await page.getByText('Availability', { exact: false }).filter({ hasText: /^🗓/ }).first().click(); await page.waitForTimeout(2200);
+    check(await vis(page, 'Can they take this match?') && await vis(page, 'Free and busy'), `${tag}: the free / busy view opens for the organiser`);
+    check(await vis(page, 'They have marked this time as unavailable.'), `${tag}: the reason is plain and carries no private detail`);
+    const html = await page.content();
+    check(!html.includes('Family visit') && !html.includes('UEFA B'), `${tag}: the official's private notes never reach the organiser's screen`);
+    check(!html.match(/>(oavo|oav)\.[a-z_.]+</), `${tag}: no untranslated key on the organiser sheet`);
+    await shot(page, `09-organiser-free-busy-${tag}`);
+    await longShot(page, `09-organiser-free-busy-full-${tag}`, size);
     await ctx.close();
   }
 

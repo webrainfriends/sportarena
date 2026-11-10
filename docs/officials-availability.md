@@ -70,7 +70,7 @@ Refusals are `409` with a `details.code` (`time_off`, `clash`, `buffer`, `outsid
 
 ## App
 
-The Availability and Calendar tabs of Officials home (`apps/app/src/screens/officials-availability.js`, `officials-calendar.js`). The profile wizard's availability step now shows what is saved there instead of keeping its own form.
+The Availability and Calendar tabs of Officials home (`apps/app/src/screens/officials-availability.js`, `officials-calendar.js`). Organisers open the free / busy view (`official-availability-sheet.js`) from the Availability button on each official in the assignment board's suggestions and in bulk invite; it calls `get_fixture_official_availability`. The time-zone field in every form is a searchable dropdown of all IANA zones (`ZonePicker` in `apps/app/src/FormSheet.js`). The profile wizard's availability step now shows what is saved there instead of keeping its own form.
 
 ## Sports
 

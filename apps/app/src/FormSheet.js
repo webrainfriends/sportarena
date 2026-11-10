@@ -13,7 +13,7 @@ import { useSession } from './session';
 import { CurrencyDropdown } from './currency-dropdown';
 import { parseAmount, toMajorText } from './money';
 import { EvidenceField } from './evidence';
-import { MultiMenuField } from './menu-field';
+import { MenuField, MultiMenuField } from './menu-field';
 import { t } from './i18n';
 import { locale } from './locale';
 
@@ -55,18 +55,28 @@ const opt = (o) => (typeof o === 'object' ? o : { value: o, label: String(o) });
  *   section {label}                         a heading between groups
  * `initial` is read each time the sheet opens. onSubmit(values) -> Promise; throws to show an error.
  */
-function ZonePicker({ label, value, onChange }) {
-  const [q, setQ] = useState('');
+/** UTC offset of a zone right now, e.g. "UTC+05:30". Empty when the runtime does not know the zone. */
+const zoneOffset = (z) => {
+  try {
+    const p = new Intl.DateTimeFormat('en-US', { timeZone: z, timeZoneName: 'longOffset' }).formatToParts(new Date()).find((x) => x.type === 'timeZoneName')?.value ?? '';
+    return p === 'GMT' ? 'UTC+00:00' : p.replace('GMT', 'UTC');
+  } catch { return ''; }
+};
+let zoneOptions = null;
+/** Every time zone as a dropdown option: this device's zone first, then the common ones, then the rest by name. Built once. */
+const zoneList = () => {
+  if (zoneOptions) return zoneOptions;
   const dz = deviceZone();
-  const list = q.trim() ? allZones().filter((z) => z.toLowerCase().includes(q.trim().toLowerCase().replace(/ /g, '_'))).slice(0, 12) : [...new Set([...(dz ? [dz] : []), ...ZONES])];
-  return (
-    <View style={{ gap: 6 }}>
-      <T weight="800" size={13}>{label}</T>
-      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>{list.map((z) => <Chip key={z} label={z.replace(/_/g, ' ')} active={z === value} onPress={() => onChange(z)} />)}</View>
-      <Field value={q} onChangeText={setQ} placeholder={t('form.search_region')} />
-      {value && !list.includes(value) ? <T size={12} color={c.mute}>{t('form.selected', { value })}</T> : null}
-    </View>
-  );
+  const first = [...new Set([...(dz ? [dz] : []), ...ZONES])];
+  const rest = allZones().filter((z) => !first.includes(z)).sort();
+  zoneOptions = [...first, ...rest].map((z) => ({ value: z, label: z.replace(/_/g, ' '), sub: zoneOffset(z) }));
+  return zoneOptions;
+};
+/** A time zone is a long list, so it is a searchable dropdown (search by city, region or offset). The value stays the IANA name. */
+function ZonePicker({ label, value, onChange }) {
+  const base = zoneList();
+  const options = value && !base.some((o) => o.value === value) ? [{ value, label: value.replace(/_/g, ' '), sub: zoneOffset(value) }, ...base] : base;
+  return <MenuField label={label} value={value} onChange={onChange} options={options} />;
 }
 
 function LocationPicker({ f, v, set }) {

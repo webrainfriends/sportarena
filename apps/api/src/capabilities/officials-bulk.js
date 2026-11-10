@@ -64,19 +64,12 @@ async function scoreOfficial(c, { userId, role: roleVal, fixture, event, minGrad
   score += travelScore;
 
   // 3. Neutrality (max 20) ────────────────────────────────────────────────────
-  let neutralScore = 20;
-  const userNat = (await c.query("SELECT nationality FROM users WHERE id=$1", [userId])).rows[0]?.nationality;
-  if (userNat && fixture.home_team_id && fixture.away_team_id) {
-    const teamNats = await c.query(
-      `SELECT DISTINCT unnest(nationalities) AS nat FROM team_members WHERE team_id = ANY($1::uuid[]) AND status='active'`,
-      [[fixture.home_team_id, fixture.away_team_id]]
-    );
-    const conflict = teamNats.rows.some((r) => r.nat === userNat);
-    if (conflict) { neutralScore = 0; reasons.neutral = { label: 'Nationality matches a player', score: 0, conflict: true }; }
-    else reasons.neutral = { label: 'Neutral — no nationality match', score: 20 };
-  } else {
-    reasons.neutral = { label: 'Neutrality unchecked (data unavailable)', score: neutralScore };
-  }
+  // The platform holds no player-nationality data to compare against (the columns this used to read never existed, so every
+  // suggestion failed and the list came back empty). Neutrality therefore cannot be checked here: say so instead of claiming
+  // "neutral". The score keeps its default and `checked: false` lets a screen show nothing rather than a tick. Declared conflicts
+  // of interest are enforced separately (official_conflicts, REF-R09).
+  const neutralScore = 20;
+  reasons.neutral = { label: 'Neutrality not checked (no nationality data to compare)', score: neutralScore, checked: false };
   score += neutralScore;
 
   // 4. Fair rotation (max 14) — fewer assignments this event = higher score ──
@@ -293,6 +286,7 @@ function buildExplanation(reasons) {
   else parts.push('No active licence for this sport (qualification not met)');
   if (reasons.travel) parts.push(`Travel: ${reasons.travel.label} (+${reasons.travel.score} pts)`);
   if (reasons.neutral?.conflict) parts.push('⚠️ Neutrality: nationality matches a player in this fixture');
+  else if (reasons.neutral?.checked === false) parts.push(reasons.neutral.label);
   else if (reasons.neutral) parts.push(`Neutrality: ${reasons.neutral.label} (+${reasons.neutral.score} pts)`);
   if (reasons.rotation) parts.push(`Rotation: ${reasons.rotation.label} (+${reasons.rotation.score} pts)`);
   if (reasons.cost) parts.push(`Cost: ${reasons.cost.label} (+${reasons.cost.score} pts)`);
@@ -602,7 +596,8 @@ cap({
     id,
     day: z.string().optional().describe('Filter to fixtures on this ISO date (YYYY-MM-DD)'),
     venue_id: id.optional(),
-    uncovered_only: z.coerce.boolean().default(false),
+    // a query string carries text: without this, ?uncovered_only=false is read as true (any non-empty text) and the board silently drops fully covered fixtures
+    uncovered_only: z.preprocess((v) => (v === 'false' || v === '0' ? false : v), z.coerce.boolean()).default(false),
     ...page,
   }),
   async handler({ user }, i) {
@@ -613,10 +608,10 @@ cap({
     const whereExtra = [];
     const params = [i.id];
     if (i.day) { params.push(i.day); whereExtra.push(`f.scheduled_at::date = $${params.length}::date`); }
-    if (i.venue_id) { params.push(i.venue_id); whereExtra.push(`f.venue_id = $${params.length}`); }
+    if (i.venue_id) { params.push(i.venue_id); whereExtra.push(`r.venue_id = $${params.length}`); }   // a fixture's venue is its pitch / court's venue
 
     const fixtures = await many(
-      `SELECT f.id, f.scheduled_at, f.duration_min, f.status, f.round, f.round_kind, f.venue_id,
+      `SELECT f.id, f.scheduled_at, f.duration_min, f.status, f.round, f.round_kind, r.venue_id,
               f.home_team_id, f.away_team_id,
               ht.name AS home_name, at2.name AS away_name,
               ht.emoji AS home_emoji, at2.emoji AS away_emoji,
@@ -625,8 +620,8 @@ cap({
          FROM fixtures f
          LEFT JOIN teams ht ON ht.id=f.home_team_id
          LEFT JOIN teams at2 ON at2.id=f.away_team_id
-         LEFT JOIN venues v ON v.id=f.venue_id
          LEFT JOIN resources r ON r.id=f.resource_id
+         LEFT JOIN venues v ON v.id=r.venue_id
         WHERE f.event_id=$1 AND f.status NOT IN ('cancelled')
           ${whereExtra.length ? ' AND ' + whereExtra.join(' AND ') : ''}
         ORDER BY f.scheduled_at NULLS LAST, f.id
@@ -635,7 +630,7 @@ cap({
     );
 
     const fIds = fixtures.map((f) => f.id);
-    if (!fIds.length) return { fixtures: [], stats: { total: 0, confirmed: 0, pending: 0, uncovered_slots: 0, conflicts: 0 } };
+    if (!fIds.length) return { event: { id: ev.id, name: ev.name }, fixtures: [], stats: { total: 0, confirmed: 0, pending: 0, uncovered_slots: 0, conflicts: 0 } };
 
     // All officials for these fixtures
     const officials = await many(
@@ -670,22 +665,9 @@ cap({
     );
 
     // Neutrality conflicts check
-    const neutralityConflicts = await many(
-      `SELECT fo.id AS fo_id, fo.fixture_id, fo.user_id
-         FROM fixture_officials fo
-         JOIN users u ON u.id=fo.user_id
-         WHERE fo.fixture_id = ANY($1::uuid[])
-           AND fo.status IN ('invited','accepted')
-           AND u.nationality IS NOT NULL
-           AND EXISTS (
-             SELECT 1 FROM fixtures f
-             JOIN team_members tm ON tm.team_id IN (f.home_team_id, f.away_team_id)
-             WHERE f.id = fo.fixture_id AND tm.user_id != fo.user_id AND tm.status='active'
-             AND EXISTS (SELECT 1 FROM users u2 WHERE u2.id=tm.user_id AND u2.nationality=u.nationality)
-           )`,
-      [fIds]
-    );
-    const conflictFoIds = new Set(neutralityConflicts.map((r) => r.fo_id));
+    // Nationality-based neutrality cannot be evaluated: users.nationality, which this read, does not exist, and there is no
+    // player-nationality data to compare against. No conflict is flagged from it (see scoreOfficial); nothing is guessed.
+    const conflictFoIds = new Set();
 
     // Build fixture map
     const fixtureMap = Object.fromEntries(
@@ -714,6 +696,7 @@ cap({
     const result = Object.values(fixtureMap);
     if (i.uncovered_only) {
       return {
+        event: { id: ev.id, name: ev.name, sport_id: ev.sport_id, starts_at: ev.starts_at, ends_at: ev.ends_at },
         fixtures: result.filter((f) => {
           const covered = Object.values(f.crew).flat().filter((o) => ['invited','accepted'].includes(o.status)).length;
           return covered < expectedRolesPerFixture;

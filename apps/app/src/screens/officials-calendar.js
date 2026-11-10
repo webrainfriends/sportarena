@@ -21,7 +21,7 @@ const TONE = { reserved: [c.mint, c.mintSoft], tentative: [c.sun, c.sunSoft], ti
 const toneOf = (e) => TONE[e.hold ?? (e.kind === 'assignment' ? 'done' : e.kind)] ?? TONE.done;
 
 function Entry({ e, tz, onOpen }) {
-  const [bar, soft] = toneOf(e);
+  const [bar] = toneOf(e);
   const flagged = e.clash_with?.length || e.unavailable_with?.length;
   const time = e.all_day ? t('oav.all_day') : e.kind === 'deadline' ? timeIn(e.starts_at, tz) : `${timeIn(e.starts_at, tz)} – ${timeIn(e.ends_at, tz)}`;
   const head = e.kind === 'assignment' ? (e.hold ? t(`oav.hold.${e.hold}`) : t('ocal.completed')) : t(`ocal.kind.${e.kind}`);
@@ -32,17 +32,17 @@ function Entry({ e, tz, onOpen }) {
         <View style={{ width: 6, backgroundColor: bar, borderTopStartRadius: 16, borderBottomStartRadius: 16 }} />
         <View style={{ flex: 1, padding: 14, gap: 6 }}>
           <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
-            <Tag label={head} color={soft} />
+            <Tag label={head} color={e.kind === 'holiday' || !e.hold && e.kind === 'assignment' ? c.violetSoft : bar} />
             {e.role ? <Tag label={t(`oav.role.${e.role}`)} color={c.violetSoft} /> : null}
-            {e.repeats ? <Tag label={'🔁 ' + t('oav.rep.tag')} color={c.cyanSoft} /> : null}
+            {e.repeats ? <Tag label={'🔁 ' + t('oav.rep.tag')} color={c.cyan} /> : null}
             {e.category && e.kind === 'time_off' ? <Tag label={t(`oav.cat.${e.category}`)} color={c.violetSoft} /> : null}
             {e.locked_at ? <Tag label={'🔒 ' + t('officials.lock.badge')} color={c.pinkSoft} /> : null}
-            {e.hold === 'reserved' && e.reporting_min > 0 ? <Tag label={'⏱ ' + t('officials.arrive_by', { time: timeIn(new Date(new Date(e.starts_at).getTime() - e.reporting_min * 60000).toISOString(), tz) })} color={c.cyanSoft} /> : null}
-            {e.needs_ack ? <Tag label={'🔔 ' + t('ocal.flag.changed')} color={c.sunSoft} /> : null}
-            {e.clash_with?.length ? <Tag label={'⚠️ ' + t('ocal.flag.clash')} color={c.redSoft} /> : null}
-            {e.unavailable_with?.length ? <Tag label={'⚠️ ' + t('ocal.flag.time_off')} color={c.redSoft} /> : null}
-            {e.rival_requests?.length ? <Tag label={t('ocal.flag.rival', { n: e.rival_requests.length })} color={c.sunSoft} /> : null}
-            {e.outside_availability ? <Tag label={t('ocal.flag.outside')} color={c.sunSoft} /> : null}
+            {e.hold === 'reserved' && e.reporting_min > 0 ? <Tag label={'⏱ ' + t('officials.arrive_by', { time: timeIn(new Date(new Date(e.starts_at).getTime() - e.reporting_min * 60000).toISOString(), tz) })} color={c.cyan} /> : null}
+            {e.needs_ack ? <Tag label={'🔔 ' + t('ocal.flag.changed')} color={c.sun} /> : null}
+            {e.clash_with?.length ? <Tag label={'⚠️ ' + t('ocal.flag.clash')} color={c.red} /> : null}
+            {e.unavailable_with?.length ? <Tag label={'⚠️ ' + t('ocal.flag.time_off')} color={c.red} /> : null}
+            {e.rival_requests?.length ? <Tag label={t('ocal.flag.rival', { n: e.rival_requests.length })} color={c.sun} /> : null}
+            {e.outside_availability ? <Tag label={t('ocal.flag.outside')} color={c.sun} /> : null}
           </View>
           <T weight="800" size={16}>{e.kind === 'time_off' ? t('ocal.unavailable') : e.kind === 'open_window' ? t('oav.extra.tag') : e.title}</T>
           <T size={13} weight="700">{time}{e.sport ? ` · ${e.sport.emoji ?? ''} ${e.subtitle ?? ''}` : ''}</T>

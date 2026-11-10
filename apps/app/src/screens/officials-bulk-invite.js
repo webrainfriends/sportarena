@@ -13,6 +13,7 @@ import { c, r } from '../theme';
 import { t } from '../i18n';
 import { money } from '../federation-ui';
 import { CurrencyField } from '../money-field';
+import { OfficialAvailabilitySheet } from './official-availability-sheet';
 
 const OFFICIAL_ROLES = ['referee', 'umpire', 'linesman', 'scorer'];
 const ROLE_LABEL = {
@@ -122,6 +123,8 @@ function StepRole({ role, onSelect, onNext, onBack }) {
 // ─── Step 3: Pick officials ───────────────────────────────────────────────────
 function StepOfficials({ eventId, role, fixtureIds, selectedUsers, onToggle, onNext, onBack }) {
   const q = useLoad(() => api.get(`/events/${eventId}/officials/pool`, { role, limit: 50 }), [eventId, role]);
+  const [availFor, setAvailFor] = useState(null); // user id whose free / busy the organiser is looking at (#994)
+  const board = useLoad(() => api.get(`/events/${eventId}/officials/board`, { uncovered_only: false, limit: 100 }), [eventId]); // the same list step 1 chose from, for the match names
   if (q.loading) return <Loading />;
   if (q.error) return <LoadError error={q.error} onRetry={q.reload} />;
   const officials = q.data?.officials ?? [];
@@ -162,12 +165,15 @@ function StepOfficials({ eventId, role, fixtureIds, selectedUsers, onToggle, onN
                       />
                     ) : null}
                   </View>
+                  <View style={{ flexDirection: 'row' }}><Btn small title={'🗓 ' + t('oavo.open')} color={c.paper} ink={c.ink} onPress={() => setAvailFor(o.id)} style={{ minHeight: 44 }} /></View>
                 </View>
               </View>
             </Card>
           );
         })}
       </ScrollView>
+      <OfficialAvailabilitySheet visible={!!availFor} onClose={() => setAvailFor(null)} userId={availFor}
+        fixtures={fixtureIds.map((fid) => { const f = (board.data?.fixtures ?? []).find((x) => x.id === fid); return { id: fid, label: f ? [f.home_name ?? 'TBD', f.away_name ?? 'TBD'].join(' v ') : fid.slice(0, 8) }; })} />
       <View style={{ flexDirection: 'row', gap: 10, padding: 16 }}>
         <Btn title={`← ${t('common.back')}`} onPress={onBack} color={c.paper} ink={c.ink} style={{ flex: 1, minHeight: 48 }} />
         <Btn title={`${t('common.next')} →`} onPress={onNext} disabled={selectedUsers.size === 0} style={{ flex: 1, minHeight: 48 }} />
