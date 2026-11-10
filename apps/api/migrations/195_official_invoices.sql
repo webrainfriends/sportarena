@@ -1,8 +1,13 @@
 -- #1008 Referee invoices, expenses and settlement
 -- Additive only: no DROP, TRUNCATE, or narrowing ALTER.
 
--- Invoice counter series for official invoices
-INSERT INTO invoice_counters (kind, prefix, next_seq)
+-- Global invoice counter series for official invoices (kind is the unique key)
+CREATE TABLE IF NOT EXISTS official_invoice_counters (
+  kind     text PRIMARY KEY,
+  prefix   text NOT NULL,
+  next_seq bigint NOT NULL DEFAULT 1
+);
+INSERT INTO official_invoice_counters (kind, prefix, next_seq)
 VALUES ('official_self', 'REF', 1), ('official_rci', 'RCI', 1)
 ON CONFLICT DO NOTHING;
 
