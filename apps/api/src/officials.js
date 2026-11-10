@@ -8,6 +8,9 @@ import { activeSportingSanction } from './integrity.js';
 import { blocksOn, BLOCKING_KINDS } from './discipline.js';
 import { serviceFor } from './discipline-live.js';
 import { gate as complianceGate, hasObligations } from './compliance.js';
+import { decrypt } from './crypto.js';
+import { ageOf } from './youth.js';
+import { audit } from './helpers.js';
 
 export const OFFICIAL_ROLES = [
   'referee', 'umpire', 'linesman', 'scorer',
@@ -35,6 +38,17 @@ export async function credentialFor(c, userId, sportId) {
       WHERE l.holder_id=$1 AND l.status='active' AND l.expires_on >= current_date AND t.holder_role='official' AND t.sport_id=$2
       ORDER BY t.grade_rank DESC, l.expires_on DESC LIMIT 1`, [userId, sportId])).rows[0] ?? null;
   return { verified: v, licence: l };
+}
+
+/**
+ * An official's age in whole years on a day, or null when no date of birth is on record. The date of birth is stored encrypted on the
+ * account (users.dob_enc); only the age leaves this function and the decryption is audit-logged.
+ */
+export async function officialAgeOn(c, userId, day) {
+  const enc = (await c.query('SELECT dob_enc FROM users WHERE id=$1', [userId])).rows[0]?.dob_enc;
+  if (!enc) return null;
+  await audit(c, userId, 'derive_official_age', 'users', userId);
+  return ageOf(decrypt(enc, 'users.dob'), new Date(`${day}T00:00:00Z`));
 }
 
 /** Haversine great-circle distance in km between two lat/lng pairs. */
@@ -98,9 +112,8 @@ export async function assertOfficialEligible(c, { event, sportId, fixtureId, use
   // — Minimum age (event.official_min_age) —
   if (event?.official_min_age && start) {
     const day = typeof start === 'string' ? start.slice(0, 10) : new Date(start).toISOString().slice(0, 10);
-    const dob = (await c.query('SELECT birth_date FROM profiles WHERE user_id=$1', [userId])).rows[0]?.birth_date;
-    if (dob) {
-      const age = Math.floor((new Date(day) - new Date(dob)) / (365.25 * 864e5));
+    const age = await officialAgeOn(c, userId, day);
+    if (age != null) {
       if (age < event.official_min_age) throw badRequest(`This event requires officials to be at least ${event.official_min_age} years old`);
     }
   }

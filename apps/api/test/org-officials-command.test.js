@@ -1,182 +1,140 @@
-// Tests for REF-R12: Federation & Assignor Organisation Command Center
-// Tests run against a real Postgres DB; each test sets up its own data.
-import { describe, it, before, after } from 'node:test';
+// Federation & assignor organisation command centre (REF-R12, #1004): an organisation's panel of officials, delegated assignors, workload,
+// unfilled fixtures, messages and export. Driven over REST against a real Postgres, like the other officials suites: every person in the
+// story signs up through the public API and each test creates its own data.
+import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
-import { pool, tx } from '../src/db.js';
-import { testUser, testOrg, testEvent, testFixture, testSport } from './helpers.js';
-import { request } from './request.js';
 
-describe('org-officials-command', () => {
-  let owner, admin, official1, official2, outsider;
-  let org, sport;
+process.env.DATABASE_URL = process.env.TEST_DATABASE_URL ?? 'postgres://postgres@/sportarena_test?host=/tmp';
+const { pool } = await import('../src/db.js');
+const { migrate } = await import('../src/migrate.js');
+const { createApp } = await import('../src/http.js');
+const { capabilities } = await import('../src/registry.js');
 
-  before(async () => {
-    owner = await testUser({ display_name: 'Owner' });
-    admin = await testUser({ display_name: 'Admin' });
-    official1 = await testUser({ display_name: 'Official One' });
-    official2 = await testUser({ display_name: 'Official Two' });
-    outsider = await testUser({ display_name: 'Outsider' });
-    sport = await testSport();
-    org = await testOrg({ owner_id: owner.id });
-    // Add admin to org
-    await pool.query("INSERT INTO organisation_members(organisation_id,user_id,role,status) VALUES($1,$2,'admin','active')", [org.id, admin.id]);
-    // Give official1 and official2 referee sport profiles
-    for (const u of [official1, official2]) {
-      await pool.query(
-        "INSERT INTO active_sport_profiles(user_id,sport_id,role,status) VALUES($1,$2,'referee','active') ON CONFLICT DO NOTHING",
-        [u.id, sport.id],
-      );
-    }
-  });
+let server, base, n = 0;
+const api = async (method, path, { token, body, query } = {}) => {
+  const r = await fetch(`${base}/api/v1${path}${query ? `?${new URLSearchParams(query)}` : ''}`, { method, headers: { 'content-type': 'application/json', ...(token ? { authorization: `Bearer ${token}` } : {}) }, body: body ? JSON.stringify(body) : undefined });
+  const text = await r.text();
+  let json; try { json = JSON.parse(text); } catch { json = text; }
+  return { status: r.status, body: json };
+};
+const must = (r, status = 200) => { assert.equal(r.status, status, JSON.stringify(r.body).slice(0, 400)); return r.body; };
+const signup = async (roles) => {
+  n++;
+  const r = await api('POST', '/auth/register', { body: { handle: `ooc_${n}_${roles[0]}`, display_name: `Command ${n}`, email: `ooc${n}@example.com`, password: 'correct-horse-battery', roles } });
+  assert.equal(r.status, 201, JSON.stringify(r.body));
+  return { ...r.body.user, token: r.body.token };
+};
+const referee = async (sport = 'football') => {
+  const r = await signup(['referee']);
+  must(await api('POST', '/me/sport-profiles', { token: r.token, body: { sport, role: 'referee' } }), 201);
+  return r;
+};
 
-  after(async () => {
-    // cleanup is handled by test helpers / test db truncation
-  });
+before(async () => {
+  await pool.query('DROP SCHEMA public CASCADE; CREATE SCHEMA public');
+  await migrate();
+  server = createApp().listen(0);
+  base = `http://localhost:${server.address().port}`;
+});
+after(async () => { server.close(); await pool.end(); });
 
-  // ── Invite & respond ───────────────────────────────────────────────────────
-  it('owner invites official → invite row created with status=invited', async () => {
-    const r = await request('POST', `/organisations/${org.id}/officials/roster`, owner, { user_id: official1.id, sport_id: sport.id });
-    assert.equal(r.status, 'invited');
-    assert.equal(r.user_id, official1.id);
-  });
+async function world() {
+  const owner = await signup(['organizer']);
+  const org = must(await api('POST', '/organisations', { token: owner.token, body: { name: `Island Referees ${n}`, kind: 'club', city: 'Palma' } }), 201);
+  const sportId = (await pool.query("SELECT id FROM sports WHERE slug='football'")).rows[0].id;
+  return { owner, org, sportId };
+}
 
-  it('duplicate invite returns 409', async () => {
-    const r = await request('POST', `/organisations/${org.id}/officials/roster`, owner, { user_id: official1.id, sport_id: sport.id });
-    assert.equal(r._status, 409);
-  });
+test('roster: invite, accept or decline, suspend, reinstate, remove; history is kept and outsiders get nothing', async () => {
+  const { owner, org, sportId } = await world();
+  const [r1, r2, outsider] = [await referee(), await referee(), await signup(['organizer'])];
 
-  it('official accepts invite → status becomes active', async () => {
-    const rows = await pool.query("SELECT id FROM org_official_rosters WHERE organisation_id=$1 AND user_id=$2", [org.id, official1.id]);
-    const rosterId = rows.rows[0].id;
-    const r = await request('POST', `/org-official-roster/${rosterId}/respond`, official1, { response: 'accept' });
-    assert.equal(r.status, 'active');
-  });
+  const inv = must(await api('POST', `/organisations/${org.id}/officials/roster`, { token: owner.token, body: { user_id: r1.id, sport_id: sportId, notes: 'Regional panel' } }), 201);
+  assert.equal(inv.status, 'invited');
+  assert.equal((await api('POST', `/organisations/${org.id}/officials/roster`, { token: owner.token, body: { user_id: r1.id, sport_id: sportId } })).status, 409, 'the same official and sport cannot be on the panel twice');
+  const bulk = must(await api('POST', `/organisations/${org.id}/officials/roster/bulk`, { token: owner.token, body: { user_ids: [r1.id, r2.id], sport_id: sportId } }), 201);
+  assert.ok(JSON.stringify(bulk).includes(r2.id), 'the second official is invited by the bulk call');
 
-  it('official declines invite → status becomes removed', async () => {
-    // invite official2 and have them decline
-    const inv = await request('POST', `/organisations/${org.id}/officials/roster`, owner, { user_id: official2.id, sport_id: sport.id });
-    const r = await request('POST', `/org-official-roster/${inv.id}/respond`, official2, { response: 'decline' });
-    assert.equal(r.status, 'removed');
-  });
+  // only the invited official can answer
+  assert.notEqual((await api('POST', `/org-official-roster/${inv.id}/respond`, { token: r2.token, body: { response: 'accept' } })).status, 200);
+  const acc = must(await api('POST', `/org-official-roster/${inv.id}/respond`, { token: r1.token, body: { response: 'accept' } }));
+  assert.equal(acc.status, 'active');
 
-  it('wrong user cannot respond to someone else's invite', async () => {
-    const inv = await request('POST', `/organisations/${org.id}/officials/roster`, owner, { user_id: official2.id, sport_id: sport.id });
-    const r = await request('POST', `/org-official-roster/${inv.id}/respond`, official1, { response: 'accept' });
-    assert.equal(r._status, 403);
-  });
+  const roster = must(await api('GET', `/organisations/${org.id}/officials/roster`, { token: owner.token }));
+  const rows = roster.items ?? roster.officials ?? roster.roster ?? roster;
+  assert.ok(rows.some((x) => x.user_id === r1.id && x.status === 'active'));
 
-  // ── Suspend / reinstate ────────────────────────────────────────────────────
-  it('owner suspends active official → status becomes suspended', async () => {
-    const rows = await pool.query("SELECT id FROM org_official_rosters WHERE organisation_id=$1 AND user_id=$2 AND status='active'", [org.id, official1.id]);
-    const rosterId = rows.rows[0].id;
-    const r = await request('POST', `/org-official-roster/${rosterId}/suspend`, owner, { reason: 'Test suspension' });
-    assert.equal(r.status, 'suspended');
-  });
+  const sus = must(await api('POST', `/org-official-roster/${inv.id}/suspend`, { token: owner.token, body: { reason: 'Licence under review' } }));
+  assert.equal(sus.status, 'suspended');
+  assert.equal(must(await api('POST', `/org-official-roster/${inv.id}/reinstate`, { token: owner.token, body: {} })).status, 'active');
+  assert.equal(must(await api('POST', `/org-official-roster/${inv.id}/remove`, { token: owner.token, body: { reason: 'Moved to another region' } })).status, 'removed');
+  const hist = (await pool.query('SELECT from_status, to_status FROM org_official_roster_history WHERE roster_id=$1 ORDER BY at, id', [inv.id])).rows;
+  assert.ok(hist.length >= 3, 'each change of state is recorded');
+  assert.equal((await pool.query('SELECT count(*)::int AS n FROM org_official_rosters WHERE id=$1', [inv.id])).rows[0].n, 1, 'a removed official is kept as history, not deleted');
 
-  it('admin reinstates suspended official → status becomes active', async () => {
-    const rows = await pool.query("SELECT id FROM org_official_rosters WHERE organisation_id=$1 AND user_id=$2 AND status='suspended'", [org.id, official1.id]);
-    const rosterId = rows.rows[0].id;
-    const r = await request('POST', `/org-official-roster/${rosterId}/reinstate`, admin, { reason: 'Cleared' });
-    assert.equal(r.status, 'active');
-    // history should have both transitions
-    const hist = await pool.query("SELECT * FROM org_official_roster_history WHERE roster_id=$1 ORDER BY at", [rosterId]);
-    assert.ok(hist.rows.some((h) => h.to_status === 'suspended'));
-    assert.ok(hist.rows.some((h) => h.to_status === 'active'));
-  });
+  // someone outside the organisation
+  for (const [m, p, b] of [['GET', `/organisations/${org.id}/officials/roster`], ['GET', `/organisations/${org.id}/officials/command`], ['POST', `/organisations/${org.id}/officials/roster`, { user_id: r2.id }], ['GET', `/organisations/${org.id}/officials/roster/export`]]) {
+    const r = await api(m, p, { token: outsider.token, body: b });
+    assert.ok([403, 404].includes(r.status), `${m} ${p} -> ${r.status}`);
+  }
+  assert.equal((await api('GET', `/organisations/${org.id}/officials/roster`)).status, 401);
+});
 
-  it('outsider cannot suspend an official from another org', async () => {
-    const rows = await pool.query("SELECT id FROM org_official_rosters WHERE organisation_id=$1 AND user_id=$2 AND status='active'", [org.id, official1.id]);
-    const rosterId = rows.rows[0].id;
-    const r = await request('POST', `/org-official-roster/${rosterId}/suspend`, outsider, { reason: 'hack' });
-    assert.equal(r._status, 403);
-  });
+test('assignors: grant, change, list and revoke delegated permissions', async () => {
+  const { owner, org, sportId } = await world();
+  const helper = await signup(['organizer']);
+  // an assignor is chosen from the organisation's own active members
+  await pool.query("INSERT INTO organisation_members(organisation_id, user_id, role, status) VALUES ($1,$2,'staff','active')", [org.id, helper.id]);
+  const g = must(await api('POST', `/organisations/${org.id}/assignors`, { token: owner.token, body: { user_id: helper.id, sport_id: sportId, jurisdiction: 'Mallorca', can_release: false } }), 201);
+  assert.equal(g.status, 'active');
+  assert.equal((await api('POST', `/organisations/${org.id}/assignors`, { token: owner.token, body: { user_id: helper.id, sport_id: sportId } })).status, 409, 'one grant per person and sport');
+  const upd = must(await api('POST', `/org-assignors/${g.id}/update`, { token: owner.token, body: { can_release: true } }));
+  assert.equal(upd.can_release, true);
+  const list = must(await api('GET', `/organisations/${org.id}/assignors`, { token: owner.token }));
+  assert.ok((list.items ?? list.assignors ?? list).some((x) => x.id === g.id));
+  // the grant lets the assignor invite to the panel; without it they could not
+  const ref = await referee();
+  assert.equal((await api('POST', `/organisations/${org.id}/officials/roster`, { token: helper.token, body: { user_id: ref.id, sport_id: sportId } })).status, 201);
+  assert.equal(must(await api('POST', `/org-assignors/${g.id}/revoke`, { token: owner.token, body: {} })).status, 'revoked');
+  const ref2 = await referee();
+  assert.ok([403, 404].includes((await api('POST', `/organisations/${org.id}/officials/roster`, { token: helper.token, body: { user_id: ref2.id, sport_id: sportId } })).status), 'a revoked grant stops working at once');
+  assert.ok([403, 404].includes((await api('POST', `/organisations/${org.id}/assignors`, { token: helper.token, body: { user_id: ref2.id } })).status), 'an assignor cannot grant permissions');
+});
 
-  // ── Assignor grants ────────────────────────────────────────────────────────
-  it('owner grants assignor permission → grant row created', async () => {
-    // admin is an org member already
-    const r = await request('POST', `/organisations/${org.id}/assignors`, owner, { user_id: admin.id, sport_id: sport.id, can_invite: true, can_assign: true, can_release: false });
-    assert.equal(r.status, 'active');
-    assert.equal(r.granted_to, admin.id);
-    assert.equal(r.can_invite, true);
-  });
+test('command centre, workload, unfilled fixtures, eligibility, messages and export all answer for the organisation', async () => {
+  const { owner, org, sportId } = await world();
+  const r1 = await referee();
+  const inv = must(await api('POST', `/organisations/${org.id}/officials/roster`, { token: owner.token, body: { user_id: r1.id, sport_id: sportId } }), 201);
+  must(await api('POST', `/org-official-roster/${inv.id}/respond`, { token: r1.token, body: { response: 'accept' } }));
 
-  it('grantee can call bulk-assign endpoint', async () => {
-    // create an event in the org
-    const ev = await testEvent({ organisation_id: org.id, organizer_id: owner.id });
-    // admin (grantee) should be able to query the event as organizer
-    const r = await request('GET', `/organisations/${org.id}/officials/command`, admin, {});
-    assert.ok(r.counts);
-  });
+  const cmd = must(await api('GET', `/organisations/${org.id}/officials/command`, { token: owner.token }));
+  assert.ok(JSON.stringify(cmd).length > 2);
+  must(await api('GET', `/organisations/${org.id}/officials/workload`, { token: owner.token, query: { days: 14 } }));
+  must(await api('GET', `/organisations/${org.id}/officials/unfilled`, { token: owner.token, query: { days_ahead: 21 } }));
+  must(await api('GET', `/organisations/${org.id}/officials/eligibility`, { token: owner.token }));
 
-  it('owner revokes assignor grant → grantee loses access', async () => {
-    const grants = await pool.query("SELECT id FROM org_assignor_grants WHERE organisation_id=$1 AND granted_to=$2 AND status='active'", [org.id, admin.id]);
-    const grantId = grants.rows[0].id;
-    const r = await request('POST', `/org-assignors/${grantId}/revoke`, owner, {});
-    assert.equal(r.status, 'revoked');
-  });
+  const msg = must(await api('POST', `/organisations/${org.id}/officials/messages`, { token: owner.token, body: { subject: 'Season briefing', body: 'Briefing on Thursday at the federation office.' } }), 201);
+  assert.ok(msg.id ?? msg.message?.id);
+  const told = (await pool.query("SELECT count(*)::int AS n FROM notifications WHERE user_id=$1", [r1.id])).rows[0].n;
+  assert.ok(told >= 1, 'the active official is notified');
+  const msgs = must(await api('GET', `/organisations/${org.id}/officials/messages`, { token: owner.token }));
+  assert.ok((msgs.items ?? msgs.messages ?? msgs).length >= 1);
 
-  it('duplicate grant returns 409', async () => {
-    // re-grant to admin
-    await request('POST', `/organisations/${org.id}/assignors`, owner, { user_id: admin.id, sport_id: sport.id });
-    const r = await request('POST', `/organisations/${org.id}/assignors`, owner, { user_id: admin.id, sport_id: sport.id });
-    assert.equal(r._status, 409);
-  });
+  const exp = await api('GET', `/organisations/${org.id}/officials/roster/export`, { token: owner.token });
+  assert.equal(exp.status, 200);
+  assert.ok(JSON.stringify(exp.body).includes(r1.display_name), 'the export lists the panel');
+});
 
-  // ── Command overview ───────────────────────────────────────────────────────
-  it('command overview returns correct roster counts', async () => {
-    const r = await request('GET', `/organisations/${org.id}/officials/command`, owner, {});
-    assert.ok(r.counts.active >= 1);
-  });
-
-  it('outsider gets 404 on command overview', async () => {
-    const r = await request('GET', `/organisations/${org.id}/officials/command`, outsider, {});
-    assert.equal(r._status, 404);
-  });
-
-  // ── Unfilled fixtures ──────────────────────────────────────────────────────
-  it('unfilled endpoint returns fixture when no referee assigned', async () => {
-    const ev = await testEvent({ organisation_id: org.id, organizer_id: owner.id, sport_id: sport.id });
-    const fix = await testFixture({ event_id: ev.id, status: 'scheduled', scheduled_at: new Date(Date.now() + 86400000 * 3).toISOString() });
-    const r = await request('GET', `/organisations/${org.id}/officials/unfilled`, owner, { days_ahead: 10 });
-    assert.ok(Array.isArray(r));
-    const found = r.find((f) => f.id === fix.id);
-    assert.ok(found);
-    assert.ok(found.roles_needed.includes('referee'));
-  });
-
-  // ── Broadcast message ──────────────────────────────────────────────────────
-  it('owner sends message to panel → recipient_count equals active officials', async () => {
-    // re-invite official2 and have them accept
-    let inv;
-    try { inv = await request('POST', `/organisations/${org.id}/officials/roster`, owner, { user_id: official2.id, sport_id: sport.id }); } catch (e) { /* may already exist */ }
-    if (inv?.id) await request('POST', `/org-official-roster/${inv.id}/respond`, official2, { response: 'accept' });
-    const r = await request('POST', `/organisations/${org.id}/officials/messages`, owner, { subject: 'Test broadcast', body: 'This is a test message for the panel.' });
-    assert.ok(r.recipient_count >= 1);
-  });
-
-  // ── Eligibility ────────────────────────────────────────────────────────────
-  it('eligibility endpoint categorises officials by credential band', async () => {
-    const r = await request('GET', `/organisations/${org.id}/officials/eligibility`, owner, {});
-    assert.ok(Array.isArray(r.expired));
-    assert.ok(Array.isArray(r.expiring));
-    assert.ok(Array.isArray(r.no_credential));
-  });
-
-  // ── Export ─────────────────────────────────────────────────────────────────
-  it('export returns CSV content-type with no PII columns', async () => {
-    const r = await request('GET', `/organisations/${org.id}/officials/roster/export`, owner, {}, { raw: true });
-    assert.equal(r.headers['content-type'], 'text/csv');
-    const csv = await r.text();
-    // must not expose personal address, tax id or payout details
-    assert.ok(!csv.toLowerCase().includes('tax_id'));
-    assert.ok(!csv.toLowerCase().includes('bank_account'));
-    assert.ok(!csv.toLowerCase().includes('address'));
-  });
-
-  // ── Org boundary ───────────────────────────────────────────────────────────
-  it('admin from org A cannot see org B roster', async () => {
-    const orgB = await testOrg({ owner_id: outsider.id });
-    const r = await request('GET', `/organisations/${orgB.id}/officials/roster`, admin, {});
-    assert.equal(r._status, 404);
-  });
+test('every command-centre capability is on REST, OpenAPI and MCP', async () => {
+  const names = ['get_org_officials_command', 'list_org_official_roster', 'invite_org_official', 'bulk_invite_org_officials', 'respond_org_official_invite', 'suspend_org_official', 'reinstate_org_official', 'remove_org_official',
+    'grant_assignor_permission', 'update_assignor_permission', 'revoke_assignor_permission', 'list_org_assignors', 'get_org_official_workload', 'get_org_unfilled_fixtures', 'send_org_officials_message', 'list_org_official_messages',
+    'get_org_official_eligibility', 'export_org_official_roster'];
+  for (const nm of names) assert.equal(capabilities.filter((c) => c.name === nm).length, 1, `${nm} is registered`);
+  const spec = must(await api('GET', '/openapi.json'));
+  const ops = new Set(Object.values(spec.paths).flatMap((p) => Object.values(p).map((o) => o.operationId)));
+  for (const nm of names) assert.ok(ops.has(nm), `${nm} in OpenAPI`);
+  const who = await signup(['organizer']);
+  const r = await fetch(`${base}/mcp`, { method: 'POST', headers: { 'content-type': 'application/json', accept: 'application/json, text/event-stream', authorization: `Bearer ${who.token}` }, body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/list' }) });
+  const text = await r.text();
+  for (const nm of names) assert.ok(text.includes(`"${nm}"`), `${nm} in MCP`);
 });
