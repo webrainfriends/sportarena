@@ -14,7 +14,7 @@ import { LoadError, explain } from '../access';
 import { c, r } from '../theme';
 import { t } from '../i18n';
 
-// ─── Factor state display ───────────────────────────────────────────────────────────────────────
+// ─── Factor state display ─────────────────────────────────────────────────────
 
 const FACTOR_STATE = {
   eligible:    { icon: '✅', label: t('oe.state.eligible'),    color: (C) => C.mintSoft  },
@@ -50,7 +50,7 @@ function EligibilityBadge({ eligible, blocking }) {
   return <Tag label={`⛔ ${t('oe.badge.ineligible')} · ${count} issue${count === 1 ? '' : 's'}`} color={c.redSoft} />;
 }
 
-// ─── Official self-view ────────────────────────────────────────────────────────────────────────
+// ─── Official self-view ───────────────────────────────────────────────────────
 
 function OfficialEligibilityView({ assignmentId }) {
   const { toast } = useSession();
@@ -135,7 +135,7 @@ function OfficialEligibilityView({ assignmentId }) {
   );
 }
 
-// ─── Organiser crew eligibility view ────────────────────────────────────────────────────────────────────────
+// ─── Organiser crew eligibility view ─────────────────────────────────────────
 
 function CrewEligibilityRow({ member, onGrantOverride, onViewConflicts }) {
   const [expanded, setExpanded] = useState(false);
@@ -191,7 +191,7 @@ function CrewEligibilityView({ fixtureId }) {
   const { toast } = useSession();
   const { push: go } = useNav();
   const q = useLoad(() => api.get(`/fixtures/${fixtureId}/officials/eligibility`), [fixtureId]);
-  const [overrideTarget, setOverrideTarget] = useState(null);
+  const [overrideTarget, setOverrideTarget] = useState(null); // { assignmentId, factorKey }
   const [busy, setBusy] = useState(false);
 
   if (q.error && !q.data) return <LoadError error={q.error} onRetry={q.reload} />;
@@ -249,7 +249,7 @@ function CrewEligibilityView({ fixtureId }) {
   );
 }
 
-// ─── Entry point (screen) ────────────────────────────────────────────────────────────────────────────────
+// ─── Entry point (screen) ─────────────────────────────────────────────────────
 
 /**
  * OfficialEligibility — mounted as a screen.

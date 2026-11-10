@@ -27,7 +27,7 @@ const txt = (n) => z.string().trim().max(n);
 const dateTime = z.string().datetime({ offset: true });
 const today = () => new Date().toISOString().slice(0, 10);
 
-// ─── helpers ─────────────────────────────────────────────────────────────────────────────────
+// ─── helpers ──────────────────────────────────────────────────────────────────
 
 /** Load a fixture official row, confirming the caller is either the official or the event organiser. */
 async function loadAssignment(c, assignmentId, user, { lock = false, requireOrg = false } = {}) {
@@ -151,6 +151,7 @@ async function evaluateEligibility(c, fo) {
   // 7. Association neutrality
   await factor('neutrality', 'Association neutrality', async () => {
     if (!fo.official_neutrality_required) return { state: 'eligible', detail: 'Not required for this event' };
+    // Check if official has a live role (admin/member) in any of the competing teams' associations
     const teamIds = (await c.query("SELECT home_team_id, away_team_id FROM fixtures WHERE id=(SELECT fixture_id FROM fixture_officials WHERE id=$1)", [fo.id])).rows[0];
     if (!teamIds) return { state: 'eligible' };
     const tids = [teamIds.home_team_id, teamIds.away_team_id].filter(Boolean);
@@ -177,7 +178,7 @@ async function evaluateEligibility(c, fo) {
   return { eligible, factors, blocking };
 }
 
-// ─── Capability: eligibility policy on the event ─────────────────────────────────────────────────────
+// ─── Capability: eligibility policy on the event ─────────────────────────────
 
 cap({
   name: 'get_eligibility_policy', method: 'GET', path: '/events/:id/official-eligibility-policy', tag: TAG,
@@ -217,7 +218,7 @@ cap({
   },
 });
 
-// ─── Capability: evaluate eligibility ────────────────────────────────────────────────────────────
+// ─── Capability: evaluate eligibility ────────────────────────────────────────
 
 cap({
   name: 'evaluate_official_eligibility', method: 'GET', path: '/official-assignments/:id/eligibility', tag: TAG,
@@ -237,6 +238,7 @@ cap({
     const ev = (await pool.query("SELECT organizer_id FROM fixtures f JOIN events e ON e.id=f.event_id WHERE f.id=$1", [i.id])).rows[0];
     if (!ev || (ev.organizer_id !== user.id && !hasRole(user, 'admin'))) throw notFound('Fixture');
     const officials = (await pool.query(`SELECT fo.id, fo.role, fo.status, fo.user_id, u.display_name FROM fixture_officials fo JOIN users u ON u.id=fo.user_id WHERE fo.fixture_id=$1 AND fo.status IN ('invited','accepted') ORDER BY fo.created_at`, [i.id])).rows;
+    // Load enriched fo rows for evaluation
     const enriched = (await pool.query(`SELECT fo.*, f.event_id, e.sport_id, e.official_policy, e.official_min_grade_rank, e.official_min_age, e.official_training_required, e.official_safeguarding_required, e.official_neutrality_required, e.official_conflict_declaration_required, f.scheduled_at, f.duration_min FROM fixture_officials fo JOIN fixtures f ON f.id=fo.fixture_id JOIN events e ON e.id=f.event_id WHERE fo.fixture_id=$1 AND fo.status IN ('invited','accepted')`, [i.id])).rows;
     const byId = Object.fromEntries(enriched.map((r) => [r.id, r]));
     const results = await Promise.all(officials.map(async (o) => {
@@ -247,7 +249,7 @@ cap({
   },
 });
 
-// ─── Capability: eligibility overrides ──────────────────────────────────────────────────────────────────
+// ─── Capability: eligibility overrides ───────────────────────────────────────
 
 cap({
   name: 'grant_eligibility_override', method: 'POST', path: '/official-assignments/:id/eligibility/override', tag: TAG, status: 201,
@@ -302,7 +304,7 @@ cap({
   },
 });
 
-// ─── Capability: appeal ────────────────────────────────────────────────────────────────────────────────
+// ─── Capability: appeal ───────────────────────────────────────────────────────
 
 cap({
   name: 'appeal_eligibility_decision', method: 'POST', path: '/official-assignments/:id/eligibility/appeal', tag: TAG, status: 201,
@@ -312,6 +314,7 @@ cap({
     return tx(async (c) => {
       const { fo } = await loadAssignment(c, i.id, user);
       if (fo.user_id !== user.id) throw forbidden('Only the official can submit an appeal for their own assignment');
+      // Verify there is actually a blocking factor
       const { eligible } = await evaluateEligibility(c, fo);
       if (eligible) throw conflict('No blocking eligibility factors to appeal', { code: 'already_eligible' });
       const caseRow = await openCase(c, {

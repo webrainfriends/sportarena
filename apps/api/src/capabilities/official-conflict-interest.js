@@ -48,7 +48,7 @@ const viewConflict = (oc, { showDetail = false } = {}) => ({
   version: oc.version,
 });
 
-// ─── Declare ──────────────────────────────────────────────────────────────────────────────────
+// ─── Declare ──────────────────────────────────────────────────────────────────
 
 cap({
   name: 'declare_official_conflict', method: 'POST', path: '/official-assignments/:id/conflicts', tag: TAG, status: 201,
@@ -67,6 +67,7 @@ cap({
         'INSERT INTO official_conflicts(fixture_official_id, kind, serious, counterparty, detail_enc, raised_by) VALUES ($1,$2,$3,$4,$5,$6) RETURNING *',
         [fo.id, i.kind, i.serious, i.counterparty ?? null, encrypt(i.detail, 'official_conflicts.detail'), user.id])).rows[0];
       await audit(c, user.id, 'declare_official_conflict', 'official_conflicts', row.id);
+      // Notify: if the official declared it, tell the organiser; if the organiser raised it, tell the official
       const notifyId = isOrg ? fo.user_id : fo.organizer_id;
       await notify(c, notifyId, {
         kind: 'official_conflict', title: 'Conflict of interest declared',
@@ -78,7 +79,7 @@ cap({
   },
 });
 
-// ─── List ──────────────────────────────────────────────────────────────────────────────────────────
+// ─── List ─────────────────────────────────────────────────────────────────────
 
 cap({
   name: 'list_official_conflicts', method: 'GET', path: '/official-assignments/:id/conflicts', tag: TAG,
@@ -93,7 +94,7 @@ cap({
   },
 });
 
-// ─── Decide ──────────────────────────────────────────────────────────────────────────────────
+// ─── Decide ───────────────────────────────────────────────────────────────────
 
 cap({
   name: 'decide_official_conflict', method: 'POST', path: '/official-conflicts/:id/decision', tag: TAG,
@@ -117,6 +118,7 @@ cap({
         'UPDATE official_conflicts SET status=$2, decided_by=$3, decided_at=now(), decision_note_enc=$4, version=version+1 WHERE id=$1',
         [oc.id, newStatus, user.id, noteEnc]);
       await audit(c, user.id, 'decide_official_conflict', 'official_conflicts', oc.id);
+      // If reassigning, release the official
       if (i.decision === 'reassign') {
         const fo = (await c.query('SELECT * FROM fixture_officials WHERE id=$1 FOR UPDATE', [oc.fixture_official_id])).rows[0];
         if (fo && ['invited', 'accepted'].includes(fo.status)) {
@@ -131,7 +133,7 @@ cap({
   },
 });
 
-// ─── Withdraw ──────────────────────────────────────────────────────────────────────────────────────
+// ─── Withdraw ─────────────────────────────────────────────────────────────────
 
 cap({
   name: 'withdraw_official_conflict', method: 'POST', path: '/official-conflicts/:id/withdraw', tag: TAG,

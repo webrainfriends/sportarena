@@ -14,7 +14,7 @@ import { LoadError, explain } from '../access';
 import { c, r } from '../theme';
 import { t } from '../i18n';
 
-// ─── Kind display ──────────────────────────────────────────────────────────────────────────────
+// ─── Kind display ─────────────────────────────────────────────────────────────
 
 const KIND_LABEL = {
   team_relationship:    t('oci.kind.team_relationship'),
@@ -27,7 +27,7 @@ const KIND_LABEL = {
 };
 const KIND_ICON = {
   team_relationship: '🤝', family_member: '👨‍👩‍👧', club_membership: '🏟️',
-  financial_interest: '💰', association_connection: '🏙', previous_involvement: '📋', other: '⚠️',
+  financial_interest: '💰', association_connection: '🏛', previous_involvement: '📋', other: '⚠️',
 };
 const STATUS_COLOR = {
   open:       (C) => C.sunSoft,
@@ -46,6 +46,7 @@ const STATUS_LABEL = {
 
 function ConflictCard({ item, onDecide, onWithdraw, canDecide, canWithdraw }) {
   const [showDetail, setShowDetail] = useState(false);
+  const [deciding, setDeciding] = useState(false);
   const color = STATUS_COLOR[item.status]?.(c) ?? c.paper;
   return (
     <Card color={color} pad={14}>
@@ -86,7 +87,7 @@ function ConflictCard({ item, onDecide, onWithdraw, canDecide, canWithdraw }) {
   );
 }
 
-// ─── Official's declaration wizard ──────────────────────────────────────────────────────────────────────────
+// ─── Official's declaration wizard ───────────────────────────────────────────
 
 function OfficialConflictView({ assignmentId }) {
   const { toast } = useSession();
@@ -124,6 +125,7 @@ function OfficialConflictView({ assignmentId }) {
   const items = q.data;
 
   const steps = [
+    // Step 0: select kind
     <View key="kind" style={{ gap: 10 }}>
       <T weight="800" size={16}>{t('oci.wizard.step1')}</T>
       <T size={13} color={c.mute}>{t('oci.wizard.step1_sub')}</T>
@@ -140,6 +142,7 @@ function OfficialConflictView({ assignmentId }) {
       <Btn title={t('common.next')} disabled={!form.kind} onPress={() => setStep(1)} style={{ minHeight: 48 }} />
     </View>,
 
+    // Step 1: counterparty + detail
     <View key="detail" style={{ gap: 10 }}>
       <T weight="800" size={16}>{t('oci.wizard.step2')}</T>
       <FormSheet
@@ -157,6 +160,7 @@ function OfficialConflictView({ assignmentId }) {
       </View>
     </View>,
 
+    // Step 2: seriousness toggle + review
     <View key="review" style={{ gap: 12 }}>
       <T weight="800" size={16}>{t('oci.wizard.step3')}</T>
       <Card>
@@ -222,12 +226,12 @@ function OfficialConflictView({ assignmentId }) {
   );
 }
 
-// ─── Organiser decision view ─────────────────────────────────────────────────────────────────────────────────
+// ─── Organiser decision view ──────────────────────────────────────────────────
 
 function OrganiserConflictView({ assignmentId }) {
   const { toast } = useSession();
   const q = useLoad(() => api.get(`/official-assignments/${assignmentId}/conflicts`), [assignmentId]);
-  const [decisionTarget, setDecisionTarget] = useState(null);
+  const [decisionTarget, setDecisionTarget] = useState(null); // { item, decision }
   const [busy, setBusy] = useState(false);
 
   const decide = async ({ note }) => {
@@ -288,7 +292,7 @@ function OrganiserConflictView({ assignmentId }) {
   );
 }
 
-// ─── Entry point (screen) ────────────────────────────────────────────────────────────────────────────────
+// ─── Entry point (screen) ─────────────────────────────────────────────────────
 
 /**
  * OfficialConflictInterest — mounted as a screen.
