@@ -34,7 +34,7 @@ cap({
   input: z.object({}),
   async handler({ user }) {
     await requireApproved(user);
-    const sports = await many("SELECT id, name, emoji FROM sports WHERE archived_at IS NULL ORDER BY name");
+    const sports = await many("SELECT id, name, emoji FROM sports ORDER BY name");
     return {
       sports,
       roles: ROLES,
@@ -124,8 +124,9 @@ cap({
         ...enc,
       };
       if (!p) {
-        const keys = ['user_id', ...Object.keys(cols)];
-        const vals = [user.id, ...Object.values(cols)];
+        // the first save is a wizard step too: keep the step it reached, or the wizard reopens at the start
+        const keys = ['user_id', ...Object.keys(cols), 'step_reached'];
+        const vals = [user.id, ...Object.values(cols), i.step_reached ?? 0];
         const ph = vals.map((_, j) => `$${j + 1}`).join(',');
         p = (await c.query(`INSERT INTO official_profiles(${keys.join(',')}) VALUES(${ph}) RETURNING *`, vals)).rows[0];
         await audit(c, user.id, 'official_profile_created', 'official_profiles', p.id);
@@ -326,7 +327,7 @@ cap({
       if (!p) throw notFound('Official profile');
       await c.query("UPDATE official_profile_rates SET archived_at=now() WHERE profile_id=$1 AND archived_at IS NULL", [p.id]);
       for (const r of i.rates) {
-        const pnEnc = r.private_notes ? encrypt(r.private_notes) : null;
+        const pnEnc = r.private_notes ? encrypt(r.private_notes, 'official_profile_rates.private_notes') : null;
         await c.query(`INSERT INTO official_profile_rates(
           profile_id,sport_id,role,fixture_type,level_label,fee_minor,fee_currency,
           includes_travel,travel_allowance_per_km_minor,expenses_note,valid_from,valid_until,
@@ -368,7 +369,7 @@ cap({
       }
       if (blockers.length) throw badRequest(blockers.join('; '));
       for (const s of sports) {
-        await c.query(`INSERT INTO sport_profiles(user_id,sport_id,role,updated_at) VALUES($1,$2,'referee',now()) ON CONFLICT(user_id,sport_id,role) DO UPDATE SET updated_at=now()`, [user.id, s.sport_id]);
+        await c.query("INSERT INTO sport_profiles(user_id,sport_id,role) VALUES($1,$2,'referee') ON CONFLICT(user_id,sport_id,role) DO NOTHING", [user.id, s.sport_id]);
       }
       await c.query("UPDATE users SET roles = CASE WHEN 'referee' = ANY(roles) THEN roles ELSE array_append(roles,'referee') END WHERE id=$1", [user.id]);
       const updated = (await c.query("UPDATE official_profiles SET status='published', published_at=COALESCE(published_at,now()), step_reached=9, row_version=row_version+1, updated_at=now() WHERE id=$1 AND row_version=$2 RETURNING id, status, published_at, row_version", [p.id, p.row_version])).rows[0];

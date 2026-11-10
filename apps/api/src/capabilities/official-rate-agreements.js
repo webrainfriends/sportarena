@@ -10,7 +10,7 @@ import { cap, id, money, page } from '../registry.js';
 import { one, many, tx } from '../db.js';
 import { badRequest, conflict, forbidden, notFound } from '../errors.js';
 import { notify } from '../notify.js';
-import { mustBePlatformAdmin } from '../access.js';
+import { mustBePlatformAdmin } from '../platform.js';
 
 const TAG = 'Rate agreements';
 
@@ -119,7 +119,7 @@ cap({
   summary: 'Dropdown data for new rate agreement wizard: sports, context types, rate types, currencies.',
   input: z.object({}),
   async handler() {
-    const sports = await many("SELECT id, name, emoji FROM sports WHERE archived_at IS NULL ORDER BY name");
+    const sports = await many("SELECT id, name, emoji FROM sports ORDER BY name");
     return { context_types: CONTEXT_TYPES, rate_types: RATE_TYPES, auto_renew: AUTO_RENEW, payment_triggers: PAYMENT_TRIGGERS, sports };
   },
 });
@@ -613,7 +613,7 @@ cap({
   summary: 'Platform admin: list all rate agreements for a given official.',
   input: z.object({ id, ...page }),
   async handler({ user }, i) {
-    mustBePlatformAdmin(user);
+    await mustBePlatformAdmin(user);
     return many(`
       SELECT a.*, u_cp.display_name AS counterpart_name, o.name AS org_name, s.name AS sport_name
       FROM official_rate_agreements a

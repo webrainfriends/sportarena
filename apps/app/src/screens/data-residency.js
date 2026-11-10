@@ -1,15 +1,21 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { ActivityIndicator, Platform, ScrollView, Text, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, Platform, Text, TouchableOpacity, View } from 'react-native';
+import { Screen } from '../ui';
 import { c, r } from '../theme';
 import { t } from '../i18n';
 import { useNav } from '../nav';
 import { useSession } from '../session';
 import { api } from '../api';
-import { CountryPicker } from '../country-picker';
+import { CountryPicker, countryName } from '../country-picker';
 import { locale, deviceZone } from '../locale';
 
 const TZ_COUNTRY_DR = { 'Asia/Kolkata': 'IN', 'Asia/Calcutta': 'IN', 'Asia/Colombo': 'LK', 'Asia/Dubai': 'AE', 'Asia/Singapore': 'SG', 'Asia/Kuala_Lumpur': 'MY', 'Asia/Bangkok': 'TH', 'America/New_York': 'US', 'America/Los_Angeles': 'US', 'America/Chicago': 'US', 'America/Toronto': 'CA', 'Europe/London': 'GB', 'Australia/Sydney': 'AU' };
 const inferCountry = () => { try { const reg = new Intl.Locale(locale).region; if (reg && /^[A-Z]{2}$/.test(reg)) return reg; } catch {} return TZ_COUNTRY_DR[deviceZone] ?? ''; };
+
+// People are told the country their data lives in, never the hosting provider or its region code.
+const REGION_COUNTRY = { 'ap-southeast-1': 'SG', 'ap-south-1': 'IN', 'us-east-1': 'US', 'ca-central-1': 'CA', 'me-central-1': 'AE' };
+const regionCountry = (region) => REGION_COUNTRY[region] ?? '';
+const regionLabel = (region, fallbackCountry) => countryName(regionCountry(region) || fallbackCountry) || t('residency.current_region');
 
 // ── shared primitives ──────────────────────────────────────────────────────────
 const Row = ({ children, style }) => <View style={[{ flexDirection: 'row', alignItems: 'center' }, style]}>{children}</View>;
@@ -39,6 +45,7 @@ const Btn = ({ label, onPress, variant = 'primary', disabled }) => {
 // ── DataResidency: main settings screen ───────────────────────────────────────
 export function DataResidency() {
   const { back, push } = useNav();
+  const { refresh } = useSession();
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [pickCountry, setPickCountry] = useState('');
@@ -63,6 +70,7 @@ export function DataResidency() {
     setSavingCountry(true);
     try {
       await api.patch('/me/home-country', { home_country: pickCountry });
+      await refresh().catch(() => {}); // the Home banner reads the session, so it must learn the country now
       const p = preview ?? await api.get('/data-residency/preview', { country: pickCountry });
       if (!p?.supported) { push('DataResidencyConsent', { country: pickCountry }); return; }
       const d = await api.get('/data-residency/me');
@@ -78,23 +86,16 @@ export function DataResidency() {
   const migrationAvailable = assignment && !transfer;
 
   return (
-    <ScrollView style={{ flex: 1, backgroundColor: c.bg }} contentContainerStyle={{ padding: 16, gap: 14 }} keyboardShouldPersistTaps="handled">
-      <Row style={{ marginBottom: 4 }}>
-        <TouchableOpacity onPress={back} hitSlop={12} style={{ marginRight: 12 }}>
-          <Text style={{ fontSize: 22, color: c.ink }}>←</Text>
-        </TouchableOpacity>
-        <Text style={{ fontSize: 17, fontWeight: '700', color: c.ink, flex: 1 }}>{t('residency.title')}</Text>
-      </Row>
-
+    <Screen><View style={{ gap: 14 }}>
       {assignment ? (
         <View style={{ borderRadius: r.card, padding: 20, overflow: 'hidden',
           ...(Platform.OS === 'web' ? { background: 'linear-gradient(135deg,#8458B3,#494D5F)' } : { backgroundColor: c.violet }) }}>
           <Text style={{ fontSize: 12, fontWeight: '600', color: 'rgba(255,255,255,0.8)', textTransform: 'uppercase', letterSpacing: 0.7, marginBottom: 6 }}>{t('residency.current_region')}</Text>
-          <Text style={{ fontSize: 22, fontWeight: '800', color: '#fff', marginBottom: 4 }}>{assignment.home_region}</Text>
-          <Text style={{ fontSize: 12, color: 'rgba(255,255,255,0.72)', marginBottom: 12 }}>{assignment.jurisdiction} · {assignment.data_classification}</Text>
+          <Text style={{ fontSize: 22, fontWeight: '800', color: '#fff', marginBottom: 4 }}>{regionLabel(assignment.home_region, assignment.jurisdiction)}</Text>
+          <Text style={{ fontSize: 12, color: 'rgba(255,255,255,0.72)', marginBottom: 12 }}>{[countryName(assignment.jurisdiction), assignment.data_classification].filter(Boolean).join(' · ')}</Text>
           <Row style={{ flexWrap: 'wrap', gap: 8 }}>
             <Chip label={`✓ ${t('residency.status.active')}`} bg="rgba(255,255,255,0.18)" color="#fff" />
-            <Chip label={`Policy v${assignment.policy_version}`} bg="rgba(255,255,255,0.18)" color="#fff" />
+            <Chip label={t('residency.policy_chip', { v: assignment.policy_version })} bg="rgba(255,255,255,0.18)" color="#fff" />
             {assignment.transfer_basis
               ? <Chip label={t('residency.status.fallback')} bg="rgba(255,180,0,0.3)" color="#fff" />
               : <Chip label={t('residency.status.in_country')} bg="rgba(95,211,154,0.25)" color="#fff" />}
@@ -113,7 +114,7 @@ export function DataResidency() {
           <CountryPicker label={t('residency.country_label')} value={pickCountry} onChange={setPickCountry} />
           {pickCountry && preview !== null ? (
             <View style={{ borderRadius: 10, padding: 12, backgroundColor: preview?.supported ? 'rgba(95,211,154,0.18)' : 'rgba(255,180,0,0.18)' }}>
-              <Text style={{ fontSize: 13, fontWeight: '700', color: preview?.supported ? '#2d7a4f' : '#8a5c00' }}>{preview?.supported ? t('residency.supported_banner') : t('residency.unsupported_banner')}</Text>
+              <Text style={{ fontSize: 13, fontWeight: '700', color: preview?.supported ? '#2d7a4f' : '#8a5c00' }}>{preview?.supported ? t('residency.supported_banner', { region: countryName(pickCountry) }) : t('residency.unsupported_banner', { country: countryName(pickCountry) })}</Text>
             </View>
           ) : pickCountry ? (
             <Text style={{ fontSize: 12, color: c.mute }}>{t('residency.preview_loading')}</Text>
@@ -166,7 +167,7 @@ export function DataResidency() {
         ) : consents.map((co, idx) => (
           <View key={co.id} style={{ paddingVertical: 10, borderBottomWidth: idx < consents.length - 1 ? 1 : 0, borderBottomColor: c.line }}>
             <Text style={{ fontSize: 13, fontWeight: '600', color: c.ink }}>{co.affirmative ? '✓ ' + t('residency.consent_granted') : '✗ ' + t('residency.consent_declined')}</Text>
-            <Text style={{ fontSize: 11, color: c.mute, marginTop: 2 }}>{co.source_country} → {co.destination_region} · {new Date(co.decided_at).toLocaleDateString()}</Text>
+            <Text style={{ fontSize: 11, color: c.mute, marginTop: 2 }}>{countryName(co.source_country)} → {regionLabel(co.destination_region)} · {new Date(co.decided_at).toLocaleDateString()}</Text>
             {co.revoked_at && <Text style={{ fontSize: 11, color: c.red, marginTop: 2 }}>{t('residency.consent_revoked')} {new Date(co.revoked_at).toLocaleDateString()}</Text>}
           </View>
         ))}
@@ -186,13 +187,14 @@ export function DataResidency() {
       {!migrationAvailable && (
         <Text style={{ fontSize: 11, color: c.mute, textAlign: 'center', marginTop: -8 }}>{transfer ? t('residency.migration_in_progress') : t('residency.migration_unavailable')}</Text>
       )}
-    </ScrollView>
+    </View></Screen>
   );
 }
 
 // ── DataResidencyConsent: Singapore fallback consent screen ───────────────────
 export function DataResidencyConsent({ route }) {
-  const { back, push } = useNav();
+  const { back } = useNav();
+  const { refresh } = useSession();
   const country = route?.params?.country ?? '';
   const [busy, setBusy] = useState(false);
   const [done, setDone] = useState(false);
@@ -214,32 +216,26 @@ export function DataResidencyConsent({ route }) {
         data_categories: ['profile_identity', 'sport_records', 'device_session', 'payment_references'],
         purposes: ['platform_access', 'event_management', 'results_rankings', 'communications', 'support_safety'],
       });
+      await refresh().catch(() => {});
       setDone(true);
     } finally { setBusy(false); }
-  }, [localCountry, policyInfo]);
+  }, [localCountry, policyInfo, refresh]);
 
   if (done) return (
     <View style={{ flex: 1, backgroundColor: c.bg, alignItems: 'center', justifyContent: 'center', padding: 32 }}>
-      <Text style={{ fontSize: 48, marginBottom: 16 }}>🇸🇬</Text>
+      <Text style={{ fontSize: 48, marginBottom: 16 }}>📍</Text>
       <Text style={{ fontSize: 20, fontWeight: '800', color: c.ink, marginBottom: 8, textAlign: 'center' }}>{t('residency.consent_success_title')}</Text>
       <Text style={{ fontSize: 14, color: c.mute, textAlign: 'center', lineHeight: 22 }}>{t('residency.consent_success_body')}</Text>
       <TouchableOpacity onPress={back} style={{ marginTop: 24, backgroundColor: c.pink, borderRadius: r.pill, paddingHorizontal: 32, paddingVertical: 14 }}>
-        <Text style={{ color: '#fff', fontWeight: '700', fontSize: 15 }}>{t('common.continue')}</Text>
+        <Text style={{ color: '#fff', fontWeight: '700', fontSize: 15 }}>{t('common.done')}</Text>
       </TouchableOpacity>
     </View>
   );
 
   return (
-    <ScrollView style={{ flex: 1, backgroundColor: c.bg }} contentContainerStyle={{ padding: 16, gap: 14 }} keyboardShouldPersistTaps="handled">
-      <Row style={{ marginBottom: 4 }}>
-        <TouchableOpacity onPress={back} hitSlop={12} style={{ marginRight: 12 }}>
-          <Text style={{ fontSize: 22, color: c.ink }}>←</Text>
-        </TouchableOpacity>
-        <Text style={{ fontSize: 17, fontWeight: '700', color: c.ink, flex: 1 }}>{t('residency.fallback_title')}</Text>
-      </Row>
-
+    <Screen><View style={{ gap: 14 }}>
       <View style={{ width: 56, height: 56, borderRadius: 16, backgroundColor: c.pinkSoft, alignItems: 'center', justifyContent: 'center' }}>
-        <Text style={{ fontSize: 28 }}>🇸🇬</Text>
+        <Text style={{ fontSize: 28 }}>📍</Text>
       </View>
 
       <Text style={{ fontSize: 20, fontWeight: '800', color: c.ink }}>{t('residency.fallback_title')}</Text>
@@ -272,7 +268,7 @@ export function DataResidencyConsent({ route }) {
         {[
           { k: t('residency.policy_version_label'), v: policyInfo ? `v${policyInfo.policy_version} · 2026-11-08` : '…' },
           { k: t('residency.policy_hash_label'), v: policyInfo ? `sha256:${policyInfo.policy_text_hash}…` : '…' },
-          { k: t('residency.policy_region_label'), v: 'ap-southeast-1' },
+          { k: t('residency.policy_region_label'), v: countryName('SG') },
         ].map(({ k, v }) => (
           <Row key={k} style={{ justifyContent: 'space-between' }}>
             <Text style={{ fontSize: 11, color: c.mute, fontWeight: '500' }}>{k}</Text>
@@ -289,15 +285,16 @@ export function DataResidencyConsent({ route }) {
       {!localCountry && (
         <CountryPicker value={localCountry} onChange={setLocalCountry} label={t('residency.country_label')} />
       )}
-      <Btn label={`🇸🇬 ${t('residency.fallback_agree')}`} onPress={agree} disabled={busy || localCountry.length !== 2 || !policyInfo} />
+      <Btn label={t('residency.fallback_agree')} onPress={agree} disabled={busy || localCountry.length !== 2 || !policyInfo} />
       <Btn label={`⏳ ${t('residency.fallback_waitlist')}`} onPress={back} variant="secondary" />
       <Btn label={t('residency.fallback_decline')} onPress={back} variant="ghost" />
       <Text style={{ fontSize: 11, color: c.mute, textAlign: 'center' }}>{t('residency.no_pretick')}</Text>
-    </ScrollView>
+    </View></Screen>
   );
 }
 
 // ── DataResidencyMigration: request region migration ──────────────────────────
+const TO_REGION = 'ap-south-1';
 export function DataResidencyMigration() {
   const { back } = useNav();
   const [data, setData] = useState(null);
@@ -312,36 +309,28 @@ export function DataResidencyMigration() {
     if (!data?.assignment) return;
     setBusy(true);
     try {
-      await api.post('/data-residency/migration', { to_region: 'ap-south-1' });
+      await api.post('/data-residency/migration', { to_region: TO_REGION });
       setDone(true);
     } finally { setBusy(false); }
   };
 
   if (!data) return <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: c.bg }}><ActivityIndicator color={c.pink} /></View>;
+  const from = data.assignment?.home_region;
 
   return (
-    <ScrollView style={{ flex: 1, backgroundColor: c.bg }} contentContainerStyle={{ padding: 16, gap: 14 }} keyboardShouldPersistTaps="handled">
-      <Row style={{ marginBottom: 4 }}>
-        <TouchableOpacity onPress={back} hitSlop={12} style={{ marginRight: 12 }}>
-          <Text style={{ fontSize: 22, color: c.ink }}>←</Text>
-        </TouchableOpacity>
-        <Text style={{ fontSize: 17, fontWeight: '700', color: c.ink, flex: 1 }}>{t('residency.migration_title')}</Text>
-      </Row>
-
+    <Screen><View style={{ gap: 14 }}>
       <Card>
         <Row style={{ gap: 10 }}>
           <View style={{ flex: 1, backgroundColor: c.bg, borderRadius: 12, padding: 12, borderWidth: 1.5, borderColor: c.line }}>
             <Text style={{ fontSize: 10, fontWeight: '700', color: c.mute, textTransform: 'uppercase', marginBottom: 4 }}>{t('residency.migration_from')}</Text>
-            <Text style={{ fontSize: 20 }}>🇸🇬</Text>
-            <Text style={{ fontSize: 13, fontWeight: '700', color: c.ink }}>AWS Singapore</Text>
-            <Text style={{ fontSize: 11, color: c.mute }}>ap-southeast-1</Text>
+            <Text style={{ fontSize: 20 }}>📍</Text>
+            <Text style={{ fontSize: 13, fontWeight: '700', color: c.ink }}>{regionLabel(from)}</Text>
           </View>
           <Text style={{ fontSize: 20, color: c.pink }}>→</Text>
           <View style={{ flex: 1, backgroundColor: c.pinkSoft, borderRadius: 12, padding: 12, borderWidth: 1.5, borderColor: c.pink }}>
             <Text style={{ fontSize: 10, fontWeight: '700', color: c.pink, textTransform: 'uppercase', marginBottom: 4 }}>{t('residency.migration_to')}</Text>
-            <Text style={{ fontSize: 20 }}>🇮🇳</Text>
-            <Text style={{ fontSize: 13, fontWeight: '700', color: c.ink }}>AWS Mumbai</Text>
-            <Text style={{ fontSize: 11, color: c.mute }}>ap-south-1</Text>
+            <Text style={{ fontSize: 20 }}>📍</Text>
+            <Text style={{ fontSize: 13, fontWeight: '700', color: c.ink }}>{regionLabel(TO_REGION)}</Text>
           </View>
         </Row>
       </Card>
@@ -371,13 +360,12 @@ export function DataResidencyMigration() {
         <Btn label={t('residency.migration_submit')} onPress={submit} disabled={busy} />
       )}
       <Btn label={t('common.cancel')} onPress={back} variant="ghost" />
-    </ScrollView>
+    </View></Screen>
   );
 }
 
 // ── DataResidencyAdmin: platform-admin region registry ────────────────────────
 export function DataResidencyAdmin() {
-  const { back } = useNav();
   const [catalog, setCatalog] = useState([]);
   const [loading, setLoading] = useState(true);
 
@@ -388,29 +376,23 @@ export function DataResidencyAdmin() {
   if (loading) return <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: c.bg }}><ActivityIndicator color={c.pink} /></View>;
 
   return (
-    <ScrollView style={{ flex: 1, backgroundColor: c.bg }} contentContainerStyle={{ padding: 16, gap: 14 }}>
-      <Row style={{ marginBottom: 4, gap: 12 }}>
-        <TouchableOpacity onPress={back} hitSlop={12}>
-          <Text style={{ fontSize: 22, color: c.ink }}>←</Text>
-        </TouchableOpacity>
-        <Text style={{ fontSize: 17, fontWeight: '700', color: c.ink, flex: 1 }}>{t('residency.admin.registry_title')}</Text>
-        <Chip label="🔒 Admin" bg={c.red} color="#fff" />
-      </Row>
+    <Screen><View style={{ gap: 14 }}>
+      <Row><Chip label={t('residency.admin.badge')} bg={c.red} color="#fff" /></Row>
       <Card>
         <SectionHead label={t('residency.admin.regions_heading')} />
         {catalog.map((reg) => (
           <Row key={reg.aws_region} style={{ paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: c.line, gap: 10 }}>
-            <Text style={{ fontSize: 20, width: 28 }}>🌍</Text>
+            <Text style={{ fontSize: 20, width: 28 }}>📍</Text>
             <View style={{ flex: 1 }}>
-              <Text style={{ fontSize: 13, fontWeight: '700', color: c.ink }}>{reg.display_name}</Text>
-              <Text style={{ fontSize: 11, color: c.mute }}>{reg.country_code} · {reg.aws_region}</Text>
+              <Text style={{ fontSize: 13, fontWeight: '700', color: c.ink }}>{countryName(reg.country_code) || reg.country_code}</Text>
+              <Text style={{ fontSize: 11, color: c.mute }}>{reg.country_code}</Text>
             </View>
-            <Chip label="Active" bg="#E0F5F1" color="#2F8F5F" />
+            <Chip label={t('residency.status.active')} bg="#E0F5F1" color="#2F8F5F" />
           </Row>
         ))}
-        {catalog.length === 0 && <Text style={{ fontSize: 13, color: c.mute }}>No active regions. Contact platform admin to activate.</Text>}
+        {catalog.length === 0 && <Text style={{ fontSize: 13, color: c.mute }}>{t('residency.admin.none')}</Text>}
       </Card>
-    </ScrollView>
+    </View></Screen>
   );
 }
 

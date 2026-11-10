@@ -47,7 +47,8 @@ export const languageInfo = (code) => LANGUAGES.find((l) => l.code === code) ?? 
 /** Translate a key into a language, falling back to English (never to the raw key unless it does not exist anywhere). */
 export function translate(code, key, params) {
   const text = PACKS[code]?.[key] ?? en[key] ?? key;
-  return params ? text.replace(/\{(\w+)\}/g, (m, k) => (params[k] === undefined ? m : String(params[k]))) : text;
+  // some packs were written with {{name}}: both spellings fill the same way, so a stray brace never reaches the screen
+  return params ? text.replace(/\{\{(\w+)\}\}|\{(\w+)\}/g, (m, a, b) => (params[a ?? b] === undefined ? m : String(params[a ?? b]))) : text;
 }
 
 /** True when a key exists in the English pack (used to fall back gracefully for values the server sends that we have no key for). */

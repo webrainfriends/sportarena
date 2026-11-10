@@ -40,10 +40,10 @@ cap({
   async handler(_ctx, { country }) {
     const row = await one(`SELECT aws_region, display_name, is_provisioned, is_healthy, is_policy_approved
       FROM residency_region_catalog WHERE country_code = $1 AND retired_at IS NULL ORDER BY effective_at DESC LIMIT 1`, [country]);
-    if (!row) return { country, supported: false, fallback_required: true, fallback_region: 'ap-southeast-1', fallback_display: 'AWS Singapore', ...policyInfo() };
+    if (!row) return { country, supported: false, fallback_required: true, fallback_region: 'ap-southeast-1', fallback_display: 'Singapore', ...policyInfo() };
     if (row.is_provisioned && row.is_healthy && row.is_policy_approved)
       return { country, supported: true, region: row.aws_region, display_name: row.display_name, fallback_required: false, ...policyInfo() };
-    return { country, supported: false, fallback_required: true, fallback_region: 'ap-southeast-1', fallback_display: 'AWS Singapore', ...policyInfo() };
+    return { country, supported: false, fallback_required: true, fallback_region: 'ap-southeast-1', fallback_display: 'Singapore', ...policyInfo() };
   },
 });
 

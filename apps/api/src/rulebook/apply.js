@@ -33,7 +33,7 @@ export function resolveBook(slug, format, values = {}) {
     ...c,
     params: c.params.map((p) => { const value = p.key in values ? values[p.key] : p.std; return { ...p, value, changed: value !== p.std }; }),
   }));
-  return { slug: b.slug, format: b.format, name: b.book.name, emoji: b.book.emoji, body: b.book.body, official_url: b.book.official_url, note: b.book.note, formats: b.book.formats ?? null, cards, changes: cards.flatMap((c) => c.params.filter((p) => p.changed).map((p) => ({ card: c.title, key: p.key, label: p.label, value: p.value, std: p.std, unit: p.unit }))) };
+  return { slug: b.slug, format: b.format, name: b.book.name, emoji: b.book.emoji, body: b.book.body, official_url: b.book.official_url, note: b.book.note, depth: b.book.cards.some((c) => c.points?.length) ? 'handbook' : 'summary', formats: b.book.formats ?? null, cards, changes: cards.flatMap((c) => c.params.filter((p) => p.changed).map((p) => ({ card: c.title, key: p.key, label: p.label, value: p.value, std: p.std, unit: p.unit }))) };
 }
 
 const show = (v, unit) => (typeof v === 'boolean' ? (v ? 'on' : 'off') : `${v}${unit ? ` ${unit}` : ''}`);

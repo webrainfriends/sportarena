@@ -21,6 +21,11 @@ export { KINDS, MODES };
 export const STAGES = [['new', 'New'], ['in_conversation', 'In conversation'], ['referred', 'Sent to apply'], ['applied', 'Applied'], ['admitted', 'Admitted'], ['enrolled', 'Enrolled'], ['declined', 'Declined'], ['withdrawn', 'Withdrawn'], ['closed', 'Closed']];
 export const label = (list, v) => list.find(([k]) => k === v)?.[1] ?? String(v).replace(/_/g, ' ');
 export const openLink = (url) => (Platform.OS === 'web' ? window.open(url, '_blank', 'noopener') : Linking.openURL(url));
+/** The governing body's rulebook link, offered only once the server has confirmed the page answers. */
+function OfficialBookLink({ sport }) {
+  const link = useLoad(() => api.get(`/rulebook/${sport}/official-link`).catch(() => null), [sport]);
+  return link.data?.verified ? <Btn small title={t(link.data.exact ? 'rulebook.official' : 'rulebook.official_home')} color={c.cyan} onPress={() => openLink(link.data.url)} /> : null;
+}
 const day = (d) => new Date(d).toLocaleDateString(locale, { day: 'numeric', month: 'short', year: 'numeric' });
 const fail = (toast) => (e) => toast('' + e.message);
 const opts = (list) => list.map(([value, l]) => ({ value, label: l }));
@@ -106,7 +111,7 @@ function Learn({ onFind }) {
             ))}
             {rules.data.rulebook ? (
               <View style={{ flexDirection: 'row', gap: 8, flexWrap: 'wrap' }}>
-                <Btn small title="Official book ↗" color={c.cyan} onPress={() => openLink(rules.data.rulebook.official_url)} />
+                <OfficialBookLink sport={rules.data.sport.slug} />
                 <Btn small title="Localise these rules" color={c.violet} onPress={() => push('SportRules', { sport: rules.data.sport.slug })} />
               </View>
             ) : null}

@@ -31,11 +31,13 @@ const LANG_OPTIONS = LOCALES.map((tag) => {
   const info = LANGUAGES.find((l) => l.code === code);
   const badge = info?.reviewed ? '✓' : '⚠';
   const rtlMark = info?.rtl ? ' ⇐' : '';
-  const label = info ? `${info.name}${rtlMark}` : localeLabel(tag);
-  const reviewer = info?.reviewMeta?.reviewer ? ` · ${info.reviewMeta.reviewer}` : '';
+  // every row names its country too: "English · India", "English · Singapore" (several regions share one language pack)
+  const region = (() => { try { const reg = new Intl.Locale(tag).region; return reg ? new Intl.DisplayNames([tag], { type: 'region' }).of(reg) : ''; } catch { return ''; } })();
+  const label = info ? `${info.name}${region ? ` · ${region}` : ''}${rtlMark}` : localeLabel(tag);
+  // the reviewer's identity is an internal record (i18n/core.js) and is never shown to members
   const reviewedAt = info?.reviewMeta?.reviewedAt ? ` · ${info.reviewMeta.reviewedAt}` : '';
   const sub = info?.reviewed
-    ? `${badge} ${t('account.lang_reviewed')}${reviewer}${reviewedAt}`
+    ? `${badge} ${t('account.lang_reviewed')}${reviewedAt}`
     : `${badge} ${t('account.lang_draft')}`;
   return { value: tag, label, sub };
 });

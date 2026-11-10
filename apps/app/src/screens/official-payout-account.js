@@ -13,6 +13,7 @@ import { FormSheet } from '../FormSheet';
 import { c, grad, r } from '../theme';
 import { Banner, Metric, money } from '../federation-ui';
 import { t } from '../i18n';
+import { CountryPicker } from '../country-picker';
 
 const RTL = I18nManager.isRTL;
 
@@ -174,7 +175,7 @@ function SetupWizard({ officialId, currency, onDone, disclosure }) {
             ))}
           </View>
           <Field label={t('opa.legal_name')} value={form.legal_name} onChangeText={v => set('legal_name', v)} placeholder={t('opa.legal_name_placeholder')} maxLength={200} accessibilityLabel={t('opa.legal_name')} />
-          <Field label={t('opa.tax_country')} value={form.tax_country} onChangeText={v => set('tax_country', v.toUpperCase())} placeholder="GB" maxLength={2} accessibilityLabel={t('opa.tax_country')} />
+          <CountryPicker label={t('opa.tax_country')} value={form.tax_country} onChange={(v) => set('tax_country', v)} />
           <Field label={t('opa.tax_id')} value={form.tax_id} onChangeText={v => set('tax_id', v)} placeholder={t('opa.tax_id_placeholder')} maxLength={50} secure accessibilityLabel={t('opa.tax_id')} />
           <Btn title={t('opa.next')} onPress={() => setStep(2)} disabled={!form.legal_name || !form.tax_country} accessibilityLabel={t('opa.next')} />
         </View>
