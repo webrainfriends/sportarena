@@ -15,7 +15,7 @@ CREATE TABLE IF NOT EXISTS official_rate_agreements (
   -- context
   context_type    text NOT NULL CHECK (context_type IN ('event_override','academy_contract','season_series','club_org','retainer')),
   event_id        uuid REFERENCES events(id),                  -- for event_override
-  season_id       uuid REFERENCES seasons(id),                 -- for season_series (nullable until seasons table)
+  season_id       uuid,                                         -- comp season reference; FK added when seasons table is introduced
   sport_id        uuid REFERENCES sports(id),
   official_role   text NOT NULL,                               -- matches OFFICIAL_ROLES
 
