@@ -15781,6 +15781,51 @@ export default {
   'opw.view.sports': 'Sports & Roles',
   'opw.view.credentials': 'Credentials',
   'opw.view.rates': 'Rate Cards',
+  'opw.cred.section_title': 'Credentials',
+  'opw.completeness.label': 'Profile completeness',
+  'opw.completeness.a11y': 'Profile {{pct}} percent complete',
+  'opw.completeness.guidance_title': 'Complete your profile',
+  'opw.bio_langs.title': 'Bio in other languages',
+  'opw.bio_langs.hint': 'Elite academies search in native script. Add your bio in the languages you work in.',
+  'opw.bio_langs.placeholder': 'Write a short professional bio in {{lang}}…',
+  'opw.bio_langs.save': 'Save bio',
+  'opw.bio_langs.saved': 'Bio saved',
+  'opw.bio_langs.coverage': '{{n}} language(s) covered',
+  'opw.compliance.title': 'Compliance & Clearances',
+  'opw.compliance.hint': 'Mandatory for elite academies — your compliance status is visible to organisers.',
+  'opw.compliance.kind.dbs_police': 'DBS / Police Check',
+  'opw.compliance.kind.safeguarding': 'Safeguarding Certificate',
+  'opw.compliance.kind.fitness_test': 'Fitness Test',
+  'opw.compliance.kind.insurance': 'Public Liability Insurance',
+  'opw.compliance.kind.anti_corruption': 'Anti-Corruption Declaration',
+  'opw.compliance.kind.medical': 'Medical Clearance',
+  'opw.compliance.kind.other_compliance': 'Other Compliance',
+  'opw.compliance.status.ok': 'Valid',
+  'opw.compliance.status.expiring_soon': 'Expiring soon',
+  'opw.compliance.status.expired': 'Expired',
+  'opw.compliance.status.missing': 'Missing',
+  'opw.compliance.status.suspended': 'Suspended',
+  'opw.compliance.expires_in': 'Expires in {{n}} days',
+  'opw.compliance.expired_on': 'Expired {{d}}',
+  'opw.compliance.add': 'Upload clearance',
+  'opw.compliance.update': 'Update',
+  'opw.compliance.alerts_title': 'Compliance Alerts',
+  'opw.compliance.alerts_clear': 'All clearances valid',
+  'opw.compliance.blocking': '{{n}} mandatory clearance(s) blocking publish',
+  'opw.portfolio.title': 'Career Portfolio',
+  'opw.portfolio.hint': 'Add links to match footage, referee reports, media coverage, or interviews. Up to 10 links.',
+  'opw.portfolio.kind.video': 'Match footage',
+  'opw.portfolio.kind.article': 'Article',
+  'opw.portfolio.kind.match_report': 'Official report',
+  'opw.portfolio.kind.interview': 'Interview',
+  'opw.portfolio.kind.other': 'Other',
+  'opw.portfolio.add': 'Add link',
+  'opw.portfolio.label_placeholder': 'e.g. Wimbledon 2024 Final',
+  'opw.portfolio.url_placeholder': 'https://…',
+  'opw.portfolio.empty': 'No portfolio links yet',
+  'opw.portfolio.count': '{{n}} link(s)',
+  'opw.portfolio.remove': 'Remove',
+  'opw.portfolio.max': 'Maximum 10 links reached',
   'nav.title.OfficialProfileWizard': 'Official Profile Setup',
   'nav.title.OfficialProfileView': 'Official Profile',
   'nav.title.RateCardCatalog': 'Rate Cards', // machine draft, reviewed: false
@@ -17423,6 +17468,79 @@ export default {
   'oci.decide.done.reassign': 'Official released and reassigned. They have been notified.', // reviewed: false
   'oci.decide.done.escalate': 'Escalated to governing body.', // reviewed: false
 
+  // REF-R10: assignor delegation
+  'official.assignor.grant': 'Grant assignor access', // reviewed: false
+  'official.assignor.revoke': 'Revoke assignor access', // reviewed: false
+  'official.assignor.hub': 'Assignor Hub', // reviewed: false
+  'official.assignor.hub_subtitle': 'Manage crew invitations on behalf of the organiser', // reviewed: false
+  'official.assignor.invite': 'Invite official', // reviewed: false
+  'official.assignor.no_grants': 'No active assignor grants', // reviewed: false
+  'official.assignor.select_role': 'Select role', // reviewed: false
+  'official.assignor.invited': 'Invitation sent', // reviewed: false
+  'official.role_permissions.title': 'Your permissions on this fixture', // reviewed: false
+  'official.role_permissions.can_score': 'Can score', // reviewed: false
+  'official.role_permissions.can_file_report': 'Can file report', // reviewed: false
+  'official.role_permissions.can_submit_report': 'Can submit report', // reviewed: false
+  'official.role_permissions.can_read_all': 'Can read all reports', // reviewed: false
+  'official.role_permissions.is_chief': 'Chief official', // reviewed: false
+  'official.role_permissions.is_scorer': 'Scorer', // reviewed: false
+  'official.role_permissions.is_observer': 'Observer', // reviewed: false
+  'official.revocation.title': 'Access revoked', // reviewed: false
+  'official.revocation.body': 'Your offline scorer pack for this fixture has been revoked.', // reviewed: false
+  'official.audit_trail.title': 'Fixture audit trail', // reviewed: false
+  'official.audit_trail.no_rows': 'No audit events recorded yet', // reviewed: false
+  'official.audit_trail.action': 'Action', // reviewed: false
+  'official.audit_trail.actor': 'By', // reviewed: false
+  'official.audit_trail.time': 'Time', // reviewed: false
+  'official.audit_trail.hash': 'Hash', // reviewed: false
+  'official.report.submit': 'Submit report', // reviewed: false
+  'official.report.revise': 'Revise report', // reviewed: false
+  'official.report.filed_by': 'Filed by', // reviewed: false
+  'official.report.submitted_at': 'Submitted', // reviewed: false
+
+  // REF-R10: Official requirements tab
+  'official.requirements.title': 'AI Requirements', // reviewed: false
+  'official.requirements.auto_detected': 'Auto-detected from sport governing body', // reviewed: false
+  'official.requirements.governing_body': 'Governing body', // reviewed: false
+  'official.requirements.source_ref': 'Source reference', // reviewed: false
+  'official.requirements.role_required': 'Role required', // reviewed: false
+  'official.requirements.min_grade': 'Minimum grade', // reviewed: false
+  'official.requirements.fulfilled': '{{n}}/{{total}} assigned', // reviewed: false
+  'official.requirements.deficit_alert': 'Crew deficit — match at risk', // reviewed: false
+  'official.requirements.deficit_count': '{{n}} required role(s) unfilled', // reviewed: false
+  'official.deficit.proceed_degraded': 'Proceed (degraded)', // reviewed: false
+  'official.deficit.postpone': 'Postpone match', // reviewed: false
+  'official.deficit.cancelled': 'Cancel match', // reviewed: false
+  'official.deficit.organiser_note_placeholder': 'Add organiser note (optional)…', // reviewed: false
+  'official.deficit.accept_degradation': 'Accept & proceed with degradation', // reviewed: false
+  'official.degraded.report_banner_title': 'Degraded result — points impact', // reviewed: false
+  'official.degraded.report_banner_body': 'This match proceeded with insufficient officials. Results carry a degradation multiplier.', // reviewed: false
+  'official.degraded.multiplier_label': 'Degradation factor', // reviewed: false
+  'official.degraded.points_impact_title': 'Points impact', // reviewed: false
+  'official.degraded.standard_pts': 'Standard points', // reviewed: false
+  'official.degraded.adjusted_pts': 'Adjusted points', // reviewed: false
+
+  'crew.requirements.title': 'AI Crew Requirements', // reviewed: false
+  'crew.requirements.subtitle': 'Based on {{sport}} governing body rules', // reviewed: false
+  'crew.requirements.compliant': 'Fully staffed', // reviewed: false
+  'crew.requirements.deficit': 'Crew deficit', // reviewed: false
+  'crew.requirements.severe': 'Severe crew deficit', // reviewed: false
+  'crew.requirements.penalty': 'Points/rank impact applies', // reviewed: false
+  'crew.requirements.no_penalty': 'No penalty configured', // reviewed: false
+  'crew.requirements.suggest': 'Suggest crew', // reviewed: false
+  'crew.requirements.accept': 'Accept suggestion', // reviewed: false
+  'crew.requirements.role': 'Role', // reviewed: false
+  'crew.requirements.required': 'Required', // reviewed: false
+  'crew.requirements.assigned': 'Assigned', // reviewed: false
+  'crew.requirements.deficit_col': 'Deficit', // reviewed: false
+  'crew.requirements.basis': 'Governing body', // reviewed: false
+  'crew.alert.title': 'Crew deficit alert', // reviewed: false
+  'crew.alert.body': '{{count}} required role(s) unfilled for {{fixture}}', // reviewed: false
+  'crew.penalty_config.title': 'Configure crew penalty', // reviewed: false
+  'crew.penalty_config.type': 'Penalty type', // reviewed: false
+  'crew.penalty_config.value': 'Penalty value', // reviewed: false
+  'crew.penalty_config.applies_after': 'Applies after (fixtures)', // reviewed: false
+
   // #994 organiser free / busy sheet: machine draft, reviewed: false
   'oavo.open': 'అందుబాటు',
   'oavo.title': 'వారు ఈ మ్యాచ్ తీసుకోగలరా?',
@@ -17508,4 +17626,78 @@ export default {
   'oavo.board.m_conflicts': 'పరిష్కరించాల్సిన వైరుధ్యాలు',
   'oavo.board.m_coverage': 'బృందం కవరేజ్',
   'oavo.board.coverage_short': 'కవరేజ్',
+
+  'orgOff.tab.command': 'కమాండ్',
+  'orgOff.tab.roster': 'జాబితా',
+  'orgOff.tab.workload': 'పని భారం',
+  'orgOff.tab.eligibility': 'అర్హత',
+  'orgOff.tab.unfilled': 'నింపబడలేదు',
+  'orgOff.tab.assignors': 'నియమించేవారు',
+  'orgOff.tab.comms': 'సంప్రదింపులు',
+  'orgOff.metric.active': 'సక్రియ',
+  'orgOff.metric.invited': 'ఆహ్వానించబడింది',
+  'orgOff.metric.suspended': 'నిలిపివేయబడింది',
+  'orgOff.metric.assignors': 'నియమించేవారు',
+  'orgOff.metric.elig_warnings': 'అర్హత హెచ్చరికలు',
+  'orgOff.metric.elig_sub': 'గడువు తీరింది లేదా తీరుతోంది',
+  'orgOff.metric.unfilled': 'నింపబడని మ్యాచ్‌లు',
+  'orgOff.metric.unfilled_sub': 'తర్వాతి 21 రోజులు',
+  'orgOff.metric.assignments_week': 'ఈ వారం',
+  'orgOff.metric.this_week': 'ఈ వారం',
+  'orgOff.all_sports': 'అన్ని క్రీడలు',
+  'orgOff.band.ok': 'అర్హులు',
+  'orgOff.band.expiring': 'త్వరలో గడువు తీరుతోంది',
+  'orgOff.band.expired': 'గడువు తీరింది',
+  'orgOff.band.none': 'సర్టిఫికేట్ లేదు',
+  'orgOff.status.all': 'అన్నీ',
+  'orgOff.status.active': 'సక్రియ',
+  'orgOff.status.invited': 'ఆహ్వానించబడింది',
+  'orgOff.status.suspended': 'నిలిపివేయబడింది',
+  'orgOff.status.removed': 'తొలగించబడింది',
+  'orgOff.section.elig_alerts': 'అర్హత హెచ్చరికలు',
+  'orgOff.section.unfilled_alert': 'నింపబడని మ్యాచ్‌లు',
+  'orgOff.section.unfilled_desc': 'మ్యాచ్‌లకు నిర్ణాయకులు అవసరం',
+  'orgOff.section.workload_week': 'ఈ వారం పని భారం',
+  'orgOff.action.view_all_elig': 'అన్ని అర్హత సమస్యలు చూడండి',
+  'orgOff.action.view_unfilled': 'నింపబడని మ్యాచ్‌లు చూడండి',
+  'orgOff.action.view_workload': 'పూర్తి పని భారం చూడండి',
+  'orgOff.action.assign': 'నియమించు',
+  'orgOff.action.suspend': 'నిలిపివేయు',
+  'orgOff.action.reinstate': 'పునర్నియమించు',
+  'orgOff.action.remove': 'జాబితా నుండి తొలగించు',
+  'orgOff.action.view_profile': 'ప్రొఫైల్ చూడండి',
+  'orgOff.roster.search': 'నిర్ణాయకులను వెతకండి',
+  'orgOff.roster.empty_title': 'ఇంకా జాబితాలో నిర్ణాయకులు లేరు',
+  'orgOff.roster.empty_sub': 'మీ బృందాన్ని నిర్మించడానికి నిర్ణాయకులను ఆహ్వానించండి.',
+  'orgOff.role.needed': 'అవసరం:',
+  'orgOff.workload.days': 'రోజులు',
+  'orgOff.workload.empty_title': 'సక్రియ నిర్ణాయకులు లేరు',
+  'orgOff.workload.empty_sub': 'పని భారం చూడటానికి నిర్ణాయకులను జోడించండి.',
+  'orgOff.workload.legend_ok': 'అందుబాటులో ఉంది',
+  'orgOff.workload.legend_busy': 'బిజీగా ఉంది',
+  'orgOff.workload.legend_cap': 'పరిమితిలో',
+  'orgOff.elig.all_clear': 'అన్ని సర్టిఫికేట్లు చెల్లుబాటు',
+  'orgOff.elig.all_clear_sub': 'ప్రస్తుతం గడువు తీరిన సర్టిఫికేట్ ఉన్న నిర్ణాయకులు లేరు.',
+  'orgOff.elig.expires': 'గడువు తీరుతుంది',
+  'orgOff.elig.no_licence': 'ఫైల్‌లో ఫెడరేషన్ లైసెన్స్ లేదు',
+  'orgOff.unfilled.empty_title': 'అన్ని మ్యాచ్‌లు నియమించబడ్డాయి',
+  'orgOff.unfilled.empty_sub': 'ప్రతి షెడ్యూల్ చేసిన మ్యాచ్‌కు ఆమోదించబడిన నిర్ణాయకుడు ఉన్నారు.',
+  'orgOff.assignors.active': 'సక్రియ',
+  'orgOff.assignors.revoked': 'రద్దు చేయబడింది',
+  'orgOff.assignors.can_invite': 'ఆహ్వానించవచ్చు',
+  'orgOff.assignors.can_assign': 'నియమించవచ్చు',
+  'orgOff.assignors.can_release': 'విడుదల చేయవచ్చు',
+  'orgOff.assignors.since': 'మంజూరు చేయబడింది',
+  'orgOff.assignors.revoke': 'నియమించే హక్కులు రద్దు చేయు',
+  'orgOff.assignors.empty_title': 'నియమించేవారు ఎవరూ లేరు',
+  'orgOff.assignors.empty_sub': 'సిబ్బందికి నిర్ణాయకులను ఆహ్వానించడానికి మరియు నియమించడానికి అధికారాలు ఇవ్వండి.',
+  'orgOff.comms.compose': 'కొత్త సందేశం',
+  'orgOff.comms.subject': 'విషయం',
+  'orgOff.comms.body': 'సందేశ విషయం',
+  'orgOff.comms.send': 'అన్ని సక్రియ నిర్ణాయకులకు పంపు',
+  'orgOff.comms.sending': 'పంపుతోంది',
+  'orgOff.comms.recipients': 'గ్రహీతలు',
+  'orgOff.comms.empty_title': 'ఇంకా సందేశాలు పంపబడలేదు',
+  'orgOff.comms.empty_sub': 'ఈ జాబితాలోని అన్ని నిర్ణాయకులకు సందేశం పంపండి.',
+  'nav.title.OrgOfficialsCommand': 'నిర్ణాయకులు',
 };

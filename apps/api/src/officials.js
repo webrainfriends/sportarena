@@ -266,3 +266,51 @@ export const ASSIGNMENT_SQL = `
          h.name AS home_name, a.name AS away_name, r.name AS resource_name, ve.id AS venue_id, ve.name AS venue_name, ve.city AS venue_city, ve.timezone AS venue_timezone
     FROM fixture_officials fo JOIN fixtures f ON f.id=fo.fixture_id JOIN events e ON e.id=f.event_id JOIN sports s ON s.id=e.sport_id
     LEFT JOIN teams h ON h.id=f.home_team_id LEFT JOIN teams a ON a.id=f.away_team_id LEFT JOIN resources r ON r.id=f.resource_id LEFT JOIN venues ve ON ve.id=r.venue_id`;
+
+// ── R10: role subsets for granular match RBAC ──────────────────────────────
+export const CHIEF_ROLES   = ['referee'];
+export const SCORER_ROLES  = ['scorer'];
+export const OBSERVER_ROLES = ['fourth_official', 'video_assistant_referee',
+                               'reserve_assistant_referee', 'goal_line_official'];
+export const REPORT_FILING_ROLES = ['referee', 'umpire', 'linesman', 'technical_official'];
+export const REPORT_SUBMIT_ROLES = ['referee'];
+
+/**
+ * Strip sensitive fields from a flattened export row based on who is reading it.
+ * - Tax/bank: only the subject themselves or platform_admin
+ * - Medical/bio: only doctor or admin
+ * - Minor DOB: truncate to year-month for non-guardians/non-admin
+ */
+export function redactExport(row, actor) {
+  const isOwnRecord     = actor.id === row.user_id;
+  const isAdmin         = actor.roles?.includes('admin');
+  const isDoctor        = actor.roles?.includes('doctor');
+  const isPlatformAdmin = isAdmin && actor.roles?.includes('platform_admin');
+
+  const out = { ...row };
+
+  // Tax / bank — only the official themselves or platform admin
+  if (!isOwnRecord && !isPlatformAdmin) {
+    for (const f of ['vat_number', 'bank_account', 'bank_sort_code', 'bank_iban',
+                     'tax_country', 'vat_registered', 'fee_minor', 'fee_currency',
+                     'pay_status', 'pay_confirmed_at']) {
+      out[f] = null;
+    }
+  }
+
+  // Medical / bio — only doctor or admin
+  if (!isDoctor && !isAdmin) {
+    for (const f of ['bio', 'clinical_note', 'medical_note']) {
+      out[f] = null;
+    }
+  }
+
+  // Minors' full DOB — truncate to year-month for non-guardians/non-admin
+  if (!actor.isGuardian && !isAdmin) {
+    if (out.birth_date && out.is_minor) {
+      out.birth_date = out.birth_date.slice(0, 7) + '-01';
+    }
+  }
+
+  return out;
+}

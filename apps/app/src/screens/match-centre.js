@@ -17,6 +17,7 @@ import { c } from '../theme';
 import { GamesByDay, SchedulePlanner } from './event-schedule';
 import { StageDesk, StagesView } from '../bracket-studio';
 import { AppearancesPanel } from './appearances';
+import { CrewComplianceSection } from './officials-console';
 import { CricketScorer } from './cricket-scorer';
 import { useScoreQueue } from '../scorer/queue';
 import { useSavedGame } from '../scorer/pack';

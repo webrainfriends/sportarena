@@ -172,6 +172,7 @@ export function CommandCentre({ o, role, archived, go, toast, reload }) {
   const [filter, setFilter] = useState('all'), [sheet, setSheet] = useState(null), [menu, setMenu] = useState(false);
   const { tablet } = useLayout();
   const { push } = useNav();
+  const goOfficials = () => push('OrgOfficialsCommand', { id: o.id });
   const cc = useLoad(() => api.get(`/organisations/${o.id}/command-centre`), [o.id]);
   if (cc.error) return <ErrorBox error={cc.error} onRetry={cc.reload} />;
   if (!cc.data) return <Loading />;
@@ -191,6 +192,16 @@ export function CommandCentre({ o, role, archived, go, toast, reload }) {
         <View style={[col, { width: tablet ? undefined : '100%' }]}><Queue o={o} cc={cc.data} filter={filter} setFilter={setFilter} openRecord={openRecord} toast={toast} reload={refresh} /></View>
         <View style={[col, { width: tablet ? undefined : '100%' }]}><Areas cc={cc.data} go={go} setFilter={setFilter} /></View>
       </View>
+      {['owner', 'admin', 'assignor'].includes(role) && !archived ? (
+        <Pressable onPress={goOfficials} accessibilityRole="button" accessibilityLabel="Official panel" style={({ pressed }) => ({ backgroundColor: pressed ? c.pinkSoft : c.paper, borderRadius: 14, padding: 14, flexDirection: 'row', alignItems: 'center', gap: 12, marginHorizontal: 0 })}>
+          <T size={22}>🏅</T>
+          <View style={{ flex: 1 }}>
+            <T weight="700">Official panel</T>
+            <T size={12} color={c.mute}>Roster, workload, eligibility, assignments</T>
+          </View>
+          <T color={c.mute}>›</T>
+        </Pressable>
+      ) : null}
       <Sheet visible={menu} onClose={() => setMenu(false)} title="Manage">
         {[['rollover', 'Season rollover', 'Start the next season from this one'], ['save', 'Save structure as template', 'Departments and groups, no people or money'], ['apply', 'Apply a template', 'Add a saved structure to this organisation']].map(([k, l, s]) => (
           <Pressable key={k} onPress={() => { setMenu(false); setSheet(k); }} accessibilityRole="button" accessibilityLabel={l} style={({ pressed }) => ({ minHeight: 56, paddingHorizontal: 12, borderRadius: 12, justifyContent: 'center', backgroundColor: pressed ? c.bg : 'transparent' })}>

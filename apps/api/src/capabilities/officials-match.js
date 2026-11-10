@@ -9,7 +9,7 @@ import { audit, isAdmin } from '../helpers.js';
 import { encrypt, decrypt } from '../crypto.js';
 import { notify } from '../notify.js';
 import { ask, askDetailed, aiConfigured, AI_RULES, quoteData } from '../ai.js';
-import { fixtureContext } from './match-tracking.js';
+import { fixtureContext, roleContext } from './match-tracking.js';
 import { packOf } from './rule-packs.js';
 import { checklistFor, checklistItems } from '../officials-checklist.js';
 import { isYouthEvent } from '../spectator.js';
@@ -498,6 +498,47 @@ cap({
       pack_hash: hash,
       expires_at: expiresAt.toISOString(),
       content: book,
+    };
+  },
+});
+
+// ------------------------------------------------------------------ R10 additions
+
+cap({
+  name: 'list_fixture_audit', method: 'GET', path: '/fixtures/:id/audit', tag: TAG,
+  summary: 'Tamper-evident audit trail for a fixture (organiser and platform admin only). Returns SHA-256 chained rows.',
+  input: z.object({ id, ...page }),
+  async handler({ user }, i) {
+    const x = await standing(user, i.id);
+    if (!x.organiser && !x.admin) throw notFound('Fixture');
+    const rows = await many(
+      `SELECT al.id, al.action, al.actor_id, al.subject_type, al.subject_id, al.detail, al.created_at, al.hash
+         FROM audit_log al WHERE al.subject_id=$1 ORDER BY al.created_at DESC, al.id DESC LIMIT $2 OFFSET $3`,
+      [i.id, i.limit, i.offset],
+    );
+    return { rows, fixture_id: i.id };
+  },
+});
+
+cap({
+  name: 'get_role_permissions', method: 'GET', path: '/fixtures/:id/permissions', tag: TAG,
+  summary: 'Returns the calling user\'s role-based permissions on this fixture (crew member, organiser, observer, scorer, etc.).',
+  input: z.object({ id }),
+  async handler({ user }, i) {
+    const ctx = await roleContext(user, i.id, pool);
+    return {
+      fixture_id: i.id,
+      role: ctx.officialRole,
+      organiser: ctx.organiser,
+      official: ctx.official,
+      canScore: ctx.canScore,
+      canFileReport: ctx.canFileReport,
+      canSubmitReport: ctx.canSubmitReport,
+      canReadAllReports: ctx.canReadAllReports,
+      canObserve: ctx.canObserve,
+      isChief: ctx.isChief,
+      isScorer: ctx.isScorer,
+      isObserver: ctx.isObserver,
     };
   },
 });

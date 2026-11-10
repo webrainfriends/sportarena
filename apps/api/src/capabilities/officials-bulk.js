@@ -19,7 +19,14 @@ const role = z.enum(OFFICIAL_ROLES);
 async function eventForOrganizerOrAdmin(user, eventId, c) {
   const ev = (await c.query('SELECT * FROM events WHERE id=$1', [eventId])).rows[0];
   if (!ev) throw notFound('event');
-  if (!isAdmin(user) && ev.organizer_id !== user.id) throw forbidden('Only the event organiser can manage assignments');
+  if (!isAdmin(user) && ev.organizer_id !== user.id) {
+    // Also allow an active org-level assignor grant (REF-R12)
+    const grant = ev.organisation_id ? (await c.query(
+      "SELECT 1 FROM org_assignor_grants WHERE organisation_id=$1 AND granted_to=$2 AND status='active' AND can_assign=true",
+      [ev.organisation_id, user.id],
+    )).rows[0] : null;
+    if (!grant) throw forbidden('Only the event organiser or a delegated assignor can manage assignments');
+  }
   return ev;
 }
 

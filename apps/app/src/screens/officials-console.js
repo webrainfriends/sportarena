@@ -814,3 +814,107 @@ export function OfficialsConsole({ id }) {
     </Screen>
   );
 }
+
+// ------------------------------------------------------------------ R10 additions
+
+/** Audit trail tab — shows tamper-evident audit chain for the fixture (organiser/admin only). */
+export function FixtureAuditTab({ fixtureId }) {
+  const { data, loading, error } = useLoad(() => api.get(`/fixtures/${fixtureId}/audit`, { limit: 100, offset: 0 }), [fixtureId]);
+  if (loading) return <Loading />;
+  if (error) return <T style={{ color: c.error }}>{error.message}</T>;
+  const rows = data?.rows ?? [];
+  return (
+    <ScrollView style={{ flex: 1 }}>
+      <Section title={t('official.audit_trail.title')}>
+        {rows.length === 0
+          ? <Empty label={t('official.audit_trail.no_rows')} />
+          : rows.map((row) => (
+              <Card key={row.id} style={{ marginBottom: 8 }}>
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <Chip label={row.action} />
+                  <T style={{ color: c.muted, fontSize: 11 }}>{new Date(row.created_at).toLocaleString()}</T>
+                </View>
+                <T style={{ fontSize: 12, color: c.muted, marginTop: 4 }}>
+                  {t('official.audit_trail.hash')}: {String(row.hash ?? '').slice(0, 8)}…
+                </T>
+              </Card>
+            ))}
+      </Section>
+    </ScrollView>
+  );
+}
+
+/** Permissions panel — shows role-based capability flags for the current user on this fixture. */
+export function FixturePermissionsPanel({ fixtureId }) {
+  const { data, loading, error } = useLoad(() => api.get(`/fixtures/${fixtureId}/permissions`), [fixtureId]);
+  if (loading) return <Loading />;
+  if (error) return <T style={{ color: c.error }}>{error.message}</T>;
+  const flags = [
+    { key: 'canScore',          label: t('official.role_permissions.can_score') },
+    { key: 'canFileReport',     label: t('official.role_permissions.can_file_report') },
+    { key: 'canSubmitReport',   label: t('official.role_permissions.can_submit_report') },
+    { key: 'canReadAllReports', label: t('official.role_permissions.can_read_all') },
+    { key: 'isChief',           label: t('official.role_permissions.is_chief') },
+    { key: 'isScorer',          label: t('official.role_permissions.is_scorer') },
+    { key: 'isObserver',        label: t('official.role_permissions.is_observer') },
+  ];
+  return (
+    <Card style={{ padding: 16 }}>
+      <T style={{ fontWeight: '700', fontSize: 15, marginBottom: 12 }}>{t('official.role_permissions.title')}</T>
+      {data?.role ? <T style={{ color: c.muted, fontSize: 13, marginBottom: 10 }}>Role: {data.role.replace(/_/g, ' ')}</T> : null}
+      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+        {flags.map(({ key, label }) => (
+          <View key={key} style={{ flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: data?.[key] ? c.success + '22' : c.error + '11', borderRadius: 8, paddingHorizontal: 10, paddingVertical: 6 }}>
+            <T style={{ fontSize: 12, color: data?.[key] ? c.success : c.muted }}>{data?.[key] ? '✓' : '✗'} {label}</T>
+          </View>
+        ))}
+      </View>
+    </Card>
+  );
+}
+
+/** Crew compliance section — AI-suggested crew requirements vs assigned. For match/event reports. */
+export function CrewComplianceSection({ fixtureId }) {
+  const { data, loading, error } = useLoad(() => api.get(`/fixtures/${fixtureId}/crew-compliance`), [fixtureId]);
+  if (loading) return <Loading />;
+  if (error) return null; // non-fatal — compliance may not be set up yet
+  if (!data) return null;
+  const statusColor = data.compliance_status === 'compliant' ? c.success : data.compliance_status === 'severe_deficit' ? c.error : c.warning;
+  const statusLabel = data.compliance_status === 'compliant'
+    ? t('crew.requirements.compliant')
+    : data.compliance_status === 'severe_deficit'
+    ? t('crew.requirements.severe')
+    : t('crew.requirements.deficit');
+  return (
+    <Card style={{ padding: 16, marginTop: 12 }}>
+      <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+        <T style={{ fontWeight: '700', fontSize: 15 }}>{t('crew.requirements.title')}</T>
+        <View style={{ backgroundColor: statusColor + '22', borderRadius: 8, paddingHorizontal: 10, paddingVertical: 4 }}>
+          <T style={{ color: statusColor, fontSize: 12, fontWeight: '600' }}>{statusLabel}</T>
+        </View>
+      </View>
+      <T style={{ color: c.muted, fontSize: 12, marginBottom: 10 }}>
+        {t('crew.requirements.subtitle', { sport: data.sport ?? '' })}
+      </T>
+      {data.required_crew?.length > 0 && (
+        <View style={{ gap: 6 }}>
+          {data.required_crew.map((row) => (
+            <View key={row.role} style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+              <T style={{ flex: 2, fontSize: 13 }}>{row.role?.replace(/_/g, ' ')}</T>
+              <T style={{ flex: 1, textAlign: 'center', fontSize: 13 }}>{row.assigned}/{row.min_required}</T>
+              {row.deficit > 0 ? <Tag label={`−${row.deficit}`} color={c.error} /> : <Tag label="✓" color={c.success} />}
+            </View>
+          ))}
+        </View>
+      )}
+      {data.penalty_applicable && data.penalty_detail ? (
+        <View style={{ marginTop: 12, padding: 10, backgroundColor: c.error + '11', borderRadius: 8 }}>
+          <T style={{ color: c.error, fontSize: 12, fontWeight: '600' }}>{t('crew.requirements.penalty')}</T>
+          <T style={{ color: c.error, fontSize: 12 }}>
+            {data.penalty_detail.penalty_type?.replace(/_/g, ' ')} — {data.penalty_detail.penalty_value}
+          </T>
+        </View>
+      ) : null}
+    </Card>
+  );
+}

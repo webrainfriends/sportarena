@@ -25,8 +25,17 @@ const COLS = 'd.id, d.subject_type, d.subject_id, d.kind, d.title, d.policy_id, 
 const FROM = 'FROM subject_documents d JOIN users u ON u.id=d.uploaded_by LEFT JOIN insurance_documents idoc ON idoc.id=d.insurance_document_id';
 
 /** 'manage' | 'member' for this team / event / venue (admins count as managers), else a 404 so existence is not leaked. */
-async function access(user, subjectType, subjectId) {
+async function access(user, subjectType, subjectId, doc) {
   if (subjectType === 'budget') return budgetStanding(user, subjectId);
+  if (subjectType === 'official_report') {
+    // R10: the filing official, chief referee, organiser, or platform admin
+    const { roleContext } = await import('./match-tracking.js');
+    const ctx = await roleContext(user, subjectId, null).catch(() => null);
+    if (!ctx) throw notFound('official_report');
+    const isOwner = doc?.filed_by === user.id || doc?.author_id === user.id;
+    if (!isOwner && !ctx.canReadAllReports && !ctx.organiser && !isAdmin(user)) throw notFound('official_report');
+    return ctx.organiser || isAdmin(user) ? 'manage' : 'member';
+  }
   const s = isAdmin(user) ? 'manage' : await standing(user, subjectType, subjectId);
   if (!s) throw notFound(subjectType);
   return s;
