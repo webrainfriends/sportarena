@@ -81,6 +81,8 @@ import './officials.js';
 import './officials-home.js';
 import './officials-availability.js';
 import './officials-match.js';
+import './officials-assignor.js';
+import './officials-crew-ai.js';
 import './officials-pay.js';
 import './officials-feedback.js';
 import './officials-extract.js';

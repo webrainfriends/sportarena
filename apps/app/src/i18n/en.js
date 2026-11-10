@@ -17403,4 +17403,64 @@ export default {
   'oci.decide.done.waive': 'Conflict waived. The official has been notified.',
   'oci.decide.done.reassign': 'Official released and reassigned. They have been notified.',
   'oci.decide.done.escalate': 'Escalated to governing body.',
+
+  // REF-R10: assignor delegation
+  'official.assignor.grant': 'Grant assignor access',
+  'official.assignor.revoke': 'Revoke assignor access',
+  'official.assignor.hub': 'Assignor Hub',
+  'official.assignor.hub_subtitle': 'Manage crew invitations on behalf of the organiser',
+  'official.assignor.invite': 'Invite official',
+  'official.assignor.no_grants': 'No active assignor grants',
+  'official.assignor.select_role': 'Select role',
+  'official.assignor.invited': 'Invitation sent',
+
+  // REF-R10: role permissions
+  'official.role_permissions.title': 'Your permissions on this fixture',
+  'official.role_permissions.can_score': 'Can score',
+  'official.role_permissions.can_file_report': 'Can file report',
+  'official.role_permissions.can_submit_report': 'Can submit report',
+  'official.role_permissions.can_read_all': 'Can read all reports',
+  'official.role_permissions.is_chief': 'Chief official',
+  'official.role_permissions.is_scorer': 'Scorer',
+  'official.role_permissions.is_observer': 'Observer',
+
+  // REF-R10: offline revocation
+  'official.revocation.title': 'Access revoked',
+  'official.revocation.body': 'Your offline scorer pack for this fixture has been revoked.',
+
+  // REF-R10: audit trail
+  'official.audit_trail.title': 'Fixture audit trail',
+  'official.audit_trail.no_rows': 'No audit events recorded yet',
+  'official.audit_trail.action': 'Action',
+  'official.audit_trail.actor': 'By',
+  'official.audit_trail.time': 'Time',
+  'official.audit_trail.hash': 'Hash',
+
+  // REF-R10: report filing
+  'official.report.submit': 'Submit report',
+  'official.report.revise': 'Revise report',
+  'official.report.filed_by': 'Filed by',
+  'official.report.submitted_at': 'Submitted',
+
+  // REF-R10: AI crew requirements
+  'crew.requirements.title': 'AI Crew Requirements',
+  'crew.requirements.subtitle': 'Based on {{sport}} governing body rules',
+  'crew.requirements.compliant': 'Fully staffed',
+  'crew.requirements.deficit': 'Crew deficit',
+  'crew.requirements.severe': 'Severe crew deficit',
+  'crew.requirements.penalty': 'Points/rank impact applies',
+  'crew.requirements.no_penalty': 'No penalty configured',
+  'crew.requirements.suggest': 'Suggest crew',
+  'crew.requirements.accept': 'Accept suggestion',
+  'crew.requirements.role': 'Role',
+  'crew.requirements.required': 'Required',
+  'crew.requirements.assigned': 'Assigned',
+  'crew.requirements.deficit_col': 'Deficit',
+  'crew.requirements.basis': 'Governing body',
+  'crew.alert.title': 'Crew deficit alert',
+  'crew.alert.body': '{{count}} required role(s) unfilled for {{fixture}}',
+  'crew.penalty_config.title': 'Configure crew penalty',
+  'crew.penalty_config.type': 'Penalty type',
+  'crew.penalty_config.value': 'Penalty value',
+  'crew.penalty_config.applies_after': 'Applies after (fixtures)',
 };

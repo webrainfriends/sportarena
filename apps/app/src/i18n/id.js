@@ -17456,4 +17456,54 @@ export default {
   'oci.decide.done.reassign': 'Official released and reassigned. They have been notified.', // reviewed: false
   'oci.decide.done.escalate': 'Escalated to governing body.', // reviewed: false
 
+  // REF-R10: assignor delegation
+  'official.assignor.grant': 'Grant assignor access', // reviewed: false
+  'official.assignor.revoke': 'Revoke assignor access', // reviewed: false
+  'official.assignor.hub': 'Assignor Hub', // reviewed: false
+  'official.assignor.hub_subtitle': 'Manage crew invitations on behalf of the organiser', // reviewed: false
+  'official.assignor.invite': 'Invite official', // reviewed: false
+  'official.assignor.no_grants': 'No active assignor grants', // reviewed: false
+  'official.assignor.select_role': 'Select role', // reviewed: false
+  'official.assignor.invited': 'Invitation sent', // reviewed: false
+  'official.role_permissions.title': 'Your permissions on this fixture', // reviewed: false
+  'official.role_permissions.can_score': 'Can score', // reviewed: false
+  'official.role_permissions.can_file_report': 'Can file report', // reviewed: false
+  'official.role_permissions.can_submit_report': 'Can submit report', // reviewed: false
+  'official.role_permissions.can_read_all': 'Can read all reports', // reviewed: false
+  'official.role_permissions.is_chief': 'Chief official', // reviewed: false
+  'official.role_permissions.is_scorer': 'Scorer', // reviewed: false
+  'official.role_permissions.is_observer': 'Observer', // reviewed: false
+  'official.revocation.title': 'Access revoked', // reviewed: false
+  'official.revocation.body': 'Your offline scorer pack for this fixture has been revoked.', // reviewed: false
+  'official.audit_trail.title': 'Fixture audit trail', // reviewed: false
+  'official.audit_trail.no_rows': 'No audit events recorded yet', // reviewed: false
+  'official.audit_trail.action': 'Action', // reviewed: false
+  'official.audit_trail.actor': 'By', // reviewed: false
+  'official.audit_trail.time': 'Time', // reviewed: false
+  'official.audit_trail.hash': 'Hash', // reviewed: false
+  'official.report.submit': 'Submit report', // reviewed: false
+  'official.report.revise': 'Revise report', // reviewed: false
+  'official.report.filed_by': 'Filed by', // reviewed: false
+  'official.report.submitted_at': 'Submitted', // reviewed: false
+  'crew.requirements.title': 'AI Crew Requirements', // reviewed: false
+  'crew.requirements.subtitle': 'Based on {{sport}} governing body rules', // reviewed: false
+  'crew.requirements.compliant': 'Fully staffed', // reviewed: false
+  'crew.requirements.deficit': 'Crew deficit', // reviewed: false
+  'crew.requirements.severe': 'Severe crew deficit', // reviewed: false
+  'crew.requirements.penalty': 'Points/rank impact applies', // reviewed: false
+  'crew.requirements.no_penalty': 'No penalty configured', // reviewed: false
+  'crew.requirements.suggest': 'Suggest crew', // reviewed: false
+  'crew.requirements.accept': 'Accept suggestion', // reviewed: false
+  'crew.requirements.role': 'Role', // reviewed: false
+  'crew.requirements.required': 'Required', // reviewed: false
+  'crew.requirements.assigned': 'Assigned', // reviewed: false
+  'crew.requirements.deficit_col': 'Deficit', // reviewed: false
+  'crew.requirements.basis': 'Governing body', // reviewed: false
+  'crew.alert.title': 'Crew deficit alert', // reviewed: false
+  'crew.alert.body': '{{count}} required role(s) unfilled for {{fixture}}', // reviewed: false
+  'crew.penalty_config.title': 'Configure crew penalty', // reviewed: false
+  'crew.penalty_config.type': 'Penalty type', // reviewed: false
+  'crew.penalty_config.value': 'Penalty value', // reviewed: false
+  'crew.penalty_config.applies_after': 'Applies after (fixtures)', // reviewed: false
+
 };
