@@ -1,6 +1,6 @@
 // Officials development background work (#486): gentle, content-free reminders. Licence renewal reminders already come from the federation sweep, so this only
 // covers what is new: an assessment report that is due or overdue, and a fitness/competency result about to lapse. Idempotent: every notification is deduplicated.
-import { tx, many } from './db.js';
+import { tx, many, pool } from './db.js';
 import { notify } from './notify.js';
 
 /** Assessors are reminded two days before a report is due, and once more when it is overdue. */
@@ -25,4 +25,36 @@ export async function remindFitness() {
   return n;
 }
 
-export const runOfficialsSweeps = async () => ({ assessor_reminders: await remindAssessors(), fitness_reminders: await remindFitness() });
+/** Record offline pack revocation so the app drops a stale cached scorer-pack for the official. */
+export async function revokeOfflineAccess(c, fixtureOfficialId, reason) {
+  const fo = (await (c ?? pool).query('SELECT * FROM fixture_officials WHERE id=$1', [fixtureOfficialId])).rows[0];
+  if (!fo) return;
+  await (c ?? pool).query(
+    `INSERT INTO scorer_pack_revocations(fixture_official_id, user_id, fixture_id, reason)
+     VALUES ($1,$2,$3,$4) ON CONFLICT DO NOTHING`,
+    [fo.id, fo.user_id, fo.fixture_id, reason],
+  );
+}
+
+/** Sweep: revoke offline packs for officials withdrawn or released from fixtures. */
+export async function sweepOfflineRevocations() {
+  let n = 0;
+  const rows = await many(
+    `SELECT fo.id FROM fixture_officials fo
+      WHERE fo.status IN ('withdrawn','released','suspended')
+        AND NOT EXISTS (
+          SELECT 1 FROM scorer_pack_revocations pr WHERE pr.fixture_official_id=fo.id
+        )
+      LIMIT 500`,
+  );
+  for (const fo of rows) {
+    await tx(async (c) => { await revokeOfflineAccess(c, fo.id, 'withdrawn'); n++; });
+  }
+  return n;
+}
+
+export const runOfficialsSweeps = async () => ({
+  assessor_reminders: await remindAssessors(),
+  fitness_reminders: await remindFitness(),
+  offline_revocations: await sweepOfflineRevocations(),
+});

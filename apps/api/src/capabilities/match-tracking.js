@@ -14,6 +14,7 @@ import { liveState, loggedEvents, rulesetForEvent, pinFixtureRuleset } from '../
 import { rejectReason, matchPhase, CONTROL_KINDS } from '../scoring/engine.js';
 import { rulesetSchema, builtinSlugs, builtinRuleset } from '../scoring/rulesets.js';
 import { isKnockout } from '../tournament/advance.js';
+import { CHIEF_ROLES, SCORER_ROLES, OBSERVER_ROLES, REPORT_FILING_ROLES, REPORT_SUBMIT_ROLES } from '../officials.js';
 
 const TAG = 'Match tracking';
 const kindKey = z.string().regex(/^[a-z][a-z0-9_]{0,23}$/);
@@ -26,10 +27,33 @@ export async function fixtureContext(user, fixtureId, c, { lock = false } = {}) 
   if (!f) throw notFound('Fixture');
   const ev = await mustFind('events', f.event_id, '*', c);
   const organiser = !!user && await isOrganiser(user, ev, c);
-  const official = !!user && (isAdmin(user) || f.referee_id === user.id || (await q(c).query("SELECT 1 FROM fixture_officials WHERE fixture_id=$1 AND user_id=$2 AND status='accepted' AND role = ANY($3)", [f.id, user.id, SCORERS])).rowCount > 0);
+  // official = ANY accepted crew member (not just scorers); use canScore for scoring gates
+  const officialRow = !!user && !isAdmin(user) && f.referee_id !== user.id
+    ? (await q(c).query("SELECT role FROM fixture_officials WHERE fixture_id=$1 AND user_id=$2 AND status='accepted'", [f.id, user.id])).rows[0]
+    : null;
+  const official = !!user && (isAdmin(user) || f.referee_id === user.id || !!officialRow);
+  const officialRole = officialRow?.role ?? (f.referee_id === user?.id ? 'referee' : null);
+  const canScore = organiser || (official && (!officialRole || SCORERS.includes(officialRole) || isAdmin(user)));
   let side = null;
   if (user) for (const s of ['home', 'away']) if (f[`${s}_team_id`] && await canManageTeam(user, await mustFind('teams', f[`${s}_team_id`], '*', c))) side = side ? 'both' : s;
-  return { f, ev, organiser, official, side, canScore: organiser || official };
+  return { f, ev, organiser, official, officialRole, side, canScore };
+}
+
+/** Fine-grained role permissions for a fixture official. Returns what this role can do. */
+export async function roleContext(user, fixtureId, c) {
+  const ctx = await fixtureContext(user, fixtureId, c);
+  const role = ctx.officialRole;
+  const admin = isAdmin(user);
+  return {
+    ...ctx,
+    canFileReport: ctx.organiser || admin || (role && REPORT_FILING_ROLES.includes(role)),
+    canSubmitReport: ctx.organiser || admin || (role && REPORT_SUBMIT_ROLES.includes(role)),
+    canReadAllReports: ctx.organiser || admin || (role && CHIEF_ROLES.includes(role)),
+    canObserve: ctx.official,
+    isChief: admin || (role && CHIEF_ROLES.includes(role)),
+    isScorer: admin || (role && SCORER_ROLES.includes(role)),
+    isObserver: role && OBSERVER_ROLES.includes(role),
+  };
 }
 const needScorer = (x) => { if (!x.canScore) throw forbidden('Only the organiser or the match officials can do that'); };
 /** The capacity an action is taken in, stored with it so history shows whose authority a score or correction rests on. */

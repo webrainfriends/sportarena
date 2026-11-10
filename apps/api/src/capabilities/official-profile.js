@@ -86,6 +86,7 @@ cap({
       many('SELECT id, sport_id, role, fixture_type, level_label, fee_minor, fee_currency, includes_travel, travel_allowance_per_km_minor, expenses_note, valid_from, valid_until FROM official_profile_rates WHERE profile_id=$1 AND archived_at IS NULL ORDER BY created_at', [p.id]),
     ]);
     const bio = p.bio_enc ? decrypt(p.bio_enc, 'official_profiles.bio') : null;
+    if (bio !== null) await audit(null, user.id, 'official_profile.pii_read', 'official_profiles', p.id);
     // decrypt multi-lang bios (map lang→plain)
     let bioTranslations = null;
     if (p.bio_translations) {
@@ -170,6 +171,7 @@ cap({
         }
       }
       const bio = p.bio_enc ? decrypt(p.bio_enc, 'official_profiles.bio') : null;
+      if (bio !== null) await audit(null, user.id, 'official_profile.pii_read', 'official_profiles', p.id);
       return { ...cleanPayout(p), bio };
     });
   },

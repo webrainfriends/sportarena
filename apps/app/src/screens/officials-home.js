@@ -3,6 +3,7 @@
 // The live scoring console is the existing Match Centre and the result goes through the existing score sheet; this screen links to them rather than copying them.
 // The server decides every permission; this only shows what comes back and keeps touch targets large for pitch-side use.
 import { FixtureParaSummary } from './para-competition';
+import { FixturePermissionsPanel } from './officials-console';
 import React, { useState } from 'react';
 import { View, Pressable } from 'react-native';
 import { api } from '../api';
@@ -532,6 +533,20 @@ function SetupCard({ setup, hasSport, open }) {
   );
 }
 
+// ------------------------------------------------------------------ Permissions Tab
+function PermissionsTab({ fixtureId }) {
+  if (!fixtureId) return (
+    <Section title={t('official.role_permissions.title')} color={c.violet}>
+      <Card><T size={13} color={c.mute}>No upcoming fixture found. Open a match from the overview tab to see your role permissions.</T></Card>
+    </Section>
+  );
+  return (
+    <Section title={t('official.role_permissions.title')} color={c.violet}>
+      <FixturePermissionsPanel fixtureId={fixtureId} />
+    </Section>
+  );
+}
+
 // ------------------------------------------------------------------ Officials Home
 export function OfficialsHome({ tab: tab0 }) {
   const { push: go } = useNav();
@@ -554,6 +569,7 @@ export function OfficialsHome({ tab: tab0 }) {
     : tab === 'rules' ? <Section title={t('off.tab_rules')} color={c.violet}>
         <RulesTab fixtureId={h.next?.fixture_id} sport={h.sport?.slug} isOrg={false} />
       </Section>
+    : tab === 'permissions' ? <PermissionsTab fixtureId={h.next?.fixture_id} />
     : <Section title="Credential" color={c.lime}>
         <Card><View style={{ gap: 6 }}>
           <Tag label={cred[0]} color={cred[1]} />
@@ -587,7 +603,7 @@ export function OfficialsHome({ tab: tab0 }) {
         <Metric value={h.stats.actions} label="Need attention" tone={h.stats.actions ? c.sunSoft : undefined} onPress={() => setTab('today')} />
       </View>
       <View style={{ marginTop: 12, marginBottom: 12 }}>
-        <Seg options={[{ value: 'today', label: t('off.tab_overview') }, { value: 'calendar', label: t('off.tab_calendar') }, { value: 'availability', label: t('off.tab_availability') }, { value: 'history', label: t('off.tab_history') }, { value: 'reports', label: t('off.tab_reports') }, { value: 'record', label: t('off.tab_record') }, { value: 'rules', label: t('off.tab_rules') }, { value: 'credential', label: t('off.tab_credential') }]} value={tab} onChange={setTab} />
+        <Seg options={[{ value: 'today', label: t('off.tab_overview') }, { value: 'calendar', label: t('off.tab_calendar') }, { value: 'availability', label: t('off.tab_availability') }, { value: 'history', label: t('off.tab_history') }, { value: 'reports', label: t('off.tab_reports') }, { value: 'record', label: t('off.tab_record') }, { value: 'rules', label: t('off.tab_rules') }, { value: 'permissions', label: t('official.role_permissions.title') }, { value: 'credential', label: t('off.tab_credential') }]} value={tab} onChange={setTab} />
       </View>
       {body}
     </Screen>

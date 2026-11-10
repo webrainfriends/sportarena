@@ -5,7 +5,7 @@ import { createHash } from 'node:crypto';
 import { many, one, pool } from './db.js';
 import { loadEncrypted } from './doc-store.js';
 import { decrypt } from './crypto.js';
-import { ASSIGNMENT_SQL, credentialFor } from './officials.js';
+import { ASSIGNMENT_SQL, credentialFor, redactExport } from './officials.js';
 import { feedbackSummary } from './capabilities/officials-feedback.js';
 
 const MAX_ROWS = 300;
@@ -41,7 +41,7 @@ export async function buildExtract(user, { from, to, sportId }) {
       WHERE x.scheduled_at >= $2 AND x.scheduled_at < $3 AND ($4::uuid IS NULL OR x.sport_id=$4)
       ORDER BY x.scheduled_at, x.id LIMIT ${MAX_ROWS + 1}`, [user.id, lo, hi, sportId ?? null]);
   const truncated = rows.length > MAX_ROWS;
-  const list = rows.slice(0, MAX_ROWS);
+  const list = rows.slice(0, MAX_ROWS).map((row) => redactExport(row, user));
   const logos = new Map();
   const heads = await eventHeaders([...new Set(list.map((a) => a.event_id))], logos);
   const assignments = [];
