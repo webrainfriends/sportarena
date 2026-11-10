@@ -288,6 +288,14 @@ server {
     # and keeps its own small JSON limit everywhere else, so this only lets a legitimate upload reach it.
     client_max_body_size 72m;
 
+    # compress the JS/CSS/JSON/SVG the Expo web build ships (nginx's default only compresses HTML, so the multi-MB bundle went out raw)
+    gzip on;
+    gzip_vary on;
+    gzip_proxied any;
+    gzip_comp_level 6;
+    gzip_min_length 1024;
+    gzip_types text/css text/plain text/javascript application/javascript application/json application/manifest+json image/svg+xml application/xml;
+
     # profile photos and post media: the API enforces the real limits (10 MB photos, 60 MB videos); nginx's 2m default would 413 phone photos
     location ~ ^/api/v1/(me/avatar|market/media)$ {
         client_max_body_size 64m;
