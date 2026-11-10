@@ -853,11 +853,8 @@ export default {
   'nav.title.OfficialMatch': 'ম্যাচ ব্রিফিং',
   'nav.title.OfficialCrewHub': 'Crew hub', // crew-multi — machine draft, reviewed: false
   'crew.btn_crew_hub': 'Crew hub', // crew-multi — machine draft, reviewed: false
-  'crew.completeness_label': 'Crew completeness', // crew-multi — machine draft, reviewed: false
-  'crew.missing_roles': 'Missing', // crew-multi — machine draft, reviewed: false
   'crew.emergency_badge': 'Emergency', // crew-multi — machine draft, reviewed: false
   'crew.substitution_of_label': 'Substitution', // crew-multi — machine draft, reviewed: false
-  'crew.pinned': 'Pinned', // crew-multi — machine draft, reviewed: false
   'crew.mandatory_short': 'required', // crew-multi — machine draft, reviewed: false
   'crew.metric_confirmed': 'Confirmed', // crew-multi — machine draft, reviewed: false
   'crew.metric_roles_req': 'Roles required', // crew-multi — machine draft, reviewed: false
@@ -887,7 +884,6 @@ export default {
   'crew.duties_sheet_title': 'Assignment duties', // crew-multi — machine draft, reviewed: false
   'crew.duties_sheet_body': "Enter one duty per line (e.g. 'VAR monitor 2', 'Goal north side').", // crew-multi — machine draft, reviewed: false
   'crew.duties_field_label': 'Duties (one per line)', // crew-multi — machine draft, reviewed: false
-  'crew.duties_placeholder': 'e.g. Goal-line north, VAR review station 1', // crew-multi — machine draft, reviewed: false
   'nav.title.RewardsConsole': 'পুরস্কার ও রেফারেল',
   'nav.title.MyPasses': 'আমার পাস',
   'nav.title.MyCards': 'কার্ড ও রিস্টব্যান্ড',

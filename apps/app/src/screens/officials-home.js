@@ -99,7 +99,7 @@ function Today({ h, reload, go, tz }) {
     ['💰', 'Earnings & fees', () => go('OfficialEarnings')],
     ['🧾', 'Invoices & expenses', () => go('OfficialInvoices', { role: 'official' })],
     ['⚖️', t('off.ql_reports'), () => go('OfficialsHome', { tab: 'reports' })], ['🏛', t('off.ql_discipline'), () => go('DisciplineCases')], ['🎓', 'Grade, assessments & CPD', () => go('OfficialsDevelopment')],
-    ['💰', 'Earnings & fees', () => go('OfficialEarnings')], ['🏦', 'Payout account', () => go('OfficialPayoutAccount', { officialId: h.user_id ?? h.official?.user_id })],
+    ['💰', 'Earnings & fees', () => go('OfficialEarnings')], ['🏦', 'Payout account', () => go('OfficialPayoutAccount', { officialId: h.user_id ?? h.official?.user_id })], ['🧾', 'Tax & earnings', () => go('OfficialTax')],
   ];
   const matches = (
     <View style={{ gap: 14 }}>
