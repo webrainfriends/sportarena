@@ -25,6 +25,25 @@ export function localParts(iso, tz) {
 const myAssignments = (userId, where = 'TRUE', args = [], tail = 'ORDER BY x.scheduled_at, x.id') =>
   many(`SELECT x.* FROM (${ASSIGNMENT_SQL} WHERE fo.user_id=$1) x WHERE ${where} ${tail}`, [userId, ...args]);
 
+/**
+ * Where an official stands on getting ready to be asked and paid: public profile, rate cards, payout account, tax profile and verification.
+ * Each step reads the record its own capability owns (nothing is stored here), so this can never disagree with those screens.
+ */
+async function setupFor(userId, credential) {
+  const profile = await one('SELECT status, step_reached FROM official_profiles WHERE user_id=$1 AND archived_at IS NULL', [userId]);
+  const rates = await one("SELECT count(*) FILTER (WHERE r.status='active')::int AS active, count(*) FILTER (WHERE r.status='draft')::int AS draft FROM official_profile_rates r JOIN official_profiles p ON p.id=r.profile_id WHERE p.user_id=$1 AND p.archived_at IS NULL AND r.archived_at IS NULL", [userId]);
+  const payout = await one("SELECT status FROM payout_accounts WHERE owner_id=$1 AND status IN ('pending','verified') ORDER BY (status='verified') DESC, created_at DESC LIMIT 1", [userId]);
+  const tax = await one('SELECT 1 AS ok FROM official_tax_profiles WHERE user_id=$1 LIMIT 1', [userId]);
+  const steps = [
+    { key: 'profile', state: profile?.status === 'published' ? 'done' : profile ? 'in_progress' : 'todo', progress: profile ? Math.min(100, Math.round((profile.step_reached / 9) * 100)) : 0 },
+    { key: 'rates', state: rates?.active ? 'done' : rates?.draft ? 'in_progress' : 'todo', count: rates?.active ?? 0, drafts: rates?.draft ?? 0 },
+    { key: 'payout', state: payout?.status === 'verified' ? 'done' : payout ? 'in_progress' : 'todo' },
+    { key: 'tax', state: tax ? 'done' : 'todo' },
+    { key: 'verification', state: credential.state === 'verified' ? 'done' : ['pending', 'expiring'].includes(credential.state) ? 'in_progress' : 'todo', credential: credential.state },
+  ];
+  return { steps, done: steps.filter((x) => x.state === 'done').length, total: steps.length, next: steps.find((x) => x.state !== 'done')?.key ?? null };
+}
+
 /** Credential state for one sport: what the public sees (self-declared / verified / expiring / expired / revoked) plus the federation licence behind the grade. */
 async function credentialState(userId, sportId) {
   const cred = await credentialFor(pool, userId, sportId);
@@ -89,7 +108,7 @@ cap({
     if (credential.licence && new Date(credential.licence.expires_on) < new Date(now + 30 * DAY)) inbox.push({ kind: 'credential', title: 'Your federation licence is ending', detail: `${credential.licence.licence_type} ends ${credential.licence.expires_on.toISOString?.().slice(0, 10) ?? credential.licence.expires_on}`, at: credential.licence.expires_on });
 
     return {
-      sports, sport, timezone: tz, credential,
+      sports, sport, timezone: tz, credential, setup: await setupFor(user.id, credential),
       next: confirmed[0] ?? null, today, pending_requests: pending,
       stats: { this_week: confirmed.filter((a) => startMs(a) < weekEnd).length, pending: pending.length, completed_this_season: completed.length, actions: inbox.length },
       inbox: inbox.sort((a, b) => String(a.at ?? '').localeCompare(String(b.at ?? ''))),

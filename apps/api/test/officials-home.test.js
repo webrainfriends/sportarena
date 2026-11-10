@@ -83,6 +83,15 @@ test('referee verification extends the canonical service; policy "verified" is e
   assert.equal(home.credential.state, 'expired');
   assert.ok(home.inbox.some((x) => x.kind === 'credential'));
   assert.equal(must(await api('GET', '/me/officials/home', { token: plain.token })).credential.state, 'self_declared');
+  // set-up progress reads the records each step owns: an expired badge and anything not started are to do
+  const step = (h) => Object.fromEntries(h.setup.steps.map((x) => [x.key, x.state]));
+  assert.deepEqual(home.setup.steps.map((x) => x.key), ['profile', 'rates', 'payout', 'tax', 'verification']);
+  assert.equal(step(home).verification, 'todo', 'an expired badge has to be renewed'); assert.equal(step(home).profile, 'todo'); assert.equal(home.setup.next, 'profile'); assert.equal(home.setup.total, 5);
+  const fresh = must(await api('GET', '/me/officials/home', { token: plain.token })).setup;
+  assert.equal(fresh.done, 0); assert.equal(fresh.steps.find((x) => x.key === 'verification').state, 'todo');
+  must(await api('POST', '/me/official-profile', { token: plain.token, body: { display_name_pref: 'Plain Ref', step_reached: 3 } }), 201);
+  const started = must(await api('GET', '/me/officials/home', { token: plain.token })).setup.steps[0];
+  assert.equal(started.state, 'in_progress'); assert.equal(started.progress, 33);
 });
 
 test('policy "licensed" needs an active federation licence of the minimum grade', async () => {

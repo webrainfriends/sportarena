@@ -18,8 +18,7 @@ import { c, grad } from '../theme';
 import { Banner, Metric, money } from '../federation-ui';
 import { openPdf } from '../open-file';
 import { t } from '../i18n';
-import { OfficialProfileBanner, OfficialProfileWizard } from './official-profile-wizard';
-import { RateCardOnboardingBanner } from './rate-card-catalog';
+import { OfficialProfileWizard } from './official-profile-wizard';
 import { Cols } from '../federation-bits';
 import { VerificationSection } from './verification';
 import { MatchDayPack } from './match-day-pack';
@@ -91,13 +90,32 @@ function Today({ h, reload, go, tz }) {
     if (it.kind === 'expense_approved_batch_prompt') return () => go('OfficialInvoices', { role: 'official', tab: 'expenses' });
     return null;
   };
-  const quick = [
-    ['📅', 'My assignments', () => go('OfficialsHome', { tab: 'calendar' })], ['🕒', 'My availability', () => go('OfficialsHome', { tab: 'availability' })],
-    ['📨', `Pending requests${h.stats.pending ? ` (${h.stats.pending})` : ''}`, () => go('OfficialsHome', { tab: 'today' })],
-    ['🎛️', 'Match-day console', h.next ? () => go('MatchCentre', { id: h.next.fixture_id }) : null], ['📖', 'Rules & interpretations', () => go('OfficialsHome', { tab: 'rules' })],
-    ['🗂️', 'Officiating history', () => go('OfficialsHome', { tab: 'history' })], ['💼', 'Opportunities', () => go('Openings')], ['🪪', 'Verification & renewal', () => go('OfficialsHome', { tab: 'credential' })],
-    ['⚖️', t('off.ql_reports'), () => go('OfficialsHome', { tab: 'reports' })], ['🏛', t('off.ql_discipline'), () => go('DisciplineCases')], ['🎓', 'Grade, assessments & CPD', () => go('OfficialsDevelopment')],
-    ['💰', 'Earnings & fees', () => go('OfficialEarnings')], ['💳', t('rc.title'), () => go('RateCardCatalog')], ['🏦', 'Payout account', () => go('OfficialPayoutAccount', { officialId: h.user_id ?? h.official?.user_id })], ['🧾', 'Tax & earnings', () => go('OfficialTax')],
+  // Everything an official can open, grouped by the job it does: [icon, label, live line from real data, onPress].
+  const groups = [
+    [t('off.qa.matchday'), [
+      ['📅', t('off.qa.assignments'), t('off.qa.this_week', { n: h.stats.this_week }), () => go('OfficialsHome', { tab: 'calendar' })],
+      ['📨', t('off.qa.requests'), h.stats.pending ? t('off.qa.to_answer', { n: h.stats.pending }) : t('off.qa.none_waiting'), () => go('OfficialsHome', { tab: 'today' })],
+      ['🕒', t('off.qa.availability'), null, () => go('OfficialsHome', { tab: 'availability' })],
+      ['🎛️', t('off.qa.console'), h.next ? `${h.next.home_name ?? 'TBD'} v ${h.next.away_name ?? 'TBD'}` : t('off.qa.no_assignment'), h.next ? () => go('MatchCentre', { id: h.next.fixture_id }) : null],
+    ]],
+    [t('off.qa.rules'), [
+      ['📖', t('off.qa.rulebook'), null, () => go('OfficialsHome', { tab: 'rules' })],
+      ['⚖️', t('off.ql_reports'), null, () => go('OfficialsHome', { tab: 'reports' })],
+      ['🏛', t('off.ql_discipline'), null, () => go('DisciplineCases')],
+    ]],
+    [t('off.qa.career'), [
+      ['🗂️', t('off.qa.history'), t('off.qa.completed', { n: h.stats.completed_this_season }), () => go('OfficialsHome', { tab: 'history' })],
+      ['🎓', t('off.qa.grade'), null, () => go('OfficialsDevelopment')],
+      ['🪪', t('off.qa.verification'), null, () => go('OfficialsHome', { tab: 'credential' })],
+      ['💼', t('off.qa.opportunities'), null, () => go('Openings')],
+    ]],
+    [t('off.qa.money'), [
+      ['💰', t('off.qa.earnings'), null, () => go('OfficialEarnings')],
+      ['💳', t('rc.title'), null, () => go('RateCardCatalog')],
+      ['🧾', t('off.qa.invoices'), null, () => go('OfficialInvoices', { role: 'official' })],
+      ['🏦', t('off.qa.payout'), null, () => go('OfficialPayoutAccount', { officialId: h.user_id ?? h.official?.user_id })],
+      ['📊', t('off.qa.tax'), null, () => go('OfficialTax')],
+    ]],
   ];
   const matches = (
     <View style={{ gap: 14 }}>
@@ -115,7 +133,7 @@ function Today({ h, reload, go, tz }) {
         </Section>
       ) : h.next ? (
         <Section title="Next match" color={c.mint}><Assignment a={h.next} tz={tz} prominent onOpen={() => go('OfficialMatch', { id: h.next.fixture_id })} /></Section>
-      ) : <Empty emoji="🏁" title="No matches coming up" sub="When an organiser asks you to officiate, the request appears here to accept or decline." />}
+      ) : <Section title={t('off.next_match')} color={c.mint}><Empty emoji="🏁" title="No matches coming up" sub="When an organiser asks you to officiate, the request appears here to accept or decline." /></Section>}
 
       <MatchDayPack />
 
@@ -151,17 +169,34 @@ function Today({ h, reload, go, tz }) {
           );
         })}</View> : <Empty emoji="✨" title="All clear" sub="No invitations, changes, pre-match checks, reports or disputes need you right now." />}
       </Section>
-
-      <Section title="Quick actions" color={c.cyan}>
-        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
-          {quick.map(([e, label, onPress]) => <Btn key={label} title={`${e} ${label}`} small color={c.paper} ink={c.ink} disabled={!onPress} onPress={onPress ?? undefined} style={{ minHeight: 44 }} />)}
-        </View>
-      </Section>
     </View>
+  );
+  const actions = (
+    <Section title={t('off.qa.title')} color={c.cyan}>
+      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 12 }}>
+        {groups.map(([title, items]) => (
+          <Card key={title} pad={14} style={{ flexGrow: 1, flexBasis: 280, minWidth: 0 }}>
+            <T size={11} weight="800" color={c.mute} style={{ letterSpacing: 0.8, marginBottom: 6 }}>{title.toUpperCase()}</T>
+            {items.map(([e, label, sub, onPress], i) => (
+              <Pressable key={label} onPress={onPress ?? undefined} disabled={!onPress} accessibilityRole="button" accessibilityState={{ disabled: !onPress }} accessibilityLabel={`${label}${sub ? `, ${sub}` : ''}`}
+                style={{ flexDirection: 'row', alignItems: 'center', gap: 12, minHeight: 52, paddingVertical: 6, borderTopWidth: i ? 1 : 0, borderColor: c.line, opacity: onPress ? 1 : 0.55 }}>
+                <View style={{ width: 36, height: 36, borderRadius: 11, backgroundColor: c.violetSoft, alignItems: 'center', justifyContent: 'center' }}><T size={17}>{e}</T></View>
+                <View style={{ flex: 1 }}>
+                  <T weight="700" size={14.5} numberOfLines={1}>{label}</T>
+                  {sub ? <T size={12} color={c.mute} numberOfLines={1}>{sub}</T> : null}
+                </View>
+                {onPress ? <T size={18} color={c.mute}>›</T> : null}
+              </Pressable>
+            ))}
+          </Card>
+        ))}
+      </View>
+    </Section>
   );
   return (
     <View style={{ gap: 14 }}>
       <Cols a={matches} b={work} ratio={[3, 2]} />
+      {actions}
       <Sheet visible={!!declining} onClose={() => setDeclining(null)} title="Decline this request">
         <T size={13} color={c.mute}>Tell the organiser why so they can find someone quickly. You can also leave it blank.</T>
         <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 10 }}>
@@ -539,6 +574,52 @@ function ReportsTab({ go }) {
   );
 }
 
+// ------------------------------------------------------------------ Set-up: one guided path to being asked and paid
+const STEP_ICON = { profile: '🪪', rates: '💳', payout: '🏦', tax: '📊', verification: '✅' };
+/** Profile, rate cards, payout account, tax and verification as one checklist. Each row opens the screen that owns that step. */
+function SetupCard({ setup, hasSport, open }) {
+  const [show, setShow] = useState(false);
+  if (!setup) return null;
+  const complete = setup.done === setup.total && hasSport;
+  const pct = Math.round((setup.done / setup.total) * 100);
+  const TONE = { done: [t('off.setup.done'), c.mintSoft], in_progress: [t('off.setup.in_progress'), c.sunSoft], todo: [t('off.setup.todo'), c.violetSoft] };
+  const sub = (st) => (st.key === 'profile' && st.state === 'in_progress' ? t('off.setup.profile_pct', { pct: st.progress })
+    : st.key === 'rates' && (st.count || st.drafts) ? t('off.setup.rates_n', { n: st.count, d: st.drafts }) : t(`off.setup.${st.key}_sub`));
+  return (
+    <Card style={{ marginTop: 12 }} pad={16}>
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+        <View style={{ flex: 1, gap: 2 }}>
+          <T size={11} weight="800" color={c.mute} style={{ letterSpacing: 0.8 }}>{t('off.setup.kicker').toUpperCase()}</T>
+          <T weight="800" size={18} style={{ letterSpacing: -0.3 }}>{complete ? t('off.setup.complete') : t('off.setup.title', { done: setup.done, total: setup.total })}</T>
+        </View>
+        {complete ? <Btn small title={t(show ? 'off.setup.hide' : 'off.setup.review')} color={c.paper} ink={c.ink} onPress={() => setShow(!show)} style={{ minHeight: 44 }} />
+          : <Btn small title={t('off.setup.continue')} onPress={open[setup.next] ?? open.sport} style={{ minHeight: 44 }} accessibilityLabel={t('off.setup.continue_a11y')} />}
+      </View>
+      <View accessibilityRole="progressbar" accessibilityValue={{ min: 0, max: 100, now: pct }} style={{ height: 8, borderRadius: 4, backgroundColor: c.violetSoft, overflow: 'hidden', marginTop: 10 }}>
+        <View style={{ width: `${pct}%`, height: 8, backgroundColor: c.pink }} />
+      </View>
+      {!complete || show ? (
+        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginTop: 12 }}>
+          {!hasSport ? (
+            <Pressable onPress={open.sport} accessibilityRole="button" accessibilityLabel={t('off.setup.sport')} style={{ flexGrow: 1, flexBasis: 220, minHeight: 64, borderRadius: 14, borderWidth: 1, borderColor: c.line, padding: 12, flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+              <T size={20}>🏅</T>
+              <View style={{ flex: 1 }}><T weight="700" size={14}>{t('off.setup.sport')}</T><T size={12} color={c.mute}>{t('off.setup.sport_sub')}</T></View>
+              <Tag label={TONE.todo[0]} color={TONE.todo[1]} />
+            </Pressable>
+          ) : null}
+          {setup.steps.map((st, i) => (
+            <Pressable key={st.key} onPress={open[st.key]} accessibilityRole="button" accessibilityLabel={`${t(`off.setup.${st.key}`)}, ${TONE[st.state][0]}`} style={{ flexGrow: 1, flexBasis: 220, minHeight: 64, borderRadius: 14, borderWidth: 1, borderColor: st.key === setup.next ? c.pink : c.line, padding: 12, flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+              <T size={20}>{STEP_ICON[st.key]}</T>
+              <View style={{ flex: 1 }}><T weight="700" size={14}>{i + 1}. {t(`off.setup.${st.key}`)}</T><T size={12} color={c.mute} numberOfLines={2}>{sub(st)}</T></View>
+              <Tag label={TONE[st.state][0]} color={TONE[st.state][1]} />
+            </Pressable>
+          ))}
+        </View>
+      ) : null}
+    </Card>
+  );
+}
+
 // ------------------------------------------------------------------ Officials Home
 export function OfficialsHome({ tab: tab0 }) {
   const { push: go } = useNav();
@@ -582,10 +663,11 @@ export function OfficialsHome({ tab: tab0 }) {
           {h.sports.length > 1 ? <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>{h.sports.map((s) => <Chip key={s.id} label={`${s.emoji} ${s.name}`} active={(sportId ?? h.sport?.id) === s.id} onPress={() => setSportId(s.id)} />)}</View> : null}
         </View>
       </GradCard>
-      <OfficialProfileBanner onSetup={() => setShowProfileWizard(true)} />
-      {showProfileWizard ? <OfficialProfileWizard onClose={() => setShowProfileWizard(false)} onDone={() => setShowProfileWizard(false)} toast={(msg) => {}} /> : null}
-      {!h.sports.length ? <Banner tone={c.sunSoft} action="Add a sport profile" onAction={() => go('SportProfile')}>Add a referee sport profile so organisers can find and ask you.</Banner> : null}
-      <RateCardOnboardingBanner onPress={() => go('RateCardCatalog')} />
+      <SetupCard setup={h.setup} hasSport={!!h.sports.length} open={{
+        profile: () => setShowProfileWizard(true), rates: () => go('RateCardCatalog'), payout: () => go('OfficialPayoutAccount', { officialId: h.user_id ?? h.official?.user_id }),
+        tax: () => go('OfficialTax'), verification: () => setTab('credential'), sport: () => go('SportProfile'),
+      }} />
+      {showProfileWizard ? <OfficialProfileWizard onClose={() => setShowProfileWizard(false)} onDone={() => { setShowProfileWizard(false); q.reload(); }} onOpen={(route, params) => { setShowProfileWizard(false); go(route, params); }} /> : null}
       <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginTop: 12 }}>
         <Metric value={h.stats.this_week} label="Matches this week" onPress={() => setTab('calendar')} />
         <Metric value={h.stats.pending} label="Requests to answer" tone={h.stats.pending ? c.sunSoft : undefined} onPress={() => setTab('today')} />

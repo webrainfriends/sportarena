@@ -14,7 +14,7 @@ import { OrgSsoButton, SsoFinish } from '../sso';
 import { Logo } from '../logo';
 import { Wordmark } from '../wordmark';
 import { t } from '../i18n';
-import { CountryPicker } from '../country-picker';
+import { CountryPicker, countryName } from '../country-picker';
 import { locale, deviceZone } from '../locale';
 
 
@@ -224,7 +224,7 @@ export default function Auth({ intent, initialMode, onClose } = {}) {
               <Field label={t('auth.full_name')} value={f.full_name} onChangeText={set('full_name')} />
               <Field label={t('auth.phone')} value={f.phone} onChangeText={set('phone')} keyboardType="phone-pad" />
             </View>
-            <CountryPicker label={t('residency.country_label')} value={f.country ?? ''} onChange={set('country')} hint={f.country ? (countryPreview === null ? t('residency.preview_loading') : countryPreview?.supported ? t('residency.supported_banner') : t('residency.unsupported_banner')) : t('residency.country_required_hint')} />
+            <CountryPicker label={t('residency.country_label')} value={f.country ?? ''} onChange={set('country')} hint={f.country ? (countryPreview === null ? t('residency.preview_loading') : countryPreview?.supported ? t('residency.supported_banner', { region: countryName(f.country) }) : t('residency.unsupported_banner', { country: countryName(f.country) })) : t('residency.country_required_hint')} />
           </>}
           {err ? <T color={c.red} weight="600" size={13}>{err}</T> : null}
           <Btn title={{ login: t('auth.login'), register: t('auth.btn_register'), mfa: t('auth.btn_mfa'), forgot: t('auth.btn_forgot'), reset: t('auth.btn_reset') }[mode]} onPress={submit} loading={busy} />

@@ -12,6 +12,11 @@ import { Stepper } from '../pickers';
 import { c } from '../theme';
 import { explain } from '../access';
 import { t } from '../i18n';
+import { useNav } from '../nav';
+import { useSession } from '../session';
+import { CountryPicker, countryName } from '../country-picker';
+import { deviceZone } from '../locale';
+import { money } from '../federation-ui';
 
 const STEP_KEYS = ['identity','privacy','sports','experience','credentials','references','availability','rates','payout','review'];
 const ROLE_OPTS = ['referee','umpire','linesman','scorer','judge','starter','timekeeper','video_referee'];
@@ -21,7 +26,16 @@ const FIX_TYPES = ['training','friendly','cup','league','tournament','internatio
 const REL_OPTS = ['governing_body','club','association','colleague','employer','other'];
 const YEAR = new Date().getFullYear();
 
-export function OfficialProfileWizard({ onClose, onDone, toast }) {
+const iso = (v) => (/^[A-Z]{2}$/.test(v ?? '') ? v : '');
+
+export function OfficialProfileWizard({ onClose: close, onDone, toast: say, onOpen }) {
+  const nav = useNav();
+  const session = useSession();
+  const onClose = close ?? nav.back;            // opened as its own page there is no host to close it
+  const toast = say ?? session.toast;
+  // leave the sheet for a full page (rate cards, payout account, tax) and come back to the same step later
+  const leave = (route, params) => { if (onOpen) onOpen(route, params); else nav.push(route, params); };
+  const [nat, setNat] = useState(null), [taxCountry, setTaxCountry] = useState(null);
   const opt = useLoad(() => api.get('/me/official-profile/options'), []);
   const existing = useLoad(() => api.get('/me/official-profile').catch((e) => (e?.status === 404 ? null : Promise.reject(e))), []);
   const [profile, setProfile] = useState(null);
@@ -93,14 +107,6 @@ export function OfficialProfileWizard({ onClose, onDone, toast }) {
     } catch (e) { throw new Error(explain(e)); }
   };
 
-  const saveRates = async (rates, to) => {
-    try {
-      await api.put('/me/official-profile/rate-cards', { rates });
-      toast?.(t('opw.wiz.saved'));
-      if (to != null) setStep(to);
-    } catch (e) { throw new Error(explain(e)); }
-  };
-
   const back = () => setStep((s) => Math.max(0, s - 1));
   const nextLabel = (k) => t('opw.wiz.next_to', { step: t(`opw.wiz.s.${STEP_KEYS[k]}`) });
   const live = p.status === 'published';
@@ -119,20 +125,22 @@ export function OfficialProfileWizard({ onClose, onDone, toast }) {
 
       {/* Step 0: Identity */}
       {step === 0 && (
+        <View style={{ gap: 14 }}>
+        <CountryPicker label={t('opw.f.nationality')} value={nat ?? iso(p.nationality)} onChange={setNat} optional hint={p.nationality && !iso(p.nationality) ? t('opw.f.country_legacy', { v: p.nationality }) : undefined} />
         <FormSheet inline visible
-          initial={{ display_name_pref: p.display_name_pref ?? '', bio: p.bio ?? '', preferred_pronouns: p.preferred_pronouns ?? '', nationality: p.nationality ?? '' }}
+          initial={{ display_name_pref: p.display_name_pref ?? '', bio: p.bio ?? '', preferred_pronouns: p.preferred_pronouns ?? '' }}
           submitLabel={nextLabel(1)}
           onClose={() => {}}
           fields={[
             { key: 'display_name_pref', label: t('opw.f.display_name'), hint: t('opw.f.display_name_hint'), optional: true },
             { key: 'bio', label: t('opw.f.bio'), type: 'multiline', optional: true, hint: t('opw.f.bio_hint') },
             { key: 'preferred_pronouns', label: t('opw.f.pronouns'), type: 'chips', options: ['he/him','she/her','they/them','prefer_not_to_say'].map((v) => ({ value: v, label: t(`opw.pronoun.${v}`) })), optional: true },
-            { key: 'nationality', label: t('opw.f.nationality'), optional: true },
           ]}
           onSubmit={async (x) => {
-            await save({ display_name_pref: x.display_name_pref || null, bio: x.bio || null, preferred_pronouns: x.preferred_pronouns || null, nationality: x.nationality || null }, 1);
+            await save({ display_name_pref: x.display_name_pref || null, bio: x.bio || null, preferred_pronouns: x.preferred_pronouns || null, ...(nat != null ? { nationality: nat || null } : {}) }, 1);
           }}
         />
+        </View>
       )}
 
       {/* Step 1: Privacy */}
@@ -223,18 +231,19 @@ export function OfficialProfileWizard({ onClose, onDone, toast }) {
 
       {/* Step 7: Rate Cards */}
       {step === 7 && (
-        <RatesStep profile={p} sportOpts={sportOpts} onSave={saveRates} onBack={back} nextLabel={nextLabel(8)} />
+        <RatesStep onOpen={leave} onNext={() => save({}, 8)} onBack={back} nextLabel={nextLabel(8)} />
       )}
 
       {/* Step 8: Payout & Tax */}
       {step === 8 && (
+        <View style={{ gap: 14 }}>
+        <CountryPicker label={t('opw.f.tax_country')} value={taxCountry ?? iso(p.tax_country)} onChange={setTaxCountry} optional hint={p.tax_country && !iso(p.tax_country) ? t('opw.f.country_legacy', { v: p.tax_country }) : undefined} />
         <FormSheet inline visible
-          initial={{ tax_country: p.tax_country ?? '', vat_registered: p.vat_registered ?? false, payout_method: p.payout_method ?? 'bank_transfer' }}
+          initial={{ vat_registered: p.vat_registered ?? false, payout_method: p.payout_method ?? 'bank_transfer' }}
           submitLabel={nextLabel(9)}
           onBack={back}
           onClose={() => {}}
           fields={[
-            { key: 'tax_country', label: t('opw.f.tax_country'), optional: true },
             { key: 'vat_registered', label: t('opw.f.vat_registered'), type: 'switch', hint: t('opw.f.vat_registered_hint') },
             { key: 'vat_number', label: t('opw.f.vat_number'), optional: true, hint: t('opw.f.encrypted_hint') },
             { key: 'payout_method', label: t('opw.f.payout_method'), type: 'chips', options: [{ value: 'bank_transfer', label: t('opw.payout.bank_transfer') }, { value: 'stripe', label: t('opw.payout.stripe') }, { value: 'other', label: t('opw.payout.other') }] },
@@ -245,12 +254,13 @@ export function OfficialProfileWizard({ onClose, onDone, toast }) {
           ]}
           onSubmit={async (x) => {
             await save({
-              tax_country: x.tax_country || null, vat_registered: x.vat_registered,
+              ...(taxCountry != null ? { tax_country: taxCountry || null } : {}), vat_registered: x.vat_registered,
               vat_number: x.vat_number || null, payout_method: x.payout_method,
               bank_sort_code: x.bank_sort_code || null, bank_account: x.bank_account || null, bank_iban: x.bank_iban || null,
             }, 9);
           }}
         />
+        </View>
       )}
 
       {/* Step 9: Review & Publish */}
@@ -442,7 +452,7 @@ function AvailabilityStep({ onSave, onBack, nextLabel }) {
     <View style={{ gap: 12 }}>
       <Card color={c.cyanSoft}><T size={13}>{t('opw.avail.hint')}</T></Card>
       <FormSheet inline visible
-        initial={{ timezone: prefs.data?.timezone ?? 'UTC', travel_km: prefs.data?.travel_km ?? 50, buffer_min: prefs.data?.buffer_min ?? 60, region: prefs.data?.region ?? '' }}
+        initial={{ timezone: prefs.data?.timezone ?? deviceZone ?? 'UTC', travel_km: prefs.data?.travel_km ?? 50, buffer_min: prefs.data?.buffer_min ?? 60, region: prefs.data?.region ?? '' }}
         submitLabel={nextLabel}
         onBack={onBack}
         onClose={() => {}}
@@ -465,54 +475,46 @@ function AvailabilityStep({ onSave, onBack, nextLabel }) {
 }
 
 // ---------------------------------------------------------------- Rates step
-function RatesStep({ profile, sportOpts, onSave, onBack, nextLabel }) {
-  const [rates, setRates] = useState([]);
-  const [draft, setDraft] = useState({ sport_id: null, role: 'referee', fixture_type: 'league', level_label: '', fee_minor: 0, fee_currency: 'GBP', includes_travel: false, travel_allowance_per_km_minor: 0 });
-  const [err, setErr] = useState(null);
-
-  const add = () => {
-    if (draft.fee_minor < 0) return;
-    setRates((rs) => [...rs, { ...draft }]);
-    setDraft((d) => ({ ...d, sport_id: null, fee_minor: 0 }));
-  };
-
+// Rate cards have one home, the rate card catalogue (rate-card-catalog.js, rate-card-wizard.js). This step shows what is on file there and opens it;
+// it never keeps a second, simpler copy of a rate, and leaving the step can never replace or archive a card.
+function RatesStep({ onOpen, onNext, onBack, nextLabel }) {
+  const q = useLoad(() => api.get('/me/official-profile/rate-cards/catalog'), []);
+  const [err, setErr] = useState(null), [busy, setBusy] = useState(false);
+  const cards = Array.isArray(q.data) ? q.data.filter((r) => r.status !== 'archived') : [];
+  const active = cards.filter((r) => r.status === 'active');
+  const next = async () => { setBusy(true); setErr(null); try { await onNext(); } catch (e) { setErr(e.message); } finally { setBusy(false); } };
   return (
     <View style={{ gap: 12 }}>
-      {rates.length ? rates.map((r, i) => (
-        <Card key={i} pad={12}>
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+      <View style={{ flexDirection: 'row', gap: 8 }}>
+        {[[active.length, t('opw.rates.m_active')], [cards.length - active.length, t('opw.rates.m_draft')], [new Set(cards.map((r) => r.sport_id).filter(Boolean)).size, t('opw.rates.m_sports')]].map(([v, label]) => (
+          <View key={label} style={{ flex: 1, backgroundColor: c.paper, borderRadius: 14, borderWidth: 1, borderColor: c.line, paddingVertical: 10, paddingHorizontal: 12 }}>
+            <T weight="800" size={20}>{v}</T><T size={11} color={c.mute} weight="600">{label}</T>
+          </View>
+        ))}
+      </View>
+      {q.error ? <ErrorBox error={q.error} onRetry={q.reload} /> : !q.data ? <Loading /> : cards.length ? cards.map((r) => (
+        <Card key={r.id} pad={12} onPress={() => onOpen('RateCardWizard', { id: r.id })} accessibilityLabel={t('opw.rates.edit_a11y', { name: r.name ?? r.sport_name ?? t('opw.rates.card') })}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
             <View style={{ flex: 1 }}>
-              <T weight="800">{(r.fee_minor / 100).toFixed(2)} {r.fee_currency}</T>
-              <T size={12} color={c.mute}>{sportOpts.find((s) => s.value === r.sport_id)?.label ?? t('opw.rates.all_sports')} · {r.role ? t(`opw.role.${r.role}`) : t('opw.rates.all_roles')} · {t(`opw.fix.${r.fixture_type}`)}</T>
-              {r.includes_travel ? <Tag label={t('opw.rates.travel_inc')} color={c.cyanSoft} /> : null}
+              <T weight="800">{r.name ?? ([r.sport_name, ROLE_OPTS.includes(r.role) ? t(`opw.role.${r.role}`) : r.role].filter(Boolean).join(' · ') || t('opw.rates.card'))}</T>
+              <T size={12} color={c.mute}>{[r.sport_name ?? t('opw.rates.all_sports'), ROLE_OPTS.includes(r.role) ? t(`opw.role.${r.role}`) : r.role ?? t('opw.rates.all_roles'), FIX_TYPES.includes(r.fixture_type) ? t(`opw.fix.${r.fixture_type}`) : r.fixture_type].filter(Boolean).join(' · ')}</T>
             </View>
-            <Btn small title={t('common.remove')} color={c.paper} ink={c.ink} onPress={() => setRates((rs) => rs.filter((_, j) => j !== i))} />
+            <View style={{ alignItems: 'flex-end', gap: 4 }}>
+              <T weight="800" size={16} color={c.pink}>{money(r.fee_minor, r.fee_currency)}</T>
+              <Tag label={t(`opw.rates.st_${r.status}`)} color={r.status === 'active' ? c.mintSoft : c.sunSoft} />
+            </View>
           </View>
         </Card>
-      )) : <T size={13} color={c.mute}>{t('opw.rates.none')}</T>}
-      <Card>
-        <T weight="800">{t('opw.rates.add')}</T>
-        <MenuField label={t('opw.f.sport')} value={draft.sport_id} onChange={(v) => setDraft((d) => ({ ...d, sport_id: v }))} options={[{ value: null, label: t('opw.rates.all_sports') }, ...sportOpts]} />
-        <MenuField label={t('opw.f.role')} value={draft.role} onChange={(v) => setDraft((d) => ({ ...d, role: v }))} options={[{ value: null, label: t('opw.rates.all_roles') }, ...ROLE_OPTS.map((v) => ({ value: v, label: t(`opw.role.${v}`) }))]} />
-        <MenuField label={t('opw.f.fixture_type')} value={draft.fixture_type} onChange={(v) => setDraft((d) => ({ ...d, fixture_type: v }))} options={FIX_TYPES.map((v) => ({ value: v, label: t(`opw.fix.${v}`) }))} />
-        <FormSheet inline visible
-          initial={{ fee_minor: draft.fee_minor, fee_currency: draft.fee_currency, includes_travel: draft.includes_travel, travel_allowance_per_km_minor: draft.travel_allowance_per_km_minor, expenses_note: '' }}
-          fields={[
-            { key: 'fee_minor', label: t('opw.f.fee'), type: 'stepper', min: 0, max: 500000, step: 500, hint: t('opw.rates.fee_hint') },
-            { key: 'fee_currency', label: t('opw.f.currency'), type: 'chips', options: ['GBP','EUR','USD','AED','INR','AUD','CAD','ZAR'].map((v) => ({ value: v, label: v })) },
-            { key: 'includes_travel', label: t('opw.f.travel_inc'), type: 'switch' },
-            { key: 'travel_allowance_per_km_minor', label: t('opw.f.travel_per_km'), type: 'stepper', min: 0, max: 10000, step: 10, hint: t('opw.f.travel_per_km_hint') },
-            { key: 'expenses_note', label: t('opw.f.expenses_note'), type: 'multiline', optional: true },
-          ]}
-          onSubmit={(x) => setDraft((d) => ({ ...d, ...x }))}
-          onClose={() => {}}
-        />
-        <Btn small title={t('opw.rates.add_btn')} onPress={add} style={{ alignSelf: 'flex-start' }} />
-      </Card>
+      )) : <Empty emoji="💳" title={t('opw.rates.empty')} sub={t('opw.rates.empty_sub')} />}
+      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+        <Btn title={t('opw.rates.new')} onPress={() => onOpen('RateCardWizard', {})} style={{ minHeight: 48 }} />
+        {cards.length ? <Btn title={t('opw.rates.manage')} color={c.paper} ink={c.ink} onPress={() => onOpen('RateCardCatalog')} style={{ minHeight: 48 }} /> : null}
+      </View>
+      <T size={12} color={c.mute}>{t('opw.rates.return_note')}</T>
       {err ? <T color={c.red} size={13}>{err}</T> : null}
       <View style={{ flexDirection: 'row', gap: 8 }}>
         <Btn title={t('common.back')} color={c.paper} ink={c.ink} onPress={onBack} />
-        <Btn title={nextLabel} onPress={async () => { try { await onSave(rates, 8); } catch (e) { setErr(e.message); } }} />
+        <Btn title={nextLabel} onPress={next} loading={busy} />
       </View>
     </View>
   );
@@ -589,7 +591,7 @@ export function OfficialProfileView({ profileId, onClose }) {
           <T size={36}>{p.avatar_emoji ?? '🏟️'}</T>
           <View style={{ flex: 1 }}>
             <T weight="800" size={20}>{p.display_name}</T>
-            <T size={13} color={c.mute}>@{p.handle}{p.preferred_pronouns ? ` · ${p.preferred_pronouns}` : ''}{p.nationality ? ` · ${p.nationality}` : ''}</T>
+            <T size={13} color={c.mute}>@{p.handle}{p.preferred_pronouns ? ` · ${p.preferred_pronouns}` : ''}{p.nationality ? ` · ${iso(p.nationality) ? countryName(p.nationality) : p.nationality}` : ''}</T>
             {p.highest_level ? <Tag label={t(`opw.level.${p.highest_level}`)} color={c.violetSoft} /> : null}
           </View>
         </View>
@@ -629,38 +631,3 @@ export function OfficialProfileView({ profileId, onClose }) {
   );
 }
 
-// ---------------------------------------------------------------- Profile banner for OfficialsHome
-export function OfficialProfileBanner({ onSetup }) {
-  const prof = useLoad(() => api.get('/me/official-profile').catch((e) => (e?.status === 404 ? null : Promise.reject(e))), []);
-  if (!prof.data && !prof.error) return null;
-  if (prof.error) return null;
-  const p = prof.data;
-  if (!p) {
-    return (
-      <Card color={c.sunSoft} style={{ marginBottom: 8 }} onPress={onSetup} accessibilityLabel={t('opw.banner.setup_a11y')}>
-        <T weight="800">{t('opw.banner.setup')}</T>
-        <T size={13} color={c.mute}>{t('opw.banner.progress', { pct: 0 })}</T>
-      </Card>
-    );
-  }
-  const pct = Math.round((p.step_reached / 9) * 100);
-  if (p.status === 'published') {
-    return (
-      <Card color={c.mintSoft} style={{ marginBottom: 8 }}>
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-          <T style={{ flex: 1 }} weight="800">✅ {t('opw.banner.published')}</T>
-          <Btn small title={t('opw.banner.edit')} color={c.paper} ink={c.ink} onPress={onSetup} />
-        </View>
-      </Card>
-    );
-  }
-  return (
-    <Card color={c.sunSoft} style={{ marginBottom: 8 }} onPress={onSetup} accessibilityLabel={t('opw.banner.setup_a11y')}>
-      <T weight="800">{t('opw.banner.setup')}</T>
-      <T size={13} color={c.mute}>{t('opw.banner.progress', { pct })}</T>
-      <View style={{ height: 6, borderRadius: 4, backgroundColor: c.violetSoft, overflow: 'hidden', marginTop: 4 }}>
-        <View style={{ width: `${pct}%`, height: 6, backgroundColor: c.orange }} />
-      </View>
-    </Card>
-  );
-}
