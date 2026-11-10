@@ -42,6 +42,7 @@ import { tenderFilesRouter } from './capabilities/tender-files.js';
 import { mediaAssetFilesRouter } from './capabilities/media-rights-assets.js';
 import { contractReceiptsRouter } from './capabilities/player-contract-money.js';
 import { staffDocsRouter } from './capabilities/event-openings.js';
+import { sessionMediaRouter } from './capabilities/session-media.js';
 import { liveRouter } from './live.js';
 import { publicWebRouter } from './public-web.js';
 import { appleWebRouter } from './apple-web.js';
@@ -121,6 +122,7 @@ export function createApp() {
   app.use('/api/v1', mediaAssetFilesRouter());
   app.use('/api/v1', contractReceiptsRouter());
   app.use('/api/v1', staffDocsRouter());
+  app.use('/api/v1', sessionMediaRouter());
   // Every route that takes a document as base64 JSON gets the platform admin's document limit as its body limit (and no more than that).
   for (const re of uploadPathPatterns()) app.use(re, uploadJson);
   app.use(express.json({ limit: '100kb' }));

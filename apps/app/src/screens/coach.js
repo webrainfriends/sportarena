@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { View } from 'react-native';
+import { Platform, ScrollView, TouchableOpacity, View } from 'react-native';
 import { api } from '../api';
 import { useLoad } from '../hooks';
 import { useSession } from '../session';
@@ -36,6 +36,124 @@ const sessionFields = [
   { key: 'objective', label: 'Objective (what this session is for)', optional: true },
   { key: 'instructions', label: 'Instructions', type: 'multiline', optional: true },
 ];
+
+const KIND_ICON = { video: '🎬', document: '📄', image: '🖼️', link: '🔗' };
+const fmtBytes = (b) => b > 1e9 ? `${(b / 1e9).toFixed(1)} GB` : b > 1e6 ? `${(b / 1e6).toFixed(0)} MB` : `${Math.round(b / 1024)} KB`;
+
+function SessionResourcesSheet({ session, isCoach, visible, onClose }) {
+  const { toast } = useSession();
+  const media = useLoad(() => visible && session ? api.get(`/training-sessions/${session.id}/media`) : null, [visible, session?.id]);
+  const items = media.data?.items ?? [];
+  const kpi = media.data?.kpi;
+  const [adding, setAdding] = useState(null); // 'link'
+
+  const remove = async (id) => {
+    if (!confirm(t('sm.remove_confirm'))) return;
+    try { await api.delete(`/session-media/${id}`); toast(t('sm.removed')); media.reload(); }
+    catch (e) { toast('' + e.message); }
+  };
+
+  const toggleRelease = async (item) => {
+    try { await api.patch(`/session-media/${item.id}`, { released: !item.released }); media.reload(); }
+    catch (e) { toast('' + e.message); }
+  };
+
+  const pickAndUpload = async (kind) => {
+    try {
+      let result;
+      if (kind === 'document') {
+        const { getDocumentAsync } = await import('expo-document-picker');
+        result = await getDocumentAsync({ type: ['application/pdf', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', 'text/csv'], copyToCacheDirectory: true });
+        if (result.canceled) return;
+        const asset = result.assets[0];
+        const size = asset.size ?? 0;
+        if (size > 50 * 1024 * 1024) { toast(t('sm.size_limit_doc')); return; }
+        const name = encodeURIComponent(asset.name ?? 'document');
+        toast(t('sm.upload_progress'));
+        await api.upload(`/training-sessions/${session.id}/media?name=${name}`, asset.uri, asset.mimeType ?? 'application/octet-stream');
+      } else {
+        const { launchImageLibraryAsync, MediaTypeOptions } = await import('expo-image-picker');
+        const isVideo = kind === 'video';
+        result = await launchImageLibraryAsync({ mediaTypes: isVideo ? MediaTypeOptions.Videos : MediaTypeOptions.Images, quality: 0.85 });
+        if (result.canceled) return;
+        const asset = result.assets[0];
+        const sizeLimit = isVideo ? 500 * 1024 * 1024 : 10 * 1024 * 1024;
+        if (asset.fileSize && asset.fileSize > sizeLimit) { toast(isVideo ? t('sm.size_limit_video') : t('sm.size_limit_image')); return; }
+        const fileName = asset.fileName ?? (isVideo ? 'video.mp4' : 'image.jpg');
+        const name = encodeURIComponent(fileName);
+        toast(t('sm.upload_progress'));
+        await api.upload(`/training-sessions/${session.id}/media?name=${name}`, asset.uri, asset.type === 'video' ? 'video/mp4' : 'image/jpeg');
+      }
+      toast(t('sm.uploaded'));
+      media.reload();
+    } catch (e) { toast(t('sm.upload_error')); }
+  };
+
+  if (!visible) return null;
+
+  return (
+    <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, justifyContent: 'flex-end' }}>
+      <View style={{ backgroundColor: c.bg, borderTopLeftRadius: 20, borderTopRightRadius: 20, maxHeight: '90%' }}>
+        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 16, borderBottomWidth: 1, borderBottomColor: c.line }}>
+          <T weight="700" size={16}>{t('sm.title')}</T>
+          {kpi ? <T size={12} color={c.mute}>{t('sm.kpi.count', { n: kpi.count })} · {fmtBytes(kpi.total_bytes)}</T> : null}
+          <TouchableOpacity onPress={onClose}><T size={18} color={c.mute}>✕</T></TouchableOpacity>
+        </View>
+        {isCoach ? (
+          <View style={{ flexDirection: 'row', gap: 8, padding: 12, flexWrap: 'wrap', borderBottomWidth: 1, borderBottomColor: c.line }}>
+            <Btn small title={t('sm.add_video')} onPress={() => pickAndUpload('video')} />
+            <Btn small title={t('sm.add_doc')} color={c.paper} ink={c.ink} onPress={() => pickAndUpload('document')} />
+            <Btn small title={t('sm.add_image')} color={c.paper} ink={c.ink} onPress={() => pickAndUpload('image')} />
+            <Btn small title={t('sm.add_link')} color={c.paper} ink={c.ink} onPress={() => setAdding('link')} />
+          </View>
+        ) : null}
+        <ScrollView style={{ flex: 1 }} contentContainerStyle={{ padding: 12 }}>
+          {media.loading && !media.data ? <Loading /> : media.error ? <ErrorBox error={media.error} onRetry={media.reload} /> : !items.length ? (
+            <Empty emoji="📎" title={t('sm.empty')} sub={isCoach ? t('sm.empty_sub') : undefined} />
+          ) : items.map((item) => (
+            <Card key={item.id} style={{ marginBottom: 8 }}>
+              <View style={{ flexDirection: 'row', gap: 10, alignItems: 'flex-start' }}>
+                <T size={22}>{KIND_ICON[item.kind]}</T>
+                <View style={{ flex: 1 }}>
+                  <T weight="700" size={13}>{item.original_name ?? item.link_url ?? t(`sm.kind.${item.kind}`)}</T>
+                  {item.caption ? <T size={12} color={c.mute}>{item.caption}</T> : null}
+                  <T size={11} color={c.mute}>{item.kind === 'link' ? (item.link_provider ?? 'link') : (item.size_bytes ? fmtBytes(item.size_bytes) : '')} · {item.released ? t('sm.released') : t('sm.hold')}</T>
+                </View>
+              </View>
+              <View style={{ flexDirection: 'row', gap: 8, marginTop: 8, flexWrap: 'wrap' }}>
+                {item.download_url ? (
+                  <Btn small title={item.kind === 'video' ? t('sm.play') : t('sm.download')} onPress={() => {
+                    if (Platform.OS === 'web') { window.open(`/api/v1${item.download_url}`, '_blank'); }
+                    else { toast('Opening…'); }
+                  }} />
+                ) : item.link_url ? (
+                  <Btn small title={t('sm.play')} onPress={() => {
+                    if (Platform.OS === 'web') { window.open(item.link_url, '_blank'); }
+                  }} />
+                ) : null}
+                {isCoach ? <>
+                  <Btn small title={item.released ? t('sm.hold') : t('sm.release')} color={c.paper} ink={c.ink} onPress={() => toggleRelease(item)} />
+                  <Btn small title={t('sm.remove')} color={c.paper} ink={c.ink} onPress={() => remove(item.id)} />
+                </> : null}
+              </View>
+            </Card>
+          ))}
+        </ScrollView>
+        {adding === 'link' ? (
+          <FormSheet visible onClose={() => setAdding(null)} title={t('sm.add_link')} submitLabel={t('common.save')} initial={{}}
+            fields={[
+              { key: 'link_url', label: t('sm.link_url_ph'), placeholder: 'https://…' },
+              { key: 'caption', label: t('sm.link_desc_ph'), type: 'multiline', optional: true },
+            ]}
+            onSubmit={async (v) => {
+              await api.post(`/training-sessions/${session.id}/links`, { link_url: v.link_url, caption: v.caption || undefined, link_provider: 'other' });
+              setAdding(null); media.reload();
+            }} />
+        ) : null}
+      </View>
+    </View>
+  );
+}
 
 function Actions({ items, open }) {
   if (!items?.length) return <Empty emoji="✅" title="Nothing needs you right now" sub="New coaching requests, athlete replies and session feedback will appear here." />;
@@ -148,6 +266,7 @@ export function CoachPlan({ id }) {
   const { user, toast } = useSession();
   const plan = useLoad(() => api.get(`/training-plans/${id}`), [id]);
   const [form, setForm] = useState(null); // { mode: 'add'|'edit'|'rate'|'note'|'change', s? }
+  const [resources, setResources] = useState(null); // session object to show resources for
   const p = plan.data;
   if (plan.loading && !p) return <Screen><Loading /></Screen>;
   if (plan.error) return <Screen><ErrorBox error={plan.error} onRetry={plan.reload} /></Screen>;
@@ -220,6 +339,7 @@ export function CoachPlan({ id }) {
               {!coach && s.status === 'scheduled' && s.structure ? <Btn small title={s.actuals ? 'Update my results' : 'Log my results'} color={c.violet} onPress={() => setForm({ mode: 'log', s })} /> : null}
               {!coach && s.status === 'scheduled' ? <><Btn small title={s.structure ? 'Finish workout' : 'Mark done'} onPress={() => setForm({ mode: s.structure ? 'finish' : 'rate', s })} /><Btn small title="Skipped" color={c.paper} ink={c.ink} onPress={() => logWorkout(s, { status: 'skipped' }, 'Marked skipped')} /></> : null}
               {coach && ['completed', 'skipped'].includes(s.status) ? <Btn small title={s.coach_feedback ? 'Edit feedback' : 'Add feedback'} color={c.paper} ink={c.ink} onPress={() => setForm({ mode: 'note', s })} /> : null}
+              {['completed', 'skipped', 'scheduled'].includes(s.status) ? <Btn small title={t('sm.section')} color={c.violetSoft} ink={c.violet} onPress={() => setResources(s)} /> : null}
               {coach && s.status === 'scheduled' && rev?.response === 'draft' && draftSessions.some((x) => x.session_id === s.id) ? <Btn small title="Add workout block" color={c.violet} onPress={() => setForm({ mode: 'block', at: draftSessions.findIndex((x) => x.session_id === s.id) })} /> : null}
               {coach && s.status === 'scheduled' && rev?.response === 'draft' ? <Btn small title="Drop from revision" color={c.paper} ink={c.ink} onPress={() => act(() => saveDraft(draftSessions.filter((x) => x.session_id !== s.id)), 'Dropped from the draft')} /> : null}
             </View>
@@ -265,17 +385,18 @@ export function CoachPlan({ id }) {
       <FormSheet visible={form?.mode === 'rate'} onClose={() => setForm(null)} title="How did it go?" submitLabel="Save" initial={{ athlete_rpe: 6 }}
         fields={[{ key: 'athlete_rpe', label: 'Effort 1–10', type: 'stepper', min: 1, max: 10, step: 1, default: 6 }, { key: 'athlete_feedback', label: 'Notes for your coach (no medical details)', type: 'multiline', optional: true }]}
         onSubmit={async (v) => { const r = await queueDraft({ kind: 'workout_log', label: form.s.title ?? 'Workout', sub: dateTimeIn(form.s.starts_at, tz), payload: { session_id: form.s.id, expected_version: form.s.version, status: 'completed', athlete_rpe: Number(v.athlete_rpe), athlete_feedback: v.athlete_feedback || undefined } }); setForm(null); plan.reload(); return saveMessage(r, 'Workout saved'); }} />
-      <FormSheet visible={form?.mode === 'note'} onClose={() => setForm(null)} title="Coach feedback" submitLabel="Save"
+      <FormSheet visible={form?.mode === 'note'} onClose={() => setForm(null)} title={t('sm.coach.feedback_title')} submitLabel={t('common.save')}
         initial={{ coach_feedback: form?.s?.coach_feedback ?? '', coach_effort_rating: form?.s?.coach_effort_rating ?? 7, coach_technical_notes: form?.s?.coach_technical_notes ?? '', coach_tactical_notes: form?.s?.coach_tactical_notes ?? '', coach_physical_notes: form?.s?.coach_physical_notes ?? '', coach_next_focus: form?.s?.coach_next_focus ?? '' }}
         fields={[
-          { key: 'coach_effort_rating', label: 'Session effort (1–10)', type: 'stepper', min: 1, max: 10, step: 1, hint: form?.s?.athlete_rpe ? `Athlete self-reported: ${form.s.athlete_rpe}/10` : undefined },
-          { key: 'coach_technical_notes', label: 'Technical observations', type: 'multiline', hint: 'Technique, skill execution, tactical decisions' },
-          { key: 'coach_tactical_notes', label: 'Tactical notes', type: 'multiline', optional: true, hint: 'Game awareness, positioning, decision-making' },
-          { key: 'coach_physical_notes', label: 'Physical / load notes', type: 'multiline', optional: true, hint: 'Fitness, fatigue, injury flags (no medical diagnoses)' },
-          { key: 'coach_next_focus', label: 'Next session focus', type: 'multiline', optional: true, hint: 'Key priority to carry into the next session' },
-          { key: 'coach_feedback', label: 'Overall summary (shared with athlete)', type: 'multiline', optional: true, hint: 'What to highlight when sharing with the athlete' },
+          { key: 'coach_effort_rating', label: t('sm.coach.effort'), type: 'stepper', min: 1, max: 10, step: 1, hint: form?.s?.athlete_rpe ? `Athlete self-reported: ${form.s.athlete_rpe}/10` : undefined },
+          { key: 'coach_technical_notes', label: t('sm.coach.technical'), type: 'multiline', hint: t('sm.coach.technical_hint') },
+          { key: 'coach_tactical_notes', label: t('sm.coach.tactical'), type: 'multiline', optional: true, hint: t('sm.coach.tactical_hint') },
+          { key: 'coach_physical_notes', label: t('sm.coach.physical'), type: 'multiline', optional: true, hint: t('sm.coach.physical_hint') },
+          { key: 'coach_next_focus', label: t('sm.coach.next_focus'), type: 'multiline', optional: true, hint: t('sm.coach.next_focus_hint') },
+          { key: 'coach_feedback', label: t('sm.coach.summary'), type: 'multiline', optional: true, hint: t('sm.coach.summary_hint') },
         ]}
         onSubmit={async (v) => { await api.patch(`/training-sessions/${form.s.id}`, { coach_effort_rating: v.coach_effort_rating || undefined, coach_technical_notes: v.coach_technical_notes || undefined, coach_tactical_notes: v.coach_tactical_notes || undefined, coach_physical_notes: v.coach_physical_notes || undefined, coach_next_focus: v.coach_next_focus || undefined, coach_feedback: v.coach_feedback || undefined }); setForm(null); plan.reload(); }} />
+      <SessionResourcesSheet session={resources} isCoach={coach} visible={!!resources} onClose={() => setResources(null)} />
       <FormSheet visible={form?.mode === 'change'} onClose={() => setForm(null)} title="What should change?" submitLabel="Send" initial={{}}
         fields={[{ key: 'note', label: 'Your request', type: 'multiline' }]}
         onSubmit={async (v) => { await api.post(`/training-plans/${p.id}/respond`, { response: 'change_requested', note: v.note }); setForm(null); plan.reload(); }} />
