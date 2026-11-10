@@ -373,6 +373,7 @@ import './discipline.js';
 import './official-verification.js';
 import './official-report-signoff.js';
 import './official-profile.js';
+import './official-profile-compliance.js';
 import './official-rate-card.js';
 import './official-rate-agreements.js';
 import './official-tax.js';
