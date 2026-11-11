@@ -492,6 +492,15 @@ function PostMatchReview({ g, f, canScore, go, id, queue }) {
         </Section>
       ) : null}
 
+      {/* Video Review Workspace */}
+      <Section title={t('officialVideo.title')} color={c.cyan}>
+        <Card pad={14} style={{ gap: 10 }}>
+          <T size={13} weight="700" color={c.ink}>{t('officialVideo.console_cta_title')}</T>
+          <T size={12} color={c.mute}>{t('officialVideo.console_cta_body')}</T>
+          <Btn title={`🎬 ${t('officialVideo.open_workspace')}`} onPress={() => go('OfficialVideoReview', { fixtureId: f?.id ?? id })} color={c.cyan} style={{ minHeight: 48 }} />
+        </Card>
+      </Section>
+
       {/* Sign-off */}
       <Btn
         title="✍️ Open score sheet & sign off"

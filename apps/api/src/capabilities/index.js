@@ -331,6 +331,7 @@ import './officials-mentoring.js';
 import './officials-payout-account.js';
 import './officials-crew.js';
 import './officials-bulk.js';
+import './officials-video-review.js';
 import './media-rights-licensing.js';
 import './media-rights-ops.js';
 import './media-rights-assets.js';
