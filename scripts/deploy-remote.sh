@@ -235,7 +235,7 @@ if [ "$(env_val WORKER_MODE)" = "external" ]; then
 fi
 pm2 save
 ok=0
-for i in $(seq 1 30); do
+for i in $(seq 1 90); do
   if curl -fs "http://127.0.0.1:${APP_PORT}/health" >/dev/null 2>&1; then ok=1; echo "[deploy] API healthy after ${i}s"; break; fi
   sleep 1
 done
@@ -377,7 +377,7 @@ check_site() {
   b="$(curl -fsk "$base/api/v1/sports" 2>/dev/null || true)"; [[ "$b" == *'"slug"'* ]] || return 1
 }
 site_ok=0
-for i in $(seq 1 30); do
+for i in $(seq 1 90); do
   if check_site; then site_ok=1; echo "[deploy] site healthy through nginx after ${i}s"; break; fi
   sleep 1
 done
