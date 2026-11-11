@@ -1,7 +1,8 @@
-// REF-R10: AI crew requirements tab for the Officials Assignment Board.
-// Shows governing-body-sourced required crew, deficit alerts, and organiser override.
+// REF-R10/R30: AI crew requirements tab for the Officials Assignment Board.
+// Shows governing-body-sourced required crew, deficit alerts, organiser override, and
+// REF-R30 crew template apply flow (apply_crew_template_to_event).
 import React, { useState } from 'react';
-import { View, Pressable, ScrollView } from 'react-native';
+import { View, Pressable, ScrollView, Modal, FlatList } from 'react-native';
 import { api } from '../api';
 import { useLoad } from '../hooks';
 import { useSession } from '../session';
@@ -117,9 +118,93 @@ function DeficitAlert({ alert, fixtureId, isOrganiser, onDecide }) {
   );
 }
 
-export function OfficialsRequirementsTab({ fixtureId, isOrganiser }) {
+// REF-R30: Crew Template Picker sheet — lists published templates matching the event's sport.
+function CrewTemplatePicker({ eventId, sportCode, onApplied, onClose }) {
+  const { toast } = useSession();
+  const q = useLoad(() => api.get('/crew-templates', { sport_code: sportCode, status: 'published', limit: 20 }), [sportCode]);
+  const [selected, setSelected] = useState(null);
+  const [busy, setBusy] = useState(false);
+
+  const apply = async () => {
+    if (!selected) return;
+    setBusy(true);
+    try {
+      await api.post(`/events/${eventId}/apply-crew-template`, { template_id: selected.id });
+      toast(t('crew_template.applied_success'));
+      onApplied?.();
+      onClose?.();
+    } catch (e) { toast(explain(e)); } finally { setBusy(false); }
+  };
+
+  return (
+    <View style={{ flex: 1, backgroundColor: c.paper, borderRadius: 24, overflow: 'hidden' }}>
+      <View style={{ width: 40, height: 4, borderRadius: 2, backgroundColor: c.line, alignSelf: 'center', marginTop: 12, marginBottom: 16 }} />
+      <T style={{ fontSize: 17, fontWeight: '800', color: c.ink, paddingHorizontal: 20, marginBottom: 4 }}>
+        {t('crew_template.title')}
+      </T>
+      <T style={{ fontSize: 13, color: c.mute, paddingHorizontal: 20, marginBottom: 16 }}>
+        {t('crew_template.apply_cta')}
+      </T>
+      {q.loading ? <Loading /> : (
+        <FlatList
+          data={q.data?.templates ?? []}
+          keyExtractor={(item) => item.id}
+          contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 16, gap: 10 }}
+          ListEmptyComponent={<T style={{ color: c.mute, padding: 20, textAlign: 'center' }}>{t('crew_template.none_available')}</T>}
+          renderItem={({ item, index }) => {
+            const isBest = index === 0;
+            const isChosen = selected?.id === item.id;
+            return (
+              <Pressable
+                accessibilityRole="radio"
+                accessibilityLabel={item.name}
+                accessibilityState={{ selected: isChosen }}
+                onPress={() => setSelected(item)}
+                style={{
+                  borderRadius: 16, padding: 14, backgroundColor: c.paper,
+                  borderWidth: isChosen ? 2 : 1, borderColor: isChosen ? c.pink : c.line,
+                  shadowColor: '#000', shadowOpacity: 0.06, shadowOffset: { width: 0, height: 2 }, shadowRadius: 6,
+                }}
+              >
+                <View style={{ flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 4 }}>
+                  <T style={{ fontSize: 14, fontWeight: '700', color: c.ink, flex: 1 }}>{item.name}</T>
+                  {isBest ? <Tag label={t('crew_template.best_match')} color={c.pinkSoft} /> : null}
+                </View>
+                <T style={{ fontSize: 12, color: c.mute, marginBottom: 6 }}>
+                  {item.level} · {item.governing_body}
+                </T>
+                <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 5 }}>
+                  {item.slot_count ? <Tag label={`${item.slot_count} ${t('crew_template.slots')}`} color={c.bg} /> : null}
+                  {item.content_hash ? (
+                    <Tag label={`${t('crew_template.content_hash').slice(0, 4)}: ${item.content_hash.slice(0, 8)}…`} color={c.bg} />
+                  ) : null}
+                  {item.source_ref ? <Tag label={item.source_ref} color={c.bg} /> : null}
+                </View>
+              </Pressable>
+            );
+          }}
+        />
+      )}
+      <View style={{ flexDirection: 'row', gap: 10, padding: 16, paddingBottom: 32 }}>
+        <Btn title={t('common.cancel')} color={c.bg} ink={c.pink} onPress={onClose} style={{ flex: 1, minHeight: 48 }} />
+        <Btn
+          title={t('crew_template.apply_cta')}
+          color={c.pink} ink="#fff"
+          onPress={apply}
+          loading={busy}
+          disabled={!selected}
+          style={{ flex: 2, minHeight: 48 }}
+          accessibilityLabel={t('crew_template.apply_cta')}
+        />
+      </View>
+    </View>
+  );
+}
+
+export function OfficialsRequirementsTab({ fixtureId, eventId, sportCode, isOrganiser }) {
   const q = useLoad(() => api.get(`/fixtures/${fixtureId}/crew-compliance`).catch(() => null), [fixtureId]);
   const alertsQ = useLoad(() => api.get('/crew-ai/alerts', { limit: 50 }).catch(() => []), [fixtureId]);
+  const [showTemplatePicker, setShowTemplatePicker] = useState(false);
 
   if (q.loading && !q.data) return <Loading />;
   const data = q.data;
@@ -131,6 +216,22 @@ export function OfficialsRequirementsTab({ fixtureId, isOrganiser }) {
 
   return (
     <ScrollView style={{ flex: 1 }} contentContainerStyle={{ padding: 2 }}>
+      {/* REF-R30: Apply crew template button — only for organisers with an event context */}
+      {isOrganiser && eventId ? (
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel={t('crew_template.apply_cta')}
+          onPress={() => setShowTemplatePicker(true)}
+          style={{
+            flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8,
+            borderRadius: 999, borderWidth: 1.5, borderColor: c.pinkSoft, padding: 12, marginBottom: 12,
+            backgroundColor: c.paper,
+          }}
+        >
+          <T style={{ fontSize: 14, fontWeight: '700', color: c.pink }}>📋 {t('crew_template.apply_cta')}</T>
+        </Pressable>
+      ) : null}
+
       <Section title={t('official.requirements.title')} color={c.violet}>
         <Card style={{ padding: 14, marginBottom: 8 }}>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 10 }}>
@@ -189,6 +290,22 @@ export function OfficialsRequirementsTab({ fixtureId, isOrganiser }) {
           style={{ marginTop: 8, minHeight: 44 }}
         />
       ) : null}
+
+      {/* REF-R30: Crew template picker modal */}
+      <Modal
+        visible={showTemplatePicker}
+        animationType="slide"
+        presentationStyle="pageSheet"
+        onRequestClose={() => setShowTemplatePicker(false)}
+        accessibilityViewIsModal
+      >
+        <CrewTemplatePicker
+          eventId={eventId}
+          sportCode={sportCode}
+          onApplied={() => { q.reload(); alertsQ.reload(); }}
+          onClose={() => setShowTemplatePicker(false)}
+        />
+      </Modal>
     </ScrollView>
   );
 }
