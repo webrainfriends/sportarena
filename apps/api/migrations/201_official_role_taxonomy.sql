@@ -49,7 +49,7 @@ CREATE TABLE IF NOT EXISTS sport_official_role_definitions (
   governing_body              text,
   source                      text,
   source_version              text,
-  rule_pack_id                uuid        REFERENCES rule_packs(id),
+  rule_pack_id                uuid        REFERENCES gov_rule_packs(id),
   effective_from              date,
   effective_to                date,
   status                      text        NOT NULL DEFAULT 'active'
@@ -76,7 +76,7 @@ CREATE TABLE IF NOT EXISTS crew_templates (
   governing_body   text        NOT NULL,
   name             text        NOT NULL,
   description      text,
-  rule_pack_id     uuid        REFERENCES rule_packs(id),
+  rule_pack_id     uuid        REFERENCES gov_rule_packs(id),
   rule_pack_version text,
   status           text        NOT NULL DEFAULT 'draft'
                      CHECK (status IN ('draft','published','archived')),
