@@ -17699,7 +17699,6 @@ export default {
   'orgOff.comms.empty_title': 'No messages sent yet',
   'orgOff.comms.empty_sub': 'Send a message to all officials on this panel.',
   'nav.title.OrgOfficialsCommand': 'ഉദ്യോഗസ്ഥർ',
-};
 
 
   // Session media & resource library

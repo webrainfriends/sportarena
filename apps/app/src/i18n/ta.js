@@ -17699,7 +17699,6 @@ export default {
   'orgOff.comms.empty_title': 'இன்னும் செய்திகள் அனுப்பப்படவில்லை',
   'orgOff.comms.empty_sub': 'இந்த குழுவில் உள்ள அனைத்து நடுவர்களுக்கும் செய்தி அனுப்பவும்.',
   'nav.title.OrgOfficialsCommand': 'நடுவர்கள்',
-};
 
 
   // Session media & resource library

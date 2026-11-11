@@ -17787,7 +17787,6 @@ export default {
   'orgOff.comms.empty_title': 'अभी तक कोई संदेश नहीं',
   'orgOff.comms.empty_sub': 'इस पैनल के सभी अधिकारियों को संदेश भेजें।',
   'nav.title.OrgOfficialsCommand': 'अधिकारी',
-};
 
 
   // Session media & resource library
