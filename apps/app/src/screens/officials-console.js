@@ -23,6 +23,7 @@ import {
   FootballExtras, OfflineBanner, OutcomePad, RacketPad, RulesPanel, ServerPick, SyncLine,
 } from '../scorer/panels';
 import { ROLE_LABEL } from './officials-home';
+import { OfficialsPara } from './officials-para';
 
 // ─── helpers ────────────────────────────────────────────────────────────────
 const when = (iso, tz) => iso ? new Date(iso).toLocaleString(undefined, { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit', ...(tz ? { timeZone: tz } : {}) }) : '';
@@ -707,6 +708,7 @@ export function OfficialsConsole({ id }) {
   const leftCol = (
     <View style={{ gap: 14 }}>
       {isLiveOrPaused || finished ? <ScoreHeader f={f} g={g} rs={rs} /> : null}
+      {f?.has_para_athletes ? <OfficialsPara fixtureId={id} sport={f.sport} event={f.event} /> : null}
       {isLiveOrPaused ? (
         <ControlStrip f={f} ph={ph} canScore={canScore} onControl={confirmControl} onInjury={() => setInjuryOpen(true)} busy={busy} />
       ) : null}
