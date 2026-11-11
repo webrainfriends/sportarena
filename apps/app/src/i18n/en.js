@@ -16804,9 +16804,7 @@ export default {
   'ora.feePreview.totalThisGame': 'Total this game',
   'ora.feePreview.viewAgreement': 'View Agreement',
   // Screen-level keys (R35)
-  'ora.title': 'Rate Agreements',
   'ora.back': 'Back',
-  'ora.new': 'New Agreement',
   'ora.accept': 'Accept',
   'ora.counter': 'Counter',
   'ora.decline': 'Decline',
@@ -18636,7 +18634,7 @@ export default {
   'od.body_no_test': 'No fitness tests defined',
   'od.body_no_test_sub': 'Create fitness test templates from the policy tab.',
   'od.body_none_waiting': 'Nothing waiting',
-  'od.body_rec_disclaimer': 'Recommendations are set by the assessor and do not automatically change an official's grade.',
+  'od.body_rec_disclaimer': "Recommendations are set by the assessor and do not automatically change an official's grade.",
   'od.body_expiring_label': 'Expiring',
   'od.body_application_count': '{n} applications',
   'od.body_tab_overview': 'Overview',
