@@ -14,6 +14,7 @@ import { c } from '../theme';
 import { Banner } from '../federation-ui';
 import { Cols } from '../federation-bits';
 import { Notes, PURPOSE, REC_OPTIONS, RecTag, ROLE_NAME, StateTag, when, whenTime } from '../officials-dev-ui';
+import { t } from '../i18n';
 
 const ago = (iso) => whenTime(iso);
 
@@ -60,31 +61,31 @@ export function OfficialAssessment({ id }) {
       <View style={{ flexDirection: 'row', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}><StateTag status={a.status} /><Tag label={PURPOSE[a.purpose] ?? a.purpose} color={c.cyan} /><RecTag value={v?.recommendation} /></View>
       <H1 style={{ marginTop: 8 }}>{a.event_name}</H1>
       <T size={13} color={c.mute} style={{ marginTop: 2 }}>{a.official_name} · {ROLE_NAME[a.official_role] ?? a.official_role}{a.grade_label ? ` · ${a.grade_label}` : ''} · {a.sport_name} · {when(a.scheduled_at)}</T>
-      <T size={12} color={c.mute}>Assessor {a.assessor_name} · {side} · Rubric: {a.rubric.name} v{a.rubric.version}</T>
-      {a.status === 'voided' ? <View style={{ marginTop: 10 }}><Banner tone={c.pinkSoft}>Voided by the body{a.voided_at ? ` on ${when(a.voided_at)}` : ''}: {a.void_reason}. The report and every version are kept.</Banner></View> : null}
-      {a.status === 'draft' ? <View style={{ marginTop: 10 }}><Banner>Only you can see this draft. Submit it when the report is complete.</Banner></View> : null}
-      {a.status === 'submitted' && !a.as.assessor ? <View style={{ marginTop: 10 }}><Banner tone={c.cyanSoft}>Submitted. The body reviews it before it is published to the official.</Banner></View> : null}
+      <T size={12} color={c.mute}>{t('od.asmt_assessor_line', { name: a.assessor_name, side, rubric: a.rubric.name, version: a.rubric.version })}</T>
+      {a.status === 'voided' ? <View style={{ marginTop: 10 }}><Banner tone={c.pinkSoft}>{t('od.asmt_voided', { date: a.voided_at ? ` on ${when(a.voided_at)}` : '', reason: a.void_reason })}</Banner></View> : null}
+      {a.status === 'draft' ? <View style={{ marginTop: 10 }}><Banner>{t('od.asmt_draft_banner')}</Banner></View> : null}
+      {a.status === 'submitted' && !a.as.assessor ? <View style={{ marginTop: 10 }}><Banner tone={c.cyanSoft}>{t('od.asmt_submitted_banner')}</Banner></View> : null}
       {a.versions.length > 1 ? <View style={{ marginTop: 10 }}><Seg options={a.versions.map((x) => ({ value: x.version, label: `Version ${x.version}${x.version === a.current_version ? ' (current)' : ''}` }))} value={v?.version} onChange={setVer} /></View> : null}
       {v?.correction_reason ? <T size={12.5} style={{ marginTop: 8 }}>Correction on {ago(v.created_at)}: {v.correction_reason}</T> : null}
       <View style={{ marginTop: 12 }}>
         <Cols
           a={<>
             <Card color={c.paper} pad={14}>
-              <T weight="800" size={14}>Scores against the rubric</T>
-              <T size={11.5} color={c.mute} style={{ marginBottom: 4 }}>Scale {a.rubric.scale.min}–{a.rubric.scale.max}. Scores describe this match; they are not a ranking and they never decide a licence.</T>
+              <T weight="800" size={14}>{t('od.asmt_scores_title')}</T>
+              <T size={11.5} color={c.mute} style={{ marginBottom: 4 }}>{t('od.asmt_scores_sub', { min: a.rubric.scale.min, max: a.rubric.scale.max })}</T>
               {a.rubric.dimensions.map((d) => <ScoreRow key={d.key} dim={d} score={scoreOf(d.key)} scale={a.rubric.scale} />)}
             </Card>
             <Card color={c.paper} pad={14}>
-              <T weight="800" size={14}>What the scale means</T>
+              <T weight="800" size={14}>{t('od.asmt_scale_title')}</T>
               <View style={{ gap: 4, marginTop: 6 }}>{Object.entries(a.rubric.scale.labels).map(([k, t]) => <T key={k} size={12.5}><T weight="800" size={12.5}>{k}</T>  {t}</T>)}</View>
             </Card>
           </>}
           b={<>
             {v?.recommendation ? (
               <Card color={c.cyanSoft} pad={14}>
-                <T weight="800" size={14}>Assessor recommendation</T>
+                <T weight="800" size={14}>{t('od.asmt_recommendation_title')}</T>
                 <View style={{ marginTop: 6, flexDirection: 'row' }}><RecTag value={v.recommendation} /></View>
-                <T size={12} color={c.mute} style={{ marginTop: 6 }}>A recommendation is advice to the body. A promotion, demotion or renewal is always a separate decision by a person.</T>
+                <T size={12} color={c.mute} style={{ marginTop: 6 }}>{t('od.asmt_recommendation_note')}</T>
               </Card>) : null}
             <Notes title="Strengths" items={v?.narrative?.strengths} />
             <Notes title="Development areas" items={v?.narrative?.development_areas} />
@@ -100,7 +101,7 @@ export function OfficialAssessment({ id }) {
       </View>
 
       {a.responses.length ? (
-        <Section title="Acknowledgements and comments" color={c.mint}>
+        <Section title={t('od.asmt_responses_title')} color={c.mint}>
           {a.responses.map((r) => (
             <Card key={r.id} color={c.paper} pad={14} style={{ marginBottom: 8 }}>
               <T size={12} color={c.mute}>{r.by_name} · version {r.version} · {ago(r.created_at)}</T>
@@ -108,10 +109,10 @@ export function OfficialAssessment({ id }) {
             </Card>))}
         </Section>) : null}
       {a.appeals.length ? (
-        <Section title="Review requests and appeals" color={c.orange}>
+        <Section title={t('od.asmt_appeals_title')} color={c.orange}>
           {a.appeals.map((p) => (
             <Card key={p.id} color={['lodged', 'under_review'].includes(p.status) ? c.sunSoft : c.paper} pad={14} style={{ marginBottom: 8 }}>
-              <View style={{ flexDirection: 'row', justifyContent: 'space-between', gap: 8 }}><T weight="800">{p.kind === 'appeal' ? 'Appeal' : 'Review request'} · version {p.version}</T><StateTag status={p.status} /></View>
+              <View style={{ flexDirection: 'row', justifyContent: 'space-between', gap: 8 }}><T weight="800">{p.kind === 'appeal' ? t('od.asmt_appeal') : t('od.asmt_review_request')} · {t('od.body_version', { n: p.version })}</T><StateTag status={p.status} /></View>
               <T size={12} color={c.mute}>{p.lodged_by_name} · {ago(p.created_at)}</T>
               <T style={{ marginTop: 4 }}>{p.grounds}</T>
               {p.decision ? <View style={{ marginTop: 8 }}><T size={12} weight="800">Decision{p.decided_at ? ` · ${ago(p.decided_at)}` : ''}</T><T>{p.decision}</T></View> : null}
@@ -125,14 +126,14 @@ export function OfficialAssessment({ id }) {
         </Section>) : null}
 
       <View style={{ marginTop: 14, flexDirection: 'row', gap: 8, flexWrap: 'wrap' }}>
-        {has('acknowledge') ? <Btn title="Acknowledge: I have read it" loading={busy === 'ack'} onPress={() => post('ack', `/officials-development/assessments/${a.id}/respond`, { kind: 'acknowledgement' }, 'Acknowledged')} /> : null}
-        {has('comment') ? <Btn title="Add a comment" color={c.paper} ink={c.ink} onPress={() => setSheet({ comment: true })} /> : null}
-        {has('request_review') && !open.length ? <Btn title="Ask for a review" color={c.paper} ink={c.ink} onPress={() => setSheet({ appeal: 'review' })} /> : null}
-        {has('appeal') && !open.length ? <Btn title="Lodge an appeal" color={c.paper} ink={c.ink} onPress={() => setSheet({ appeal: 'appeal' })} /> : null}
-        {has('save') ? <Btn title="Continue the draft" onPress={() => push('AssessmentEditor', { assessment_id: a.id })} /> : null}
-        {has('correct') ? <Btn title="Correct the report" color={c.paper} ink={c.ink} onPress={() => push('AssessmentEditor', { assessment_id: a.id, correct: true })} /> : null}
-        {has('publish') ? <Btn title="Publish to the official" loading={busy === 'pub'} onPress={() => post('pub', `/officials-development/assessments/${a.id}/decision`, { action: 'publish' }, 'Published')} /> : null}
-        {has('void') ? <Btn title="Void" color={c.paper} ink={c.red} onPress={() => setSheet({ voidIt: true })} /> : null}
+        {has('acknowledge') ? <Btn title={t('od.asmt_btn_acknowledge')} loading={busy === 'ack'} onPress={() => post('ack', `/officials-development/assessments/${a.id}/respond`, { kind: 'acknowledgement' }, 'Acknowledged')} /> : null}
+        {has('comment') ? <Btn title={t('od.asmt_btn_comment')} color={c.paper} ink={c.ink} onPress={() => setSheet({ comment: true })} /> : null}
+        {has('request_review') && !open.length ? <Btn title={t('od.asmt_btn_request_review')} color={c.paper} ink={c.ink} onPress={() => setSheet({ appeal: 'review' })} /> : null}
+        {has('appeal') && !open.length ? <Btn title={t('od.asmt_btn_appeal')} color={c.paper} ink={c.ink} onPress={() => setSheet({ appeal: 'appeal' })} /> : null}
+        {has('save') ? <Btn title={t('od.btn_continue_draft')} onPress={() => push('AssessmentEditor', { assessment_id: a.id })} /> : null}
+        {has('correct') ? <Btn title={t('od.asmt_btn_correct')} color={c.paper} ink={c.ink} onPress={() => push('AssessmentEditor', { assessment_id: a.id, correct: true })} /> : null}
+        {has('publish') ? <Btn title={t('od.asmt_btn_publish')} loading={busy === 'pub'} onPress={() => post('pub', `/officials-development/assessments/${a.id}/decision`, { action: 'publish' }, 'Published')} /> : null}
+        {has('void') ? <Btn title={t('od.asmt_btn_void')} color={c.paper} ink={c.red} onPress={() => setSheet({ voidIt: true })} /> : null}
       </View>
       {a.as.official && a.status === 'published' ? <T size={12} color={c.mute} style={{ marginTop: 10 }}>{a.appeal_window.closes_at && new Date(a.appeal_window.closes_at) > new Date() ? `You can ask for a review or appeal until ${when(a.appeal_window.closes_at)}.` : 'The window to ask for a review or appeal has closed.'} Acknowledging means you have read it, not that you agree.</T> : null}
 
@@ -235,7 +236,7 @@ export function AssessmentEditor({ observation_id, assessment_id, correct }) {
       <H1>{correct ? 'Correct the report' : 'Assessment report'}</H1>
       <T size={13} color={c.mute} style={{ marginTop: 4 }}>{a.official_name} · {ROLE_NAME[a.official_role] ?? a.official_role} · {a.event_name} · {PURPOSE[a.purpose]}. Rubric: {a.rubric.name} v{a.rubric.version}.</T>
       <View style={{ marginTop: 10 }}><Banner tone={c.cyanSoft}>{correct ? 'Your correction becomes a new version. The earlier version stays in the history and the official is asked to acknowledge again.' : 'Your draft is private until you submit. After that it is an immutable version 1; later changes are corrections.'}</Banner></View>
-      <Section title="Score each dimension" color={c.pink}>
+      <Section title={t('od.asmt_editor_scores')} color={c.pink}>
         <View style={{ gap: 12 }}>
           {dims.map((d) => {
             const s = scores[d.key] ?? {};
@@ -253,25 +254,25 @@ export function AssessmentEditor({ observation_id, assessment_id, correct }) {
           })}
         </View>
       </Section>
-      <Section title="Your report" color={c.cyan}>
+      <Section title={t('od.asmt_editor_report')} color={c.cyan}>
         <View style={{ gap: 16 }}>
-          <Lines label="Strengths" items={nar.strengths} onChange={(x) => setNar({ ...nar, strengths: x })} />
-          <Lines label="Development areas" items={nar.development_areas} onChange={(x) => setNar({ ...nar, development_areas: x })} />
-          <Lines label="Required actions" hint="Each becomes an action on the official's own list." items={nar.required_actions} onChange={(x) => setNar({ ...nar, required_actions: x })} />
-          <Lines label="Recommended mentoring or training" items={nar.recommended_support} onChange={(x) => setNar({ ...nar, recommended_support: x })} />
+          <Lines label={t('od.asmt_strengths')} items={nar.strengths} onChange={(x) => setNar({ ...nar, strengths: x })} />
+          <Lines label={t('od.asmt_development_areas')} items={nar.development_areas} onChange={(x) => setNar({ ...nar, development_areas: x })} />
+          <Lines label={t('od.asmt_required_actions')} hint={t('od.asmt_required_actions_hint')} items={nar.required_actions} onChange={(x) => setNar({ ...nar, required_actions: x })} />
+          <Lines label={t('od.asmt_recommended_support')} items={nar.recommended_support} onChange={(x) => setNar({ ...nar, recommended_support: x })} />
           <ObservationLines items={nar.observations} onChange={(x) => setNar({ ...nar, observations: x })} />
         </View>
       </Section>
-      <Section title="Recommendation" color={c.mint}>
+      <Section title={t('od.asmt_recommendation_section')} color={c.mint}>
         <View style={{ flexDirection: 'row', gap: 8, flexWrap: 'wrap' }}>{REC_OPTIONS.map((o) => <Chip key={o.value} label={o.label} active={rec === o.value} onPress={() => setRec(o.value)} />)}</View>
-        <T size={12} color={c.mute} style={{ marginTop: 6 }}>Advice to the body only. It never promotes or demotes anyone by itself.</T>
+        <T size={12} color={c.mute} style={{ marginTop: 6 }}>{t('od.asmt_recommendation_note')}</T>
       </Section>
-      {correct ? <View style={{ marginTop: 12 }}><Field label="Why are you correcting it?" value={reason} onChangeText={setReason} multiline maxLength={500} /></View> : null}
+      {correct ? <View style={{ marginTop: 12 }}><Field label={t('od.asmt_correction_reason')} value={reason} onChangeText={setReason} multiline maxLength={500} /></View> : null}
       {(missing.length || needEvidence.length) ? <T size={12.5} color={c.mute} style={{ marginTop: 12 }}>Still needed: {[...missing.map((d) => d.label), ...needEvidence.map((d) => `evidence for ${d.label}`)].join(', ')}.</T> : null}
       <View style={{ flexDirection: 'row', gap: 8, flexWrap: 'wrap', marginTop: 14 }}>
-        {!correct ? <Btn title="Save draft" color={c.paper} ink={c.ink} loading={busy === 'save'} onPress={save} /> : null}
-        <Btn title={correct ? 'Add correction' : 'Submit report'} disabled={!complete} onPress={() => setConfirm(true)} />
-        <Btn title="Back" color={c.paper} ink={c.ink} onPress={back} />
+        {!correct ? <Btn title={t('od.asmt_btn_save_draft')} color={c.paper} ink={c.ink} loading={busy === 'save'} onPress={save} /> : null}
+        <Btn title={correct ? t('od.asmt_btn_add_correction') : t('od.asmt_btn_submit')} disabled={!complete} onPress={() => setConfirm(true)} />
+        <Btn title={t('od.asmt_btn_back')} color={c.paper} ink={c.ink} onPress={back} />
       </View>
       <Sheet visible={confirm} onClose={() => setConfirm(false)} title={correct ? 'Add this correction?' : 'Submit this report?'}>
         <View style={{ gap: 12 }}>
