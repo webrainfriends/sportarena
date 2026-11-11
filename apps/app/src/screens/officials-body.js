@@ -17,7 +17,6 @@ import { Banner, Metric, fmtDate } from '../federation-ui';
 import { Bar, Cols, ListCard, Pager } from '../federation-bits';
 import { DIMENSION_IDEAS, PURPOSE, PURPOSE_OPTIONS, ROLE_NAME, ROLE_OPTIONS, StateTag, REC, stateLabel, whenTime } from '../officials-dev-ui';
 import { t } from '../i18n';
-import { t } from '../i18n';
 
 const cnt = (list, k) => list?.find((x) => x.k === k)?.n ?? 0;
 const show = (n) => (n === null ? '<3' : n);
