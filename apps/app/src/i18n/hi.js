@@ -18119,4 +18119,188 @@ export default {
   'nav.title.OpenMatchSlots': 'Open Match Board',
   'nav.title.OpenSlotManage': 'Manage Open Slots',
 
+  // ---- Federation credential import & disciplinary reconciliation (REF-R28, reviewed: false) ----
+  'fed.import.title': "फेडरेशन प्रमाण-पत्र", // reviewed: false
+  'fed.import.desc': "बाहरी फेडरेशन क्रेडेंशियल और अनुशासनात्मक डेटा स्रोतों को कनेक्ट करें। किसी भी लाइसेंस या अनुशासनात्मक रिकॉर्ड को छूने से पहले मानव समीक्षा के लिए रिकॉर्ड स्टेज किए जाते हैं।", // reviewed: false
+  'fed.import.noConnectors': "कोई कनेक्टर पंजीकृत नहीं", // reviewed: false
+  'fed.import.noConnectorsAdmin': "फेडरेशन क्रेडेंशियल आयात करना शुरू करने के लिए एक कनेक्टर पंजीकृत करें।", // reviewed: false
+  'fed.import.noConnectorsMember': "इस निकाय के लिए अभी तक कोई अनुमोदित कनेक्टर पंजीकृत नहीं हैं।", // reviewed: false
+  'fed.conn.registerTitle': "Register connector", // reviewed: false
+  'fed.conn.register': "Register connector", // reviewed: false
+  'fed.conn.registerDesc': "Register an authorised federation data source. No data flows until a platform admin approves the connector.", // reviewed: false
+  'fed.conn.registered': "Connector registered", // reviewed: false
+  'fed.conn.registeredDesc': "The connector is pending platform approval. You will be notified when approved.", // reviewed: false
+  'fed.conn.name': "Connector name", // reviewed: false
+  'fed.conn.namePlaceholder': "e.g. FIFA Referee Registry", // reviewed: false
+  'fed.conn.bodyId': "Governing body", // reviewed: false
+  'fed.conn.bodyIdPlaceholder': "Search governing body…", // reviewed: false
+  'fed.conn.adapter': "Adapter type", // reviewed: false
+  'fed.conn.holderRole': "Licence holder role", // reviewed: false
+  'fed.conn.endpointUrl': "API endpoint URL", // reviewed: false
+  'fed.conn.token': "API token", // reviewed: false
+  'fed.conn.tokenPlaceholder': "Paste API token (stored encrypted)", // reviewed: false
+  'fed.conn.approved': "Approved", // reviewed: false
+  'fed.conn.pending': "Pending approval", // reviewed: false
+  'fed.conn.suspended': "Suspended", // reviewed: false
+  'fed.conn.archived': "Archived", // reviewed: false
+  'fed.conn.lastSync': "Last synced", // reviewed: false
+  'fed.conn.neverSynced': "Never synced", // reviewed: false
+  'fed.conn.backoffUntil': "Retry after", // reviewed: false
+  'fed.conn.stagePending': "Pending review", // reviewed: false
+  'fed.conn.stageAccepted': "Accepted", // reviewed: false
+  'fed.conn.discPending': "Disc. pending", // reviewed: false
+  'fed.conn.syncNow': "Sync now", // reviewed: false
+  'fed.conn.queueTab': "Review queue", // reviewed: false
+  'fed.conn.conflictsTab': "Conflicts", // reviewed: false
+  'fed.conn.mappingTab': "Grade mapping", // reviewed: false
+  'fed.conn.dashboardTab': "Dashboard", // reviewed: false
+  'fed.conn.importMode': "Import mode", // reviewed: false
+  'fed.conn.apiPull': "Pull from API", // reviewed: false
+  'fed.conn.fileUpload': "Upload file", // reviewed: false
+  'fed.staged.incoming': "Incoming (external)", // reviewed: false
+  'fed.staged.unmatched': "Identity unmatched", // reviewed: false
+  'fed.staged.matched': "Identity matched", // reviewed: false
+  'fed.staged.externalGrade': "External grade", // reviewed: false
+  'fed.staged.mappedGrade': "Mapped grade", // reviewed: false
+  'fed.staged.standing': "Standing", // reviewed: false
+  'fed.staged.issued': "Issued", // reviewed: false
+  'fed.staged.expires': "Expires", // reviewed: false
+  'fed.staged.match': "Identity match", // reviewed: false
+  'fed.staged.externalRef': "External ref", // reviewed: false
+  'fed.staged.existingLicence': "Platform licence", // reviewed: false
+  'fed.staged.noMatchWarning': "Identity not confirmed — cannot accept until matched via external_identities.", // reviewed: false
+  'fed.staged.probableMatchWarning': "Probable match only — verify identity before accepting.", // reviewed: false
+  'fed.staged.reviewTitle': "Review credential", // reviewed: false
+  'fed.staged.reviewNote': "Review note", // reviewed: false
+  'fed.staged.reviewNotePlaceholder': "Reason for decision (kept on record)", // reviewed: false
+  'fed.staged.accept': "Accept", // reviewed: false
+  'fed.staged.acceptA11y': "Accept this credential and write to the platform licence record", // reviewed: false
+  'fed.staged.reject': "Reject", // reviewed: false
+  'fed.staged.flagManual': "Flag for manual review", // reviewed: false
+  'fed.staged.reviewDone': "Review submitted", // reviewed: false
+  'fed.staged.pending': "Awaiting review", // reviewed: false
+  'fed.staged.conflict': "Conflict", // reviewed: false
+  'fed.staged.accepted': "Accepted", // reviewed: false
+  'fed.staged.rejected': "Rejected", // reviewed: false
+  'fed.staged.disputed': "Disputed", // reviewed: false
+  'fed.staged.manualReview': "Manual review", // reviewed: false
+  'fed.queue.bulkAcceptReady': "confirmed matches ready for bulk accept", // reviewed: false
+  'fed.queue.bulkAccept': "Bulk accept matched", // reviewed: false
+  'fed.queue.empty': "Queue clear", // reviewed: false
+  'fed.queue.emptySub': "All staged credentials have been reviewed.", // reviewed: false
+  'fed.mapping.title': "Grade mapping", // reviewed: false
+  'fed.mapping.edit': "Edit grade mapping", // reviewed: false
+  'fed.mapping.tabDesc': "Map external federation grade labels to platform grade slugs. Records with unmapped grades are held in conflict until mapped.", // reviewed: false
+  'fed.mapping.desc': "Map each external grade label to the platform grade slug it corresponds to.", // reviewed: false
+  'fed.mapping.empty': "No mapping entries yet. Add entries below.", // reviewed: false
+  'fed.mapping.addEntry': "Add mapping entry", // reviewed: false
+  'fed.mapping.externalGrade': "External label", // reviewed: false
+  'fed.mapping.platformGrade': "Platform grade slug", // reviewed: false
+  'fed.conflict.gradeMismatch': "Grade mismatch", // reviewed: false
+  'fed.conflict.standingConflict': "Standing conflict", // reviewed: false
+  'fed.conflict.duplicate': "Duplicate", // reviewed: false
+  'fed.conflict.unknownGrade': "Unknown grade", // reviewed: false
+  'fed.conflict.identityAmbiguous': "Identity ambiguous", // reviewed: false
+  'fed.conflict.expiryConflict': "Expiry conflict", // reviewed: false
+  'fed.conflict.none': "No conflicts", // reviewed: false
+  'fed.conflict.incoming': "Incoming (external)", // reviewed: false
+  'fed.conflict.existing': "Platform record", // reviewed: false
+  'fed.conflict.platformRecord': "Platform record", // reviewed: false
+  'fed.conflict.resolveTitle': "Resolve conflict", // reviewed: false
+  'fed.conflict.chooseResolution': "Choose resolution", // reviewed: false
+  'fed.conflict.keepPlatform': "Keep platform record", // reviewed: false
+  'fed.conflict.keepPlatformDesc': "Reject the incoming record. The platform licence is marked manual and will not be overwritten by future syncs.", // reviewed: false
+  'fed.conflict.adoptExternal': "Adopt external record", // reviewed: false
+  'fed.conflict.adoptExternalDesc': "Accept the incoming record as an amendment. The existing licence is superseded via the replaces_id chain.", // reviewed: false
+  'fed.conflict.escalate': "Escalate to dispute", // reviewed: false
+  'fed.conflict.escalateDesc': "Open a licence_issue governance case for a senior reviewer to adjudicate.", // reviewed: false
+  'fed.conflict.resolve': "Resolve", // reviewed: false
+  'fed.conflict.note': "Resolution note", // reviewed: false
+  'fed.conflict.notePlaceholder': "Reason for this resolution (kept on record)", // reviewed: false
+  'fed.dash.credPending': "Cred. pending", // reviewed: false
+  'fed.dash.credConflict': "Cred. conflicts", // reviewed: false
+  'fed.dash.credAccepted': "Cred. accepted", // reviewed: false
+  'fed.dash.credDisputed': "Cred. disputed", // reviewed: false
+  'fed.dash.staleLicences': "Stale licences", // reviewed: false
+  'fed.dash.discPending': "Disc. pending", // reviewed: false
+  'fed.dash.discConflict': "Disc. conflicts", // reviewed: false
+  'fed.dash.discAccepted': "Disc. accepted", // reviewed: false
+  'fed.dash.conflictBreakdown': "Conflict breakdown", // reviewed: false
+  'fed.dash.recentActivity': "Recent activity", // reviewed: false
+  'fed.disc.title': "Disciplinary Reconciliation", // reviewed: false
+  'fed.disc.desc': "Review staged disciplinary imports and governance cases flagged for review. No record touches gov_cases or disc_sanctions until you explicitly accept.", // reviewed: false
+  'fed.disc.pending': "Pending", // reviewed: false
+  'fed.disc.matched': "Matched", // reviewed: false
+  'fed.disc.conflict': "Conflict", // reviewed: false
+  'fed.disc.accepted': "Accepted", // reviewed: false
+  'fed.disc.rejected': "Rejected", // reviewed: false
+  'fed.disc.disputed': "Disputed", // reviewed: false
+  'fed.disc.manualReview': "Manual review", // reviewed: false
+  'fed.disc.needsReview': "Needs review", // reviewed: false
+  'fed.disc.needsReviewSection': "Cases flagged for review", // reviewed: false
+  'fed.disc.incident': "Incident", // reviewed: false
+  'fed.disc.decided': "Decided", // reviewed: false
+  'fed.disc.kind': "Kind", // reviewed: false
+  'fed.disc.sanction': "Sanction", // reviewed: false
+  'fed.disc.outcome': "Outcome", // reviewed: false
+  'fed.disc.platformRecord': "Platform record", // reviewed: false
+  'fed.disc.existingCase': "Existing case", // reviewed: false
+  'fed.disc.existingCaseRef': "Existing case", // reviewed: false
+  'fed.disc.reviewStagedTitle': "Review disciplinary record", // reviewed: false
+  'fed.disc.reviewCaseTitle': "Review flagged case", // reviewed: false
+  'fed.disc.reviewNote': "Review note", // reviewed: false
+  'fed.disc.reviewNotePlaceholder': "Reason for decision (kept on record)", // reviewed: false
+  'fed.disc.accept': "Accept", // reviewed: false
+  'fed.disc.acceptA11y': "Accept this disciplinary record and write to the platform", // reviewed: false
+  'fed.disc.reject': "Reject", // reviewed: false
+  'fed.disc.flagManual': "Flag for manual review", // reviewed: false
+  'fed.disc.clearReview': "Clear review flag", // reviewed: false
+  'fed.disc.clearReviewA11y': "Clear the needs_review flag on this governance case", // reviewed: false
+  'fed.disc.flagEscalate': "Escalate", // reviewed: false
+  'fed.disc.reviewDone': "Review submitted", // reviewed: false
+  'fed.disc.queueTab': "Queue", // reviewed: false
+  'fed.disc.conflictsTab': "Conflicts", // reviewed: false
+  'fed.disc.batchesTab': "Batches", // reviewed: false
+  'fed.disc.queueEmpty': "Queue clear", // reviewed: false
+  'fed.disc.queueEmptySub': "No staged disciplinary records or flagged cases.", // reviewed: false
+  'fed.disc.importTitle': "Import disciplinary records", // reviewed: false
+  'fed.disc.importDesc': "Import from", // reviewed: false
+  'fed.disc.importStart': "Start import", // reviewed: false
+  'fed.disc.importing': "Importing…", // reviewed: false
+  'fed.disc.importDone': "Import complete", // reviewed: false
+  'fed.disc.importTotal': "records processed", // reviewed: false
+  'fed.disc.importNew': "new", // reviewed: false
+  'fed.disc.importConflicts': "conflicts", // reviewed: false
+  'fed.disc.importConflictsHint': "conflicts need resolution in the Conflicts tab.", // reviewed: false
+  'fed.disc.noBatches': "No import batches yet", // reviewed: false
+  'fed.disc.unknownConnector': "this connector", // reviewed: false
+  'fed.disc.flagTitle': "Flag case for review", // reviewed: false
+  'fed.disc.flagDesc': "Flag this governance case to surface it in the reconciliation queue for a senior reviewer.", // reviewed: false
+  'fed.disc.flagReason': "Reason", // reviewed: false
+  'fed.disc.flagReasonPlaceholder': "Briefly describe why this case needs review", // reviewed: false
+  'fed.disc.flagSubmit': "Flag for review", // reviewed: false
+  'fed.discConflict.outcomeMismatch': "Outcome mismatch", // reviewed: false
+  'fed.discConflict.sanctionMismatch': "Sanction mismatch", // reviewed: false
+  'fed.discConflict.duplicate': "Duplicate record", // reviewed: false
+  'fed.discConflict.unknownCategory': "Unknown category", // reviewed: false
+  'fed.discConflict.identityAmbiguous': "Identity ambiguous", // reviewed: false
+  'fed.discConflict.none': "No disciplinary conflicts", // reviewed: false
+  'fed.discConflict.resolveTitle': "Resolve disciplinary conflict", // reviewed: false
+  'fed.discConflict.keepPlatformDesc': "Reject the incoming record. The existing case is marked manual and will not be overwritten.", // reviewed: false
+  'fed.discConflict.adoptExternalDesc': "Create an amendment sanction via the replaces_id chain based on the external record.", // reviewed: false
+  'fed.discConflict.escalateDesc': "Open a licence_issue governance case for a senior reviewer to adjudicate.", // reviewed: false
+  'fed.discConflict.resolve': "Resolve conflict", // reviewed: false
+  'fed.batch.total': "Total", // reviewed: false
+  'fed.batch.new': "New", // reviewed: false
+  'fed.batch.conflicts': "Conflicts", // reviewed: false
+  'fed.batch.failed': "Failed", // reviewed: false
+  'fed.timeline.title': "Audit timeline", // reviewed: false
+  'fed.timeline.empty': "No events recorded yet", // reviewed: false
+  'fed.timeline.view': "Timeline", // reviewed: false
+  'common.add': "Add", // reviewed: false
+  'common.remove': "Remove", // reviewed: false
+  'common.allKinds': "All kinds", // reviewed: false
+  'nav.title.FederationCredentialImport': "Federation Credentials", // reviewed: false
+  'nav.title.FederationDisciplinaryReconciliation': "Disciplinary Reconciliation", // reviewed: false
+
 };
