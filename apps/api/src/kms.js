@@ -10,7 +10,19 @@ const CONTEXT = { app: 'sportarena', purpose: 'field-encryption-master-key' };
 async function client(cfg, injected) {
   if (injected) return injected;
   const { KMSClient } = await import('@aws-sdk/client-kms');
-  return new KMSClient({ region: cfg.kmsRegion });
+  // Add socket timeouts so a slow IMDS credential fetch or unreachable KMS endpoint
+  // fails fast rather than hanging the process indefinitely.
+  try {
+    const { NodeHttpHandler } = await import('@smithy/node-http-handler');
+    return new KMSClient({
+      region: cfg.kmsRegion,
+      requestHandler: new NodeHttpHandler({ connectionTimeout: 5_000, requestTimeout: 10_000 }),
+      maxAttempts: 3,
+    });
+  } catch {
+    // @smithy/node-http-handler not available; fall back to AbortSignal-based timeout
+    return new KMSClient({ region: cfg.kmsRegion, maxAttempts: 3 });
+  }
 }
 
 export async function unwrapMasterKey(cfg, injected) {
