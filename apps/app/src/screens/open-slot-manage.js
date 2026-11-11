@@ -8,7 +8,7 @@ import { useNav } from '../nav';
 import { useLayout } from '../layout';
 import { Btn, Card, Chip, Empty, Field, GradCard, H1, Loading, Screen, Section, Sheet, T, Tag, Row } from '../ui';
 import { FormSheet } from '../FormSheet';
-import { MenuField } from '../MenuField';
+import { MenuField } from '../menu-field';
 import { CalendarPickerField, TimePickerField } from '../pickers';
 import { LoadError } from '../access';
 import { c, grad, r } from '../theme';
