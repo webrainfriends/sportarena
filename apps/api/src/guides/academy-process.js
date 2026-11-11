@@ -484,6 +484,27 @@ id: 'wellbeing', title: 'Support student wellbeing and development',
     sources: ['apps/app/src/screens/org-officials-command.js', 'apps/api/src/capabilities/org-officials-command.js'],
   },
   {
+    id: 'open_match_self_assign',
+    title: 'Open match board — publish slots for official self-assignment (REF-R14)',
+    why: 'Elite academies (Nadal Academy, FC Barcelona, Real Madrid) publish officiating slots on a self-service board so vetted, eligible officials can claim them without waiting for an organiser invitation. The platform enforces grade, licence and availability eligibility, runs an atomic lock to prevent double-claiming, and optionally requires organiser approval before confirming. A waitlist fills automatically when a confirmed official withdraws. Financial terms are locked at claim time.',
+    steps: [
+      'From the Event Console, open the Officials tab on any fixture, then tap ⚡ Open Slots. This opens the per-fixture open-slot manager.',
+      'Tap + Add open slot. Choose the role (Referee, VAR, Linesman, Scorer, Timekeeper, etc.), the number of places, and the minimum grade if applicable. Set a fee, payment direction (organiser pays / official invoices organiser), reporting lead time (minutes before kick-off), and any public notes for applicants.',
+      'Choose claim mode: Instant self-confirm (the official is confirmed immediately once they pass eligibility checks) or Organiser approval required (organiser sees pending applications and decides). Enable or disable the waitlist for when the slot is full.',
+      'Optionally add private notes (encrypted, shown only to the confirmed official) and an application deadline.',
+      'Tap Publish slot. The slot appears on the Open Match Board visible to all eligible officials on the platform. The slot appears in draft state if Publish immediately is off — tap Edit to publish later.',
+      'Officials browse the board (More → Open Match Board), filter by sport, role, date, fee, claim mode and location. Each slot shows their live eligibility summary — grade, licence, availability — before they commit. Conflict advisories (same-day assignments, open COI declarations) are shown on the detail sheet.',
+      'An official taps Confirm instant claim or Submit application. The platform runs a full eligibility check under an advisory lock (no two officials can claim the last place simultaneously). Instant-claim officials are confirmed at once and their fixture_official is auto-accepted. Application-mode applicants enter pending state.',
+      'In approval mode, open the slot manager, expand the Pending applications section, and tap Decide on each applicant. Approve creates the fixture_official and notifies the official. Reject sends a notification with your optional note and may auto-promote from the waitlist.',
+      'If a confirmed official cancels, the slot reopens and the first waitlist entry is promoted automatically (instantly confirmed in instant mode, moved to pending in approval mode).',
+      'Officials track their applications under More → Open Match Board → My Applications. Confirmed assignments link to the match briefing and live console.',
+      'Close any slot that is no longer needed: tap Close slot. All pending and waitlisted applicants are notified. Already-confirmed officials are unaffected.',
+    ],
+    target: { screen: 'OpenMatchSlots', organiser: 'OpenSlotManage' },
+    modules: ['officials-open-slots.js'],
+    sources: ['apps/app/src/screens/officials-open-slots.js', 'apps/app/src/screens/open-slot-manage.js', 'apps/api/src/capabilities/officials-open-slots.js', 'apps/api/migrations/202_open_match_slots.sql'],
+  },
+  {
     id: 'officiating_auth',
     title: 'Officials authorisation, privacy, AI crew requirements and audit',
     why: 'REF-R10: Elite events require a neutral assignor to invite crew on behalf of the organiser, fine-grained role-based permissions per fixture (referee vs scorer vs observer), field-level encryption of all official PII, offline pack revocation when an official is released, tamper-evident audit chain on every fixture, and AI-powered crew adequacy checking against governing body standards (FIFA, ICC, Olympics, Para, Aquatic).',
@@ -613,6 +634,7 @@ export const NOT_IN_GUIDE = {
   'injury-coach-view.js': 'Covered by the injury_rtp onboarding step.',
   'injury-alerts.js': 'Covered by the injury_rtp onboarding step.',
   'official-rate-agreements.js': 'Covered by the officials_rates onboarding step (R35).',
+  'officials-open-slots.js': 'Covered by the open_match_self_assign onboarding step (REF-R14).',
 };
 
 /** The directories/files the guard test watches for org/academy/venue/coach/tax capability modules. */

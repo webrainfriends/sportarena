@@ -385,6 +385,7 @@ import './official-rate-agreements.js';
 import './official-tax.js';
 import './official-invoices.js';
 import './official-expenses.js';
+import './officials-open-slots.js';
 import './my-workspace.js';
 import './security-keys.js';
 import './upload-limits.js';
