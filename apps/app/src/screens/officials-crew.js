@@ -28,12 +28,20 @@ export const ROLE_LABEL = {
   timekeeper: 'Timekeeper',
   goal_line_official: 'Goal-line official',
   technical_official: 'Technical official',
+  // REF-R30: expanded taxonomy roles
+  chair_umpire: 'Chair Umpire',
+  match_commissioner: 'Match Commissioner',
+  technical_delegate: 'Technical Delegate',
+  starter: 'Starter',
+  marshal: 'Marshal',
 };
 
 const ROLE_ICON = {
   referee: '🟡', umpire: '🎾', linesman: '🚩', scorer: '📋',
   video_assistant_referee: '📺', fourth_official: '📋', reserve_assistant_referee: '🚩',
   shot_clock_operator: '⏱', timekeeper: '⏱', goal_line_official: '🚦', technical_official: '🔧',
+  // REF-R30
+  chair_umpire: '🎾', match_commissioner: '🏅', technical_delegate: '🏳️', starter: '🚀', marshal: '🦺',
 };
 
 const STATUS_COLOR = {

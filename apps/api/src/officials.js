@@ -16,6 +16,8 @@ export const OFFICIAL_ROLES = [
   'referee', 'umpire', 'linesman', 'scorer',
   'video_assistant_referee', 'fourth_official', 'reserve_assistant_referee',
   'shot_clock_operator', 'timekeeper', 'goal_line_official', 'technical_official',
+  // REF-R30: expanded taxonomy roles
+  'chair_umpire', 'match_commissioner', 'technical_delegate', 'starter', 'marshal',
 ];
 const OPEN = ['invited', 'accepted'];
 
@@ -285,7 +287,7 @@ export const CHIEF_ROLES   = ['referee'];
 export const SCORER_ROLES  = ['scorer'];
 export const OBSERVER_ROLES = ['fourth_official', 'video_assistant_referee',
                                'reserve_assistant_referee', 'goal_line_official'];
-export const REPORT_FILING_ROLES = ['referee', 'umpire', 'linesman', 'technical_official'];
+export const REPORT_FILING_ROLES = ['referee', 'umpire', 'linesman', 'technical_official', 'chair_umpire', 'match_commissioner', 'technical_delegate'];
 export const REPORT_SUBMIT_ROLES = ['referee'];
 
 /**
