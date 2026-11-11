@@ -505,6 +505,28 @@ id: 'wellbeing', title: 'Support student wellbeing and development',
     sources: ['apps/app/src/screens/officials-open-slots.js', 'apps/app/src/screens/open-slot-manage.js', 'apps/api/src/capabilities/officials-open-slots.js', 'apps/api/migrations/202_open_match_slots.sql'],
   },
   {
+    id: 'referee_education',
+    title: 'Referee education, exams and progression',
+    why: 'REF-R19: Elite academies (Nadal Academy, Real Madrid Academies, FC Barcelona) require a full referee CPD & Learning Management System: structured course catalogue, enrolment with prerequisite checks, session-level attendance, a typed exam engine (MCQ/T-F auto-graded; short-answer/scenario manually graded), practical rubric evaluations, certificate issuance, licence-progression contribution and expiry reminders — beating Playo, GotSport, Hudl, TeamSnap, RAMP and PlayAtomic on depth and integration.',
+    steps: [
+      'Open Officials → Education (More → Officials → Education). The Catalogue tab lists all published courses for your federation body. Filter by sport, level and kind.',
+      'Tap a course to see its learning objectives, prerequisites (other courses or credential kinds with optional validity windows), syllabus, exam schedule, upcoming run dates and fees.',
+      'Tap Enrol on an open run. The platform checks all prerequisites against your active credentials — if anything is missing, a gap sheet lists exactly what is needed and links to the prerequisite course.',
+      'Once confirmed, the My Courses tab shows your enrolment card with an attendance progress bar (sessions attended / total), exam status chip, and next session date.',
+      'Body staff mark attendance session by session from the run management screen. Officials see their attendance record on their enrolment card in real time.',
+      'The Exams tab lists available exams for your active enrolments. Tap Start Exam — MCQ and True/False questions are auto-graded immediately on submission; short-answer and scenario questions queue for instructor grading. A countdown timer enforces the time limit.',
+      'After submission, the result screen shows the percentage score and Pass / Fail / Awaiting Grade outcome. For manual exams, a push notification arrives when the grade is set.',
+      'For courses with practical evaluation, the assigned evaluator completes a structured rubric on the app. The official receives a notification, reviews the rubric scores and narrative, and taps Acknowledge.',
+      'On passing, a certificate is auto-issued: the Certificates tab shows the credential number, issue date, expiry (if applicable) and a share/download button. The certificate is simultaneously linked to the official's Credentials profile.',
+      'CPD hours are automatically posted to the official's CPD record (verified, with credential reference) so the progression system sees the credit immediately.',
+      'Reminders fire 60 days before a certificate or prerequisite expires, surfacing in the Certificates tab with an amber/red expiry chip and a re-enrolment shortcut.',
+      'Body admin analytics (Education → Analytics) show completion rates, pass rates, CPD awarded, average scores and attendance percentages by sport and level — ready for federation board reports.',
+    ],
+    target: { screen: 'OfficialsEducation' },
+    modules: ['officials-education.js'],
+    sources: ['apps/app/src/screens/officials-education.js', 'apps/api/src/capabilities/officials-education.js', 'apps/api/migrations/203_officials_education.sql'],
+  },
+  {
     id: 'officiating_auth',
     title: 'Officials authorisation, privacy, AI crew requirements and audit',
     why: 'REF-R10: Elite events require a neutral assignor to invite crew on behalf of the organiser, fine-grained role-based permissions per fixture (referee vs scorer vs observer), field-level encryption of all official PII, offline pack revocation when an official is released, tamper-evident audit chain on every fixture, and AI-powered crew adequacy checking against governing body standards (FIFA, ICC, Olympics, Para, Aquatic).',
@@ -675,6 +697,7 @@ export const NOT_IN_GUIDE = {
   'injury-alerts.js': 'Covered by the injury_rtp onboarding step.',
   'official-rate-agreements.js': 'Covered by the officials_rates onboarding step (R35).',
   'officials-open-slots.js': 'Covered by the open_match_self_assign onboarding step (REF-R14).',
+  'officials-education.js': 'Covered by the referee_education onboarding step (REF-R19).',
 };
 
 /** The directories/files the guard test watches for org/academy/venue/coach/tax capability modules. */

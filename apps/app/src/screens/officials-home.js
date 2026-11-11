@@ -120,6 +120,7 @@ function Today({ h, reload, go, tz }) {
     [t('off.qa.career'), [
       ['🗂️', t('off.qa.history'), t('off.qa.completed', { n: h.stats.completed_this_season }), () => go('OfficialsHome', { tab: 'history' })],
       ['🎓', t('off.qa.grade'), null, () => go('OfficialsDevelopment')],
+      ['📚', t('refEdu.tab.catalogue'), null, () => go('OfficialsEducation')],
       ['🪪', t('off.qa.verification'), null, () => go('OfficialsHome', { tab: 'credential' })],
       ['💼', t('off.qa.opportunities'), null, () => go('Openings')],
       ['⚡', t('open_slot.title'), t('open_slot.metric_open_sub'), () => go('OpenMatchSlots')],

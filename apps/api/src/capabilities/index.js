@@ -328,6 +328,7 @@ import './officials-assessors.js';
 import './officials-assessments.js';
 import './officials-progression.js';
 import './officials-mentoring.js';
+import './officials-education.js';
 import './officials-payout-account.js';
 import './officials-crew.js';
 import './officials-bulk.js';
