@@ -161,7 +161,7 @@ const PARA_PROCEDURES = {
     time_extensions: 'Two 12-minute halves. Penalty awarded immediately for infringement; no extra time in regular play.',
     substitution_limits: 'Two timeouts per team per half. Substitutions between periods only.',
     signal_protocols: 'Absolute silence required during play — this is a legal requirement under IBSA rules. Officials must enforce silence on bench, sideline and spectators. Whistle only for stoppages. Tactile shoulder signal to restart play.',
-    communication_adaptations: 'Written boards for coach communication. Sound system must be on mute during active play. Officials' calls must be verbal and confirmed with the goal judge tactile signal.',
+    communication_adaptations: 'Written boards for coach communication. Sound system must be on mute during active play. Officials\' calls must be verbal and confirmed with the goal judge tactile signal.',
     equipment_notes: 'All players must wear opaque eyeshades at all times. Referee must verify eyeshade compliance before play starts. Ball must produce audible rattle throughout play.',
     source_ref: 'IBSA Goalball Rules of the Game 2024 · Rule 2–8',
   },
