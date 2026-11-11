@@ -34,34 +34,39 @@ async function lockedFixture(c, fixtureId) {
   return (await c.query('SELECT * FROM fixtures WHERE id=$1 FOR UPDATE', [fixtureId])).rows[0];
 }
 
-/** Compute a 0–100 match score for one official against one fixture slot. */
-async function scoreOfficial(c, { userId, role: roleVal, fixture, event, minGradeRank = 0 }) {
+const DEFAULT_SCORE_WEIGHTS = { grade: 30, travel: 24, neutral: 20, rotation: 14, cost: 8, avail: 4 };
+
+/** Compute a 0–100 match score for one official against one fixture slot.
+ *  weights: optional per-event overrides from official_scheduling_policies. */
+async function scoreOfficial(c, { userId, role: roleVal, fixture, event, minGradeRank = 0, weights, isPreferred = false }) {
+  const W = { ...DEFAULT_SCORE_WEIGHTS, ...(weights ?? {}) };
   let score = 0;
   const reasons = {};
 
-  // 1. Grade (max 30) ─────────────────────────────────────────────────────────
+  // 1. Grade (max W.grade) ─────────────────────────────────────────────────────
   const cred = await credentialFor(c, userId, event.sport_id);
   let gradeScore = 0;
   if (cred.licence) {
     const excess = cred.licence.grade_rank - minGradeRank;
-    gradeScore = excess >= 2 ? 30 : excess === 1 ? 25 : 20;
-    reasons.grade = { label: `${cred.licence.name} (grade rank ${cred.licence.grade_rank})`, score: gradeScore };
+    const base = excess >= 2 ? W.grade : excess === 1 ? Math.round(W.grade * 0.83) : Math.round(W.grade * 0.67);
+    gradeScore = isPreferred ? Math.min(W.grade, base + 5) : base;
+    reasons.grade = { label: `${cred.licence.name} (grade rank ${cred.licence.grade_rank})`, score: gradeScore, preferred_bonus: isPreferred && gradeScore > base };
   } else if (roleVal === 'scorer') {
-    gradeScore = 15;
+    gradeScore = isPreferred ? Math.min(W.grade, 15 + 5) : 15;
     reasons.grade = { label: 'No licence required for scorer', score: gradeScore };
   } else {
     reasons.grade = { label: 'No active licence found', score: 0 };
   }
   score += gradeScore;
 
-  // 2. Travel (max 24): distance is only ever a band, and the official's own stated range is honoured (#994) ──
-  let travelScore = 12; // default: unknown distance, give partial credit
+  // 2. Travel (max W.travel): distance is only ever a band, and the official's own stated range is honoured (#994) ──
+  let travelScore = Math.round(W.travel * 0.5); // default: unknown distance, give partial credit
   const venueId = fixture.venue_id ?? (fixture.resource_id ? (await c.query('SELECT venue_id FROM resources WHERE id=$1', [fixture.resource_id])).rows[0]?.venue_id : null) ?? null;
   const km = await travelKm(c, userId, venueId);
   const oprefs = (await c.query('SELECT travel_km, sport_ids, roles FROM official_prefs WHERE user_id=$1', [userId])).rows[0];
   const distBand = distanceBand(km);
   if (km != null) {
-    travelScore = km < 50 ? 24 : km < 100 ? 18 : km < 200 ? 12 : km < 400 ? 6 : 2;
+    travelScore = km < 50 ? W.travel : km < 100 ? Math.round(W.travel * 0.75) : km < 200 ? Math.round(W.travel * 0.5) : km < 400 ? Math.round(W.travel * 0.25) : Math.round(W.travel * 0.08);
     const beyond = oprefs?.travel_km != null && km > oprefs.travel_km;
     if (beyond) travelScore = 0;
     reasons.travel = { label: beyond ? `${BAND_LABEL[distBand]} · beyond the range they travel` : BAND_LABEL[distBand], score: travelScore, band: distBand, beyond_range: beyond };
@@ -70,53 +75,53 @@ async function scoreOfficial(c, { userId, role: roleVal, fixture, event, minGrad
   }
   score += travelScore;
 
-  // 3. Neutrality (max 20) ────────────────────────────────────────────────────
+  // 3. Neutrality (max W.neutral) ────────────────────────────────────────────────────
   // The platform holds no player-nationality data to compare against (the columns this used to read never existed, so every
   // suggestion failed and the list came back empty). Neutrality therefore cannot be checked here: say so instead of claiming
   // "neutral". The score keeps its default and `checked: false` lets a screen show nothing rather than a tick. Declared conflicts
   // of interest are enforced separately (official_conflicts, REF-R09).
-  const neutralScore = 20;
+  const neutralScore = W.neutral;
   reasons.neutral = { label: 'Neutrality not checked (no nationality data to compare)', score: neutralScore, checked: false };
   score += neutralScore;
 
-  // 4. Fair rotation (max 14) — fewer assignments this event = higher score ──
+  // 4. Fair rotation (max W.rotation) — fewer assignments this event = higher score ──
   const assignCount = (await c.query(
     `SELECT count(*) FROM fixture_officials fo JOIN fixtures f ON f.id=fo.fixture_id
       WHERE fo.user_id=$1 AND f.event_id=$2 AND fo.status IN ('invited','accepted','completed')`,
     [userId, event.id]
   )).rows[0].count;
-  const rotScore = assignCount == 0 ? 14 : assignCount == 1 ? 12 : assignCount == 2 ? 9 : assignCount <= 4 ? 6 : 2;
+  const rotScore = assignCount == 0 ? W.rotation : assignCount == 1 ? Math.round(W.rotation * 0.86) : assignCount == 2 ? Math.round(W.rotation * 0.64) : assignCount <= 4 ? Math.round(W.rotation * 0.43) : Math.round(W.rotation * 0.14);
   reasons.rotation = { label: `${assignCount} assignment(s) in this event`, score: rotScore, count: Number(assignCount) };
   score += rotScore;
 
-  // 5. Cost (max 8) — cheaper = more points ─────────────────────────────────
-  let costScore = 4; // neutral default
+  // 5. Cost (max W.cost) — cheaper = more points ─────────────────────────────────
+  let costScore = Math.round(W.cost * 0.5); // neutral default
   const marketplace = (await c.query(
     `SELECT hourly_rate_cents FROM sport_profiles WHERE user_id=$1 AND sport_id=$2 AND hourly_rate_cents IS NOT NULL LIMIT 1`,
     [userId, event.sport_id]
   )).rows[0];
   if (marketplace) {
     const budget = event.official_fee_budget_minor;
-    if (!budget) costScore = 4;
-    else costScore = marketplace.hourly_rate_cents <= budget ? 8 : marketplace.hourly_rate_cents <= budget * 1.2 ? 4 : 1;
+    if (!budget) costScore = Math.round(W.cost * 0.5);
+    else costScore = marketplace.hourly_rate_cents <= budget ? W.cost : marketplace.hourly_rate_cents <= budget * 1.2 ? Math.round(W.cost * 0.5) : Math.round(W.cost * 0.125);
     reasons.cost = { label: `Fee ~${marketplace.hourly_rate_cents} minor units`, score: costScore };
   } else {
     reasons.cost = { label: 'No rate on file', score: costScore };
   }
   score += costScore;
 
-  // 6. Availability (max 4): the same engine that guards invite and accept (time off of every kind, hours, buffers, caps, tentative holds) ──
+  // 6. Availability (max W.avail): the same engine that guards invite and accept (time off of every kind, hours, buffers, caps, tentative holds) ──
   let availScore = 0, availState = 'unknown';
   if (fixture.scheduled_at) {
     const a = await assess(c, { userId, start: fixture.scheduled_at, durationMin: fixture.duration_min ?? 90, fixtureId: fixture.id ?? null, venueId });
     availState = a.state;
     const why = (a.hard[0] ?? a.soft[0] ?? a.notes[0])?.message;
     if (a.state === 'unavailable') reasons.availability = { label: why, score: 0, state: a.state };
-    else if (a.state === 'limited') { availScore = 1; reasons.availability = { label: why, score: 1, state: a.state }; }
-    else if (a.inside_hours === true) { availScore = a.state === 'check' ? 3 : 4; reasons.availability = { label: a.state === 'check' ? why : 'Inside the hours they officiate', score: availScore, state: a.state }; }
-    else { availScore = 2; reasons.availability = { label: a.state === 'check' ? why : 'No weekly hours set', score: 2, state: a.state }; }
+    else if (a.state === 'limited') { availScore = Math.round(W.avail * 0.25); reasons.availability = { label: why, score: availScore, state: a.state }; }
+    else if (a.inside_hours === true) { availScore = a.state === 'check' ? Math.round(W.avail * 0.75) : W.avail; reasons.availability = { label: a.state === 'check' ? why : 'Inside the hours they officiate', score: availScore, state: a.state }; }
+    else { availScore = Math.round(W.avail * 0.5); reasons.availability = { label: a.state === 'check' ? why : 'No weekly hours set', score: availScore, state: a.state }; }
   } else {
-    availScore = 2; reasons.availability = { label: 'Fixture not yet scheduled', score: 2 };
+    availScore = Math.round(W.avail * 0.5); reasons.availability = { label: 'Fixture not yet scheduled', score: availScore };
   }
   if (oprefs?.sport_ids?.length) reasons.preference = { label: oprefs.sport_ids.includes(event.sport_id) ? 'A sport they prefer' : 'Not one of their preferred sports', preferred: oprefs.sport_ids.includes(event.sport_id) };
   if (oprefs?.roles?.length) reasons.role_preference = { label: oprefs.roles.includes(roleVal) ? 'A role they prefer' : 'Not one of their preferred roles', preferred: oprefs.roles.includes(roleVal) };
@@ -131,11 +136,13 @@ async function scoreOfficial(c, { userId, role: roleVal, fixture, event, minGrad
     score_cost: costScore,
     score_avail: availScore,
     reasons,
+    weights_used: W,
     dist_km: null, // an exact distance is never returned: see dist_band (#994)
     dist_band: distBand,
     dist_label: BAND_LABEL[distBand],
     availability_state: availState,
     has_conflict: reasons.neutral?.conflict ?? false,
+    is_preferred: isPreferred,
     grade_rank: cred.licence?.grade_rank ?? null,
     grade_name: cred.licence?.name ?? null,
   };
@@ -232,7 +239,24 @@ cap({
     const ev = await one('SELECT * FROM events WHERE id=$1', [f.event_id]);
     if (!isAdmin(user) && ev.organizer_id !== user.id) throw forbidden('Organisers only');
 
-    // Pool: active referee profiles for this sport, not already confirmed/invited for this fixture
+    // Load event scheduling policy (if configured) for weight overrides and rules
+    const policy = await one(
+      'SELECT * FROM official_scheduling_policies WHERE event_id=$1',
+      [ev.id]
+    ).catch(() => null);
+    const policyWeights = policy ? {
+      grade:    policy.w_grade   ?? 30,
+      travel:   policy.w_travel  ?? 24,
+      neutral:  policy.w_neutral ?? 20,
+      rotation: policy.w_rotation ?? 14,
+      cost:     policy.w_cost    ?? 8,
+      avail:    policy.w_avail   ?? 4,
+    } : null;
+    const blockedIds = new Set((policy?.blocked_user_ids ?? []).map(String));
+    const preferredIds = new Set((policy?.preferred_user_ids ?? []).map(String));
+    const policySnapshot = policy ? JSON.stringify(policyWeights) : null;
+
+    // Pool: active referee profiles for this sport, not already confirmed/invited, not blocked by policy
     const pool = await many(
       `SELECT u.id FROM active_sport_profiles asp
         JOIN users u ON u.id=asp.user_id
@@ -248,8 +272,18 @@ cap({
     const results = await withClient(async (c) => {
       const scored = [];
       for (const { id: userId } of pool) {
+        // Skip officials blocked by event policy
+        if (blockedIds.has(String(userId))) continue;
         try {
-          const s = await scoreOfficial(c, { userId, role: i.role, fixture: f, event: ev, minGradeRank: ev.official_min_grade_rank ?? 0 });
+          const s = await scoreOfficial(c, {
+            userId,
+            role: i.role,
+            fixture: f,
+            event: ev,
+            minGradeRank: policy?.min_grade_rank ?? ev.official_min_grade_rank ?? 0,
+            weights: policyWeights,
+            isPreferred: preferredIds.has(String(userId)),
+          });
           scored.push({ user_id: userId, ...s });
         } catch { /* skip ineligible */ }
       }
@@ -261,31 +295,91 @@ cap({
     const users = ids.length ? await many('SELECT id, display_name, handle, avatar_emoji, avatar_color FROM users WHERE id = ANY($1::uuid[])', [ids]) : [];
     const uMap = Object.fromEntries(users.map((u) => [u.id, u]));
 
-    const enriched = results.map((r) => ({
+    const enriched = results.map((r, idx) => ({
       ...r,
       ...uMap[r.user_id],
+      rank: idx + 1,
       explanation: buildExplanation(r.reasons),
+      dimension_cards: buildDimensionCards(r.reasons, r.weights_used),
     }));
 
-    // Log suggestions (non-blocking)
+    // Log suggestions (non-blocking, include policy_snapshot)
     if (enriched.length) {
       one(
-        `INSERT INTO official_suggestion_log(event_id,fixture_id,user_id,role,score,score_grade,score_travel,score_neutral,score_rotation,score_cost,score_avail,reasons,queried_by)
-         SELECT $1,$2,unnest($3::uuid[]),$4,unnest($5::int[]),unnest($6::int[]),unnest($7::int[]),unnest($8::int[]),unnest($9::int[]),unnest($10::int[]),unnest($11::int[]),$12,$13
+        `INSERT INTO official_suggestion_log(event_id,fixture_id,user_id,role,score,score_grade,score_travel,score_neutral,score_rotation,score_cost,score_avail,reasons,queried_by,policy_snapshot)
+         SELECT $1,$2,unnest($3::uuid[]),$4,unnest($5::int[]),unnest($6::int[]),unnest($7::int[]),unnest($8::int[]),unnest($9::int[]),unnest($10::int[]),unnest($11::int[]),$12,$13,$14
          ON CONFLICT DO NOTHING`,
         [
           ev.id, i.id, enriched.map((r) => r.user_id), i.role,
           enriched.map((r) => r.score), enriched.map((r) => r.score_grade),
           enriched.map((r) => r.score_travel), enriched.map((r) => r.score_neutral),
           enriched.map((r) => r.score_rotation), enriched.map((r) => r.score_cost),
-          enriched.map((r) => r.score_avail), JSON.stringify(enriched.map((r) => r.reasons)), user.id,
+          enriched.map((r) => r.score_avail), JSON.stringify(enriched.map((r) => r.reasons)),
+          user.id, policySnapshot,
         ]
       ).catch(() => {});
     }
 
-    return { suggestions: enriched, fixture_id: i.id, role: i.role };
+    return {
+      suggestions: enriched,
+      fixture_id: i.id,
+      role: i.role,
+      policy_id: policy?.id ?? null,
+      policy_version: policy?.version ?? null,
+      blocked_count: blockedIds.size,
+      preferred_count: preferredIds.size,
+    };
   },
 });
+
+function buildDimensionCards(reasons, weights) {
+  const W = { ...DEFAULT_SCORE_WEIGHTS, ...(weights ?? {}) };
+  return [
+    {
+      dimension: 'grade', score: reasons.grade?.score ?? 0, max_score: W.grade,
+      label: reasons.grade?.label ?? 'No grade data',
+      detail: (reasons.grade?.score ?? 0) > 0
+        ? `Licence grade meets event minimum.${reasons.grade?.preferred_bonus ? ' +5 preferred-official bonus applied.' : ''}`
+        : 'No active licence found for this sport.',
+      warning: !(reasons.grade?.score ?? 0),
+    },
+    {
+      dimension: 'travel', score: reasons.travel?.score ?? 0, max_score: W.travel,
+      label: reasons.travel?.label ?? 'Distance unknown',
+      detail: reasons.travel?.beyond_range
+        ? 'Beyond this official\'s declared travel range.'
+        : reasons.travel?.band == null ? 'No home location on file.' : `Travel band: ${reasons.travel.label}. Exact distance not disclosed.`,
+      warning: reasons.travel?.beyond_range === true || (reasons.travel?.score ?? 0) === 0,
+    },
+    {
+      dimension: 'neutral', score: reasons.neutral?.score ?? 0, max_score: W.neutral,
+      label: reasons.neutral?.conflict ? '⚠️ Conflict of interest' : reasons.neutral?.label ?? 'Not checked',
+      detail: reasons.neutral?.checked === false
+        ? 'Player nationality data not held — organizer must verify neutrality manually.'
+        : reasons.neutral?.conflict ? 'Declared conflict of interest blocks this assignment.' : 'No declared conflicts found.',
+      data_gap: reasons.neutral?.checked === false,
+      warning: reasons.neutral?.conflict === true,
+    },
+    {
+      dimension: 'rotation', score: reasons.rotation?.score ?? 0, max_score: W.rotation,
+      label: reasons.rotation?.label ?? 'No assignment data',
+      detail: `${reasons.rotation?.count ?? 0} confirmed assignment(s) in this event. Fair rotation rewards lower workload.`,
+    },
+    {
+      dimension: 'cost', score: reasons.cost?.score ?? 0, max_score: W.cost,
+      label: reasons.cost?.label ?? 'No rate on file',
+      detail: (reasons.cost?.score ?? 0) >= W.cost ? 'Fee at or below event budget.' : (reasons.cost?.score ?? 0) >= Math.round(W.cost * 0.5) ? 'Fee slightly above budget (within 20%).' : 'Fee significantly exceeds budget.',
+    },
+    {
+      dimension: 'avail', score: reasons.availability?.score ?? 0, max_score: W.avail,
+      label: reasons.availability?.label ?? 'Not scheduled',
+      detail: reasons.availability?.state === 'unavailable'
+        ? `Unavailable: ${reasons.availability.label}`
+        : reasons.availability?.state === 'limited' ? `Limited: ${reasons.availability.label}` : 'Inside declared officiating hours.',
+      warning: reasons.availability?.state === 'unavailable',
+    },
+  ];
+}
 
 function buildExplanation(reasons) {
   const parts = [];
