@@ -148,6 +148,23 @@ export async function assertOfficialEligible(c, { event, sportId, fixtureId, use
     }
   }
 
+  // — Para-sport training eligibility (event.official_para_required) —
+  // If the event's sport has mandatory para officiating requirements, the official must have verified completions.
+  // A 'hard' mode blocks assignment; 'invite' mode emits a warning via the returned assessment.
+  if (event?.official_para_required && sport) {
+    try {
+      const { computeEligibility } = await import('./capabilities/officials-para-training.js');
+      const elig = await computeEligibility(userId, sport, c);
+      if (!elig.eligible && mode === 'hard') {
+        const missing = elig.incomplete_mandatory.map((m) => m.title).join('; ');
+        throw badRequest(`This event requires para-sport officiating training for this sport. Incomplete: ${missing}`);
+      }
+    } catch (e) {
+      // If the module is unavailable, skip the check rather than blocking assignment.
+      if (e.message?.includes('Incomplete')) throw e;
+    }
+  }
+
   if (!checkClash) return null;
 
   // Clash window: starts at reporting time (arrive at venue before kickoff), ends when the fixture plus buffer ends.

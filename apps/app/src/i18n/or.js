@@ -17700,7 +17700,6 @@ export default {
   'orgOff.comms.empty_title': 'No messages sent yet',
   'orgOff.comms.empty_sub': 'Send a message to all officials on this panel.',
   'nav.title.OrgOfficialsCommand': 'ଅଧିକାରୀ',
-};
 
 
   // Session media & resource library
@@ -17820,5 +17819,110 @@ export default {
   'crew_template.new': 'New Template',
   'crew_template.status_published': 'Published',
   'crew_template.status_draft': 'Draft',
+
+
+  // Para-sport officials (R29 #1027)
+  'para_official.title': 'Para-Sport Officiating', // reviewed: false
+  'para_official.lineup_tab': 'Para Lineup', // reviewed: false
+  'para_official.procedure_tab': 'Procedure Guide', // reviewed: false
+  'para_official.controls_tab': 'Accessible Controls', // reviewed: false
+  'para_official.incidents_tab': 'Incidents', // reviewed: false
+  'para_official.privacy_notice': 'Competition sport class codes only. No medical evidence is accessible.', // reviewed: false
+  'para_official.privacy_notice_title': 'Privacy boundary enforced', // reviewed: false
+  'para_official.provisional_warning': 'One or more athlete classifications are provisional. The class code may change before competition.', // reviewed: false
+  'para_official.youth_suppressed': 'Athlete name withheld — youth privacy.', // reviewed: false
+  'para_official.no_lineup': 'No classification data available for this fixture.', // reviewed: false
+  'para_official.class_code_label': 'Class', // reviewed: false
+  'para_official.athlete_label': 'Athlete', // reviewed: false
+  'para_official.provisional': 'Provisional', // reviewed: false
+  'para_official.confirmed': 'Confirmed', // reviewed: false
+  'para_official.procedure_offline': 'Download for offline', // reviewed: false
+  'para_official.procedure_offline_done': 'Available offline', // reviewed: false
+  'para_official.procedure_time_ext': 'Time extensions', // reviewed: false
+  'para_official.procedure_subs': 'Substitution rules', // reviewed: false
+  'para_official.procedure_signals': 'Signal protocols', // reviewed: false
+  'para_official.procedure_comms': 'Communication adaptations', // reviewed: false
+  'para_official.procedure_equip': 'Equipment non-conformance', // reviewed: false
+  'para_official.procedure_other': 'Other procedural notes', // reviewed: false
+  'para_official.incident_title': 'File incident', // reviewed: false
+  'para_official.incident_kind': 'Incident type', // reviewed: false
+  'para_official.incident_athlete': 'Athlete (if applicable)', // reviewed: false
+  'para_official.incident_class_code': 'Class code', // reviewed: false
+  'para_official.incident_description': 'Description', // reviewed: false
+  'para_official.incident_disclaimer': 'Medical information must not be included in incident reports.', // reviewed: false
+  'para_official.incident_submit': 'File incident', // reviewed: false
+  'para_official.incident_submitted': 'Incident filed', // reviewed: false
+  'para_official.incident_kind.classification_protest': 'Classification protest', // reviewed: false
+  'para_official.incident_kind.equipment_non_conformance': 'Equipment non-conformance', // reviewed: false
+  'para_official.incident_kind.procedure_breach': 'Procedure breach', // reviewed: false
+  'para_official.incident_kind.guide_pairing': 'Guide pairing issue', // reviewed: false
+  'para_official.incident_kind.other': 'Other', // reviewed: false
+  'para_official.incident_open': 'Open', // reviewed: false
+  'para_official.incident_resolved': 'Resolved', // reviewed: false
+  'para_official.no_incidents': 'No incidents filed for this fixture.', // reviewed: false
+  'para_official.controls_heading': 'Your accessibility preferences', // reviewed: false
+  'para_official.controls_hint': 'These settings adapt controls and notifications for your officiating needs.', // reviewed: false
+  'para_official.pref_large_targets': 'Large touch targets', // reviewed: false
+  'para_official.pref_high_contrast': 'High contrast display', // reviewed: false
+  'para_official.pref_screen_reader': 'Screen reader optimised', // reviewed: false
+  'para_official.pref_hearing_loop': 'Hearing loop / captioning', // reviewed: false
+  'para_official.pref_haptic_alerts': 'Haptic alerts', // reviewed: false
+  'para_official.pref_written_comms': 'Written communication preferred', // reviewed: false
+  'para_official.add_needs': 'Declare assistive equipment', // reviewed: false
+  'para_official.needs_title': 'Assistive equipment or needs', // reviewed: false
+  'para_official.needs_device': 'Device or equipment name', // reviewed: false
+  'para_official.needs_detail': 'Detail (stored encrypted)', // reviewed: false
+  'para_official.needs_save': 'Save', // reviewed: false
+  'para_official.needs_saved': 'Preferences saved', // reviewed: false
+
+  // ------------------------------------------------------------------ Para training
+  'para_training.title': 'Para Officiating Training', // reviewed: false
+  'para_training.eligible': 'Eligible', // reviewed: false
+  'para_training.not_eligible': 'Training incomplete', // reviewed: false
+  'para_training.expiring_soon': '{count} expiring soon', // reviewed: false
+  'para_training.metric_eligible': 'Eligible sports', // reviewed: false
+  'para_training.metric_incomplete': 'Incomplete', // reviewed: false
+  'para_training.metric_expiring': 'Expiring ≤60 days', // reviewed: false
+  'para_training.expiring_alert': '{title} expires in {days} days', // reviewed: false
+  'para_training.expiring_alert_hint': 'Renew before {date} to stay eligible.', // reviewed: false
+  'para_training.upload_renewal': 'Upload renewal', // reviewed: false
+  'para_training.upload_renewal_label': 'Upload renewal for {title}', // reviewed: false
+  'para_training.filter_sport': 'Filter by sport', // reviewed: false
+  'para_training.officiating_title': '{sport} para officiating', // reviewed: false
+  'para_training.no_reqs': 'No requirements defined for this sport.', // reviewed: false
+  'para_training.no_sports': 'No para officiating requirements found.', // reviewed: false
+  'para_training.upload_title': 'Upload training evidence', // reviewed: false
+  'para_training.requirement': 'Requirement', // reviewed: false
+  'para_training.completed_on': 'Completed on', // reviewed: false
+  'para_training.expires_on': 'Expiry date', // reviewed: false
+  'para_training.expires_on_hint': 'If the certificate expires, enter the expiry date.', // reviewed: false
+  'para_training.cert_ref': 'Certificate / reference number', // reviewed: false
+  'para_training.cert_ref_hint': 'Your certificate ID or accreditation reference.', // reviewed: false
+  'para_training.notes': 'Notes', // reviewed: false
+  'para_training.submit_evidence': 'Submit evidence', // reviewed: false
+  'para_training.submitted': 'Evidence submitted for review.', // reviewed: false
+  'para_training.date_required': 'Completion date is required.', // reviewed: false
+  'para_training.cert_disclaimer': 'The certificate reference is stored encrypted and only visible to administrators.', // reviewed: false
+  'para_training.mandatory': 'Mandatory', // reviewed: false
+  'para_training.awaiting_review': 'Awaiting review', // reviewed: false
+  'para_training.upload': 'Upload', // reviewed: false
+  'para_training.upload_label': 'Upload evidence for {title}', // reviewed: false
+  'para_training.status_verified': 'Verified', // reviewed: false
+  'para_training.status_pending': 'Under review', // reviewed: false
+  'para_training.status_rejected': 'Rejected', // reviewed: false
+  'para_training.status_expired': 'Expired', // reviewed: false
+  'para_training.status_missing': 'Not completed', // reviewed: false
+  'para_training.completed_on_label': 'Completed {date}', // reviewed: false
+  'para_training.expires': 'Expires {date}', // reviewed: false
+  'para_training.days_left': '{days} days left', // reviewed: false
+  'para_training.expired': 'Expired', // reviewed: false
+  'para_training.expires_in': 'Expires in {days} days', // reviewed: false
+  'para_training.rejected_note': 'Rejection note', // reviewed: false
+  'para_training.not_completed': 'Not yet completed.', // reviewed: false
+  'para_training.required_to_officiate': 'Required to officiate this sport.', // reviewed: false
+  'para_training.home_alert_title': 'Para training incomplete', // reviewed: false
+  'para_training.home_alert_body': '{count} sport(s) require additional para-sport officiating training.', // reviewed: false
+  'para_training.home_alert_more': '+{count} more sport(s)', // reviewed: false
+  'para_training.home_alert_cta': 'Review requirements', // reviewed: false
 
 };

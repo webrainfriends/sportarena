@@ -547,6 +547,40 @@ function PermissionsTab({ fixtureId }) {
   );
 }
 
+// ------------------------------------------------------------------ Para Training Alert
+// Amber card shown when the official has incomplete mandatory para training for a sport they're
+// assigned to officiate. Never shown unless para fixtures are assigned.
+function ParaTrainingAlert({ go }) {
+  const { data } = useLoad(() => api.get('/para/officiating/my-eligibility').catch(() => null), []);
+  if (!data) return null;
+  const incomplete = (data.sports ?? []).filter((s) => !s.eligible && s.incomplete_mandatory?.length > 0);
+  if (incomplete.length === 0) return null;
+  return (
+    <Card color={c.sunSoft} style={{ marginTop: 10 }}>
+      <View style={{ flexDirection: 'row', gap: 10, alignItems: 'flex-start' }}>
+        <T size={18} accessibilityElementsHidden>⚠️</T>
+        <View style={{ flex: 1, gap: 4 }}>
+          <T size={13} weight="800" color={c.sun}>{t('para_training.home_alert_title')}</T>
+          <T size={12} color={c.mute}>{t('para_training.home_alert_body', { count: incomplete.length })}</T>
+          {incomplete.slice(0, 2).map((s) => (
+            <T key={s.sport_id} size={12} color={c.mute}>
+              {s.sport_emoji ? `${s.sport_emoji} ` : ''}{s.sport_name}: {s.incomplete_mandatory.map((m) => m.title).join(', ')}
+            </T>
+          ))}
+          {incomplete.length > 2 ? <T size={11} color={c.mute}>{t('para_training.home_alert_more', { count: incomplete.length - 2 })}</T> : null}
+        </View>
+      </View>
+      <Btn
+        title={t('para_training.home_alert_cta')}
+        size="sm"
+        onPress={() => go('OfficialParaTraining')}
+        style={{ borderRadius: 20, backgroundColor: c.sun, alignSelf: 'flex-start', marginTop: 8 }}
+        accessibilityLabel={t('para_training.home_alert_cta')}
+      />
+    </Card>
+  );
+}
+
 // ------------------------------------------------------------------ Officials Home
 export function OfficialsHome({ tab: tab0 }) {
   const { push: go } = useNav();
@@ -596,6 +630,7 @@ export function OfficialsHome({ tab: tab0 }) {
         tax: () => go('OfficialTax'), verification: () => setTab('credential'), sport: () => go('SportProfile'),
       }} />
       {showProfileWizard ? <OfficialProfileWizard onClose={() => setShowProfileWizard(false)} onDone={() => { setShowProfileWizard(false); q.reload(); }} onOpen={(route, params) => { setShowProfileWizard(false); go(route, params); }} /> : null}
+      <ParaTrainingAlert go={go} />
       <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginTop: 12 }}>
         <Metric value={h.stats.this_week} label="Matches this week" onPress={() => setTab('calendar')} />
         <Metric value={h.stats.pending} label="Requests to answer" tone={h.stats.pending ? c.sunSoft : undefined} onPress={() => setTab('today')} />

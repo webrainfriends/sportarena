@@ -439,3 +439,5 @@ import './platform-benchmarks.js';
 import './para-ux-conformance.js';
 import './platform-users.js';
 import './data-residency.js';
+import './officials-para.js';
+import './officials-para-training.js';
