@@ -18119,298 +18119,389 @@ export default {
   'nav.title.OpenMatchSlots': 'Open Match Board',
   'nav.title.OpenSlotManage': 'Manage Open Slots',
 
-  // ---- Federation credential import & disciplinary reconciliation (REF-R28, reviewed: false) ----
-  'fed.import.title': "फेडरेशन प्रमाण-पत्र", // reviewed: false
-  'fed.import.desc': "बाहरी फेडरेशन क्रेडेंशियल और अनुशासनात्मक डेटा स्रोतों को कनेक्ट करें। किसी भी लाइसेंस या अनुशासनात्मक रिकॉर्ड को छूने से पहले मानव समीक्षा के लिए रिकॉर्ड स्टेज किए जाते हैं।", // reviewed: false
-  'fed.import.noConnectors': "कोई कनेक्टर पंजीकृत नहीं", // reviewed: false
-  'fed.import.noConnectorsAdmin': "फेडरेशन क्रेडेंशियल आयात करना शुरू करने के लिए एक कनेक्टर पंजीकृत करें।", // reviewed: false
-  'fed.import.noConnectorsMember': "इस निकाय के लिए अभी तक कोई अनुमोदित कनेक्टर पंजीकृत नहीं हैं।", // reviewed: false
-  'fed.conn.registerTitle': "Register connector", // reviewed: false
-  'fed.conn.register': "Register connector", // reviewed: false
-  'fed.conn.registerDesc': "Register an authorised federation data source. No data flows until a platform admin approves the connector.", // reviewed: false
-  'fed.conn.registered': "Connector registered", // reviewed: false
-  'fed.conn.registeredDesc': "The connector is pending platform approval. You will be notified when approved.", // reviewed: false
-  'fed.conn.name': "Connector name", // reviewed: false
-  'fed.conn.namePlaceholder': "e.g. FIFA Referee Registry", // reviewed: false
-  'fed.conn.bodyId': "Governing body", // reviewed: false
-  'fed.conn.bodyIdPlaceholder': "Search governing body…", // reviewed: false
-  'fed.conn.adapter': "Adapter type", // reviewed: false
-  'fed.conn.holderRole': "Licence holder role", // reviewed: false
-  'fed.conn.endpointUrl': "API endpoint URL", // reviewed: false
-  'fed.conn.token': "API token", // reviewed: false
-  'fed.conn.tokenPlaceholder': "Paste API token (stored encrypted)", // reviewed: false
-  'fed.conn.approved': "Approved", // reviewed: false
-  'fed.conn.pending': "Pending approval", // reviewed: false
-  'fed.conn.suspended': "Suspended", // reviewed: false
-  'fed.conn.archived': "Archived", // reviewed: false
-  'fed.conn.lastSync': "Last synced", // reviewed: false
-  'fed.conn.neverSynced': "Never synced", // reviewed: false
-  'fed.conn.backoffUntil': "Retry after", // reviewed: false
-  'fed.conn.stagePending': "Pending review", // reviewed: false
-  'fed.conn.stageAccepted': "Accepted", // reviewed: false
-  'fed.conn.discPending': "Disc. pending", // reviewed: false
-  'fed.conn.syncNow': "Sync now", // reviewed: false
-  'fed.conn.queueTab': "Review queue", // reviewed: false
-  'fed.conn.conflictsTab': "Conflicts", // reviewed: false
-  'fed.conn.mappingTab': "Grade mapping", // reviewed: false
-  'fed.conn.dashboardTab': "Dashboard", // reviewed: false
-  'fed.conn.importMode': "Import mode", // reviewed: false
-  'fed.conn.apiPull': "Pull from API", // reviewed: false
-  'fed.conn.fileUpload': "Upload file", // reviewed: false
-  'fed.staged.incoming': "Incoming (external)", // reviewed: false
-  'fed.staged.unmatched': "Identity unmatched", // reviewed: false
-  'fed.staged.matched': "Identity matched", // reviewed: false
-  'fed.staged.externalGrade': "External grade", // reviewed: false
-  'fed.staged.mappedGrade': "Mapped grade", // reviewed: false
-  'fed.staged.standing': "Standing", // reviewed: false
-  'fed.staged.issued': "Issued", // reviewed: false
-  'fed.staged.expires': "Expires", // reviewed: false
-  'fed.staged.match': "Identity match", // reviewed: false
-  'fed.staged.externalRef': "External ref", // reviewed: false
-  'fed.staged.existingLicence': "Platform licence", // reviewed: false
-  'fed.staged.noMatchWarning': "Identity not confirmed — cannot accept until matched via external_identities.", // reviewed: false
-  'fed.staged.probableMatchWarning': "Probable match only — verify identity before accepting.", // reviewed: false
-  'fed.staged.reviewTitle': "Review credential", // reviewed: false
-  'fed.staged.reviewNote': "Review note", // reviewed: false
-  'fed.staged.reviewNotePlaceholder': "Reason for decision (kept on record)", // reviewed: false
-  'fed.staged.accept': "Accept", // reviewed: false
-  'fed.staged.acceptA11y': "Accept this credential and write to the platform licence record", // reviewed: false
-  'fed.staged.reject': "Reject", // reviewed: false
-  'fed.staged.flagManual': "Flag for manual review", // reviewed: false
-  'fed.staged.reviewDone': "Review submitted", // reviewed: false
-  'fed.staged.pending': "Awaiting review", // reviewed: false
-  'fed.staged.conflict': "Conflict", // reviewed: false
-  'fed.staged.accepted': "Accepted", // reviewed: false
-  'fed.staged.rejected': "Rejected", // reviewed: false
-  'fed.staged.disputed': "Disputed", // reviewed: false
-  'fed.staged.manualReview': "Manual review", // reviewed: false
-  'fed.queue.bulkAcceptReady': "confirmed matches ready for bulk accept", // reviewed: false
-  'fed.queue.bulkAccept': "Bulk accept matched", // reviewed: false
-  'fed.queue.empty': "Queue clear", // reviewed: false
-  'fed.queue.emptySub': "All staged credentials have been reviewed.", // reviewed: false
-  'fed.mapping.title': "Grade mapping", // reviewed: false
-  'fed.mapping.edit': "Edit grade mapping", // reviewed: false
-  'fed.mapping.tabDesc': "Map external federation grade labels to platform grade slugs. Records with unmapped grades are held in conflict until mapped.", // reviewed: false
-  'fed.mapping.desc': "Map each external grade label to the platform grade slug it corresponds to.", // reviewed: false
-  'fed.mapping.empty': "No mapping entries yet. Add entries below.", // reviewed: false
-  'fed.mapping.addEntry': "Add mapping entry", // reviewed: false
-  'fed.mapping.externalGrade': "External label", // reviewed: false
-  'fed.mapping.platformGrade': "Platform grade slug", // reviewed: false
-  'fed.conflict.gradeMismatch': "Grade mismatch", // reviewed: false
-  'fed.conflict.standingConflict': "Standing conflict", // reviewed: false
-  'fed.conflict.duplicate': "Duplicate", // reviewed: false
-  'fed.conflict.unknownGrade': "Unknown grade", // reviewed: false
-  'fed.conflict.identityAmbiguous': "Identity ambiguous", // reviewed: false
-  'fed.conflict.expiryConflict': "Expiry conflict", // reviewed: false
-  'fed.conflict.none': "No conflicts", // reviewed: false
-  'fed.conflict.incoming': "Incoming (external)", // reviewed: false
-  'fed.conflict.existing': "Platform record", // reviewed: false
-  'fed.conflict.platformRecord': "Platform record", // reviewed: false
-  'fed.conflict.resolveTitle': "Resolve conflict", // reviewed: false
-  'fed.conflict.chooseResolution': "Choose resolution", // reviewed: false
-  'fed.conflict.keepPlatform': "Keep platform record", // reviewed: false
-  'fed.conflict.keepPlatformDesc': "Reject the incoming record. The platform licence is marked manual and will not be overwritten by future syncs.", // reviewed: false
-  'fed.conflict.adoptExternal': "Adopt external record", // reviewed: false
-  'fed.conflict.adoptExternalDesc': "Accept the incoming record as an amendment. The existing licence is superseded via the replaces_id chain.", // reviewed: false
-  'fed.conflict.escalate': "Escalate to dispute", // reviewed: false
-  'fed.conflict.escalateDesc': "Open a licence_issue governance case for a senior reviewer to adjudicate.", // reviewed: false
-  'fed.conflict.resolve': "Resolve", // reviewed: false
-  'fed.conflict.note': "Resolution note", // reviewed: false
-  'fed.conflict.notePlaceholder': "Reason for this resolution (kept on record)", // reviewed: false
-  'fed.dash.credPending': "Cred. pending", // reviewed: false
-  'fed.dash.credConflict': "Cred. conflicts", // reviewed: false
-  'fed.dash.credAccepted': "Cred. accepted", // reviewed: false
-  'fed.dash.credDisputed': "Cred. disputed", // reviewed: false
-  'fed.dash.staleLicences': "Stale licences", // reviewed: false
-  'fed.dash.discPending': "Disc. pending", // reviewed: false
-  'fed.dash.discConflict': "Disc. conflicts", // reviewed: false
-  'fed.dash.discAccepted': "Disc. accepted", // reviewed: false
-  'fed.dash.conflictBreakdown': "Conflict breakdown", // reviewed: false
-  'fed.dash.recentActivity': "Recent activity", // reviewed: false
-  'fed.disc.title': "Disciplinary Reconciliation", // reviewed: false
-  'fed.disc.desc': "Review staged disciplinary imports and governance cases flagged for review. No record touches gov_cases or disc_sanctions until you explicitly accept.", // reviewed: false
-  'fed.disc.pending': "Pending", // reviewed: false
-  'fed.disc.matched': "Matched", // reviewed: false
-  'fed.disc.conflict': "Conflict", // reviewed: false
-  'fed.disc.accepted': "Accepted", // reviewed: false
-  'fed.disc.rejected': "Rejected", // reviewed: false
-  'fed.disc.disputed': "Disputed", // reviewed: false
-  'fed.disc.manualReview': "Manual review", // reviewed: false
-  'fed.disc.needsReview': "Needs review", // reviewed: false
-  'fed.disc.needsReviewSection': "Cases flagged for review", // reviewed: false
-  'fed.disc.incident': "Incident", // reviewed: false
-  'fed.disc.decided': "Decided", // reviewed: false
-  'fed.disc.kind': "Kind", // reviewed: false
-  'fed.disc.sanction': "Sanction", // reviewed: false
-  'fed.disc.outcome': "Outcome", // reviewed: false
-  'fed.disc.platformRecord': "Platform record", // reviewed: false
-  'fed.disc.existingCase': "Existing case", // reviewed: false
-  'fed.disc.existingCaseRef': "Existing case", // reviewed: false
-  'fed.disc.reviewStagedTitle': "Review disciplinary record", // reviewed: false
-  'fed.disc.reviewCaseTitle': "Review flagged case", // reviewed: false
-  'fed.disc.reviewNote': "Review note", // reviewed: false
-  'fed.disc.reviewNotePlaceholder': "Reason for decision (kept on record)", // reviewed: false
-  'fed.disc.accept': "Accept", // reviewed: false
-  'fed.disc.acceptA11y': "Accept this disciplinary record and write to the platform", // reviewed: false
-  'fed.disc.reject': "Reject", // reviewed: false
-  'fed.disc.flagManual': "Flag for manual review", // reviewed: false
-  'fed.disc.clearReview': "Clear review flag", // reviewed: false
-  'fed.disc.clearReviewA11y': "Clear the needs_review flag on this governance case", // reviewed: false
-  'fed.disc.flagEscalate': "Escalate", // reviewed: false
-  'fed.disc.reviewDone': "Review submitted", // reviewed: false
-  'fed.disc.queueTab': "Queue", // reviewed: false
-  'fed.disc.conflictsTab': "Conflicts", // reviewed: false
-  'fed.disc.batchesTab': "Batches", // reviewed: false
-  'fed.disc.queueEmpty': "Queue clear", // reviewed: false
-  'fed.disc.queueEmptySub': "No staged disciplinary records or flagged cases.", // reviewed: false
-  'fed.disc.importTitle': "Import disciplinary records", // reviewed: false
-  'fed.disc.importDesc': "Import from", // reviewed: false
-  'fed.disc.importStart': "Start import", // reviewed: false
-  'fed.disc.importing': "Importing…", // reviewed: false
-  'fed.disc.importDone': "Import complete", // reviewed: false
-  'fed.disc.importTotal': "records processed", // reviewed: false
-  'fed.disc.importNew': "new", // reviewed: false
-  'fed.disc.importConflicts': "conflicts", // reviewed: false
-  'fed.disc.importConflictsHint': "conflicts need resolution in the Conflicts tab.", // reviewed: false
-  'fed.disc.noBatches': "No import batches yet", // reviewed: false
-  'fed.disc.unknownConnector': "this connector", // reviewed: false
-  'fed.disc.flagTitle': "Flag case for review", // reviewed: false
-  'fed.disc.flagDesc': "Flag this governance case to surface it in the reconciliation queue for a senior reviewer.", // reviewed: false
-  'fed.disc.flagReason': "Reason", // reviewed: false
-  'fed.disc.flagReasonPlaceholder': "Briefly describe why this case needs review", // reviewed: false
-  'fed.disc.flagSubmit': "Flag for review", // reviewed: false
-  'fed.discConflict.outcomeMismatch': "Outcome mismatch", // reviewed: false
-  'fed.discConflict.sanctionMismatch': "Sanction mismatch", // reviewed: false
-  'fed.discConflict.duplicate': "Duplicate record", // reviewed: false
-  'fed.discConflict.unknownCategory': "Unknown category", // reviewed: false
-  'fed.discConflict.identityAmbiguous': "Identity ambiguous", // reviewed: false
-  'fed.discConflict.none': "No disciplinary conflicts", // reviewed: false
-  'fed.discConflict.resolveTitle': "Resolve disciplinary conflict", // reviewed: false
-  'fed.discConflict.keepPlatformDesc': "Reject the incoming record. The existing case is marked manual and will not be overwritten.", // reviewed: false
-  'fed.discConflict.adoptExternalDesc': "Create an amendment sanction via the replaces_id chain based on the external record.", // reviewed: false
-  'fed.discConflict.escalateDesc': "Open a licence_issue governance case for a senior reviewer to adjudicate.", // reviewed: false
-  'fed.discConflict.resolve': "Resolve conflict", // reviewed: false
-  'fed.batch.total': "Total", // reviewed: false
-  'fed.batch.new': "New", // reviewed: false
-  'fed.batch.conflicts': "Conflicts", // reviewed: false
-  'fed.batch.failed': "Failed", // reviewed: false
-  'fed.timeline.title': "Audit timeline", // reviewed: false
-  'fed.timeline.empty': "No events recorded yet", // reviewed: false
-  'fed.timeline.view': "Timeline", // reviewed: false
-  'common.add': "Add", // reviewed: false
-  'common.remove': "Remove", // reviewed: false
-  'common.allKinds': "All kinds", // reviewed: false
-  'nav.title.FederationCredentialImport': "Federation Credentials", // reviewed: false
-  'nav.title.FederationDisciplinaryReconciliation': "Disciplinary Reconciliation", // reviewed: false
-// ─── Official Video Review (#1023) — machine-drafted, reviewed: false ────
-  'nav.title.OfficialVideoReview': 'वीडियो समीक्षा कार्यक्षेत्र',
-  'nav.title.OfficialVideoPlayer': 'वीडियो समीक्षा कार्यक्षेत्र',
-  'officialVideo.title': 'वीडियो समीक्षा कार्यक्षेत्र',
-  'officialVideo.upload': 'फुटेज अपलोड करें',
-  'officialVideo.open_workspace': 'वीडियो कार्यक्षेत्र खोलें',
-  'officialVideo.console_cta_title': 'मैच फुटेज और घटना समीक्षा',
-  'officialVideo.console_cta_body': 'कोण अपलोड करें, टाइमलाइन पर घटनाओं को चिह्नित करें।',
-  'officialVideo.upload_via_app': 'Upload footage via the upload endpoint or use your federation portal to link footage.',
-  'officialVideo.angle_label': 'Angle',
-  'officialVideo.markers': 'markers',
-  'officialVideo.participants': 'participants',
-  'officialVideo.media_rights_ok': 'Media rights cleared',
-  'officialVideo.youth_consent_required': 'Youth consent required',
-  'officialVideo.note_encrypted': 'Encrypted note',
-  'officialVideo.appeal_by': 'Appeal by',
-  'officialVideo.metric_angles': 'Angles',
-  'officialVideo.metric_incidents': 'Incidents',
-  'officialVideo.metric_reviews': 'Reviews',
-  'officialVideo.metric_exports': 'Exports',
-  'officialVideo.tab.videos': 'Videos',
-  'officialVideo.tab.incidents': 'Incidents',
-  'officialVideo.tab.reviews': 'Reviews',
-  'officialVideo.tab.exports': 'Exports',
-  'officialVideo.purpose.match_record': 'Match Record',
-  'officialVideo.purpose.incident_evidence': 'Incident Evidence',
-  'officialVideo.purpose.dispute_evidence': 'Dispute Evidence',
-  'officialVideo.purpose.assessment_footage': 'Assessment',
-  'officialVideo.purpose.federation_inquiry': 'Federation Inquiry',
-  'officialVideo.severity_label': 'Severity',
-  'officialVideo.severity.low': 'Low',
-  'officialVideo.severity.medium': 'Medium',
-  'officialVideo.severity.high': 'High',
-  'officialVideo.severity.critical': 'Critical',
-  'officialVideo.marker.add': 'Add Incident Marker',
-  'officialVideo.marker.add_cta': 'Mark Incident',
-  'officialVideo.marker.at_time': 'At time',
-  'officialVideo.marker.type_label': 'Marker type',
-  'officialVideo.marker.save': 'Save Marker',
-  'officialVideo.marker.type.incident': 'Incident',
-  'officialVideo.marker.type.warning': 'Warning',
-  'officialVideo.marker.type.decision': 'Decision',
-  'officialVideo.marker.type.disputed': 'Disputed',
-  'officialVideo.marker.type.evidence': 'Evidence',
-  'officialVideo.marker.type.performance': 'Performance',
-  'officialVideo.marker.type.advantage': 'Advantage',
-  'officialVideo.review.type.incident_review': 'Incident Review',
-  'officialVideo.review.type.performance_review': 'Performance Review',
-  'officialVideo.review.type.dispute_review': 'Dispute Review',
-  'officialVideo.review.type.federation_inquiry': 'Federation Inquiry',
-  'officialVideo.review.type.appeal_review': 'Appeal Review',
-  'officialVideo.review.status.open': 'Open',
-  'officialVideo.review.status.in_progress': 'In Progress',
-  'officialVideo.review.status.pending_evidence': 'Pending Evidence',
-  'officialVideo.review.status.concluded': 'Concluded',
-  'officialVideo.review.status.appealed': 'Appealed',
-  'officialVideo.review.status.closed': 'Closed',
-  'officialVideo.review.outcome.upheld': 'Upheld',
-  'officialVideo.review.outcome.dismissed': 'Dismissed',
-  'officialVideo.review.outcome.inconclusive': 'Inconclusive',
-  'officialVideo.review.outcome.deferred': 'Deferred',
-  'officialVideo.review.outcome.referred_to_federation': 'Referred to Federation',
-  'officialVideo.review.role.chair': 'Chair',
-  'officialVideo.review.role.referee': 'Referee',
-  'officialVideo.review.role.umpire': 'Umpire',
-  'officialVideo.review.role.organiser': 'Organiser',
-  'officialVideo.review.role.assessor': 'Assessor',
-  'officialVideo.review.role.federation': 'Federation',
-  'officialVideo.review.role.observer': 'Observer',
-  'officialVideo.review.role.legal': 'Legal',
-  'officialVideo.review.concluded': 'Concluded sessions',
-  'officialVideo.review.open_cta': 'Open Review Session',
-  'officialVideo.review.pending_evidence_note': 'Awaiting additional evidence before proceedings can continue.',
-  'officialVideo.export.title': 'Export Request',
-  'officialVideo.export.request_title': 'Request Controlled Export',
-  'officialVideo.export.request_cta': 'Submit Export Request',
-  'officialVideo.export.cta': 'Export',
-  'officialVideo.export.requested': 'Export request submitted — awaiting approval.',
-  'officialVideo.export.policy_note': 'All exports are watermarked, purpose-limited and subject to organiser approval.',
-  'officialVideo.export.recipient': 'Recipient',
-  'officialVideo.export.downloads': 'Downloads',
-  'officialVideo.export.expires': 'Expires',
-  'officialVideo.export.approve': 'Approve',
-  'officialVideo.export.reject': 'Reject',
-  'officialVideo.export.status.pending': 'Pending',
-  'officialVideo.export.status.approved': 'Approved',
-  'officialVideo.export.status.rejected': 'Rejected',
-  'officialVideo.export.status.delivered': 'Delivered',
-  'officialVideo.export.status.expired': 'Expired',
-  'officialVideo.export.status.revoked': 'Revoked',
-  'officialVideo.panel.markers': 'Markers',
-  'officialVideo.panel.participants': 'Participants',
-  'officialVideo.panel.audit': 'Audit',
-  'officialVideo.player.no_stream': 'Video stream unavailable.',
-  'officialVideo.audit.note': 'Append-only audit log. Each entry is SHA-256 chained for tamper evidence.',
-  'officialVideo.empty.videos': 'No footage uploaded',
-  'officialVideo.empty.videos_sub': 'Upload the first angle to begin the authorised review.',
-  'officialVideo.empty.incidents': 'No incident markers',
-  'officialVideo.empty.incidents_sub': 'Open the player and tap Mark Incident at any timestamp.',
-  'officialVideo.empty.reviews': 'No review sessions',
-  'officialVideo.empty.reviews_sub': 'Open a structured review session to begin proceedings.',
-  'officialVideo.empty.exports': 'No export requests',
-  'officialVideo.empty.exports_sub': 'Controlled exports are created from the video player.',
-  'officialVideo.empty.no_session': 'No session linked',
-  'officialVideo.empty.no_session_sub': 'Open a review session to add participants.',
-  'officialVideo.error.no_video': 'No video selected.',
-  'officialVideo.error.youth_consent': 'Youth consent reference required before accessing this footage.',
-  'officialVideo.error.media_rights': 'Media rights clearance must be confirmed before upload.',
-  'officialVideo.error.retention': 'This footage is within its mandatory retention period and cannot be archived.',
 
+  'guide.officials_development.title': 'Set up officials assessment and development',
+  'guide.officials_development.why': 'Elite academies host sanctioned events and license officials. Build the assessment machinery — rubrics, assessors, CPD requirements — once, and every official you license has a structured development path: formal assessments, goals, mentoring, CPD, fitness, and a clear route to the next grade.',
+  'guide.officials_development.s1': 'Open the Officials tab of your federation or governing-body workspace.',
+  'guide.officials_development.s2': 'Rubrics first: open the Rubrics tab and tap New rubric. Define the scale (points and what each means) and dimensions (what good looks like, evidence required). Publish a version. Versions are immutable.',
+  'guide.officials_development.s3': 'Appoint assessors: open the Assessors tab and appoint a licensed official for a sport, roles, highest grade and period. The appointment rests on their licence and lapses with it.',
+  'guide.officials_development.s4': 'Policy: open the Policy tab. Choose publish-on-submit or after-review, and set the appeal window in days.',
+  'guide.officials_development.s5': 'Grade requirements: open the Grade requirements tab, choose a target grade and set minimum time-in-grade, assessments, CPD hours and fitness test. Requirements are enforced; a score never promotes anyone.',
+  'guide.officials_development.s6': 'Observations: open the Observations tab, find a confirmed assignment, choose an eligible assessor, set the purpose and due date, and tap Assign.',
+  'guide.officials_development.s7': 'Once a report is submitted and published, the official reads, acknowledges, comments, and can ask for a review or lodge an appeal within the window.',
+  'guide.officials_development.s8': 'Officials see their own development hub at Home → Officials development: grade, renewal readiness, assessments, goals, mentoring, CPD and fitness in one place.',
+  'guide.officials_development.s9': 'CPD verification: open the CPD & fitness tab to verify self-reported CPD records.',
+  'guide.officials_development.s10': 'Fitness tests: define a test (pass/fail or measured), then record results for each official. Only the operational result is stored — never health information.',
 
+  // Officials Development (od.*)
+  'od.body_assessments_to_review': 'Assessments to review',
+  'od.body_open_appeals': 'Open appeals',
+  'od.body_overdue_obs': 'Overdue observations',
+  'od.body_expiring_30': 'Expiring in 30 days',
+  'od.body_expiring_90': '+{n} in 90 days',
+  'od.body_cpd_rate': 'CPD completion rate',
+  'od.body_cpd_officials': '{n} officials with requirement',
+  'od.body_active_assessors': 'Active assessors',
+  'od.body_lapsed': '{n} lapsed',
+  'od.body_grade_dist': 'Grade distribution',
+  'od.body_assessments_12m': 'Assessments (12 months)',
+  'od.body_recommendations': 'Recommendations',
+  'od.body_fitness_section': 'Fitness',
+  'od.body_applications': 'Licence applications',
+  'od.body_tab_assessments_section': 'Submitted assessments',
+  'od.body_reviews_appeals': 'Reviews & appeals',
+  'od.body_assignments_to_observe': 'Upcoming fixtures to observe',
+  'od.body_observations': 'Observations',
+  'od.body_assignments_note': 'Assign an assessor to observe an official at an upcoming fixture.',
+  'od.body_status_to_review': 'To review',
+  'od.body_status_published': 'Published',
+  'od.body_status_voided': 'Voided',
+  'od.body_kind_appeal': 'Appeal',
+  'od.body_kind_review': 'Review request',
+  'od.body_version': 'v{n}',
+  'od.body_ungraded': 'Ungraded',
+  'od.body_suppressed': 'Suppressed',
+  'od.body_search_placeholder': 'Search officials',
+  'od.body_not_yet_observed': 'Not yet observed',
+  'od.body_all': 'All',
+  'od.body_obs_count': '{n} observations',
+  'od.body_assessor_label': 'Assessor:',
+  'od.body_coi_declared': 'COI declared',
+  'od.body_btn_assign': 'Assign',
+  'od.body_btn_cancel': 'Cancel',
+  'od.body_publish_version': 'Publish new version',
+  'od.body_define_rubric': 'Define rubric',
+  'od.body_policy_review': 'Assessments are published after a reviewer approves.',
+  'od.body_policy_immediate': 'Assessments are published to officials immediately on submission.',
+  'od.body_policy_note': 'Officials can respond, comment and lodge appeals.',
+  'od.body_no_officials': 'No officials registered',
+  'od.body_no_assessments': 'No assessments yet',
+  'od.body_nothing_published': 'Nothing published yet',
+  'od.body_no_appeals': 'No appeals or reviews',
+  'od.body_no_appeals_sub': 'Appeals and review requests lodged by officials appear here.',
+  'od.body_nothing_here': 'Nothing here',
+  'od.body_no_to_observe': 'No fixtures to observe',
+  'od.body_no_to_observe_sub': 'Upcoming fixtures with assigned officials appear here once an event is published.',
+  'od.body_no_obs': 'No observations assigned',
+  'od.body_no_assessors': 'No assessors appointed',
+  'od.body_no_assessors_sub': 'Appoint people as assessors from the assessors tab.',
+  'od.body_no_rubrics': 'No rubrics defined',
+  'od.body_no_rubrics_sub': 'Define scoring rubrics to standardise assessments across your body.',
+  'od.body_no_grades': 'No grade requirements set',
+  'od.body_no_grades_sub': 'Define the requirements officials must meet to be graded up.',
+  'od.body_nothing_to_verify': 'Nothing to verify',
+  'od.body_nothing_to_verify_sub': 'Recorded CPD entries awaiting verification appear here.',
+  'od.body_no_test': 'No fitness tests defined',
+  'od.body_no_test_sub': 'Create fitness test templates from the policy tab.',
+  'od.body_none_waiting': 'Nothing waiting',
+  'od.body_rec_disclaimer': "Recommendations are set by the assessor and do not automatically change an official's grade.",
+  'od.body_expiring_label': 'Expiring',
+  'od.body_application_count': '{n} applications',
+  'od.body_tab_overview': 'Overview',
+  'od.body_tab_review': 'Review',
+  'od.body_tab_observations': 'Observations',
+  'od.body_tab_assessors': 'Assessors',
+  'od.body_tab_rubrics': 'Rubrics',
+  'od.body_tab_requirements': 'Requirements',
+  'od.body_tab_cpd': 'CPD',
+  'od.body_tab_policy': 'Policy',
+  'od.suppression_banner': 'Counts for {n} sub-organisations are suppressed for privacy.',
+  'od.toast_exported': 'Exported {n} rows',
+  'od.asmt_assessor_line': 'Assessed by {name} · {side} · {rubric} v{version}',
+  'od.asmt_voided': 'This assessment was voided{date}.{reason}',
+  'od.asmt_draft_banner': 'This assessment is a draft and has not been submitted yet.',
+  'od.asmt_submitted_banner': 'Assessment submitted. Awaiting review before publication.',
+  'od.asmt_scores_title': 'Scores',
+  'od.asmt_scores_sub': 'Each item is scored from {min} to {max}.',
+  'od.asmt_scale_title': 'Scale',
+  'od.asmt_recommendation_title': 'Recommendation',
+  'od.asmt_recommendation_note': 'Recommendations are advisory and do not automatically change grade.',
+  'od.asmt_responses_title': 'Responses',
+  'od.asmt_appeals_title': 'Appeals & reviews',
+  'od.asmt_appeal': 'Appeal',
+  'od.asmt_review_request': 'Review request',
+  'od.asmt_btn_acknowledge': 'Acknowledge',
+  'od.asmt_btn_comment': 'Add comment',
+  'od.asmt_btn_request_review': 'Request review',
+  'od.asmt_btn_appeal': 'Lodge appeal',
+  'od.btn_continue_draft': 'Continue draft',
+  'od.asmt_btn_correct': 'Add correction',
+  'od.asmt_btn_publish': 'Publish',
+  'od.asmt_btn_void': 'Void assessment',
+  'od.asmt_editor_scores': 'Scores',
+  'od.asmt_editor_report': 'Written report',
+  'od.asmt_strengths': 'Strengths',
+  'od.asmt_development_areas': 'Development areas',
+  'od.asmt_required_actions': 'Required actions',
+  'od.asmt_required_actions_hint': 'Actions the official must complete before their next assessment.',
+  'od.asmt_recommended_support': 'Recommended support',
+  'od.asmt_recommendation_section': 'Recommendation',
+  'od.asmt_correction_reason': 'Reason for correction',
+  'od.asmt_btn_save_draft': 'Save draft',
+  'od.asmt_btn_add_correction': 'Submit correction',
+  'od.asmt_btn_submit': 'Submit assessment',
+  'od.asmt_btn_back': 'Back',
+  'od.tab_overview': 'Overview',
+  'od.tab_assessments': 'Assessments',
+  'od.tab_growth': 'Growth',
+  'od.tab_cpd': 'CPD & fitness',
+  'od.tab_assessor': 'As assessor',
+  'od.your_officiating_path': 'Your officiating path',
+  'od.no_licence_sub': 'Join a governing body to start your officiating career.',
+  'od.banner_waiting': '{n} assessments awaiting acknowledgement',
+  'od.to_acknowledge': 'To acknowledge',
+  'od.open_actions': 'Open actions',
+  'od.cpd_label': 'CPD',
+  'od.cpd_period': '{n}-month window',
+  'od.cpd_no_hours': 'No requirement set',
+  'od.fitness_label': 'Fitness',
+  'od.fitness_to_renew': '{n} to renew',
+  'od.fitness_current': 'All current',
+  'od.towards_grade': 'Towards {name}',
+  'od.highest_grade': 'Highest grade',
+  'od.ready_to_apply': 'Ready to apply',
+  'od.no_licence_yet': 'No licence yet',
+  'od.no_licence_yet_sub': 'Join a governing body or federation to get your officiating licence.',
+  'od.section_your_grade': 'Your grade',
+  'od.section_applications': 'Applications',
+  'od.section_all': 'See all',
+  'od.section_recent_assessments': 'Recent assessments',
+  'od.section_upcoming_obs': 'Upcoming observations',
+  'od.section_open_actions': 'Open actions',
+  'od.section_goals': 'Goals & actions',
+  'od.section_mentoring': 'Mentoring',
+  'od.assessment_needs_ack': 'Needs acknowledgement',
+  'od.appeal_open': 'Appeal open',
+  'od.assessments_private': 'Your assessments are private between you and the assessing body.',
+  'od.no_assessments': 'No assessments yet',
+  'od.no_assessments_sub': 'When an assessor writes up a match you officiated, the report appears here once published.',
+  'od.no_actions': 'No open actions',
+  'od.no_actions_sub': 'Actions from your assessments and goals you set appear here.',
+  'od.valid_to': 'Valid to {date}',
+  'od.renewal_checks_title_ready': 'Renewal checks — ready',
+  'od.renewal_checks_title_open': 'Renewal checks',
+  'od.renewal_nothing': 'No renewal requirements',
+  'od.btn_licence_record': 'View record',
+  'od.btn_renew': 'Apply to renew',
+  'od.next_grade': 'Next grade: {name}',
+  'od.next_grade_ready': 'Requirements met — ready to apply',
+  'od.next_grade_in_progress': 'Working towards requirements',
+  'od.next_grade_no_reqs': 'No requirements defined yet',
+  'od.tag_applied': 'Applied',
+  'od.tag_ready': 'Ready',
+  'od.tag_in_progress': 'In progress',
+  'od.btn_apply_grade': 'Apply for {name}',
+  'od.next_grade_applied': 'Application sent to {body}',
+  'od.days_ended': 'Ended {n} days ago',
+  'od.ends_today': 'Ends today',
+  'od.days_left': '{n} days left',
+  'od.fitness_valid': 'Valid',
+  'od.fitness_expiring': 'Expiring',
+  'od.fitness_expired': 'Expired',
+  'od.fitness_failed': 'Failed',
+  'od.fitness_missing': 'Missing',
+  'od.btn_add_goal': 'Add goal',
+  'od.btn_draft_feedback': 'Draft goals from feedback',
+  'od.action_kind': 'Action',
+  'od.goal_kind': 'Goal',
+  'od.meeting_kind': 'Meeting',
+  'od.action_from_assessment': 'Action from assessment',
+  'od.action_from_body': 'Action from body',
+  'od.due_on': 'Due {date}',
+  'od.btn_done': 'Mark done',
+  'od.done_count': '{n} completed',
+  'od.overdue': 'Overdue',
+  'od.overdue_count': '{n} overdue',
+  'od.btn_propose_mentor': 'Propose mentoring',
+  'od.mentor_as': 'Mentoring {name}',
+  'od.mentee_as': 'Mentored by {name}',
+  'od.btn_accept': 'Accept',
+  'od.btn_decline': 'Decline',
+  'od.btn_add_goal_or_note': 'Add goal / note',
+  'od.no_mentoring': 'No mentoring relationships',
+  'od.no_mentoring_sub': 'Propose a mentoring relationship with another official.',
+  'od.mentee_actions_overdue': '{n} mentee actions overdue',
+  'od.plan_draft_title': 'Draft goals from feedback',
+  'od.plan_draft_sub': 'Generate suggested goals based on your recent assessment feedback.',
+  'od.btn_draft_my_goals': 'Generate draft goals',
+  'od.plan_draft_add': 'Add to my goals',
+  'od.goal_sheet_title': 'Goal',
+  'od.mentor_body': 'Body',
+  'od.goal_field': 'Goal',
+  'od.goal_hint': 'What do you want to achieve?',
+  'od.goal_how': 'How will you achieve it?',
+  'od.goal_aim': 'Target date',
+  'od.note_sheet_field_kind': 'Type',
+  'od.note_sheet_happened': 'Date of meeting',
+  'od.note_sheet_due': 'Due date',
+  'od.note_private': 'Mentor only',
+  'od.note_private_hint': 'Only visible to you and your mentor.',
+  'od.mentor_sheet_title': 'Propose mentoring',
+  'od.mentor_i_am': 'I am the',
+  'od.mentor_other': 'Other official',
+  'od.mentor_sport': 'Sport',
+  'od.mentor_scope': 'Scope / focus (optional)',
+  'od.cpd_sheet_title': 'Record CPD',
+  'od.cpd_counts_for': 'Counts for',
+  'od.cpd_kind': 'Activity type',
+  'od.cpd_title_field': 'Activity name',
+  'od.cpd_backed_by': 'Backed by credential',
+  'od.cpd_backed_hint': 'Link a credential to verify this CPD entry.',
+  'od.cpd_provider': 'Provider (optional)',
+  'od.cpd_completed_on': 'Completed on',
+  'od.cpd_hours': 'hrs',
+  'od.cpd_credits': 'credits',
+  'od.cpd_expires_on': 'Expires on (optional)',
+  'od.cpd_evidence': 'Evidence / certificate number (optional)',
+  'od.cpd_section': 'CPD record',
+  'od.btn_record_cpd': 'Record CPD activity',
+  'od.btn_withdraw': 'Withdraw',
+  'od.no_cpd': 'No CPD recorded',
+  'od.no_cpd_sub': 'Record courses, workshops and other CPD activities to build your profile.',
+  'od.fitness_section': 'Fitness tests',
+  'od.fitness_no_test': 'No fitness tests recorded',
+  'od.fitness_no_test_sub': 'Fitness test results recorded by your body appear here.',
+  'od.fitness_visibility': 'Fitness test results are recorded by your body, not self-reported.',
+  'od.coi_title': 'Conflict of interest',
+  'od.coi_conflict_header': 'Do you have a conflict of interest?',
+  'od.coi_none': 'No conflict',
+  'od.coi_declared': 'Declare conflict',
+  'od.coi_note_label': 'Describe the conflict',
+  'od.coi_note_hint': 'Briefly explain the nature of your conflict of interest.',
+  'od.coi_decline_conflict': 'Decline (conflict)',
+  'od.coi_footer': 'Your response is recorded and visible to the appointing body.',
+  'od.assessor_not_appointed': 'Not appointed as assessor',
+  'od.assessor_not_appointed_sub': 'Contact your governing body to be appointed as an assessor.',
+  'od.assessor_waiting': 'Waiting to accept',
+  'od.assessor_to_assess': 'To assess',
+  'od.assessor_drafts': 'Drafts',
+  'od.assessor_appointments': 'My appointments',
+  'od.assessor_assignments': 'Assigned observations',
+  'od.btn_reply': 'Reply',
+  'od.btn_continue': 'Continue',
+  'od.btn_write_up': 'Write up',
+  'od.no_assignments': 'No assignments',
+  'od.no_assignments_sub': 'You have no observation assignments at the moment.',
+  'od.find_body': 'Find a governing body',
+
+  // Pre-existing missing keys — English fallback, reviewed: false
+  'cEdu.apl.appeal': 'Appeal Rejection',
+  'cEdu.apl.dismiss': 'Dismiss Appeal',
+  'cEdu.apl.dismissed': 'Appeal Dismissed',
+  'cEdu.apl.dueResponse': 'Response due in {n} days',
+  'cEdu.apl.reason': 'Reason for appeal',
+  'cEdu.apl.upheld': 'Appeal Upheld',
+  'cEdu.apl.uphold': 'Uphold Appeal',
+  'cEdu.asn.notify': 'Notify Coaches',
+  'cEdu.cmp.requestRevision': 'Request Revision',
+  'cEdu.cmp.reviewNote': 'Review note (shown to coach)',
+  'cEdu.export': 'Export',
+  'cEdu.imp.action.kind.cpd': 'CPD module',
+  'cEdu.imp.action.kind.external': 'External course',
+  'cEdu.imp.action.kind.mentoring': 'Mentoring session',
+  'cEdu.imp.action.kind.observation': 'TD observation',
+  'cEdu.imp.action.kind.other': 'Other',
+  'cEdu.imp.action.kind.practice': 'Coaching practice',
+  'cEdu.imp.action.kind.reflection': 'Reflection',
+  'cEdu.imp.addAction': '+ Add Action',
+  'cEdu.imp.ends': 'Target completion',
+  'cEdu.imp.focusPillars': 'Focus pillars',
+  'cEdu.imp.newPlan': '+ New Plan',
+  'cEdu.imp.review': 'Review date',
+  'cEdu.imp.starts': 'Plan starts',
+  'cEdu.imp.status.active': 'Active',
+  'cEdu.imp.status.completed': 'Completed',
+  'cEdu.imp.status.review': 'Under Review',
+  'cEdu.imp.status.withdrawn': 'Withdrawn',
+  'cEdu.imp.title': 'Improvement Plans',
+  'cEdu.kpi.avgRating': 'Avg Rating',
+  'cEdu.kpi.drafts': 'Drafts',
+  'cEdu.kpi.observations': 'Observations',
+  'cEdu.kpi.openAppeal': 'Open Appeal',
+  'cEdu.kpi.pendingReview': 'Pending Review',
+  'cEdu.kpi.plansLinked': 'Plans Linked',
+  'cEdu.kpi.released': 'Released',
+  'cEdu.mnt.agreeedActions': 'Agreed actions',
+  'cEdu.mnt.lastSession': 'Last: {date}',
+  'cEdu.mnt.overdueWarn': 'No session in {n} weeks — overdue by policy',
+  'cEdu.mnt.sessionNote': 'Session note (encrypted, participants only)',
+  'cEdu.mnt.sessions': '{done} / {total} sessions',
+  'cEdu.mnt.startSession': 'Start Session',
+  'cEdu.mnt.status.overdue': 'Overdue',
+  'cEdu.mod.archive': 'Archive',
+  'cEdu.mod.assign': 'Assign',
+  'cEdu.mod.f.credential': 'Required credential',
+  'cEdu.mod.f.dueAfter': 'Due within (days of joining)',
+  'cEdu.mod.f.recurrence': 'Recertification every (months)',
+  'cEdu.obs.development': 'Development areas (private until released)',
+  'cEdu.obs.draft': 'Draft',
+  'cEdu.obs.methodology': 'Methodology version',
+  'cEdu.obs.newObs': '+ New Observation',
+  'cEdu.obs.nextSteps': 'Next steps & actions',
+  'cEdu.obs.overall': 'Overall rating',
+  'cEdu.obs.pillars': 'Competency ratings',
+  'cEdu.obs.privateNote': '🔒 Encrypted · hidden from coach until released',
+  'cEdu.obs.qualityTrend': 'Quality Trend',
+  'cEdu.obs.released': 'Released',
+  'cEdu.obs.session': 'Session observed',
+  'cEdu.obs.strengths': 'Strengths (private until released)',
+  'cEdu.obs.submit': 'Submit Observation',
+  'cEdu.rpt.byCoach': 'By coach',
+  'cEdu.rpt.byCohort': 'By cohort',
+  'cEdu.rpt.exportCsv': 'Export CSV',
+  'cEdu.rpt.noHrNotes': 'Private notes are not included in this report',
+  'cEdu.rpt.title': 'Compliance Report',
+  'cEdu.tab.mentoring': 'Mentoring',
+  'cEdu.tab.observations': 'Observations',
+  'cEdu.tab.plans': 'Improvement Plans',
+  'cEdu.tab.report': 'Compliance Report',
+  'community.title': 'Communities',
+  'crew.broadcast_body_label': 'Message',
+  'crew.broadcast_placeholder': 'e.g. Meeting point changed to main tunnel at 13:30',
+  'crew.broadcast_sheet_title': 'Send crew message',
+  'crew.tab_broadcast': 'Channel',
+  'crew.tab_crew': 'Crew',
+  'crew.tab_requirements': 'Requirements',
+  'inj.coach_expected_return': 'Expected return',
+  'inj.episode_opened_confirm': 'Episode opened — track this injury from first assessment through to clearance.',
+  'inj.episodes_title': 'Injury Episodes',
+  'inj.injury_type': 'Injury type',
+  'inj.my_injuries_title': 'My Injuries',
+  'inj.side': 'Side',
+  'nav.title.Rewards': 'Rewards',
+  'ora.wizard.accommodationPerNight': 'Accommodation (per night)',
+  'ora.wizard.additionalRates': 'Additional rates',
+  'ora.wizard.autoRenew': 'Auto-renew',
+  'ora.wizard.bundleDescPlaceholder': 'e.g. 4 matches + travel + on-site mentoring',
+  'ora.wizard.bundleDescription': 'What the bundle includes',
+  'ora.wizard.bundleTotal': 'Bundle total',
+  'ora.wizard.cancelFeePct': 'Cancellation fee',
+  'ora.wizard.cancellation': 'Cancellation',
+  'ora.wizard.monthlyRetainer': 'Monthly retainer',
+  'ora.wizard.noticeDays': 'Notice period',
+  'ora.wizard.overtimePerHour': 'Overtime rate (per hour)',
+  'ora.wizard.payment': 'Payment Terms',
+  'ora.wizard.paymentNetDays': 'Payment due (days after invoice)',
+  'ora.wizard.paymentTrigger': 'Invoice trigger',
+  'ora.wizard.perGameSupplement': 'Per-game supplement',
+  'ora.wizard.privateNote': 'Private notes (not shared)',
+  'ora.wizard.privateNotePlaceholder': 'Internal notes only visible to you…',
+  'ora.wizard.proposalMessagePlaceholder': 'Any context you want to include with the proposal…',
+  'ora.wizard.step1.heading': 'Agreement Type',
+  'ora.wizard.step1.sub': 'What is this rate agreement for?',
+  'ora.wizard.step2.heading': 'Scope',
+  'ora.wizard.step2.note': 'You will search for the counterpart on the next step.',
+  'ora.wizard.step2.sub': 'Which sport and official role does this cover?',
+  'ora.wizard.step3.heading': 'Rate Structure',
+  'ora.wizard.step3.sub': 'Define how fees are calculated and applied.',
+  'ora.wizard.step4.heading': 'Validity & Terms',
+  'ora.wizard.step4.sub': 'Set the effective period, renewal and cancellation terms.',
+  'ora.wizard.step5.heading': 'Review & Send',
+  'ora.wizard.step5.sub': 'Check everything before sending the proposal.',
+  'ora.wizard.travel': 'Travel incl.',
+  'ora.wizard.travelPerGame': 'Travel allowance (per game)',
+  'psf.need.paraType': 'Para-Sport Need Type',
+  'rtp.approvals_title': 'Approvals',
+  'rtp.no_protocol': 'No RTP protocol set',
+  'wizard.goal.target': 'Target number (optional)',
 };
