@@ -11,19 +11,25 @@ import { startMetrics } from './metrics.js';
 import { logger } from './logger.js';
 
 startMetrics();
+logger.info('[startup] 1/6 initializing keys');
 await initKeys();   // fail fast if the master key can't be loaded
+logger.info('[startup] 2/6 running migrations');
 await migrate();
+logger.info('[startup] 3/6 loading platform settings');
 const settingsMod = await import('./platform-settings.js');
 await settingsMod.loadPlatformSettings();   // the platform admin's document size limit
 settingsMod.startSettingsRefresh();
+logger.info('[startup] 4/6 reconciling platform roles');
 const platformMod = await import('./platform.js');
 await platformMod.reconcilePlatformRoles();   // only the platform-admin list may hold admin / platform_admin
 await platformMod.bootstrapPlatformOwner();
+logger.info('[startup] 5/6 loading payment config');
 // payment provider keys set in the app, and the per-country payment switches, are cached in memory; reload them now and every 30s so every instance follows an admin's change
 const providerConfig = await import('./payments/provider-config.js');
 const countryMethods = await import('./payments/countries.js');
 const reloadPayments = () => Promise.all([providerConfig.refreshProviderConfig(), countryMethods.refreshCountryMethods()]).catch((e) => console.error('[payments] config reload failed', e.message));
 await reloadPayments();
+logger.info('[startup] 6/6 starting HTTP server');
 setInterval(reloadPayments, 30_000).unref();
 if (config.isProd && config.allowInsecureHttp) console.warn('[security] ALLOW_INSECURE_HTTP=true: serving over plain HTTP. Personal data is NOT encrypted in transit. Enable TLS before real users sign up.');
 const app = createApp();

@@ -16,6 +16,7 @@ import { c } from '../theme';
 import { Banner, Metric, fmtDate } from '../federation-ui';
 import { Bar, Cols, ListCard, Pager } from '../federation-bits';
 import { DIMENSION_IDEAS, PURPOSE, PURPOSE_OPTIONS, ROLE_NAME, ROLE_OPTIONS, StateTag, REC, stateLabel, whenTime } from '../officials-dev-ui';
+import { t } from '../i18n';
 
 const cnt = (list, k) => list?.find((x) => x.k === k)?.n ?? 0;
 const show = (n) => (n === null ? '<3' : n);
@@ -29,7 +30,7 @@ function Overview({ id, below, go }) {
   if (q.error && !q.data) return <LoadError error={q.error} onRetry={q.reload} />;
   if (!q.data) return <Loading />;
   const o = q.data;
-  const exportCsv = async () => { setBusy(true); try { const r = await api.get(`/officials-development/bodies/${id}/export`, { include_descendants: below }); await saveText(r.filename, r.csv); toast(`Exported ${r.rows} rows`); } catch (e) { toast(explain(e)); } finally { setBusy(false); } };
+  const exportCsv = async () => { setBusy(true); try { const r = await api.get(`/officials-development/bodies/${id}/export`, { include_descendants: below }); await saveText(r.filename, r.csv); toast(t('od.toast_exported', { n: r.rows })); } catch (e) { toast(explain(e)); } finally { setBusy(false); } };
   const maxGrade = Math.max(1, ...o.grade_distribution.map((g) => g.n ?? 0));
   const maxMonth = Math.max(1, ...o.assessments.completed_by_month.map((m) => m.n ?? 0));
   const maxRec = Math.max(1, ...o.assessments.by_recommendation.map((m) => m.n ?? 0));
@@ -37,33 +38,33 @@ function Overview({ id, below, go }) {
   const awaiting = o.assessments.awaiting_review, openAppeals = cnt(o.appeals, 'lodged') + cnt(o.appeals, 'under_review');
   return (
     <View style={{ gap: 4 }}>
-      {o.suppression ? <Banner tone={c.cyanSoft}>Groups of fewer than {o.suppression.below} are hidden in this view, so no individual can be picked out.</Banner> : null}
+      {o.suppression ? <Banner tone={c.cyanSoft}>{t('od.suppression_banner', { n: o.suppression.below })}</Banner> : null}
       <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginTop: 8 }}>
-        <Metric value={show(awaiting)} label="Assessments to review" tone={awaiting ? c.sunSoft : undefined} onPress={() => go('review')} />
-        <Metric value={openAppeals} label="Open reviews and appeals" tone={openAppeals ? c.sunSoft : undefined} onPress={() => go('review')} />
-        <Metric value={show(o.observations.overdue)} label="Overdue observations" tone={o.observations.overdue ? c.sunSoft : undefined} onPress={() => go('observations')} />
-        <Metric value={show(o.renewals.expiring_30)} label="Official licences expiring in 30 days" sub={`${show(o.renewals.expiring_90)} within 90`} />
-        <Metric value={o.cpd.completion_rate === null ? '–' : `${o.cpd.completion_rate}%`} label="Meeting their CPD requirement" sub={`${show(o.cpd.officials_with_requirement)} officials with one`} onPress={() => go('cpd')} />
-        <Metric value={cnt(o.assessors, 'active')} label="Active assessors" sub={cnt(o.assessors, 'lapsed') ? `${cnt(o.assessors, 'lapsed')} lapsed` : undefined} onPress={() => go('assessors')} />
+        <Metric value={show(awaiting)} label={t('od.body_assessments_to_review')} tone={awaiting ? c.sunSoft : undefined} onPress={() => go('review')} />
+        <Metric value={openAppeals} label={t('od.body_open_appeals')} tone={openAppeals ? c.sunSoft : undefined} onPress={() => go('review')} />
+        <Metric value={show(o.observations.overdue)} label={t('od.body_overdue_obs')} tone={o.observations.overdue ? c.sunSoft : undefined} onPress={() => go('observations')} />
+        <Metric value={show(o.renewals.expiring_30)} label={t('od.body_expiring_30')} sub={t('od.body_expiring_90', { n: show(o.renewals.expiring_90) })} />
+        <Metric value={o.cpd.completion_rate === null ? '–' : `${o.cpd.completion_rate}%`} label={t('od.body_cpd_rate')} sub={t('od.body_cpd_officials', { n: show(o.cpd.officials_with_requirement) })} onPress={() => go('cpd')} />
+        <Metric value={cnt(o.assessors, 'active')} label={t('od.body_active_assessors')} sub={cnt(o.assessors, 'lapsed') ? t('od.body_lapsed', { n: cnt(o.assessors, 'lapsed') }) : undefined} onPress={() => go('assessors')} />
       </View>
       <Cols
         a={<>
-          <Section title="Grade distribution" color={c.pink}>
-            {o.grade_distribution.length ? <Card color={c.paper}><View style={{ gap: 12 }}>{o.grade_distribution.map((g) => <Bar key={`${g.sport}${g.grade}`} label={`${g.sport} · ${g.grade || 'ungraded'}`} value={g.n ?? 0} max={maxGrade} sub={g.n === null ? 'fewer than 3' : undefined} />)}</View></Card> : <Empty emoji="📊" title="No licensed officials yet" />}
+          <Section title={t('od.body_grade_dist')} color={c.pink}>
+            {o.grade_distribution.length ? <Card color={c.paper}><View style={{ gap: 12 }}>{o.grade_distribution.map((g) => <Bar key={`${g.sport}${g.grade}`} label={`${g.sport} · ${g.grade || t('od.body_ungraded')}`} value={g.n ?? 0} max={maxGrade} sub={g.n === null ? t('od.body_suppressed') : undefined} />)}</View></Card> : <Empty emoji="📊" title={t('od.body_no_officials')} />}
           </Section>
-          <Section title="Assessments completed, last 12 months" color={c.cyan}>
-            {o.assessments.completed_by_month.length ? <Card color={c.paper}><View style={{ gap: 10 }}>{o.assessments.completed_by_month.map((m) => <Bar key={m.k} label={m.k} value={m.n ?? 0} max={maxMonth} />)}</View></Card> : <Empty emoji="📈" title="No assessments yet" />}
+          <Section title={t('od.body_assessments_12m')} color={c.cyan}>
+            {o.assessments.completed_by_month.length ? <Card color={c.paper}><View style={{ gap: 10 }}>{o.assessments.completed_by_month.map((m) => <Bar key={m.k} label={m.k} value={m.n ?? 0} max={maxMonth} />)}</View></Card> : <Empty emoji="📈" title={t('od.body_no_assessments')} />}
           </Section>
         </>}
         b={<>
-          <Section title="What assessors recommended" color={c.mint}>
-            {o.assessments.by_recommendation.length ? <Card color={c.paper}><View style={{ gap: 12 }}>{o.assessments.by_recommendation.map((r) => <Bar key={r.k} label={REC[r.k]?.[0] ?? r.k} value={r.n ?? 0} max={maxRec} />)}</View><T size={11.5} color={c.mute} style={{ marginTop: 10 }}>Counts only. There is no score per official, no ranking and no cross-sport rating.</T></Card> : <Empty emoji="🧭" title="Nothing published yet" />}
+          <Section title={t('od.body_recommendations')} color={c.mint}>
+            {o.assessments.by_recommendation.length ? <Card color={c.paper}><View style={{ gap: 12 }}>{o.assessments.by_recommendation.map((r) => <Bar key={r.k} label={REC[r.k]?.[0] ?? r.k} value={r.n ?? 0} max={maxRec} />)}</View><T size={11.5} color={c.mute} style={{ marginTop: 10 }}>{t('od.body_rec_disclaimer')}</T></Card> : <Empty emoji="🧭" title={t('od.body_nothing_published')} />}
           </Section>
-          <Section title="Fitness and competency" color={c.orange}>
-            <Card color={c.paper}><View style={{ gap: 12 }}>{fit.map((k) => <Bar key={k} label={{ valid: 'Valid', expiring: 'Expiring in 30 days', expired: 'Expired', failed: 'Not passed', missing: 'No result' }[k]} value={cnt(o.fitness, k)} max={Math.max(1, ...o.fitness.map((f) => f.n ?? 0))} />)}</View></Card>
+          <Section title={t('od.body_fitness_section')} color={c.orange}>
+            <Card color={c.paper}><View style={{ gap: 12 }}>{fit.map((k) => <Bar key={k} label={{ valid: t('od.fitness_valid'), expiring: t('od.body_expiring_label'), expired: t('od.fitness_expired'), failed: t('od.fitness_failed'), missing: t('od.fitness_missing') }[k]} value={cnt(o.fitness, k)} max={Math.max(1, ...o.fitness.map((f) => f.n ?? 0))} />)}</View></Card>
           </Section>
-          <Section title="Licence applications in progress" color={c.sun}>
-            {o.renewals.applications.length ? o.renewals.applications.map((a) => <ListCard key={a.k} title={stateLabel(a.k)} sub={`${show(a.n)} official application${a.n === 1 ? '' : 's'}`} />) : <Empty emoji="🗂️" title="None waiting" />}
+          <Section title={t('od.body_applications')} color={c.sun}>
+            {o.renewals.applications.length ? o.renewals.applications.map((a) => <ListCard key={a.k} title={stateLabel(a.k)} sub={t('od.body_application_count', { n: show(a.n) })} />) : <Empty emoji="🗂️" title={t('od.body_none_waiting')} />}
           </Section>
         </>} />
       <View style={{ marginTop: 8 }}><Btn small title="Download counts (CSV)" color={c.paper} ink={c.ink} loading={busy} onPress={exportCsv} style={{ alignSelf: 'flex-start' }} /></View>
@@ -80,20 +81,20 @@ function ReviewTab({ id, settings }) {
   const appeals = useLoad(() => api.get(`/officials-development/bodies/${id}/appeals`, { limit: 20 }), [id]);
   return (
     <Cols
-      a={<Section title="Assessments" color={c.cyan}>
-        <T size={12} color={c.mute} style={{ marginBottom: 8 }}>{settings.publication === 'after_review' ? 'Your policy reviews each report before the official can read it.' : 'Your policy publishes each report to the official as soon as it is submitted.'} Staff cannot edit what an assessor wrote; a report can be voided with a reason.</T>
-        <Seg options={[{ value: 'submitted', label: 'To review' }, { value: 'published', label: 'Published' }, { value: 'voided', label: 'Voided' }]} value={status} onChange={(s) => { setStatus(s); setOff(0); }} />
+      a={<Section title={t('od.body_tab_assessments_section')} color={c.cyan}>
+        <T size={12} color={c.mute} style={{ marginBottom: 8 }}>{settings.publication === 'after_review' ? t('od.body_policy_review') : t('od.body_policy_immediate')} {t('od.body_policy_note')}</T>
+        <Seg options={[{ value: 'submitted', label: t('od.body_status_to_review') }, { value: 'published', label: t('od.body_status_published') }, { value: 'voided', label: t('od.body_status_voided') }]} value={status} onChange={(s) => { setStatus(s); setOff(0); }} />
         <View style={{ marginTop: 8, gap: 8 }}>
           {!list.data ? <Loading /> : list.data.items.length ? list.data.items.map((a) => (
             <ListCard key={a.id} title={`${a.official_name} · ${ROLE_NAME[a.official_role] ?? a.official_role}`} sub={`${a.event_name} · ${PURPOSE[a.purpose] ?? a.purpose}`} sub2={`Assessor ${a.assessor_name}${a.appeal_open ? ' · appeal open' : ''}`} status={a.status} onPress={() => push('OfficialAssessment', { id: a.id })} />))
-            : <Empty emoji="✅" title="Nothing here" />}
+            : <Empty emoji="✅" title={t('od.body_nothing_here')} />}
           {list.data ? <Pager total={list.data.total} offset={off} limit={20} onOffset={setOff} busy={list.loading} /> : null}
         </View>
       </Section>}
-      b={<Section title="Reviews and appeals" color={c.orange}>
+      b={<Section title={t('od.body_reviews_appeals')} color={c.orange}>
         {!appeals.data ? <Loading /> : appeals.data.items.length ? appeals.data.items.map((p) => (
-          <View key={p.id} style={{ marginBottom: 8 }}><ListCard title={`${p.kind === 'appeal' ? 'Appeal' : 'Review'} · ${p.official_name}`} sub={p.event_name} sub2={`Version ${p.version} · ${whenTime(p.created_at)}`} status={p.status} onPress={() => push('OfficialAssessment', { id: p.assessment_id })} /></View>))
-          : <Empty emoji="⚖️" title="No reviews or appeals" sub="An official can ask for a review or lodge an appeal within the window you set." />}
+          <View key={p.id} style={{ marginBottom: 8 }}><ListCard title={`${p.kind === 'appeal' ? t('od.body_kind_appeal') : t('od.body_kind_review')} · ${p.official_name}`} sub={p.event_name} sub2={`${t('od.body_version', { n: p.version })} · ${whenTime(p.created_at)}`} status={p.status} onPress={() => push('OfficialAssessment', { id: p.assessment_id })} /></View>))
+          : <Empty emoji="⚖️" title={t('od.body_no_appeals')} sub={t('od.body_no_appeals_sub')} />}
       </Section>} />
   );
 }
@@ -129,22 +130,22 @@ function ObservationsTab({ id, body, assessors }) {
   return (
     <>
     <Cols
-      a={<Section title="Official assignments you can have observed" color={c.cyan}>
-        <T size={12} color={c.mute} style={{ marginBottom: 8 }}>These are the confirmed assignments from the event consoles for events you sanction or officials you license. Assigning an assessor changes nothing about the assignment or the match.</T>
-        <Field value={q} onChangeText={setQ} placeholder="Search an official or an event" accessibilityLabel="Search assignments" />
-        <View style={{ flexDirection: 'row', gap: 8, marginVertical: 8 }}><Chip label="Not yet observed" active={unobserved} onPress={() => setUnobserved(true)} /><Chip label="All" active={!unobserved} onPress={() => setUnobserved(false)} /></View>
+      a={<Section title={t('od.body_assignments_to_observe')} color={c.cyan}>
+        <T size={12} color={c.mute} style={{ marginBottom: 8 }}>{t('od.body_assignments_note')}</T>
+        <Field value={q} onChangeText={setQ} placeholder={t('od.body_search_placeholder')} accessibilityLabel={t('od.body_search_placeholder')} />
+        <View style={{ flexDirection: 'row', gap: 8, marginVertical: 8 }}><Chip label={t('od.body_not_yet_observed')} active={unobserved} onPress={() => setUnobserved(true)} /><Chip label={t('od.body_all')} active={!unobserved} onPress={() => setUnobserved(false)} /></View>
         {!pick.data ? <Loading /> : pick.data.items.length ? pick.data.items.map((a) => (
           <View key={a.fixture_official_id} style={{ marginBottom: 8 }}>
-            <ListCard title={`${a.official_name} · ${ROLE_NAME[a.role] ?? a.role}`} sub={`${a.event_name}${a.home_team ? ` · ${a.home_team} v ${a.away_team}` : ''}`} sub2={`${whenTime(a.scheduled_at)}${a.observations ? ` · ${a.observations} observation${a.observations === 1 ? '' : 's'}` : ''}`}
-              right={<Btn small title="Assign" onPress={() => setItem(a)} />} onPress={() => setItem(a)} />
-          </View>)) : <Empty emoji="🏁" title="No assignments to observe" sub="Confirmed officials at sanctioned events, or officials you license, appear here." />}
+            <ListCard title={`${a.official_name} · ${ROLE_NAME[a.role] ?? a.role}`} sub={`${a.event_name}${a.home_team ? ` · ${a.home_team} v ${a.away_team}` : ''}`} sub2={`${whenTime(a.scheduled_at)}${a.observations ? ` · ${t('od.body_obs_count', { n: a.observations })}` : ''}`}
+              right={<Btn small title={t('od.body_btn_assign')} onPress={() => setItem(a)} />} onPress={() => setItem(a)} />
+          </View>)) : <Empty emoji="🏁" title={t('od.body_no_to_observe')} sub={t('od.body_no_to_observe_sub')} />}
       </Section>}
-      b={<Section title="Observations" color={c.pink}>
+      b={<Section title={t('od.body_observations')} color={c.pink}>
         {!mine.data ? <Loading /> : mine.data.items.length ? mine.data.items.map((o) => (
           <View key={o.id} style={{ marginBottom: 8 }}>
-            <ListCard title={`${o.official_name} · ${ROLE_NAME[o.official_role] ?? o.official_role}`} sub={`${o.event_name} · ${PURPOSE[o.purpose]}`} sub2={`Assessor ${o.assessor_name}${o.due_on ? ` · due ${fmtDate(o.due_on)}` : ''}${o.overdue ? ' · overdue' : ''}${o.coi_declared ? ' · conflict declared' : ''}`}
-              status={o.status} tone={o.overdue || o.coi_declared ? c.sunSoft : undefined} right={['assigned', 'accepted'].includes(o.status) ? <Btn small title="Cancel" color={c.paper} ink={c.ink} onPress={() => setCancel(o)} /> : null} />
-          </View>)) : <Empty emoji="🧑‍⚖️" title="No observations yet" />}
+            <ListCard title={`${o.official_name} · ${ROLE_NAME[o.official_role] ?? o.official_role}`} sub={`${o.event_name} · ${PURPOSE[o.purpose]}`} sub2={`${t('od.body_assessor_label')} ${o.assessor_name}${o.due_on ? ` · ${t('od.due_on', { date: fmtDate(o.due_on) })}` : ''}${o.overdue ? ` · ${t('od.overdue')}` : ''}${o.coi_declared ? ` · ${t('od.body_coi_declared')}` : ''}`}
+              status={o.status} tone={o.overdue || o.coi_declared ? c.sunSoft : undefined} right={['assigned', 'accepted'].includes(o.status) ? <Btn small title={t('od.body_btn_cancel')} color={c.paper} ink={c.ink} onPress={() => setCancel(o)} /> : null} />
+          </View>)) : <Empty emoji="🧑‍⚖️" title={t('od.body_no_obs')} />}
       </Section>} />
       <AssignSheet item={item} body={body} assessors={assessors} onClose={() => setItem(null)} onSaved={reload} />
       <FormSheet visible={!!cancel} onClose={() => setCancel(null)} title="Cancel this assignment" submitLabel="Cancel assignment" fields={[{ key: 'reason', label: 'Reason', type: 'multiline', hint: 'The assessor is told.' }]}
@@ -164,11 +165,11 @@ function AssessorsTab({ id, body, assessors, reload }) {
     <View>
       <View style={{ flexDirection: 'row', gap: 8, marginBottom: 10 }}><Btn small title="Appoint an assessor" onPress={() => setForm(true)} /></View>
       <T size={12} color={c.mute} style={{ marginBottom: 8 }}>An assessor is appointed for a sport, the roles they may assess, a top grade and a period. It rests on the person's own current licence and lapses with it. Being a referee grants nothing.</T>
-      {!assessors ? <Loading /> : assessors.length ? assessors.map((a) => (
+      {!assessors ? <Loading /> : assessors.length ? assessors.map((a) => (  // eslint-disable-line no-shadow
         <View key={a.id} style={{ marginBottom: 8 }}>
           <ListCard title={a.assessor_name} sub={`${a.sport_name} · ${a.official_roles.map((r) => ROLE_NAME[r] ?? r).join(', ')} · up to rank ${a.max_grade_rank}${a.scope_event_name ? ` · only ${a.scope_event_name}` : ''}`} sub2={`${fmtDate(a.valid_from)} to ${fmtDate(a.valid_until)} · licence ${a.credential_licence_no}`} status={a.status}
             right={<View style={{ flexDirection: 'row', gap: 6 }}>{a.recorded_status === 'active' ? <Btn small title="Suspend" color={c.paper} ink={c.ink} onPress={() => setAct({ a, action: 'suspend' })} /> : null}{a.recorded_status === 'suspended' ? <Btn small title="Reinstate" onPress={() => setAct({ a, action: 'reinstate' })} /> : null}{a.recorded_status !== 'revoked' ? <Btn small title="Revoke" color={c.paper} ink={c.red} onPress={() => setAct({ a, action: 'revoke' })} /> : null}</View>} />
-        </View>)) : <Empty emoji="🧑‍⚖️" title="No assessors appointed" sub="Appoint a licensed official as an assessor to observe and write up matches." />}
+        </View>)) : <Empty emoji="🧑‍⚖️" title={t('od.body_no_assessors')} sub={t('od.body_no_assessors_sub')} />}
       <FormSheet visible={form} onClose={() => setForm(false)} title="Appoint an assessor" submitLabel="Appoint" initial={{ sport_id: sports[0]?.value, official_roles: ['referee'], max_grade_rank: 20 }}
         fields={[
           { key: 'user_id', label: 'Person', type: 'entity', entityKind: 'person', role: 'referee', noun: 'licensed official' },
@@ -257,9 +258,9 @@ function RubricsTab({ id, body }) {
               <View style={{ alignItems: 'flex-end', gap: 6 }}>{r.archived_at ? <Tag label="Archived" /> : <Tag label={r.version ? `Version ${r.version}` : 'No version yet'} color={r.version ? c.mint : c.sun} />}</View>
             </View>
             {r.dimensions ? <T size={12.5} style={{ marginTop: 6 }}>{r.dimensions.map((d) => d.label).join(' · ')}</T> : null}
-            {!r.archived_at ? <Btn small title={r.version ? 'Publish a new version' : 'Define the scale and dimensions'} color={c.paper} ink={c.ink} style={{ alignSelf: 'flex-start', marginTop: 8 }} onPress={() => setEdit(r)} /> : null}
+            {!r.archived_at ? <Btn small title={r.version ? t('od.body_publish_version') : t('od.body_define_rubric')} color={c.paper} ink={c.ink} style={{ alignSelf: 'flex-start', marginTop: 8 }} onPress={() => setEdit(r)} /> : null}
           </Card>
-        </View>)) : <Empty emoji="📐" title="No rubrics yet" sub="A rubric defines the scale and dimensions an assessor scores a role against. Without one, nobody can write a report." />}
+        </View>)) : <Empty emoji="📐" title={t('od.body_no_rubrics')} sub={t('od.body_no_rubrics_sub')} />}
       <RubricSheet rubric={edit} onClose={() => setEdit(null)} onSaved={list.reload} />
       <FormSheet visible={form} onClose={() => setForm(false)} title="New rubric" submitLabel="Create" initial={{ sport_id: sports[0]?.value, official_role: 'referee', min_grade_rank: 0, max_grade_rank: 20 }}
         fields={[
@@ -292,7 +293,7 @@ function RequirementsTab({ id, body, tests }) {
             <T size={12.5} style={{ marginTop: 6 }}>{line(byType[g.id])}</T>
             <Btn small title="Set requirements" color={c.paper} ink={c.ink} style={{ alignSelf: 'flex-start', marginTop: 8 }} onPress={() => setEdit(g)} />
           </Card>
-        </View>)) : <Empty emoji="🪜" title="No official grades yet" sub="Define official licence types (with grade ranks) under Licences first; requirements attach to them." />}
+        </View>)) : <Empty emoji="🪜" title={t('od.body_no_grades')} sub={t('od.body_no_grades_sub')} />}
       <FormSheet visible={!!edit} onClose={() => setEdit(null)} title={edit ? `Requirements for ${edit.name}` : ''} submitLabel="Save requirements" initial={edit ? { ...(byType[edit.id] ?? {}), prerequisite_type_id: byType[edit.id]?.prerequisite_type_id ?? undefined, fitness_test_type_id: byType[edit.id]?.fitness_test_type_id ?? undefined } : {}}
         fields={edit ? [
           ...(lower(edit).length ? [{ key: 'prerequisite_type_id', label: 'Must already hold', type: 'chips', optional: true, options: lower(edit).map((g) => ({ value: g.id, label: g.grade || g.name })) },
@@ -329,14 +330,14 @@ function CpdFitnessTab({ id, body, tests, reloadTests }) {
           <Card key={r.id} color={c.paper} pad={14} style={{ marginBottom: 8 }}>
             <T weight="700">{r.title}</T><T size={12} color={c.mute}>{r.holder_name} · {r.kind} · {fmtDate(r.completed_on)} · {r.hours}h{r.has_evidence ? ' · evidence attached' : ''}</T>
             <View style={{ flexDirection: 'row', gap: 8, marginTop: 8 }}><Btn small title="Verify" onPress={() => verify(r)} /><Btn small title="Not accepted" color={c.paper} ink={c.ink} onPress={() => setReject(r)} /></View>
-          </Card>)) : <Empty emoji="🎓" title="Nothing to verify" sub="Self-reported CPD waits here. Records backed by an issued certificate count automatically." />}
+          </Card>)) : <Empty emoji="🎓" title={t('od.body_nothing_to_verify')} sub={t('od.body_nothing_to_verify_sub')} />}
         <FormSheet visible={!!reject} onClose={() => setReject(null)} title="Not accepted" submitLabel="Send" fields={[{ key: 'reason', label: 'Reason', type: 'multiline', hint: 'The official is shown this.' }]}
           onSubmit={async (v) => { await api.post(`/officials-development/cpd/${reject.id}/decision`, { action: 'reject', reason: v.reason }); queue.reload(); return 'Done'; }} />
       </Section>}
       b={<Section title="Fitness and competency" color={c.cyan}>
         <View style={{ flexDirection: 'row', gap: 8, flexWrap: 'wrap', marginBottom: 8 }}><Btn small title="Define a test" color={c.paper} ink={c.ink} onPress={() => setTestForm(true)} /><Btn small title="Record a result" disabled={!tests?.length} onPress={() => setResForm(true)} /></View>
         {(tests ?? []).map((t) => <ListCard key={t.id} title={`${t.name} v${t.version}`} sub={`${t.result_kind === 'measured' ? `Measured (${t.unit}, ${t.pass_direction === 'at_least' ? 'at least' : 'at most'} ${t.pass_threshold})` : 'Pass or fail'} · valid ${t.validity_months} months`} />)}
-        {!tests?.length ? <Empty emoji="🏃" title="No test defined" sub="Only operational results are stored: never health information." /> : null}
+        {!tests?.length ? <Empty emoji="🏃" title={t('od.body_no_test')} sub={t('od.body_no_test_sub')} /> : null}
         {(results.data ?? []).slice(0, 10).map((r) => (
           <View key={r.id} style={{ marginTop: 8 }}><ListCard title={`${r.official_name} · ${r.test_name}`} sub={`${fmtDate(r.taken_on)}${r.measured_value != null ? ` · ${r.measured_value} ${r.unit}` : ''} · valid to ${fmtDate(r.valid_until)}`} status={r.standing} statusLabel={stateLabel(r.standing)} right={!r.voided_at ? <Btn small title="Void" color={c.paper} ink={c.ink} onPress={() => setVoidIt(r)} /> : null} /></View>))}
         <FormSheet visible={testForm} onClose={() => setTestForm(false)} title="Define a test" submitLabel="Save test" initial={{ result_kind: 'pass_fail', validity_months: 12, version: '1', pass_direction: 'at_least' }}
@@ -391,8 +392,8 @@ export function OfficialsTab({ id, below, me }) {
   const assessors = useLoad(() => (staff ? api.get(`/officials-development/bodies/${id}/assessors`, { limit: 100 }) : Promise.resolve(null)), [id, staff]);
   const tests = useLoad(() => api.get(`/officials-development/bodies/${id}/fitness-tests`), [id]);
   if (!body.data || !settings.data) return body.error ? <LoadError error={body.error} onRetry={body.reload} /> : <Loading />;
-  const subs = [{ value: 'overview', label: 'Overview' },
-    ...(staff ? [{ value: 'review', label: 'Review' }, { value: 'observations', label: 'Observations' }, { value: 'assessors', label: 'Assessors' }, { value: 'rubrics', label: 'Rubrics' }, { value: 'requirements', label: 'Grade requirements' }, { value: 'cpd', label: 'CPD & fitness' }, { value: 'settings', label: 'Policy' }] : [])];
+  const subs = [{ value: 'overview', label: t('od.body_tab_overview') },
+    ...(staff ? [{ value: 'review', label: t('od.body_tab_review') }, { value: 'observations', label: t('od.body_tab_observations') }, { value: 'assessors', label: t('od.body_tab_assessors') }, { value: 'rubrics', label: t('od.body_tab_rubrics') }, { value: 'requirements', label: t('od.body_tab_requirements') }, { value: 'cpd', label: t('od.body_tab_cpd') }, { value: 'settings', label: t('od.body_tab_policy') }] : [])];
   return (
     <View style={{ gap: 8 }}>
       <Seg options={subs} value={sub} onChange={setSub} color={c.violet} />
