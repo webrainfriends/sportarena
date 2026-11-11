@@ -619,6 +619,26 @@ id: 'wellbeing', title: 'Support student wellbeing and development',
     modules: ['data-residency.js'],
     sources: ['apps/app/src/screens/data-residency.js'],
   },
+  {
+    id: 'federation_credentials',
+    title: 'Connect federation credential sources',
+    why: 'Licence and disciplinary records issued by external federations (FIFA, World Athletics, ITF, etc.) should flow into the platform automatically, not by manual re-entry. This step links authorised federation APIs or file exports, maps grade nomenclature, and stages incoming records for human review before they touch any user licence or disciplinary record.',
+    steps: [
+      'Open Federation, then Credential Import. Only platform admins and licensed body staff can register connectors.',
+      'Tap Register connector. Choose the governing body, sport, adapter type (REST/JSON, XML, CSV, or file upload) and enter the endpoint URL and API token. File-upload connectors need no URL.',
+      'Submit for platform approval. No data flows until a platform admin approves the connector. You will be notified when approved or if further information is needed.',
+      'Once approved, tap Sync now (for API connectors) or Upload file (for file connectors). The first import stages all records — it does not write to any licence or disciplinary table yet.',
+      'Open the Grade Mapping tab and map each external grade label to its platform equivalent (e.g. "FIFA Grade 3" → "grade_3"). Records with unmapped grades are staged with a yellow conflict badge and held until the mapping is saved.',
+      'Open the Review Queue. Each row shows the incoming record, matched identity (confirmed, probable or unmatched), mapped grade and standing. Only records with a confirmed identity match can be accepted.',
+      'Review each record: Accept writes the licence to fed_licences with full provenance (connector, batch, external ref, sync_status = in_sync). Reject flags it without touching any licence. Flag as Manual puts it on hold so a senior reviewer can decide.',
+      'If a licence already exists on the platform and the incoming record conflicts (grade mismatch, standing conflict, duplicate), the Conflicts tab surfaces a side-by-side panel. Choose Keep platform, Adopt external (creates an amendment via the replaces_id chain), or Escalate to dispute (opens a licence_issue governance case).',
+      'The Sync Dashboard shows sync freshness, stale licences, backoff state, and reconciliation metrics (accepted / rejected / disputed totals) per connector.',
+      'For disciplinary records, open Disciplinary Reconciliation (same Federation section). The queue combines staged disciplinary imports and any existing governance cases flagged needs_review. Review each: Accept creates or updates gov_cases + disc_sanctions with provenance. Reject stages it without writing. The append-only audit timeline shows every action on each record.',
+    ],
+    target: { screen: 'FederationCredentialImport' },
+    modules: ['federation-credential-import.js', 'federation-disciplinary-reconciliation.js'],
+    sources: ['apps/app/src/screens/federation-credential-import.js', 'apps/app/src/screens/federation-disciplinary-reconciliation.js'],
+  },
 ];
 
 /** Org/academy API modules with no step of their own, and why. Anything not here and not in a step fails the guard test. */
