@@ -1,7 +1,7 @@
 // Platform Users console — platform admin only.
 // Shows all accounts: login ID (handle + email), roles, storage, AI token usage, API calls, last login.
 // Entry: More → Workspaces → "Platform users" (platform_admin role only).
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { FlatList, Platform, TouchableOpacity, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { api } from '../api';
@@ -187,7 +187,7 @@ export function PlatformUsers() {
   const hasPrev = offset > 0;
   const sortLabel = SORTS.find((s) => s.value === sort)?.label ?? '';
 
-  const listHeader = (
+  const listHeader = useMemo(() => (
     <>
       {/* Page header */}
       <View style={{ backgroundColor: c.paper, paddingHorizontal: 20, paddingTop: 16, paddingBottom: 12, borderBottomWidth: 1, borderBottomColor: c.line, marginHorizontal: -16, marginTop: -8 }}>
@@ -218,14 +218,16 @@ export function PlatformUsers() {
       {!!error ? <ErrorBox error={error} onRetry={reload} /> : null}
       {!!data && <Section label={t('pu.section_label', { sort: sortLabel })} />}
     </>
-  );
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  ), [meta, sort, loading, error, data, sortLabel]);
 
-  // On web the page scrolls natively so we pin the footer with position:fixed.
-  // On native the footer is a flex sibling of FlatList — no native scroll past it.
-  const pagerFooter = (hasPrev || hasNext) ? (
-    <View style={Platform.OS === 'web'
-      ? { position: 'fixed', bottom: 0, left: 0, right: 0, zIndex: 100, backgroundColor: c.paper, borderTopWidth: 1, borderTopColor: c.line, paddingTop: 10, paddingBottom: 24, paddingHorizontal: 16 }
-      : { backgroundColor: c.paper, borderTopWidth: 1, borderTopColor: c.line, paddingTop: 10, paddingBottom: 10 + ins.bottom, paddingHorizontal: 16 }}>
+  // Pagination bar: on web, Expo navigation uses CSS transform on ancestor elements
+  // which breaks position:fixed. Instead render the bar as ListFooterComponent so it
+  // appears at the bottom of the scroll content (standard web pagination UX).
+  // On native, render it as a flex sibling OUTSIDE FlatList so it is always visible
+  // without scrolling (the FlatList is flex:1 and the bar sits below it).
+  const pagerBar = (hasPrev || hasNext) ? (
+    <View style={{ backgroundColor: c.paper, borderTopWidth: 1, borderTopColor: c.line, paddingTop: 10, paddingBottom: Platform.OS === 'web' ? 24 : 10 + ins.bottom, paddingHorizontal: 16 }}>
       <T style={{ textAlign: 'center', fontSize: 12, color: c.mute, marginBottom: 8 }}>
         {t('pu.showing', { from, to, total })}
       </T>
@@ -243,20 +245,20 @@ export function PlatformUsers() {
   ) : null;
 
   return (
-    // Explicit flex column — FlatList takes flex:1, footer is a sibling below it
     <View style={{ flex: 1, backgroundColor: c.bg }}>
       <FlatList
         data={data?.users ?? []}
         keyExtractor={(item) => item.id}
         renderItem={({ item }) => <UserCard item={item} wide={isTablet} />}
         ListHeaderComponent={listHeader}
+        ListFooterComponent={Platform.OS === 'web' ? pagerBar : null}
         ListEmptyComponent={data && !loading ? <Empty emoji="👥" title={t('pu.empty_title')} sub={t('pu.empty_sub')} /> : null}
         ItemSeparatorComponent={() => <View style={{ height: 10 }} />}
-        contentContainerStyle={{ padding: 16, paddingBottom: (hasPrev || hasNext) && Platform.OS === 'web' ? 90 : 16 }}
+        contentContainerStyle={{ padding: 16 }}
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
       />
-      {pagerFooter}
+      {Platform.OS !== 'web' ? pagerBar : null}
     </View>
   );
 }
