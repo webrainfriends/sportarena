@@ -698,6 +698,22 @@ id: 'wellbeing', title: 'Support student wellbeing and development',
     modules: ['federation-credential-import.js', 'federation-disciplinary-reconciliation.js'],
     sources: ['apps/app/src/screens/federation-credential-import.js', 'apps/app/src/screens/federation-disciplinary-reconciliation.js'],
   },
+  {
+    id: 'officials_welfare',
+    title: 'Officials welfare & safeguarding',
+    why: 'Protect officials from abuse, harassment and discrimination with a secure, private reporting channel and a designated welfare officer. Required for federation licensing and elite-venue bookings.',
+    steps: [
+      'Designate at least one welfare officer (org admin → Officials hub → Safety tab → Officers → Designate welfare officer). The person must hold a valid safeguarding compliance credential.',
+      'Configure your safeguarding policy (Safety → Policy): decide whether to allow anonymous reporting, set response deadlines per risk level, and enter any mandatory-reporting law reference (e.g. UK KCSIE 2023).',
+      'Officials raise concerns privately from any fixture — via Officials hub → Safety tab, or via the 🛡 Raise Safety Flag button on the fixture console (pre-match and live phases).',
+      'Welfare officers triage, assign, escalate and close cases on the Safety desk (Cases tab). Every narrative read is audit-logged in a SHA-256 chained tamper-evident log.',
+      'Anonymous reports are supported when policy allows: a one-time UUID token is returned to the reporter; only its hash is stored — no identity link in the database.',
+      'Whistleblower protection can be requested with any concern and confirmed by the welfare officer.',
+    ],
+    target: { screen: 'OfficialSafeguardingDesk' },
+    modules: ['officials-safeguarding.js'],
+    sources: ['apps/app/src/screens/officials-safeguarding.js', 'apps/app/src/screens/officials-home.js'],
+  },
 ];
 
 /** Org/academy API modules with no step of their own, and why. Anything not here and not in a step fails the guard test. */

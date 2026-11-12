@@ -9,6 +9,7 @@ import { useSession } from '../session';
 import { Btn, Card, Section, T, Tag } from '../ui';
 import { explain } from '../access';
 import { c } from '../theme';
+import { t } from '../i18n';
 import { downloadPack, listSaved, listSavedSessions } from '../scorer/pack';
 import { waitingCount } from '../scorer/queue';
 
@@ -84,6 +85,10 @@ export function MatchDayPack() {
             );
           })}
         </View>
+      </Card>
+      <Card pad={12} style={{ borderLeftWidth: 3, borderLeftColor: c.violet }}>
+        <T size={13} weight="700">🛡 {t('osg.welfare_contacts_tip')}</T>
+        <T size={12} color={c.mute} style={{ marginTop: 4 }}>{t('osg.welfare_contacts_tip_body')}</T>
       </Card>
     </Section>
   );
