@@ -221,37 +221,75 @@ export function CoachHome() {
   );
 }
 
+const ATHLETE_PAGE = 50;
+
 export function CoachAthletes() {
   const { push } = useNav();
   const { toast } = useSession();
-  const list = useLoad(() => api.get('/coach/athletes'), []);
+  const [offset, setOffset] = useState(0);
+  const [athletes, setAthletes] = useState([]);
+  const [hasMore, setHasMore] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const first = useLoad(() => api.get('/coach/athletes', { limit: ATHLETE_PAGE, offset: 0 }), []);
   const [pick, setPick] = useState(null);
+
+  // Merge first page into athletes state
+  React.useEffect(() => {
+    if (first.data) {
+      setAthletes(first.data);
+      setHasMore(first.data.length === ATHLETE_PAGE);
+      setOffset(first.data.length);
+    }
+  }, [first.data]);
+
+  const loadMore = async () => {
+    if (loadingMore || !hasMore) return;
+    setLoadingMore(true);
+    try {
+      const page = await api.get('/coach/athletes', { limit: ATHLETE_PAGE, offset });
+      setAthletes((prev) => [...prev, ...page]);
+      setHasMore(page.length === ATHLETE_PAGE);
+      setOffset((prev) => prev + page.length);
+    } catch (e) {
+      toast(e.message);
+    } finally {
+      setLoadingMore(false);
+    }
+  };
+
+  const onRefresh = () => { setAthletes([]); setOffset(0); setHasMore(false); first.reload(); };
+
   return (
-    <Screen onRefresh={list.reload}>
-      <H1>My athletes</H1>
-      <T size={13} color={c.mute}>People you actively coach: a confirmed booking, a shared team, a cohort you lead or an accepted plan.</T>
-      {list.loading && !list.data ? <Loading /> : list.error ? <ErrorBox error={list.error} onRetry={list.reload} /> : !list.data.length ?
-        <Empty emoji="🏃" title="No athletes yet" sub="Accept a coaching request or get added to a team as its coach." /> :
-        list.data.map((a) => (
+    <Screen onRefresh={onRefresh}>
+      <H1>{t('ca.title')}</H1>
+      <T size={13} color={c.mute}>{t('ca.sub')}</T>
+      {first.loading && !athletes.length ? <Loading /> : first.error ? <ErrorBox error={first.error} onRetry={onRefresh} /> : !athletes.length ?
+        <Empty emoji="🏃" title={t('ca.empty')} sub={t('ca.empty_sub')} /> :
+        athletes.map((a) => (
           <Card key={a.id}>
             <View style={{ flexDirection: 'row', gap: 12, alignItems: 'center' }}>
               <Avatar user={a} />
               <View style={{ flex: 1 }}>
                 <T weight="700">{a.display_name}</T>
-                <T size={12} color={c.mute}>{a.relationships.join(' · ')} · {a.active_plans} active plan{a.active_plans === 1 ? '' : 's'}{a.plans_in_review ? ` · ${a.plans_in_review} in review` : ''}</T>
-                <T size={12} color={c.mute}>{a.next_session_at ? `Next ${dateTimeIn(a.next_session_at, tz)}` : 'No session scheduled'}{a.adherence_pct != null ? ` · ${a.adherence_pct}% completed (athlete-reported)` : ''}</T>
+                <T size={12} color={c.mute}>{a.relationships.join(' · ')} · {a.active_plans} {t('ca.active_plans', { n: a.active_plans })}{a.plans_in_review ? ` · ${a.plans_in_review} ${t('ca.in_review')}` : ''}</T>
+                <T size={12} color={c.mute}>{a.next_session_at ? t('ca.next_session', { when: dateTimeIn(a.next_session_at, tz) }) : t('ca.no_session')}{a.adherence_pct != null ? ` · ${a.adherence_pct}% ${t('ca.adherence')}` : ''}</T>
               </View>
             </View>
             <View style={{ flexDirection: 'row', gap: 8, marginTop: 10, flexWrap: 'wrap' }}>
-              <Btn small title="New plan" onPress={() => setPick(a)} />
-              <Btn small title="Plans" color={c.paper} ink={c.ink} onPress={() => push('MyPlans', { as: 'coach', athlete_id: a.id })} />
-              <Btn small title="Shared wellness" color={c.paper} ink={c.ink} onPress={() => push('SharedWellness')} />
-              <Btn small title="Shared reports" color={c.paper} ink={c.ink} onPress={() => push('SharedSeasonReports')} />
-              <Btn small title="Journal" color={c.paper} ink={c.ink} onPress={() => push('CoachJournal', { athlete_id: a.id, name: a.display_name })} />
-              <Btn small title="Profile" color={c.paper} ink={c.ink} onPress={() => push('Person', { id: a.id })} />
+              <Btn small title={t('ca.new_plan')} onPress={() => setPick(a)} />
+              <Btn small title={t('ca.plans')} color={c.paper} ink={c.ink} onPress={() => push('MyPlans', { as: 'coach', athlete_id: a.id })} />
+              <Btn small title={t('ca.wellness')} color={c.paper} ink={c.ink} onPress={() => push('SharedWellness')} />
+              <Btn small title={t('ca.reports')} color={c.paper} ink={c.ink} onPress={() => push('SharedSeasonReports')} />
+              <Btn small title={t('ca.journal')} color={c.paper} ink={c.ink} onPress={() => push('CoachJournal', { athlete_id: a.id, name: a.display_name })} />
+              <Btn small title={t('ca.profile')} color={c.paper} ink={c.ink} onPress={() => push('Person', { id: a.id })} />
             </View>
           </Card>
         ))}
+      {hasMore && (
+        <View style={{ marginTop: 12 }}>
+          <Btn title={loadingMore ? t('ca.loading_more') : t('ca.load_more', { n: ATHLETE_PAGE })} color={c.paper} ink={c.ink} onPress={loadMore} disabled={loadingMore} />
+        </View>
+      )}
       <PlanHubSheet
         visible={!!pick}
         onClose={() => setPick(null)}

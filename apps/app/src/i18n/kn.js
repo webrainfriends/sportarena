@@ -17663,6 +17663,8 @@ export default {
   'oavo.board.m_coverage': 'ತಂಡದ ಕವರೇಜ್',
   'oavo.board.coverage_short': 'ಕವರೇಜ್',
 
+
+
   'orgOff.tab.command': 'ಕಮಾಂಡ್',
   'orgOff.tab.roster': 'ಪಟ್ಟಿ',
   'orgOff.tab.workload': 'ಕೆಲಸದ ಹೊರೆ',
@@ -17736,6 +17738,8 @@ export default {
   'orgOff.comms.empty_title': 'No messages sent yet',
   'orgOff.comms.empty_sub': 'Send a message to all officials on this panel.',
   'nav.title.OrgOfficialsCommand': 'ಅಧಿಕಾರಿಗಳು',
+
+};
 
 
   // Session media & resource library
@@ -18801,4 +18805,25 @@ export default {
   'osr.preferred_badge': 'Preferred',
   'osr.blocked_excluded': 'blocked by policy',
 
+
+  'sm.coach.summary_hint': 'What to highlight when sharing with the athlete', // reviewed: false,
+
+  // Coach athletes list (reviewed: false)
+  'ca.title': 'My athletes', // reviewed: false
+  'ca.sub': 'People you actively coach: a confirmed booking, a shared team, a cohort you lead or an accepted plan.', // reviewed: false
+  'ca.empty': 'No athletes yet', // reviewed: false
+  'ca.empty_sub': 'Accept a coaching request or get added to a team as its coach.', // reviewed: false
+  'ca.active_plans': 'active plan{{n, plural, one {} other {s}}}', // reviewed: false
+  'ca.in_review': 'in review', // reviewed: false
+  'ca.next_session': 'Next {{when}}', // reviewed: false
+  'ca.no_session': 'No session scheduled', // reviewed: false
+  'ca.adherence': 'completed (athlete-reported)', // reviewed: false
+  'ca.new_plan': 'New plan', // reviewed: false
+  'ca.plans': 'Plans', // reviewed: false
+  'ca.wellness': 'Shared wellness', // reviewed: false
+  'ca.reports': 'Shared reports', // reviewed: false
+  'ca.journal': 'Journal', // reviewed: false
+  'ca.profile': 'Profile', // reviewed: false
+  'ca.load_more': 'Load next {{n}} athletes', // reviewed: false
+  'ca.loading_more': 'Loading…', // reviewed: false
 };

@@ -17867,6 +17867,9 @@ export default {
   'oavo.board.m_coverage': 'Crew coverage',
   'oavo.board.coverage_short': 'Cover',
 
+
+
+  // OrgOfficialsCommand — REF-R12
   'orgOff.tab.command': 'Command',
   'orgOff.tab.roster': 'Roster',
   'orgOff.tab.workload': 'Workload',
@@ -19011,5 +19014,24 @@ export default {
   'osr.override': 'Override',
   'osr.preferred_badge': 'Preferred',
   'osr.blocked_excluded': 'blocked by policy',
+
+  // Coach athletes list
+  'ca.title': 'My athletes',
+  'ca.sub': 'People you actively coach: a confirmed booking, a shared team, a cohort you lead or an accepted plan.',
+  'ca.empty': 'No athletes yet',
+  'ca.empty_sub': 'Accept a coaching request or get added to a team as its coach.',
+  'ca.active_plans': 'active plan{{n, plural, one {} other {s}}}',
+  'ca.in_review': 'in review',
+  'ca.next_session': 'Next {{when}}',
+  'ca.no_session': 'No session scheduled',
+  'ca.adherence': 'completed (athlete-reported)',
+  'ca.new_plan': 'New plan',
+  'ca.plans': 'Plans',
+  'ca.wellness': 'Shared wellness',
+  'ca.reports': 'Shared reports',
+  'ca.journal': 'Journal',
+  'ca.profile': 'Profile',
+  'ca.load_more': 'Load next {{n}} athletes',
+  'ca.loading_more': 'Loading…',
 };
 

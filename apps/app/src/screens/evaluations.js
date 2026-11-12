@@ -200,7 +200,7 @@ export function Evaluations({ athlete_id }) {
   const { toast } = useSession();
   const [status, setStatus] = useState('all'), [make, setMake] = useState(false);
   const list = useLoad(() => api.get('/coaching/evaluations', { ...(status === 'all' ? {} : { status }), ...(athlete_id ? { athlete_id } : {}), limit: 100 }), [status, athlete_id]);
-  const athletes = useLoad(() => api.get('/coach/athletes'), []);
+  const athletes = useLoad(() => api.get('/coach/athletes', { limit: 100 }), []);
   const sheets = useLoad(() => api.get('/coaching/rubrics', { limit: 100 }), []);
   const people = (Array.isArray(athletes.data) ? athletes.data : athletes.data?.items ?? []);
   const waiting = (list.data ?? []).filter((e) => e.waiting_on === 'coach').length;
