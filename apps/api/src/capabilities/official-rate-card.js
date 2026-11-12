@@ -16,6 +16,7 @@ const ROLES = ['referee','umpire','linesman','scorer','judge','starter','timekee
 const SERVICE_TYPES = ['hourly','match','session','day'];
 const DEPOSIT_TYPES = ['none','pct','fixed'];
 const STATUSES = ['draft','active','archived'];
+const AGE_BANDS = ['u8','u10','u12','u14','u16','u18','u21','senior','masters','all'];
 
 const text = (n) => z.string().trim().max(n);
 const pct = z.coerce.number().min(0).max(100).default(0);
@@ -47,6 +48,16 @@ const rateCardInput = z.object({
   is_indicative: z.boolean().optional(),
   private_notes: text(2000).optional(),
   status: z.enum(['draft','active']).optional(),
+  // R15 extensions
+  age_bands: z.array(z.enum(AGE_BANDS)).max(10).optional(),
+  callout_fee_minor: money.optional(),
+  extra_time_rate_minor: money.optional(),
+  per_diem_minor: money.optional(),
+  cancellation_tiers: z.array(z.object({
+    notice_hrs: z.number().int().min(0).max(720),
+    fee_pct: z.number().min(0).max(100),
+  })).max(5).optional(),
+  tax_rate_pct: z.coerce.number().min(0).max(60).default(0),
 });
 
 function decryptNotes(row, isOwner) {
@@ -90,6 +101,13 @@ function insertValues(p, i, status, version) {
     i.is_indicative ?? true,
     i.private_notes ? encrypt(i.private_notes, 'official_profile_rates.private_notes') : null,
     i.travel_radius_km ?? 0,
+    // R15 columns ($29–$34)
+    i.age_bands ?? [],
+    i.callout_fee_minor ?? 0,
+    i.extra_time_rate_minor ?? 0,
+    i.per_diem_minor ?? 0,
+    i.cancellation_tiers ? JSON.stringify(i.cancellation_tiers) : '[]',
+    i.tax_rate_pct ?? 0,
   ];
 }
 
@@ -98,8 +116,9 @@ const INSERT_SQL = `INSERT INTO official_profile_rates(
   includes_travel, travel_allowance_per_km_minor, expenses_note, valid_from, valid_until,
   name, service_type, weekend_sat_pct, weekend_sun_pct, holiday_pct, overtime_rate_minor,
   min_fee_minor, deposit_type, deposit_pct, deposit_minor, tax_inclusive, status,
-  version_number, is_indicative, private_notes_enc, travel_radius_km
-) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28)
+  version_number, is_indicative, private_notes_enc, travel_radius_km,
+  age_bands, callout_fee_minor, extra_time_rate_minor, per_diem_minor, cancellation_tiers, tax_rate_pct
+) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31,$32,$33,$34)
 RETURNING *`;
 
 // Travel radius not yet in migration 193; handle gracefully if column doesn't exist
@@ -168,8 +187,10 @@ cap({
           weekend_sat_pct=$14, weekend_sun_pct=$15, holiday_pct=$16, overtime_rate_minor=$17,
           deposit_type=$18, deposit_pct=$19, deposit_minor=$20, tax_inclusive=$21,
           valid_from=$22, valid_until=$23, is_indicative=$24, private_notes_enc=$25,
+          age_bands=$26, callout_fee_minor=$27, extra_time_rate_minor=$28,
+          per_diem_minor=$29, cancellation_tiers=$30, tax_rate_pct=$31,
           updated_at=now()
-          WHERE id=$26 RETURNING *`,
+          WHERE id=$32 RETURNING *`,
           [
             i.name ?? existing.name,
             i.service_type ?? existing.service_type,
@@ -196,6 +217,13 @@ cap({
             i.valid_until ?? existing.valid_until,
             i.is_indicative ?? existing.is_indicative,
             i.private_notes ? encrypt(i.private_notes, 'official_profile_rates.private_notes') : existing.private_notes_enc,
+            // R15 columns
+            i.age_bands ?? existing.age_bands ?? [],
+            i.callout_fee_minor ?? existing.callout_fee_minor ?? 0,
+            i.extra_time_rate_minor ?? existing.extra_time_rate_minor ?? 0,
+            i.per_diem_minor ?? existing.per_diem_minor ?? 0,
+            i.cancellation_tiers ? JSON.stringify(i.cancellation_tiers) : (existing.cancellation_tiers ?? '[]'),
+            i.tax_rate_pct ?? existing.tax_rate_pct ?? 0,
             i.id,
           ],
         )).rows[0];
@@ -276,17 +304,22 @@ cap({
 // ------------------------------------------------------------------ public catalog
 cap({
   name: 'list_official_rate_cards', method: 'GET', path: '/official-profiles/:profileId/rate-cards', tag: TAG,
-  summary: 'Public rate card catalog for an official. Returns only active + indicative cards; no private notes.',
-  input: z.object({ profileId: id }),
+  summary: 'Public rate card catalog for an official. Returns only active + indicative cards; no private notes. Optional age_band filter.',
+  input: z.object({ profileId: id, age_band: z.enum(AGE_BANDS).optional() }),
   async handler(_ctx, i) {
     const p = await one('SELECT id, user_id FROM official_profiles WHERE id=$1 AND archived_at IS NULL AND status=\'published\'', [i.profileId]);
     if (!p) throw notFound('Official profile');
+    const ageBandClause = i.age_band
+      ? `AND ($2 = ANY(r.age_bands) OR r.age_bands = '{}' OR r.age_bands IS NULL)`
+      : '';
+    const args = i.age_band ? [p.id, i.age_band] : [p.id];
     const rows = await many(
       `SELECT r.*, s.name AS sport_name, s.emoji AS sport_emoji
        FROM official_profile_rates r LEFT JOIN sports s ON s.id=r.sport_id
        WHERE r.profile_id=$1 AND r.archived_at IS NULL AND r.status='active' AND r.is_indicative=true
+       ${ageBandClause}
        ORDER BY r.created_at DESC`,
-      [p.id],
+      args,
     );
     return rows.map(publicView);
   },
@@ -304,6 +337,10 @@ cap({
     travel_km: z.number().min(0).max(10000).optional(),
     overtime_hrs: z.number().min(0).max(24).optional(),
     is_holiday: z.boolean().optional(),
+    // R15 inputs
+    extra_time_periods: z.number().int().min(0).max(10).optional(),
+    days: z.number().int().min(1).max(60).optional(),
+    notice_hrs: z.number().int().min(0).max(720).optional(),
   }),
   async handler(_ctx, i) {
     const p = await one('SELECT id FROM official_profiles WHERE id=$1 AND archived_at IS NULL AND status=\'published\'', [i.profileId]);
@@ -332,31 +369,73 @@ cap({
     else if (isSat) premiumPct = Number(card.weekend_sat_pct ?? 0);
     else if (isSun) premiumPct = Number(card.weekend_sun_pct ?? 0);
 
+    // R15: callout fee (always charged when present)
+    const calloutFee = Number(card.callout_fee_minor ?? 0);
+
+    // R15: extra-time
+    const extraTimePeriods = i.extra_time_periods ?? 0;
+    const extraTimeFee = extraTimePeriods * Number(card.extra_time_rate_minor ?? 0);
+
+    // R15: per diem
+    const days = i.days ?? 0;
+    const perDiemFee = days * Number(card.per_diem_minor ?? 0);
+
     const premiumFee = Math.round(baseFee * premiumPct / 100);
-    const subtotal = baseFee + premiumFee + Math.round(travelFee) + Math.round(overtimeFee);
+    const subtotal = calloutFee + baseFee + premiumFee + Math.round(travelFee) + Math.round(overtimeFee) + Math.round(extraTimeFee) + Math.round(perDiemFee);
     const effectiveFee = Math.max(subtotal, Number(card.min_fee_minor ?? 0));
+
+    // R15: cancellation
+    let cancellationFee = 0;
+    let cancellationPct = 0;
+    if (i.notice_hrs != null) {
+      const tiers = Array.isArray(card.cancellation_tiers)
+        ? card.cancellation_tiers
+        : (typeof card.cancellation_tiers === 'string' ? JSON.parse(card.cancellation_tiers) : []);
+      // Sort descending by notice_hrs; first tier where notice_hrs <= tier.notice_hrs fires
+      const sorted = [...tiers].sort((a, b) => b.notice_hrs - a.notice_hrs);
+      const fired = sorted.find((t) => i.notice_hrs <= t.notice_hrs);
+      if (fired) {
+        cancellationPct = Number(fired.fee_pct);
+        cancellationFee = Math.round(effectiveFee * cancellationPct / 100);
+      }
+    }
 
     let depositAmount = 0;
     if (card.deposit_type === 'pct') depositAmount = Math.round(effectiveFee * Number(card.deposit_pct ?? 0) / 100);
     else if (card.deposit_type === 'fixed') depositAmount = Number(card.deposit_minor ?? 0);
+
+    // R15: tax breakdown
+    const taxRatePct = Number(card.tax_rate_pct ?? 0);
+    const taxInclusive = card.tax_inclusive ?? true;
+    const taxAmount = (!taxInclusive && taxRatePct > 0) ? Math.round(effectiveFee * taxRatePct / 100) : 0;
+    const totalIncTax = effectiveFee + taxAmount;
 
     return {
       rate_card_id: card.id,
       rate_card_name: card.name,
       currency: card.fee_currency,
       event_date: i.event_date ?? null,
+      age_bands: card.age_bands ?? [],
       lines: [
+        ...(calloutFee ? [{ key: 'callout', label: 'Callout fee', amount: calloutFee }] : []),
         { key: 'base', label: 'Base fee', amount: baseFee },
         ...(premiumFee ? [{ key: 'premium', label: isHoliday ? `Holiday premium (+${card.holiday_pct}%)` : isSat ? `Saturday premium (+${card.weekend_sat_pct}%)` : `Sunday premium (+${card.weekend_sun_pct}%)`, amount: premiumFee }] : []),
         ...(travelFee ? [{ key: 'travel', label: `Travel (${chargeableKm.toFixed(1)} km × ${(travelRateMinor / 100).toFixed(2)})`, amount: Math.round(travelFee) }] : []),
         ...(overtimeFee ? [{ key: 'overtime', label: `Overtime (${overtimeHrs} hrs)`, amount: Math.round(overtimeFee) }] : []),
+        ...(extraTimeFee ? [{ key: 'extra_time', label: `Extra time (${extraTimePeriods} period${extraTimePeriods !== 1 ? 's' : ''})`, amount: Math.round(extraTimeFee) }] : []),
+        ...(perDiemFee ? [{ key: 'per_diem', label: `Per diem (${days} day${days !== 1 ? 's' : ''})`, amount: Math.round(perDiemFee) }] : []),
+        ...(cancellationFee ? [{ key: 'cancellation', label: `Cancellation fee (${cancellationPct}% — ${i.notice_hrs}h notice)`, amount: cancellationFee }] : []),
       ],
       subtotal,
       min_fee_applied: effectiveFee > subtotal,
       total: effectiveFee,
-      tax_inclusive: card.tax_inclusive ?? true,
+      tax_inclusive: taxInclusive,
+      tax_rate_pct: taxRatePct,
+      tax_amount: taxAmount,
+      total_inc_tax: totalIncTax,
       deposit_type: card.deposit_type ?? 'none',
       deposit_amount: depositAmount,
+      cancellation_tiers: card.cancellation_tiers ?? [],
       is_indicative: true,
     };
   },
