@@ -125,6 +125,7 @@ function Today({ h, reload, go, tz }) {
       ['🪪', t('off.qa.verification'), null, () => go('OfficialsHome', { tab: 'credential' })],
       ['💼', t('off.qa.opportunities'), null, () => go('Openings')],
       ['⚡', t('open_slot.title'), t('open_slot.metric_open_sub'), () => go('OpenMatchSlots')],
+      ['📂', t('nav.title.OfficialPortfolio'), null, () => go('OfficialPortfolio')],
     ]],
     [t('off.qa.money'), [
       ['💰', t('off.qa.earnings'), null, () => go('OfficialEarnings')],
