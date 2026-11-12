@@ -75,6 +75,9 @@ cap({
     withholding_rate_bps: bps.optional().default(0),
     currency: cur.optional(),
     idempotency_key: z.string().max(128).optional(),
+    // R36: optional discount link — references an already-applied official_discount_redemption
+    discount_redemption_id: z.string().uuid().optional(),
+    discount_code: z.string().max(32).optional(),
   }),
   async handler({ user }, i) {
     return tx(async (c) => {
@@ -99,7 +102,28 @@ cap({
 
       const currency = i.currency ?? fo.fee_currency;
       if (!currency) throw badRequest('No currency on the assignment; pass currency explicitly');
-      const totalMinor = i.total_minor ?? fo.fee_minor ?? 0;
+      let listMinor = i.total_minor ?? fo.fee_minor ?? 0;
+      let preDiscountGrossMinor = null;
+      let discountMinor = 0;
+      let discountFundedBy = null;
+
+      // R36: apply discount redemption if supplied
+      if (i.discount_redemption_id) {
+        const redemption = (await c.query(
+          `SELECT id, list_price_minor, discounted_price_minor, saving_minor, funded_by_snapshot, voided_at
+           FROM official_discount_redemptions WHERE id = $1`,
+          [i.discount_redemption_id],
+        )).rows[0];
+        if (!redemption) throw badRequest('Discount redemption not found');
+        if (redemption.voided_at) throw badRequest('Discount redemption has been voided');
+        preDiscountGrossMinor = listMinor;
+        discountMinor = Number(redemption.saving_minor);
+        discountFundedBy = redemption.funded_by_snapshot;
+        // Tax is computed on the post-discount (discounted) amount
+        listMinor = Math.max(0, listMinor - discountMinor);
+      }
+
+      const totalMinor = listMinor;
       const taxMinor = i.tax_minor ?? 0;
       const withholdingMinor = Math.floor(totalMinor * (i.withholding_rate_bps ?? 0) / 10000);
       const netMinor = totalMinor - withholdingMinor;
@@ -111,11 +135,13 @@ cap({
       const oi = (await c.query(
         `INSERT INTO official_invoices
            (fixture_official_id, organisation_id, official_id, currency, total_minor, tax_minor, net_minor, withholding_minor,
-            kind, buyer_snapshot_enc, seller_snapshot_enc, idempotency_key)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
+            kind, buyer_snapshot_enc, seller_snapshot_enc, idempotency_key,
+            pre_discount_gross_minor, discount_minor, discount_redemption_id, discount_code, discount_funded_by)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17)
          RETURNING *`,
         [fo.id, fo.organizer_id, fo.user_id, currency, totalMinor, taxMinor, netMinor, withholdingMinor,
-          i.kind, buyerSnap, sellerSnap, i.idempotency_key ?? null],
+          i.kind, buyerSnap, sellerSnap, i.idempotency_key ?? null,
+          preDiscountGrossMinor, discountMinor, i.discount_redemption_id ?? null, i.discount_code ?? null, discountFundedBy],
       )).rows[0];
 
       if (i.withholding_rate_bps > 0) {
@@ -161,14 +187,34 @@ cap({
     const buyerSnap = oi.buyer_snapshot_enc ? JSON.parse(decrypt(oi.buyer_snapshot_enc, 'official_invoices.buyer')) : null;
     const sellerSnap = oi.seller_snapshot_enc ? JSON.parse(decrypt(oi.seller_snapshot_enc, 'official_invoices.seller')) : null;
 
-    const [withholding, payoutItems, events] = await Promise.all([
+    const [withholding, payoutItems, events, discountRedemption] = await Promise.all([
       one('SELECT * FROM official_withholding WHERE official_invoice_id=$1', [oi.id]),
       many('SELECT * FROM official_invoice_payout_items WHERE official_invoice_id=$1 ORDER BY created_at', [oi.id]),
       many('SELECT oie.event, oie.actor_role, oie.meta, oie.created_at, u.display_name AS actor_name FROM official_invoice_events oie LEFT JOIN users u ON u.id=oie.actor_id WHERE oie.official_invoice_id=$1 ORDER BY oie.created_at', [oi.id]),
+      // R36: load discount redemption detail if present
+      oi.discount_redemption_id
+        ? one(
+            `SELECT odr.id, odr.applied_kind, odr.applied_value_bp, odr.applied_value_minor,
+                    odr.saving_minor, odr.funded_by_snapshot, odr.applied_at,
+                    od.name AS discount_name, od.discount_type
+             FROM official_discount_redemptions odr
+             JOIN official_discounts od ON od.id = odr.discount_id
+             WHERE odr.id = $1`,
+            [oi.discount_redemption_id],
+          )
+        : Promise.resolve(null),
     ]);
 
     const { buyer_snapshot_enc, seller_snapshot_enc, ...rest } = oi;
-    return { ...rest, buyer: buyerSnap, seller: sellerSnap, withholding, payout_items: payoutItems, timeline: events };
+    return {
+      ...rest,
+      buyer: buyerSnap,
+      seller: sellerSnap,
+      withholding,
+      payout_items: payoutItems,
+      timeline: events,
+      discount_redemption: discountRedemption,
+    };
   },
 });
 
