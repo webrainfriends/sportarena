@@ -908,7 +908,7 @@ export function CoachGroups() {
   const { tablet: wide } = useLayout();
   const [q, setQ] = useState('');
   const list = useLoad(() => api.get(`/coaching/groups${q.trim() ? `?q=${encodeURIComponent(q.trim())}` : ''}`), [q]);
-  const athletes = useLoad(() => api.get('/coach/athletes'), []);
+  const athletes = useLoad(() => api.get('/coach/athletes', { limit: 100 }), []);
   const coach = useLoad(() => api.get('/coach/home'), []);
   const [form, setForm] = useState(null);   // null | 'new' | a group being edited
   const edit = form && form !== 'new' ? form : null;
