@@ -18824,4 +18824,31 @@ export default {
   'ca.profile': 'Profile', // reviewed: false
   'ca.load_more': 'Load next {{n}} athletes', // reviewed: false
   'ca.loading_more': 'Loading…', // reviewed: false
+  // R21: Officials arrival & venue logistics (Issue #1013) — machine-translated (reviewed: false)
+  'arrival.phase_title': 'පැමිණීම',
+  'arrival.report_in': '{time} ට වාර්තා කරන්න',
+  'arrival.check_in': 'චෙක් ඉන්',
+  'arrival.checked_in': 'චෙක් ඉන් විය',
+  'arrival.overdue': 'චෙක්-ඉන් කාලය ඉකුත් විය',
+  'arrival.qr': 'QR ස්කෑන් කරන්න',
+  'arrival.geofence': 'ස්වයං චෙක්-ඉන්',
+  'arrival.manual': 'කේතය ඇතුළු කරන්න',
+  'arrival.code_placeholder': 'අකුරු 8ක කේතය ඇතුළු කරන්න',
+  'arrival.late_title': 'ප්‍රමාද පැමිණීම වාර්තා කරන්න',
+  'arrival.late_reason': 'ප්‍රමාද වීමේ හේතුව',
+  'arrival.late_eta': 'ETA (දැන් සිට මිනිත්තු)',
+  'arrival.parking': 'ගාල් කිරීම',
+  'arrival.gate': 'ද්වාර ප්‍රවේශය',
+  'arrival.official_room': 'නිලධාරී කාමරය',
+  'arrival.directions': 'දිශාවන් ලබා ගන්න',
+  'arrival.weather': 'ස්ථානයේ කාලගුණය',
+  'arrival.equipment': 'උපකරණ පිරික්සුම් ලැයිස්තුව',
+  'arrival.emergency': 'හදිසි සම්බන්ධතා',
+  'arrival.consent_geofence': 'ස්ථානය මගින් ස්වයං චෙක්-ඉන් ඉඩ දෙන්න',
+  'arrival.consent_detail': 'නිශ්චිත ස්ථානයක් ගබඩා නොකෙරේ.',
+  'arrival.status_checked': 'පැමිණ ඇත',
+  'arrival.status_pending': 'තවම නොපැමිණ',
+  'arrival.status_late': 'ප්‍රමාදයි',
+  'arrival.dispatch_done': 'කාර්ය මණ්ඩලයට සැලසුම් යවන ලදි',
+  'arrival.logistics_missing': 'මෙම ෆික්ස්චර් සඳහා සැලසුම් තවම නොයැවිණි.',
 };

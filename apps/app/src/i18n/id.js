@@ -18823,4 +18823,31 @@ export default {
   'ca.profile': 'Profile', // reviewed: false
   'ca.load_more': 'Load next {{n}} athletes', // reviewed: false
   'ca.loading_more': 'Loading…', // reviewed: false
+  // R21: Officials arrival & venue logistics (Issue #1013) — machine-translated (reviewed: false)
+  'arrival.phase_title': 'Kedatangan',
+  'arrival.report_in': 'Lapor dalam {time}',
+  'arrival.check_in': 'Check In',
+  'arrival.checked_in': 'Sudah check in',
+  'arrival.overdue': 'Check-in terlambat',
+  'arrival.qr': 'Scan QR',
+  'arrival.geofence': 'Check-in otomatis',
+  'arrival.manual': 'Masukkan kode',
+  'arrival.code_placeholder': 'Masukkan kode 8 karakter',
+  'arrival.late_title': 'Laporkan keterlambatan',
+  'arrival.late_reason': 'Alasan keterlambatan',
+  'arrival.late_eta': 'ETA (menit dari sekarang)',
+  'arrival.parking': 'Parkir',
+  'arrival.gate': 'Akses gerbang',
+  'arrival.official_room': 'Ruang pejabat',
+  'arrival.directions': 'Dapatkan petunjuk arah',
+  'arrival.weather': 'Cuaca di venue',
+  'arrival.equipment': 'Daftar periksa peralatan',
+  'arrival.emergency': 'Kontak darurat',
+  'arrival.consent_geofence': 'Izinkan check-in otomatis berdasarkan lokasi',
+  'arrival.consent_detail': 'Tidak ada lokasi tepat yang disimpan.',
+  'arrival.status_checked': 'Sudah tiba',
+  'arrival.status_pending': 'Belum tiba',
+  'arrival.status_late': 'Terlambat',
+  'arrival.dispatch_done': 'Logistik dikirim ke kru',
+  'arrival.logistics_missing': 'Logistik belum dikirimkan untuk fixture ini.',
 };

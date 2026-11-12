@@ -18823,4 +18823,31 @@ export default {
   'ca.profile': 'Profile', // reviewed: false
   'ca.load_more': 'Load next {{n}} athletes', // reviewed: false
   'ca.loading_more': 'Loading…', // reviewed: false
+  // R21: Officials arrival & venue logistics (Issue #1013) — machine-translated (reviewed: false)
+  'arrival.phase_title': 'రాక',
+  'arrival.report_in': '{time} లో రిపోర్ట్ చేయండి',
+  'arrival.check_in': 'చెక్ ఇన్',
+  'arrival.checked_in': 'చెక్ ఇన్ అయింది',
+  'arrival.overdue': 'చెక్-ఇన్ ఆలస్యమైంది',
+  'arrival.qr': 'QR స్కాన్ చేయండి',
+  'arrival.geofence': 'ఆటో చెక్-ఇన్',
+  'arrival.manual': 'కోడ్ నమోదు చేయండి',
+  'arrival.code_placeholder': '8-అక్షరాల కోడ్ నమోదు చేయండి',
+  'arrival.late_title': 'ఆలస్య రాకను నివేదించండి',
+  'arrival.late_reason': 'ఆలస్య కారణం',
+  'arrival.late_eta': 'ETA (ఇప్పటి నుండి నిమిషాలు)',
+  'arrival.parking': 'పార్కింగ్',
+  'arrival.gate': 'గేట్ యాక్సెస్',
+  'arrival.official_room': 'అధికారుల గది',
+  'arrival.directions': 'దిశలు పొందండి',
+  'arrival.weather': 'వేదిక వద్ద వాతావరణం',
+  'arrival.equipment': 'పరికరాల చెక్‌లిస్ట్',
+  'arrival.emergency': 'అత్యవసర సంప్రదింపులు',
+  'arrival.consent_geofence': 'స్థానం ద్వారా ఆటో చెక్-ఇన్‌ను అనుమతించండి',
+  'arrival.consent_detail': 'ఖచ్చితమైన స్థానం నిల్వ చేయబడదు.',
+  'arrival.status_checked': 'వచ్చారు',
+  'arrival.status_pending': 'రాలేదు',
+  'arrival.status_late': 'ఆలస్యం',
+  'arrival.dispatch_done': 'క్రూకు లాజిస్టిక్స్ పంపబడింది',
+  'arrival.logistics_missing': 'ఈ ఫిక్స్చర్ కోసం లాజిస్టిక్స్ ఇంకా పంపబడలేదు.',
 };

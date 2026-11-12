@@ -18823,4 +18823,31 @@ export default {
   'ca.profile': 'Profile', // reviewed: false
   'ca.load_more': 'Load next {{n}} athletes', // reviewed: false
   'ca.loading_more': 'Loading…', // reviewed: false
+  // R21: Officials arrival & venue logistics (Issue #1013) — machine-translated (reviewed: false)
+  'arrival.phase_title': 'വരവ്',
+  'arrival.report_in': '{time} ൽ റിപ്പോർട്ട് ചെയ്യുക',
+  'arrival.check_in': 'ചെക്ക് ഇൻ',
+  'arrival.checked_in': 'ചെക്ക് ഇൻ ആയി',
+  'arrival.overdue': 'ചെക്ക്-ഇൻ കാലഹരണപ്പെട്ടു',
+  'arrival.qr': 'QR സ്കാൻ ചെയ്യുക',
+  'arrival.geofence': 'ഓട്ടോ ചെക്ക്-ഇൻ',
+  'arrival.manual': 'കോഡ് നൽകുക',
+  'arrival.code_placeholder': '8-അക്ഷര കോഡ് നൽകുക',
+  'arrival.late_title': 'വൈകിയ വരവ് റിപ്പോർട്ട് ചെയ്യുക',
+  'arrival.late_reason': 'കാലതാമസത്തിന്റെ കാരണം',
+  'arrival.late_eta': 'ETA (ഇപ്പോൾ മുതൽ മിനിറ്റുകൾ)',
+  'arrival.parking': 'പാർക്കിംഗ്',
+  'arrival.gate': 'ഗേറ്റ് ആക്സസ്',
+  'arrival.official_room': 'ഉദ്യോഗസ്ഥ മുറി',
+  'arrival.directions': 'ദിശകൾ നേടുക',
+  'arrival.weather': 'സ്ഥലത്തെ കാലാവസ്ഥ',
+  'arrival.equipment': 'ഉപകരണ ചെക്ക്ലിസ്റ്റ്',
+  'arrival.emergency': 'അടിയന്തര ബന്ധങ്ങൾ',
+  'arrival.consent_geofence': 'ലൊക്കേഷൻ വഴി ഓട്ടോ ചെക്ക്-ഇൻ അനുവദിക്കുക',
+  'arrival.consent_detail': 'കൃത്യമായ ലൊക്കേഷൻ സംഭരിക്കില്ല.',
+  'arrival.status_checked': 'എത്തിയിട്ടുണ്ട്',
+  'arrival.status_pending': 'എത്തിയിട്ടില്ല',
+  'arrival.status_late': 'വൈകി',
+  'arrival.dispatch_done': 'ക്രൂവിന് ലോജിസ്റ്റിക്സ് അയച്ചു',
+  'arrival.logistics_missing': 'ഈ ഫിക്സ്ചറിനുള്ള ലോജിസ്റ്റിക്സ് ഇനിയും അയച്ചിട്ടില്ല.',
 };

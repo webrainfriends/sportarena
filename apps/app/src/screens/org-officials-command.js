@@ -96,7 +96,43 @@ function CommandTab({ orgId, setTab, push }) {
           <Btn title={t('orgOff.action.view_workload')} color={c.paper} ink={c.pink} onPress={() => setTab('workload')} />
         </Section>
       ) : null}
+      <ArrivalStatusSection orgId={orgId} push={push} />
     </ScrollView>
+  );
+}
+
+// ── Arrival status chip for a crew member ────────────────────────────────────
+function ArrivalChip({ status }) {
+  const map = { checked_in: [c.lime, '#fff', '✓'], late: ['#7a1a1a', '#fff', '⚠'], pending: [c.sun, '#fff', '…'] };
+  const [bg, ink, icon] = map[status] ?? [c.mute, '#fff', '?'];
+  return (
+    <View style={{ backgroundColor: bg, borderRadius: 8, paddingHorizontal: 8, paddingVertical: 4, flexDirection: 'row', gap: 4, alignItems: 'center' }}>
+      <T size={11} color={ink}>{icon}</T>
+      <T size={11} weight="700" color={ink}>{t(`arrival.status_${status === 'checked_in' ? 'checked' : status === 'late' ? 'late' : 'pending'}`)}</T>
+    </View>
+  );
+}
+
+function ArrivalStatusSection({ orgId, push }) {
+  const data = useLoad(() => api.get(`/organisations/${orgId}/officials/today-fixtures`), [orgId]);
+  if (!data.data?.fixtures?.length) return null;
+  return (
+    <Section title={t('arrival.phase_title')} color={c.pink}>
+      {data.data.fixtures.slice(0, 5).map((fx) => (
+        <View key={fx.fixture_id} style={{ marginBottom: 10 }}>
+          <T size={12} weight="700" color={c.mute} style={{ marginBottom: 4 }}>{fx.fixture_label} · {fx.scheduled_at ? new Date(fx.scheduled_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : ''}</T>
+          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
+            {fx.crew.map((m) => (
+              <Pressable key={m.official_id} onPress={() => push('OfficialsConsole', { id: fx.fixture_id })} style={{ flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: c.paper, borderRadius: 10, padding: 8, minHeight: 44 }} accessibilityLabel={`${m.display_name} ${m.status}`}>
+                <T size={12}>{m.display_name}</T>
+                <T size={11} color={c.mute}>{m.role}</T>
+                <ArrivalChip status={m.status} />
+              </Pressable>
+            ))}
+          </View>
+        </View>
+      ))}
+    </Section>
   );
 }
 

@@ -18823,4 +18823,31 @@ export default {
   'ca.profile': 'Profile', // reviewed: false
   'ca.load_more': 'Load next {{n}} athletes', // reviewed: false
   'ca.loading_more': 'Loading…', // reviewed: false
+  // R21: Officials arrival & venue logistics (Issue #1013) — machine-translated (reviewed: false)
+  'arrival.phase_title': 'ಆಗಮನ',
+  'arrival.report_in': '{time} ರಲ್ಲಿ ವರದಿ ಮಾಡಿ',
+  'arrival.check_in': 'ಚೆಕ್ ಇನ್',
+  'arrival.checked_in': 'ಚೆಕ್ ಇನ್ ಆಗಿದೆ',
+  'arrival.overdue': 'ಚೆಕ್-ಇನ್ ವಿಳಂಬವಾಗಿದೆ',
+  'arrival.qr': 'QR ಸ್ಕ್ಯಾನ್ ಮಾಡಿ',
+  'arrival.geofence': 'ಸ್ವಯಂ ಚೆಕ್-ಇನ್',
+  'arrival.manual': 'ಕೋಡ್ ನಮೂದಿಸಿ',
+  'arrival.code_placeholder': '8-ಅಕ್ಷರ ಕೋಡ್ ನಮೂದಿಸಿ',
+  'arrival.late_title': 'ತಡವಾದ ಆಗಮನ ವರದಿ ಮಾಡಿ',
+  'arrival.late_reason': 'ತಡದ ಕಾರಣ',
+  'arrival.late_eta': 'ETA (ಈಗಿನಿಂದ ನಿಮಿಷಗಳು)',
+  'arrival.parking': 'ಪಾರ್ಕಿಂಗ್',
+  'arrival.gate': 'ಗೇಟ್ ಪ್ರವೇಶ',
+  'arrival.official_room': 'ಅಧಿಕಾರಿ ಕೊಠಡಿ',
+  'arrival.directions': 'ದಿಕ್ಕುಗಳನ್ನು ಪಡೆಯಿರಿ',
+  'arrival.weather': 'ಸ್ಥಳದಲ್ಲಿ ಹವಾಮಾನ',
+  'arrival.equipment': 'ಉಪಕರಣ ಪರಿಶೀಲನಾ ಪಟ್ಟಿ',
+  'arrival.emergency': 'ತುರ್ತು ಸಂಪರ್ಕಗಳು',
+  'arrival.consent_geofence': 'ಸ್ಥಳದ ಮೂಲಕ ಸ್ವಯಂ ಚೆಕ್-ಇನ್ ಅನುಮತಿಸಿ',
+  'arrival.consent_detail': 'ನಿಖರ ಸ್ಥಳ ಸಂಗ್ರಹಿಸಲಾಗುವುದಿಲ್ಲ.',
+  'arrival.status_checked': 'ಬಂದಿದ್ದಾರೆ',
+  'arrival.status_pending': 'ಬಂದಿಲ್ಲ',
+  'arrival.status_late': 'ತಡ',
+  'arrival.dispatch_done': 'ತಂಡಕ್ಕೆ ಲಾಜಿಸ್ಟಿಕ್ಸ್ ಕಳುಹಿಸಲಾಗಿದೆ',
+  'arrival.logistics_missing': 'ಈ ಫಿಕ್ಸ್ಚರ್‌ಗೆ ಇನ್ನೂ ಲಾಜಿಸ್ಟಿಕ್ಸ್ ಕಳುಹಿಸಲಾಗಿಲ್ಲ.',
 };

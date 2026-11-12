@@ -18824,4 +18824,31 @@ export default {
   'ca.profile': 'Profile', // reviewed: false
   'ca.load_more': 'Load next {{n}} athletes', // reviewed: false
   'ca.loading_more': 'Loading…', // reviewed: false
+  // R21: Officials arrival & venue logistics (Issue #1013) — machine-translated (reviewed: false)
+  'arrival.phase_title': 'আগমন',
+  'arrival.report_in': '{time} এ রিপোর্ট করুন',
+  'arrival.check_in': 'চেক ইন',
+  'arrival.checked_in': 'চেক ইন হয়েছে',
+  'arrival.overdue': 'চেক-ইন বিলম্বিত',
+  'arrival.qr': 'QR স্ক্যান করুন',
+  'arrival.geofence': 'স্বয়ংক্রিয় চেক-ইন',
+  'arrival.manual': 'কোড প্রবেশ করুন',
+  'arrival.code_placeholder': '8-অক্ষর কোড প্রবেশ করুন',
+  'arrival.late_title': 'বিলম্বিত আগমন রিপোর্ট করুন',
+  'arrival.late_reason': 'বিলম্বের কারণ',
+  'arrival.late_eta': 'ETA (এখন থেকে মিনিট)',
+  'arrival.parking': 'পার্কিং',
+  'arrival.gate': 'গেট প্রবেশ',
+  'arrival.official_room': 'কর্মকর্তার কক্ষ',
+  'arrival.directions': 'দিকনির্দেশনা পান',
+  'arrival.weather': 'ভেন্যুতে আবহাওয়া',
+  'arrival.equipment': 'সরঞ্জাম চেকলিস্ট',
+  'arrival.emergency': 'জরুরি যোগাযোগ',
+  'arrival.consent_geofence': 'অবস্থান দ্বারা স্বয়ংক্রিয় চেক-ইনের অনুমতি দিন',
+  'arrival.consent_detail': 'কোনো সঠিক অবস্থান সংরক্ষণ করা হয় না।',
+  'arrival.status_checked': 'এসেছেন',
+  'arrival.status_pending': 'আসেননি',
+  'arrival.status_late': 'দেরিতে',
+  'arrival.dispatch_done': 'ক্রুকে লজিস্টিক্স পাঠানো হয়েছে',
+  'arrival.logistics_missing': 'এই ফিক্সচারের জন্য লজিস্টিক্স এখনও পাঠানো হয়নি।',
 };
