@@ -974,7 +974,7 @@ cap({
 // ------------------------------------------------------------------ certificates
 
 cap({
-  name: 'get_certificate', method: 'GET', path: '/officials-education/certificates/:id', tag: TAG, auth: 'public',
+  name: 'get_edu_certificate', method: 'GET', path: '/officials-education/certificates/:id', tag: TAG, auth: 'public',
   summary: 'Get a certificate with its credential details.',
   input: z.object({ id }),
   async handler({ user }, i) {
