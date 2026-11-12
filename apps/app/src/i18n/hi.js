@@ -17827,9 +17827,6 @@ export default {
   'orgOff.comms.empty_sub': 'इस पैनल के सभी अधिकारियों को संदेश भेजें।',
   'nav.title.OrgOfficialsCommand': 'अधिकारी',
 
-};
-
-
   // Session media & resource library
   'sm.title': 'Session Resources', // reviewed: false
   'sm.section': 'Resources', // reviewed: false

@@ -17739,9 +17739,6 @@ export default {
   'orgOff.comms.empty_sub': 'இந்த குழுவில் உள்ள அனைத்து நடுவர்களுக்கும் செய்தி அனுப்பவும்.',
   'nav.title.OrgOfficialsCommand': 'நடுவர்கள்',
 
-};
-
-
   // Session media & resource library
   'sm.title': 'Session Resources', // reviewed: false
   'sm.section': 'Resources', // reviewed: false
