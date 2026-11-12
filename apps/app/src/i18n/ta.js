@@ -18602,7 +18602,7 @@ export default {
   'psf.need.paraType': 'Para-Sport Need Type',
   'rtp.approvals_title': 'Approvals',
   'rtp.no_protocol': 'No RTP protocol set',
-  'wizard.goal.target': 'Target number (optional)',,
+  'wizard.goal.target': 'Target number (optional)',
 
   // osr — machine draft, reviewed: false
   'osr.title': 'Scheduling Recommendations',
