@@ -593,7 +593,7 @@ cap({
 
 cap({
   name: 'get_my_enrolments', method: 'GET', path: '/officials-education/my-enrolments', tag: TAG,
-  summary: 'Get current user's enrolments with course and run details.',
+  summary: 'Get current user\'s enrolments with course and run details.',
   input: z.object({ status: z.string().optional(), limit: z.coerce.number().int().min(1).max(100).default(50), offset: z.coerce.number().int().min(0).default(0) }),
   async handler({ user }, i) {
     return many(
@@ -619,7 +619,7 @@ cap({
 
 cap({
   name: 'mark_attendance', method: 'POST', path: '/officials-education/sessions/:id/attendance', tag: TAG,
-  summary: 'Mark or update a single official's attendance for a session (upsert).',
+  summary: 'Mark or update a single official\'s attendance for a session (upsert).',
   input: z.object({ id, enrolment_id: id, status: z.enum(['present','absent','excused','late']), note: textOpt(500) }),
   handler: ({ user }, i) => tx(async (c) => {
     const sess = (await c.query('SELECT s.*, r.governing_body_id FROM off_edu_sessions s JOIN off_edu_runs r ON r.id=s.run_id WHERE s.id=$1', [i.id])).rows[0];
