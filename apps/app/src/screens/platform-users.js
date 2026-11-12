@@ -2,7 +2,7 @@
 // Shows all accounts: login ID (handle + email), roles, storage, AI token usage, API calls, last login.
 // Entry: More → Workspaces → "Platform users" (platform_admin role only).
 import React, { useState } from 'react';
-import { FlatList, TouchableOpacity, View } from 'react-native';
+import { FlatList, Platform, TouchableOpacity, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { api } from '../api';
 import { useLoad } from '../hooks';
@@ -220,9 +220,12 @@ export function PlatformUsers() {
     </>
   );
 
-  // Pagination footer — rendered outside FlatList so it never scrolls away
+  // On web the page scrolls natively so we pin the footer with position:fixed.
+  // On native the footer is a flex sibling of FlatList — no native scroll past it.
   const pagerFooter = (hasPrev || hasNext) ? (
-    <View style={{ backgroundColor: c.paper, borderTopWidth: 1, borderTopColor: c.line, paddingTop: 10, paddingBottom: 10 + ins.bottom, paddingHorizontal: 16 }}>
+    <View style={Platform.OS === 'web'
+      ? { position: 'fixed', bottom: 0, left: 0, right: 0, zIndex: 100, backgroundColor: c.paper, borderTopWidth: 1, borderTopColor: c.line, paddingTop: 10, paddingBottom: 24, paddingHorizontal: 16 }
+      : { backgroundColor: c.paper, borderTopWidth: 1, borderTopColor: c.line, paddingTop: 10, paddingBottom: 10 + ins.bottom, paddingHorizontal: 16 }}>
       <T style={{ textAlign: 'center', fontSize: 12, color: c.mute, marginBottom: 8 }}>
         {t('pu.showing', { from, to, total })}
       </T>
@@ -249,7 +252,7 @@ export function PlatformUsers() {
         ListHeaderComponent={listHeader}
         ListEmptyComponent={data && !loading ? <Empty emoji="👥" title={t('pu.empty_title')} sub={t('pu.empty_sub')} /> : null}
         ItemSeparatorComponent={() => <View style={{ height: 10 }} />}
-        contentContainerStyle={{ padding: 16 }}
+        contentContainerStyle={{ padding: 16, paddingBottom: (hasPrev || hasNext) && Platform.OS === 'web' ? 90 : 16 }}
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
       />
