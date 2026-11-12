@@ -61,8 +61,14 @@ function RateCardItem({ item: rc, onEdit, onDuplicate, onQuote, onActivate, onDe
       <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
         {rc.is_indicative ? <Tag label={`🌍 ${t('rc.vis_indicative')}`} color={c.cyanSoft} /> : <Tag label={`🔐 ${t('rc.vis_negotiated')}`} color={c.violetSoft} />}
         {rc.includes_travel ? <Tag label={`✈️ ${t('rc.travel_included')}`} color={c.cyanSoft} /> : (rc.travel_allowance_per_km_minor > 0 ? <Tag label={`🚗 ${money(rc.travel_allowance_per_km_minor, rc.fee_currency)}/km`} color={c.cyanSoft} /> : null)}
-        {rc.tax_inclusive ? <Tag label={`✓ ${t('rc.tax_inclusive')}`} color={c.mintSoft} /> : null}
+        {rc.tax_inclusive ? <Tag label={`✓ ${t('rc.tax_inclusive')}`} color={c.mintSoft} /> : (rc.tax_rate_pct > 0 ? <Tag label={`+${rc.tax_rate_pct}% ${t('rc.tax_rate')}`} color={c.sunSoft} /> : null)}
         {rc.deposit_type !== 'none' ? <Tag label={`🔒 ${rc.deposit_type === 'pct' ? `${rc.deposit_pct}% ${t('rc.deposit_label')}` : `${money(rc.deposit_minor, rc.fee_currency)} ${t('rc.deposit_label')}`}`} color={c.sunSoft} /> : null}
+        {/* R15 tags */}
+        {rc.age_bands?.length > 0 ? <Tag label={rc.age_bands.map((ab) => t(`rc.age.${ab}`)).join(' · ')} color={c.violetSoft} /> : null}
+        {rc.callout_fee_minor > 0 ? <Tag label={`📞 ${money(rc.callout_fee_minor, rc.fee_currency)} ${t('rc.callout_fee')}`} color={c.pinkSoft} /> : null}
+        {rc.extra_time_rate_minor > 0 ? <Tag label={`⏱ AET ${money(rc.extra_time_rate_minor, rc.fee_currency)}/period`} color={c.sunSoft} /> : null}
+        {rc.per_diem_minor > 0 ? <Tag label={`🏨 ${money(rc.per_diem_minor, rc.fee_currency)}/day`} color={c.cyanSoft} /> : null}
+        {rc.cancellation_tiers?.length > 0 ? <Tag label={`⚠️ ${rc.cancellation_tiers.length} ${t('rc.cancellation_tiers')}`} color={c.redSoft} /> : null}
       </View>
 
       {/* Actions */}

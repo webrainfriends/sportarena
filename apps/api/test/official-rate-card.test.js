@@ -303,5 +303,209 @@ describe('i18n catalogue', () => {
     assert(en['rc.title'], 'rc.title present');
     assert(en['rc.quote_title'], 'rc.quote_title present');
     assert(en['rc.breakdown_total'], 'rc.breakdown_total present');
+    // R15 keys
+    assert(en['rc.age_bands'], 'rc.age_bands present');
+    assert(en['rc.callout_fee'], 'rc.callout_fee present');
+    assert(en['rc.extra_time'], 'rc.extra_time present');
+    assert(en['rc.per_diem'], 'rc.per_diem present');
+    assert(en['rc.cancellation_tiers'], 'rc.cancellation_tiers present');
+    assert(en['rc.tax_rate'], 'rc.tax_rate present');
+  });
+});
+
+describe('R15: Age band filtering', () => {
+  let seniorCardId, u16CardId;
+
+  before(async () => {
+    await pool.query("UPDATE official_profiles SET status='published' WHERE id=$1", [profileId]);
+    const s = json(await req('POST', '/me/official-profile/rate-cards', {
+      name: 'Senior Rate', service_type: 'match', fee_minor: 20000, fee_currency: 'GBP',
+      age_bands: ['senior'], is_indicative: true, status: 'active',
+    }, refereeToken));
+    seniorCardId = s.id;
+    const u = json(await req('POST', '/me/official-profile/rate-cards', {
+      name: 'U16 Rate', service_type: 'match', fee_minor: 10000, fee_currency: 'GBP',
+      age_bands: ['u16'], is_indicative: true, status: 'active',
+    }, refereeToken));
+    u16CardId = u.id;
+  });
+
+  it('no age_band filter returns all active indicative cards', async () => {
+    const r = json(await req('GET', `/official-profiles/${profileId}/rate-cards`, {}, organiserToken));
+    const ids = r.map((c) => c.id);
+    assert(ids.includes(seniorCardId), 'senior card present');
+    assert(ids.includes(u16CardId), 'u16 card present');
+  });
+
+  it('age_band=senior returns senior card and all-ages cards, not u16', async () => {
+    const r = json(await req('GET', `/official-profiles/${profileId}/rate-cards?age_band=senior`, {}, organiserToken));
+    const ids = r.map((c) => c.id);
+    assert(ids.includes(seniorCardId), 'senior card present');
+    assert(!ids.includes(u16CardId), 'u16 card excluded');
+  });
+
+  it('age_band=u16 returns u16 card, not senior', async () => {
+    const r = json(await req('GET', `/official-profiles/${profileId}/rate-cards?age_band=u16`, {}, organiserToken));
+    const ids = r.map((c) => c.id);
+    assert(ids.includes(u16CardId), 'u16 card present');
+    assert(!ids.includes(seniorCardId), 'senior card excluded');
+  });
+});
+
+describe('R15: Callout fee in quote', () => {
+  let calloutCardId;
+
+  before(async () => {
+    await pool.query("UPDATE official_profiles SET status='published' WHERE id=$1", [profileId]);
+    const r = json(await req('POST', '/me/official-profile/rate-cards', {
+      name: 'Callout Card', service_type: 'match', fee_minor: 15000, fee_currency: 'GBP',
+      callout_fee_minor: 3000, is_indicative: true, status: 'active',
+    }, refereeToken));
+    calloutCardId = r.id;
+  });
+
+  it('callout fee appears as separate line in quote', async () => {
+    const r = json(await req('POST', `/official-profiles/${profileId}/rate-cards/${calloutCardId}/quote`, {
+      profileId, id: calloutCardId, event_date: '2026-02-04',
+    }));
+    const calloutLine = r.lines.find((l) => l.key === 'callout');
+    assert(calloutLine, 'callout line present');
+    assert.equal(calloutLine.amount, 3000);
+  });
+
+  it('total includes callout + base fee', async () => {
+    const r = json(await req('POST', `/official-profiles/${profileId}/rate-cards/${calloutCardId}/quote`, {
+      profileId, id: calloutCardId, event_date: '2026-02-04',
+    }));
+    assert.equal(r.total, 18000, 'total = callout(3000) + base(15000)');
+  });
+});
+
+describe('R15: Extra-time rate in quote', () => {
+  let etCardId;
+
+  before(async () => {
+    await pool.query("UPDATE official_profiles SET status='published' WHERE id=$1", [profileId]);
+    const r = json(await req('POST', '/me/official-profile/rate-cards', {
+      name: 'Extra Time Card', service_type: 'match', fee_minor: 16500, fee_currency: 'GBP',
+      extra_time_rate_minor: 2000, is_indicative: true, status: 'active',
+    }, refereeToken));
+    etCardId = r.id;
+  });
+
+  it('no extra time periods — no extra_time line', async () => {
+    const r = json(await req('POST', `/official-profiles/${profileId}/rate-cards/${etCardId}/quote`, {
+      profileId, id: etCardId,
+    }));
+    assert.equal(r.lines.filter((l) => l.key === 'extra_time').length, 0);
+  });
+
+  it('2 extra time periods = 2 × 2000 = 4000', async () => {
+    const r = json(await req('POST', `/official-profiles/${profileId}/rate-cards/${etCardId}/quote`, {
+      profileId, id: etCardId, extra_time_periods: 2,
+    }));
+    const et = r.lines.find((l) => l.key === 'extra_time');
+    assert(et, 'extra_time line present');
+    assert.equal(et.amount, 4000);
+    assert.equal(r.total, 20500, '16500 + 4000');
+  });
+});
+
+describe('R15: Per diem in quote', () => {
+  let pdCardId;
+
+  before(async () => {
+    await pool.query("UPDATE official_profiles SET status='published' WHERE id=$1", [profileId]);
+    const r = json(await req('POST', '/me/official-profile/rate-cards', {
+      name: 'Per Diem Card', service_type: 'day', fee_minor: 25000, fee_currency: 'GBP',
+      per_diem_minor: 5000, is_indicative: true, status: 'active',
+    }, refereeToken));
+    pdCardId = r.id;
+  });
+
+  it('3 days × per_diem = 15000', async () => {
+    const r = json(await req('POST', `/official-profiles/${profileId}/rate-cards/${pdCardId}/quote`, {
+      profileId, id: pdCardId, days: 3,
+    }));
+    const pd = r.lines.find((l) => l.key === 'per_diem');
+    assert(pd, 'per_diem line present');
+    assert.equal(pd.amount, 15000);
+  });
+});
+
+describe('R15: Cancellation tier calculation', () => {
+  let cancelCardId;
+
+  before(async () => {
+    await pool.query("UPDATE official_profiles SET status='published' WHERE id=$1", [profileId]);
+    const r = json(await req('POST', '/me/official-profile/rate-cards', {
+      name: 'Cancel Card', service_type: 'match', fee_minor: 20000, fee_currency: 'GBP',
+      cancellation_tiers: [
+        { notice_hrs: 48, fee_pct: 100 },
+        { notice_hrs: 96, fee_pct: 50 },
+      ],
+      is_indicative: true, status: 'active',
+    }, refereeToken));
+    cancelCardId = r.id;
+  });
+
+  it('notice_hrs=24 (<=48): 100% cancellation fee = 20000', async () => {
+    const r = json(await req('POST', `/official-profiles/${profileId}/rate-cards/${cancelCardId}/quote`, {
+      profileId, id: cancelCardId, notice_hrs: 24,
+    }));
+    const cl = r.lines.find((l) => l.key === 'cancellation');
+    assert(cl, 'cancellation line present');
+    assert.equal(cl.amount, 20000, '100% of 20000');
+  });
+
+  it('notice_hrs=60 (<=96, >48): 50% = 10000', async () => {
+    const r = json(await req('POST', `/official-profiles/${profileId}/rate-cards/${cancelCardId}/quote`, {
+      profileId, id: cancelCardId, notice_hrs: 60,
+    }));
+    const cl = r.lines.find((l) => l.key === 'cancellation');
+    assert(cl, 'cancellation line present');
+    assert.equal(cl.amount, 10000, '50% of 20000');
+  });
+
+  it('notice_hrs=200 (>96): no cancellation fee', async () => {
+    const r = json(await req('POST', `/official-profiles/${profileId}/rate-cards/${cancelCardId}/quote`, {
+      profileId, id: cancelCardId, notice_hrs: 200,
+    }));
+    assert.equal(r.lines.filter((l) => l.key === 'cancellation').length, 0, 'no cancellation line beyond tiers');
+  });
+});
+
+describe('R15: Tax breakdown in quote', () => {
+  let taxCardId;
+
+  before(async () => {
+    await pool.query("UPDATE official_profiles SET status='published' WHERE id=$1", [profileId]);
+    const r = json(await req('POST', '/me/official-profile/rate-cards', {
+      name: 'Tax Card', service_type: 'match', fee_minor: 10000, fee_currency: 'GBP',
+      tax_inclusive: false, tax_rate_pct: 20,
+      is_indicative: true, status: 'active',
+    }, refereeToken));
+    taxCardId = r.id;
+  });
+
+  it('tax amount = 20% of total; total_inc_tax = total + tax', async () => {
+    const r = json(await req('POST', `/official-profiles/${profileId}/rate-cards/${taxCardId}/quote`, {
+      profileId, id: taxCardId,
+    }));
+    assert.equal(r.tax_rate_pct, 20);
+    assert.equal(r.tax_amount, 2000, '20% of 10000');
+    assert.equal(r.total_inc_tax, 12000, '10000 + 2000');
+  });
+
+  it('tax_inclusive=true: tax_amount = 0 regardless of tax_rate_pct', async () => {
+    const r = json(await req('POST', '/me/official-profile/rate-cards', {
+      name: 'Inclusive Tax Card', service_type: 'match', fee_minor: 10000, fee_currency: 'GBP',
+      tax_inclusive: true, tax_rate_pct: 20, is_indicative: true, status: 'active',
+    }, refereeToken));
+    const q = json(await req('POST', `/official-profiles/${profileId}/rate-cards/${r.id}/quote`, {
+      profileId, id: r.id,
+    }));
+    assert.equal(q.tax_amount, 0, 'no extra tax when inclusive');
+    assert.equal(q.total_inc_tax, q.total, 'total_inc_tax equals total when inclusive');
   });
 });

@@ -2,7 +2,7 @@
 // Separate from the 10-step official-profile-wizard; complements it via the Service Catalog screen.
 // API: official-rate-card capability.
 import React, { useState, useEffect } from 'react';
-import { View } from 'react-native';
+import { View, Pressable, TouchableOpacity } from 'react-native';
 import { api } from '../api';
 import { useLoad } from '../hooks';
 import { useNav } from '../nav';
@@ -20,6 +20,7 @@ const ROLE_OPTS = ['referee','umpire','linesman','scorer','judge','starter','tim
 const CURRENCIES = ['GBP','EUR','USD','AED','INR','AUD','CAD','ZAR'];
 const SERVICE_TYPES = ['hourly','match','session','day'];
 const DEPOSIT_TYPES = ['none','pct','fixed'];
+const AGE_BANDS = ['u8','u10','u12','u14','u16','u18','u21','senior','masters','all'];
 
 const empty = () => ({
   name: '', service_type: 'match',
@@ -31,6 +32,9 @@ const empty = () => ({
   valid_from: '', valid_until: '',
   is_indicative: true, private_notes: '',
   status: 'draft',
+  // R15
+  age_bands: [], callout_fee_minor: 0, extra_time_rate_minor: 0,
+  per_diem_minor: 0, cancellation_tiers: [], tax_rate_pct: 0,
 });
 
 function StepHeader({ step }) {
@@ -100,6 +104,26 @@ function StepSport({ data, onChange, sportOpts, onNext, onBack }) {
           onClose={() => {}}
         />
       </Card>
+      <Card>
+        <T weight="800" style={{ marginBottom: 4 }}>{t('rc.age_bands')}</T>
+        <T size={12} color={c.mute} style={{ marginBottom: 10 }}>{t('rc.age_bands_hint')}</T>
+        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+          {AGE_BANDS.map((ab) => {
+            const active = (data.age_bands ?? []).includes(ab);
+            return (
+              <Pressable key={ab} onPress={() => {
+                const cur = data.age_bands ?? [];
+                onChange({ age_bands: active ? cur.filter((x) => x !== ab) : [...cur, ab] });
+              }}
+                style={{ borderWidth: 2, borderColor: active ? c.pink : c.line, borderRadius: 20, paddingHorizontal: 12, paddingVertical: 6, backgroundColor: active ? c.pinkSoft : c.paper }}
+                accessibilityRole="checkbox" accessibilityState={{ checked: active }}
+                accessibilityLabel={t(`rc.age.${ab}`)}>
+                <T size={13} weight={active ? '700' : '400'} color={active ? c.pink : c.ink}>{t(`rc.age.${ab}`)}</T>
+              </Pressable>
+            );
+          })}
+        </View>
+      </Card>
       <View style={{ flexDirection: 'row', gap: 8 }}>
         <Btn title={t('common.back')} color={c.paper} ink={c.ink} onPress={onBack} />
         <Btn title={t('common.next')} onPress={onNext} />
@@ -112,6 +136,7 @@ function StepSport({ data, onChange, sportOpts, onNext, onBack }) {
 function StepPrice({ data, onChange, onNext, onBack }) {
   const feeVal = Number(data.fee_minor ?? 0);
   const minVal = Number(data.min_fee_minor ?? 0);
+  const calloutVal = Number(data.callout_fee_minor ?? 0);
   return (
     <View style={{ gap: 12 }}>
       <StepHeader step={2} />
@@ -129,6 +154,7 @@ function StepPrice({ data, onChange, onNext, onBack }) {
           fields={[
             { key: 'fee_minor', label: t('rc.base_fee'), type: 'stepper', min: 0, max: 1000000, step: 500, hint: `${t('rc.fee_hint')} = ${(feeVal / 100).toFixed(2)} ${data.fee_currency}` },
             { key: 'min_fee_minor', label: t('rc.min_fee'), type: 'stepper', min: 0, max: 500000, step: 500, hint: `= ${(minVal / 100).toFixed(2)} ${data.fee_currency}`, optional: true },
+            { key: 'callout_fee_minor', label: t('rc.callout_fee'), type: 'stepper', min: 0, max: 500000, step: 500, hint: `${t('rc.callout_fee_hint')} = ${(calloutVal / 100).toFixed(2)} ${data.fee_currency}`, optional: true },
           ]}
           onSubmit={(x) => onChange(x)}
           onClose={() => {}}
@@ -165,6 +191,7 @@ function StepPremium({ data, onChange, onNext, onBack }) {
             { key: 'weekend_sun_pct', label: t('rc.weekend_sun'), type: 'stepper', min: 0, max: 100, step: 5, hint: '%' },
             { key: 'holiday_pct', label: t('rc.holiday'), type: 'stepper', min: 0, max: 100, step: 5, hint: '%' },
             { key: 'overtime_rate_minor', label: t('rc.overtime'), type: 'stepper', min: 0, max: 100000, step: 100, hint: `= ${(Number(data.overtime_rate_minor) / 100).toFixed(2)} ${data.fee_currency}/hr` },
+            { key: 'extra_time_rate_minor', label: t('rc.extra_time'), type: 'stepper', min: 0, max: 100000, step: 100, hint: `${t('rc.extra_time_hint')} = ${(Number(data.extra_time_rate_minor ?? 0) / 100).toFixed(2)} ${data.fee_currency}`, optional: true },
           ]}
           onSubmit={(x) => onChange(x)}
           onClose={() => {}}
@@ -188,8 +215,18 @@ function StepPremium({ data, onChange, onNext, onBack }) {
   );
 }
 
-// Step 5: Terms (deposit, travel, tax, dates)
+// Step 5: Terms (deposit, travel, tax, dates, per diem, cancellation tiers)
 function StepTerms({ data, onChange, onNext, onBack }) {
+  const tiers = data.cancellation_tiers ?? [];
+  const addTier = () => {
+    if (tiers.length >= 5) return;
+    onChange({ cancellation_tiers: [...tiers, { notice_hrs: 48, fee_pct: 100 }] });
+  };
+  const removeTier = (idx) => onChange({ cancellation_tiers: tiers.filter((_, i) => i !== idx) });
+  const updateTier = (idx, field, val) => {
+    const next = tiers.map((t, i) => i === idx ? { ...t, [field]: Number(val) } : t);
+    onChange({ cancellation_tiers: next });
+  };
   return (
     <View style={{ gap: 12 }}>
       <StepHeader step={4} />
@@ -230,6 +267,54 @@ function StepTerms({ data, onChange, onNext, onBack }) {
           onSubmit={(x) => onChange(x)}
           onClose={() => {}}
         />
+      </Card>
+      {/* R15: Per diem + tax rate */}
+      <Card>
+        <FormSheet inline visible
+          initial={{ per_diem_minor: data.per_diem_minor ?? 0, tax_rate_pct: data.tax_rate_pct ?? 0 }}
+          fields={[
+            { key: 'per_diem_minor', label: t('rc.per_diem'), type: 'stepper', min: 0, max: 500000, step: 500, hint: `${t('rc.per_diem_hint')} = ${(Number(data.per_diem_minor ?? 0) / 100).toFixed(2)} ${data.fee_currency}/day`, optional: true },
+            { key: 'tax_rate_pct', label: t('rc.tax_rate'), type: 'stepper', min: 0, max: 60, step: 0.5, hint: t('rc.tax_rate_hint'), optional: true },
+          ]}
+          onSubmit={(x) => onChange(x)}
+          onClose={() => {}}
+        />
+      </Card>
+      {/* R15: Cancellation tiers */}
+      <Card>
+        <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 6 }}>
+          <View style={{ flex: 1 }}>
+            <T weight="800">{t('rc.cancellation_tiers')}</T>
+            <T size={12} color={c.mute}>{t('rc.cancellation_tiers_hint')}</T>
+          </View>
+          {tiers.length < 5 ? (
+            <TouchableOpacity onPress={addTier} style={{ backgroundColor: c.pinkSoft, borderRadius: 8, paddingHorizontal: 10, paddingVertical: 6 }} accessibilityLabel={t('rc.cancel_add_tier')}>
+              <T size={12} weight="700" color={c.pink}>+ {t('rc.cancel_add_tier')}</T>
+            </TouchableOpacity>
+          ) : null}
+        </View>
+        {tiers.length === 0 ? (
+          <T size={12} color={c.mute} style={{ paddingVertical: 8, textAlign: 'center' }}>No cancellation tiers — full refund applies.</T>
+        ) : null}
+        {tiers.map((tier, idx) => (
+          <View key={idx} style={{ borderWidth: 1, borderColor: c.line, borderRadius: 10, padding: 10, marginTop: 8, flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+            <View style={{ flex: 1, gap: 6 }}>
+              <FormSheet inline visible
+                initial={{ notice_hrs: tier.notice_hrs, fee_pct: tier.fee_pct }}
+                fields={[
+                  { key: 'notice_hrs', label: t('rc.cancel_notice_hrs'), type: 'stepper', min: 0, max: 720, step: 12, hint: 'hours' },
+                  { key: 'fee_pct', label: t('rc.cancel_fee_pct'), type: 'stepper', min: 0, max: 100, step: 5, hint: '%' },
+                ]}
+                onSubmit={(x) => { updateTier(idx, 'notice_hrs', x.notice_hrs); updateTier(idx, 'fee_pct', x.fee_pct); }}
+                onClose={() => {}}
+              />
+              <T size={11} color={c.mute}>≤ {tier.notice_hrs}h notice → {tier.fee_pct}% cancellation fee</T>
+            </View>
+            <TouchableOpacity onPress={() => removeTier(idx)} accessibilityLabel={t('rc.cancel_remove_tier')}>
+              <T size={18} color={c.red}>✕</T>
+            </TouchableOpacity>
+          </View>
+        ))}
       </Card>
       <View style={{ flexDirection: 'row', gap: 8 }}>
         <Btn title={t('common.back')} color={c.paper} ink={c.ink} onPress={onBack} />
@@ -292,10 +377,17 @@ function StepReview({ data, sportOpts, onBack, onSave, busy }) {
     [t('rc.deposit_label'), data.deposit_type === 'pct' ? `${data.deposit_pct}%` : data.deposit_type === 'fixed' ? money(data.deposit_minor, data.fee_currency) : t('rc.deposit_none')],
     [t('rc.travel_per_km'), data.includes_travel ? t('rc.travel_included') : (data.travel_allowance_per_km_minor > 0 ? `${money(data.travel_allowance_per_km_minor, data.fee_currency)}/km` : '—')],
     [t('rc.tax_inclusive'), data.tax_inclusive ? '✓' : '—'],
+    ...(data.tax_rate_pct > 0 ? [[t('rc.tax_rate'), `${data.tax_rate_pct}%`]] : []),
     [t('rc.valid_from'), data.valid_from || '—'],
     [t('rc.valid_until'), data.valid_until || t('common.open')],
     [t('rc.vis_indicative'), data.is_indicative ? `🌍 ${t('rc.vis_indicative')}` : `🔐 ${t('rc.vis_negotiated')}`],
     [t('rc.version'), 'v1 (new)'],
+    // R15
+    [t('rc.age_bands'), (data.age_bands ?? []).length > 0 ? (data.age_bands ?? []).map((ab) => t(`rc.age.${ab}`)).join(', ') : t('rc.age.all')],
+    ...(data.callout_fee_minor > 0 ? [[t('rc.callout_fee'), money(data.callout_fee_minor, data.fee_currency)]] : []),
+    ...(data.extra_time_rate_minor > 0 ? [[t('rc.extra_time'), `${money(data.extra_time_rate_minor, data.fee_currency)}/period`]] : []),
+    ...(data.per_diem_minor > 0 ? [[t('rc.per_diem'), `${money(data.per_diem_minor, data.fee_currency)}/day`]] : []),
+    [t('rc.cancellation_tiers'), (data.cancellation_tiers ?? []).length > 0 ? `${(data.cancellation_tiers ?? []).length} tier${(data.cancellation_tiers ?? []).length !== 1 ? 's' : ''}` : 'None'],
   ];
   return (
     <View style={{ gap: 12 }}>
