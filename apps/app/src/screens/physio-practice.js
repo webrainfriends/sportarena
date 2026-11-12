@@ -379,6 +379,151 @@ function Overview({ go }) {
   );
 }
 
+// ------------------------------------------------------------------ Invoices
+const AGEING_COLOR = (due) => {
+  if (!due) return c.mute;
+  const days = Math.floor((Date.now() - new Date(due).getTime()) / 86400000);
+  if (days <= 0) return c.mint;
+  if (days <= 30) return c.orange;
+  if (days <= 60) return c.red;
+  return c.pink;
+};
+
+function InvoicesTab({ currency }) {
+  const list = useLoad(() => api.get('/physio/invoices'), []);
+  const { toast } = useSession();
+
+  const mark = async (id, status) => {
+    try {
+      await api.post(`/physio/invoices/${id}/status`, { status });
+      toast(status === 'paid' ? 'Marked paid' : 'Voided');
+      list.reload();
+    } catch (e) { toast(e.message); }
+  };
+
+  const rows = list.data ?? [];
+  const outstanding = rows.filter((r) => r.status === 'unpaid').reduce((s, r) => s + Number(r.total_cents ?? 0), 0);
+  const collected = rows.filter((r) => r.status === 'paid').reduce((s, r) => s + Number(r.total_cents ?? 0), 0);
+
+  return (
+    <Section title="Invoices" color={c.violet}>
+      {list.loading && !list.data ? <Loading /> : list.error ? <ErrorBox error={list.error} onRetry={list.reload} /> : <>
+        <View style={{ flexDirection: 'row', gap: 8 }}>
+          <Card pad={10} color={c.mintSoft} style={{ flex: 1 }}><T size={11} color={c.mute}>COLLECTED</T><T weight="900" size={16} color={c.mint}>{moneyIn(collected, currency)}</T></Card>
+          <Card pad={10} color={c.orangeSoft} style={{ flex: 1 }}><T size={11} color={c.mute}>OUTSTANDING</T><T weight="900" size={16} color={c.orange}>{moneyIn(outstanding, currency)}</T></Card>
+        </View>
+        {rows.length === 0 ? <Empty emoji="🧾" title="No invoices yet" sub="Invoices are created when you charge for a session." /> :
+          rows.map((inv) => (
+            <Card key={inv.id} pad={12} color={inv.status === 'paid' ? c.mintSoft : c.paper}>
+              <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8 }}>
+                <View style={{ flex: 1 }}>
+                  <T weight="800">{inv.patient_name ?? 'Patient'}</T>
+                  <T size={12} color={c.mute}>{inv.invoice_number} · {day(inv.invoice_date)}</T>
+                  {inv.due_date && <T size={12} color={AGEING_COLOR(inv.due_date)}>Due {day(inv.due_date)}</T>}
+                </View>
+                <View style={{ alignItems: 'flex-end', gap: 4 }}>
+                  <T weight="900" size={16}>{moneyIn(Number(inv.total_cents ?? 0), inv.currency ?? currency)}</T>
+                  <Tag label={inv.status} color={inv.status === 'paid' ? c.mintSoft : inv.status === 'void' ? c.line : c.orangeSoft} />
+                </View>
+              </View>
+              {inv.status === 'unpaid' && (
+                <View style={{ flexDirection: 'row', gap: 8, marginTop: 8 }}>
+                  <Btn small title="Mark paid" color={c.mint} ink={c.ink} onPress={() => mark(inv.id, 'paid')} />
+                  <Btn small title="Void" color={c.paper} ink={c.red} onPress={() => mark(inv.id, 'void')} />
+                </View>
+              )}
+            </Card>
+          ))}
+      </>}
+    </Section>
+  );
+}
+
+// ------------------------------------------------------------------ Analytics
+function AnalyticsTab() {
+  const [sub, setSub] = useState('clinical');
+  const clinical = useLoad(() => api.get('/physio/analytics/clinical'), []);
+  const financial = useLoad(() => api.get('/physio/analytics/financial'), []);
+  const ops = useLoad(() => api.get('/physio/analytics/ops'), []);
+
+  return (
+    <Section title="Analytics" color={c.violet}>
+      <Seg
+        options={[
+          { value: 'clinical', label: 'Clinical', emoji: '🩺' },
+          { value: 'financial', label: 'Financial', emoji: '💰' },
+          { value: 'ops', label: 'Operations', emoji: '📊' },
+        ]}
+        value={sub} onChange={setSub} color={c.violet}
+      />
+
+      {sub === 'clinical' && (
+        <>
+          {clinical.loading && !clinical.data ? <Loading /> : clinical.error ? <ErrorBox error={clinical.error} onRetry={clinical.reload} /> : <>
+            <View style={{ flexDirection: 'row', gap: 8, flexWrap: 'wrap' }}>
+              {[
+                { label: 'ACTIVE PATIENTS', value: clinical.data?.active_patients ?? '—', color: c.mint },
+                { label: 'SESSIONS (30D)', value: clinical.data?.sessions_30d ?? '—', color: c.violet },
+                { label: 'MILESTONES HIT', value: clinical.data?.milestones_achieved ?? '—', color: c.mint },
+                { label: 'OPEN FLARE-UPS', value: clinical.data?.open_flareups ?? '—', color: c.orange },
+              ].map((m) => (
+                <Card key={m.label} pad={10} color={c.paper} style={{ flex: 1, minWidth: 140 }}>
+                  <T size={10} color={c.mute}>{m.label}</T>
+                  <T weight="900" size={22} color={m.color}>{m.value}</T>
+                </Card>
+              ))}
+            </View>
+            {(clinical.data?.by_patient ?? []).slice(0, 10).map((p) => (
+              <Card key={p.patient_id} pad={10} color={c.paper}>
+                <T weight="700">{p.patient_name ?? p.patient_id.slice(0, 8)}</T>
+                <T size={12} color={c.mute}>{p.sessions} sessions · {p.milestones_achieved} milestones · adherence {p.adherence_pct != null ? `${p.adherence_pct}%` : '—'}</T>
+              </Card>
+            ))}
+          </>}
+        </>
+      )}
+
+      {sub === 'financial' && (
+        <>
+          {financial.loading && !financial.data ? <Loading /> : financial.error ? <ErrorBox error={financial.error} onRetry={financial.reload} /> : <>
+            {(financial.data?.by_currency ?? []).map((row) => (
+              <Card key={row.currency} pad={12} color={c.paper}>
+                <T weight="800" size={15}>{row.currency}</T>
+                <View style={{ flexDirection: 'row', gap: 8, marginTop: 8 }}>
+                  <Card pad={8} color={c.mintSoft} style={{ flex: 1 }}><T size={10} color={c.mute}>BILLED</T><T weight="900">{moneyIn(Number(row.billed_cents ?? 0), row.currency)}</T></Card>
+                  <Card pad={8} color={c.mintSoft} style={{ flex: 1 }}><T size={10} color={c.mute}>COLLECTED</T><T weight="900">{moneyIn(Number(row.collected_cents ?? 0), row.currency)}</T></Card>
+                  <Card pad={8} color={c.orangeSoft} style={{ flex: 1 }}><T size={10} color={c.mute}>OUTSTANDING</T><T weight="900">{moneyIn(Number(row.outstanding_cents ?? 0), row.currency)}</T></Card>
+                </View>
+              </Card>
+            ))}
+            {(!financial.data?.by_currency?.length) && <Empty emoji="💰" title="No billing data yet" sub="" />}
+          </>}
+        </>
+      )}
+
+      {sub === 'ops' && (
+        <>
+          {ops.loading && !ops.data ? <Loading /> : ops.error ? <ErrorBox error={ops.error} onRetry={ops.reload} /> : <>
+            <View style={{ flexDirection: 'row', gap: 8, flexWrap: 'wrap' }}>
+              {[
+                { label: 'UTILISATION', value: ops.data?.utilisation_pct != null ? `${ops.data.utilisation_pct}%` : '—', color: c.violet },
+                { label: 'NO-SHOW RATE', value: ops.data?.no_show_rate_pct != null ? `${ops.data.no_show_rate_pct}%` : '—', color: c.orange },
+                { label: 'NEW PATIENTS', value: ops.data?.new_patients_30d ?? '—', color: c.mint },
+                { label: 'RETURNING', value: ops.data?.returning_patients_30d ?? '—', color: c.sky },
+              ].map((m) => (
+                <Card key={m.label} pad={10} color={c.paper} style={{ flex: 1, minWidth: 140 }}>
+                  <T size={10} color={c.mute}>{m.label}</T>
+                  <T weight="900" size={22} color={m.color}>{m.value}</T>
+                </Card>
+              ))}
+            </View>
+          </>}
+        </>
+      )}
+    </Section>
+  );
+}
+
 // ------------------------------------------------------------------ Provider workspace
 export function PracticePanel() {
   const [tab, setTab] = useState('overview'), [focus, setFocus] = useState(null);
@@ -387,7 +532,7 @@ export function PracticePanel() {
   const go = (t, f = null) => { setFocus(f); setTab(t); };
   return (
     <View style={{ gap: 10 }}>
-      <Seg options={[{ value: 'overview', label: 'Overview', emoji: '🏠' }, { value: 'patients', label: 'Patients', emoji: '🧑‍⚕️' }, { value: 'plans', label: 'Plans', emoji: '📝' }, { value: 'adaptive', label: 'Adaptive', emoji: '♿' }, { value: 'library', label: 'Exercises', emoji: '🏃' }, { value: 'insights', label: 'Insights', emoji: '📊' }, { value: 'services', label: 'Services', emoji: '🩺' }, { value: 'offers', label: 'Offers', emoji: '🏷️' }, { value: 'packages', label: 'Packages', emoji: '🎟️' }, { value: 'money', label: 'Tax & revenue', emoji: '🧾' }, { value: 'panels', label: 'Insurance', emoji: '🛡️' }, { value: 'compliance', label: 'Compliance', emoji: '🛡️' }]} value={tab} onChange={(t) => go(t)} color={c.violet} />
+      <Seg options={[{ value: 'overview', label: 'Overview', emoji: '🏠' }, { value: 'patients', label: 'Patients', emoji: '🧑‍⚕️' }, { value: 'plans', label: 'Plans', emoji: '📝' }, { value: 'adaptive', label: 'Adaptive', emoji: '♿' }, { value: 'library', label: 'Exercises', emoji: '🏃' }, { value: 'insights', label: 'Insights', emoji: '📊' }, { value: 'services', label: 'Services', emoji: '🩺' }, { value: 'offers', label: 'Offers', emoji: '🏷️' }, { value: 'packages', label: 'Packages', emoji: '🎟️' }, { value: 'money', label: 'Tax & revenue', emoji: '🧾' }, { value: 'invoices', label: 'Invoices', emoji: '🧾' }, { value: 'analytics', label: 'Analytics', emoji: '📈' }, { value: 'panels', label: 'Insurance', emoji: '🛡️' }, { value: 'compliance', label: 'Compliance', emoji: '🛡️' }]} value={tab} onChange={(t) => go(t)} color={c.violet} />
       {tab === 'overview' && <Overview go={go} />}
       {tab === 'patients' && <PatientsTab focus={focus} onFocusDone={() => setFocus(null)} />}
       {tab === 'insights' && <Insights onOpen={(x) => go('patients', { patient_id: x.patient_id, section: x.tab === 'plans' ? 'home' : x.tab })} />}
@@ -398,6 +543,8 @@ export function PracticePanel() {
       {tab === 'plans' && <Plans />}
       {tab === 'library' && <Library />}
       {tab === 'money' && <TaxRevenue currency={currency} />}
+      {tab === 'invoices' && <InvoicesTab currency={currency} />}
+      {tab === 'analytics' && <AnalyticsTab />}
       {tab === 'compliance' && <PracticeCompliance />}
       {tab === 'panels' && <ProviderPanels />}
     </View>

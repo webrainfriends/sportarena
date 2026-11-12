@@ -461,3 +461,4 @@ import './physio-reminders.js';
 import './clinical-messaging.js';
 import './physio-invoices.js';
 import './physio-dashboard.js';
+import './physio-analytics.js';
