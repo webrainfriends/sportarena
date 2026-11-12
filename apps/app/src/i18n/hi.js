@@ -19168,7 +19168,6 @@ export default {
   'odisc.floor_rejected': 'Floor override rejected',
   'odisc.void': 'Void redemption',
   'odisc.void_reason': 'Reason for voiding',
-};
 
   // Official career portfolio (#1009) - machine-drafted, reviewed: false
   'nav.title.OfficialPortfolio': 'करियर पोर्टफोलियो',
