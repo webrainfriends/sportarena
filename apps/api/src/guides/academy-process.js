@@ -448,6 +448,23 @@ id: 'wellbeing', title: 'Support student wellbeing and development',
     sources: ['apps/app/src/screens/official-profile-wizard.js', 'apps/app/src/screens/rate-card-catalog.js', 'apps/app/src/screens/rate-card-wizard.js', 'apps/app/src/screens/quote-calculator.js', 'apps/app/src/screens/officials-assignment-board.js', 'apps/app/src/screens/officials-role-library.js', 'apps/app/src/screens/crew-template-builder.js'],
   },
   {
+    id: 'official_scheduling',
+    title: 'Smart official scheduling recommendations',
+    why: 'REF-R24: Elite academies (Nadal, Real Madrid, FC Barcelona) host high volumes of fixtures and need the right official for every slot — not just any available body. The AI scheduling engine ranks every eligible official against six explainable dimensions: licence grade, travel feasibility, neutrality status, fair-rotation workload, cost-to-budget and confirmed availability. Each score is broken down per dimension on screen, so organizers can trust the recommendation, challenge it, or override it with a mandatory audit trail. Per-event policy configuration lets each competition apply its own weight priorities and eligibility rules.',
+    steps: [
+      'Open any event\'s Assignment Board, tap a fixture slot (e.g. the empty Referee cell), and tap Suggest. The Scheduling Recommendations screen opens with a ranked list of eligible officials.',
+      'Each recommendation card shows: a rank badge, the official\'s name and grade, six coloured score bars (Licence & Grade · Travel · Neutrality · Fair Rotation · Cost · Availability) and a total score out of 100. Tap any bar to expand the full per-dimension explanation.',
+      'The Neutrality bar may show a data-gap badge (⚠️ Nationality check not available). This means the platform does not hold player nationality data for the fixture — the organizer must verify neutrality independently before confirming. The score keeps its default value and the badge is an honest disclosure, not an error.',
+      'To invite the top-ranked official directly, tap Invite. To add them to the shortlist without committing, tap Shortlist.',
+      'If you choose to select a lower-ranked official instead, tap Override. The Override sheet shows a side-by-side comparison of the skipped and chosen official\'s scores, asks you to pick a reason category (Local preference, Budget constraint, Rotation policy, Special skills, Other) and type a written reason (at least 20 characters). This override is recorded permanently and shown in the suggestion history and federation audit exports.',
+      'Configure event-level scheduling policy: open the ⚙️ menu (top-right of the Recommendations screen). The Scheduling Policy sheet lets you: (a) adjust the six scoring weights (must sum ≤ 100); (b) toggle "Require neutral officials only" to exclude any official with an open conflict or a data-gap neutrality flag; (c) set a travel budget (km) to zero-score officials who travel beyond it; (d) set a minimum grade rank override specific to this event; (e) add preferred officials (they receive a +5 bonus on their grade score) or blocked officials (excluded from suggestions entirely); and (f) enable auto-suggest when the event schedule is published. The policy is versioned — changes are logged with actor and timestamp.',
+      'Review suggestion history: tap the 📋 icon in the header to open the Suggestion History sheet. This shows every AI-ranked candidate suggested for the fixture-role, the scores at the time of suggestion, any subsequent invite/shortlist status, and any override recorded — giving full provenance for federation and safeguarding audits.',
+    ],
+    target: { screen: 'OfficialSchedulingRecommendations' },
+    modules: ['official-scheduling-recommendations.js', 'officials-bulk.js'],
+    sources: ['apps/app/src/screens/official-scheduling-recommendations.js'],
+  },
+  {
     id: 'official_role_taxonomy',
     title: 'Sport official role taxonomy and rule-driven crew templates',
     why: 'REF-R30: Elite academies (Nadal, Real Madrid, FC Barcelona) need sport-specific, rule-pack-linked official role definitions — chair umpire, match commissioner, technical delegate, starter, marshal — with qualifications, duties, permission scopes and governing-body source. Versioned crew templates bundle these slots into an immutable published bundle that an organiser can apply to an event in one tap, ensuring the right crew is in place for every format and level.',
@@ -517,8 +534,8 @@ id: 'wellbeing', title: 'Support student wellbeing and development',
       'The Exams tab lists available exams for your active enrolments. Tap Start Exam — MCQ and True/False questions are auto-graded immediately on submission; short-answer and scenario questions queue for instructor grading. A countdown timer enforces the time limit.',
       'After submission, the result screen shows the percentage score and Pass / Fail / Awaiting Grade outcome. For manual exams, a push notification arrives when the grade is set.',
       'For courses with practical evaluation, the assigned evaluator completes a structured rubric on the app. The official receives a notification, reviews the rubric scores and narrative, and taps Acknowledge.',
-      'On passing, a certificate is auto-issued: the Certificates tab shows the credential number, issue date, expiry (if applicable) and a share/download button. The certificate is simultaneously linked to the official\'s Credentials profile.',
-      'CPD hours are automatically posted to the official\'s CPD record (verified, with credential reference) so the progression system sees the credit immediately.',
+      "On passing, a certificate is auto-issued: the Certificates tab shows the credential number, issue date, expiry (if applicable) and a share/download button. The certificate is simultaneously linked to the official's Credentials profile.",
+      "CPD hours are automatically posted to the official's CPD record (verified, with credential reference) so the progression system sees the credit immediately.",
       'Reminders fire 60 days before a certificate or prerequisite expires, surfacing in the Certificates tab with an amber/red expiry chip and a re-enrolment shortcut.',
       'Body admin analytics (Education → Analytics) show completion rates, pass rates, CPD awarded, average scores and attendance percentages by sport and level — ready for federation board reports.',
     ],
@@ -701,7 +718,7 @@ export const NOT_IN_GUIDE = {
 };
 
 /** The directories/files the guard test watches for org/academy/venue/coach/tax capability modules. */
-export const WATCHED_MODULES = /^(academy-.*|org-.*|organisations|venue-coaches|gst|provider-tax|coach-classes|para-sport-funding|para-sport-sponsorship-outcomes|para-pathway|para-readiness|para-learn|para-staff-credentials|para-spectator-accessibility|para-ux-conformance|boarding-.*|wearables|wellness.*|integrations|official-rate-card|official-rate-agreements)\.js$/;
+export const WATCHED_MODULES = /^(academy-.*|org-.*|organisations|venue-coaches|gst|provider-tax|coach-classes|para-sport-funding|para-sport-sponsorship-outcomes|para-pathway|para-readiness|para-learn|para-staff-credentials|para-spectator-accessibility|para-ux-conformance|boarding-.*|wearables|wellness.*|integrations|official-rate-card|official-rate-agreements|official-scheduling-recommendations|officials-bulk)\.js$/;
 
 export const SHOT_SIZES = { phone: { width: 390, height: 1100 }, desktop: { width: 1280, height: 900 } };
 export const shotFile = (stepId, size) => `${String(ACADEMY_STEPS.findIndex((s) => s.id === stepId) + 1).padStart(2, '0')}-${stepId}-${size}.png`;
