@@ -2,14 +2,14 @@
 // Sections: hero strip, career-by-sport accordion, grades & credentials, milestones timeline,
 // activity sparkline, federation licences, references, visibility settings and PDF export.
 import React, { useState, useCallback } from 'react';
-import { View, Pressable, ScrollView, Platform } from 'react-native';
+import { View, Pressable, ScrollView, Switch } from 'react-native';
 import { api } from '../api';
 import { useLoad } from '../hooks';
 import { useNav } from '../nav';
 import { useSession } from '../session';
 import { Btn, Card, Empty, Loading, Screen, T, Tag } from '../ui';
-import { FormSheet } from '../FormSheet';
-import { DateField, TextField, SwitchField, MenuField } from '../fields';
+import { DateField, Field } from '../pickers';
+import { MenuField, FormSheet } from '../menu-field';
 import { c, r } from '../theme';
 import { t } from '../i18n';
 
@@ -178,12 +178,15 @@ function AddMilestoneSheet({ visible, onClose, onSaved, sports }) {
 
   return (
     <FormSheet visible={visible} onClose={onClose} title={t('portfolio.milestone.add_title')}>
-      <TextField label={t('portfolio.milestone.title')} value={title} onChangeText={setTitle} maxLength={200} />
+      <Field label={t('portfolio.milestone.title')} value={title} onChangeText={setTitle} maxLength={200} />
       <DateField label={t('portfolio.milestone.date')} value={date} onChange={setDate} />
       <MenuField label={t('portfolio.milestone.sport')} options={(sports ?? []).map((s) => ({ value: s.id, label: s.name }))} value={sportId} onChange={setSportId} nullable />
-      <TextField label={t('portfolio.milestone.competition')} value={competition} onChangeText={setCompetition} maxLength={200} placeholder={t('portfolio.milestone.competition_hint')} />
-      <TextField label={t('portfolio.milestone.role')} value={role} onChangeText={setRole} maxLength={60} placeholder={t('portfolio.milestone.role_hint')} />
-      <SwitchField label={t('portfolio.milestone.championship')} value={isChamp} onChange={setIsChamp} />
+      <Field label={t('portfolio.milestone.competition')} value={competition} onChangeText={setCompetition} maxLength={200} placeholder={t('portfolio.milestone.competition_hint')} />
+      <Field label={t('portfolio.milestone.role')} value={role} onChangeText={setRole} maxLength={60} placeholder={t('portfolio.milestone.role_hint')} />
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, padding: 12, borderWidth: 1, borderColor: c.line, borderRadius: 12 }}>
+        <View style={{ flex: 1 }}><T weight="700" size={13}>{t('portfolio.milestone.championship')}</T></View>
+        <Switch value={isChamp} onValueChange={setIsChamp} trackColor={{ true: c.pink }} />
+      </View>
       {error ? <T size={12} color={c.red} style={{ marginTop: 4 }}>{error}</T> : null}
       <Btn label={saving ? t('common.saving') : t('portfolio.milestone.save')} onPress={submit} disabled={saving} style={{ marginTop: 12 }} />
     </FormSheet>
@@ -219,11 +222,18 @@ function VisibilitySheet({ visible, settings, onClose, onSaved }) {
   return (
     <FormSheet visible={visible} onClose={onClose} title={t('portfolio.vis.title')}>
       <MenuField label={t('portfolio.vis.label')} options={VIS_OPTIONS} value={vis} onChange={setVis} />
-      <SwitchField label={t('portfolio.vis.show_grades')} value={showGrades} onChange={setShowGrades} />
-      <SwitchField label={t('portfolio.vis.show_milestones')} value={showMilestones} onChange={setShowMilestones} />
-      <SwitchField label={t('portfolio.vis.show_references')} value={showRefs} onChange={setShowRefs} />
-      <SwitchField label={t('portfolio.vis.show_chart')} value={showChart} onChange={setShowChart} />
-      <SwitchField label={t('portfolio.vis.show_match_count')} value={showMatchCount} onChange={setShowMatchCount} />
+      {[
+        [t('portfolio.vis.show_grades'), showGrades, setShowGrades],
+        [t('portfolio.vis.show_milestones'), showMilestones, setShowMilestones],
+        [t('portfolio.vis.show_references'), showRefs, setShowRefs],
+        [t('portfolio.vis.show_chart'), showChart, setShowChart],
+        [t('portfolio.vis.show_match_count'), showMatchCount, setShowMatchCount],
+      ].map(([label, val, setter]) => (
+        <View key={label} style={{ flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 10, borderBottomWidth: 0.5, borderColor: c.line }}>
+          <View style={{ flex: 1 }}><T size={13} weight="600">{label}</T></View>
+          <Switch value={val} onValueChange={setter} trackColor={{ true: c.pink }} />
+        </View>
+      ))}
       <Btn label={saving ? t('common.saving') : t('common.save')} onPress={submit} disabled={saving} style={{ marginTop: 12 }} />
     </FormSheet>
   );
