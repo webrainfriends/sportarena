@@ -28,6 +28,7 @@ import { OfficialSafeguardingDesk } from './officials-safeguarding';
 import { RulesTab } from './rule-session';
 import { AvailabilityTab } from './officials-availability';
 import { CalendarTab } from './officials-calendar';
+import { OfficialsReputation } from './officials-reputation';
 
 export const ROLE_LABEL = {
   referee: 'Referee', umpire: 'Umpire', linesman: 'Assistant referee', scorer: 'Scorer / timekeeper',
@@ -611,6 +612,7 @@ export function OfficialsHome({ tab: tab0 }) {
       </Section>
     : tab === 'permissions' ? <PermissionsTab fixtureId={h.next?.fixture_id} />
     : tab === 'safety' ? <OfficialSafeguardingDesk />
+    : tab === 'reputation' ? <OfficialsReputation />
     : <Section title="Credential" color={c.lime}>
         <Card><View style={{ gap: 6 }}>
           <Tag label={cred[0]} color={cred[1]} />
@@ -645,7 +647,7 @@ export function OfficialsHome({ tab: tab0 }) {
         <Metric value={h.stats.actions} label="Need attention" tone={h.stats.actions ? c.sunSoft : undefined} onPress={() => setTab('today')} />
       </View>
       <View style={{ marginTop: 12, marginBottom: 12 }}>
-        <Seg options={[{ value: 'today', label: t('off.tab_overview') }, { value: 'calendar', label: t('off.tab_calendar') }, { value: 'availability', label: t('off.tab_availability') }, { value: 'history', label: t('off.tab_history') }, { value: 'reports', label: t('off.tab_reports') }, { value: 'record', label: t('off.tab_record') }, { value: 'rules', label: t('off.tab_rules') }, { value: 'permissions', label: t('official.role_permissions.title') }, { value: 'safety', label: t('osg.tab') }, { value: 'credential', label: t('off.tab_credential') }]} value={tab} onChange={setTab} />
+        <Seg options={[{ value: 'today', label: t('off.tab_overview') }, { value: 'calendar', label: t('off.tab_calendar') }, { value: 'availability', label: t('off.tab_availability') }, { value: 'history', label: t('off.tab_history') }, { value: 'reports', label: t('off.tab_reports') }, { value: 'record', label: t('off.tab_record') }, { value: 'rules', label: t('off.tab_rules') }, { value: 'permissions', label: t('official.role_permissions.title') }, { value: 'safety', label: t('osg.tab') }, { value: 'credential', label: t('off.tab_credential') }, { value: 'reputation', label: t('reputation.title') }]} value={tab} onChange={setTab} />
       </View>
       {body}
     </Screen>
