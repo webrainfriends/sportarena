@@ -974,8 +974,8 @@ cap({
 // ------------------------------------------------------------------ certificates
 
 cap({
-  name: 'get_edu_certificate', method: 'GET', path: '/officials-education/certificates/:id', tag: TAG, auth: 'public',
-  summary: 'Get a certificate with its credential details.',
+  name: 'get_officials_education_certificate', method: 'GET', path: '/officials-education/certificates/:id', tag: TAG, auth: 'public',
+  summary: 'Get an officials-education certificate with its credential details.',
   input: z.object({ id }),
   async handler({ user }, i) {
     const cert = (await pool.query(
@@ -998,8 +998,8 @@ cap({
 });
 
 cap({
-  name: 'list_my_edu_certificates', method: 'GET', path: '/officials-education/my-certificates', tag: TAG,
-  summary: 'List all certificates for the current user.',
+  name: 'list_my_officials_education_certificates', method: 'GET', path: '/officials-education/my-certificates', tag: TAG,
+  summary: 'List all officials-education certificates for the current user.',
   input: z.object({ limit: z.coerce.number().int().min(1).max(100).default(50), offset: z.coerce.number().int().min(0).default(0) }),
   async handler({ user }, i) {
     return many(
@@ -1020,8 +1020,8 @@ cap({
 });
 
 cap({
-  name: 'revoke_edu_certificate', method: 'POST', path: '/officials-education/certificates/:id/revoke', tag: TAG,
-  summary: 'Revoke a certificate (body staff only). Revocation is recorded on both the certificate and the linked credential.',
+  name: 'revoke_officials_education_certificate', method: 'POST', path: '/officials-education/certificates/:id/revoke', tag: TAG,
+  summary: 'Revoke an officials-education certificate (body staff only). Revocation is recorded on both the certificate and the linked credential.',
   input: z.object({ id, reason: text(500) }),
   handler: ({ user }, i) => tx(async (c) => {
     const cert = (await c.query(
