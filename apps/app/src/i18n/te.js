@@ -15574,7 +15574,8 @@ export default {
   'pu.empty_title': 'వినియోగదారులు ఎవరూ కనుగొనబడలేదు',
   'pu.empty_sub': 'వేరే శోధన లేదా ఫిల్టర్ ప్రయత్నించండి.',
   'pu.prev': '← మునుపటిది',
-  'pu.next': 'తదుపరి →',
+  'pu.next': 'Next →',
+  'pu.showing': 'Showing {{from}}–{{to}} of {{total}}',
   // ── Academy Staff Usage ───────────────────────────────────────────────────
   'asu.title': 'స్టాఫ్ వినియోగం',
   'asu.sub': 'మీ అకాడమీ బృందానికి నిల్వ · AI & API వినియోగం',

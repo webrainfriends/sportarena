@@ -124,8 +124,6 @@ const EXT_STATUS = z.enum(['requested', 'confirmed']);
 cap({
   name: 'link_external_booking', credential: true, method: 'POST', path: '/appointments/external', tag: TAG, status: 201,
   summary: 'Record a booking made on the provider\'s own site as a GotMyGame appointment. The athlete calls it with provider_id after booking; the provider calls it with athlete_id to register one for a patient. Only the external reference, address and times are stored. The same reference is always the same appointment (calling again updates it, never duplicates it). No reason or clinical text is taken here.',
-  name: 'link_external_booking', method: 'POST', path: '/appointments/external', tag: TAG, status: 201,
-  summary: 'Record a booking made on the provider\'s own site as a GotMyGame appointment. The athlete calls it with provider_id after booking; the provider calls it with athlete_id to register one for a patient. Only the external reference, address and times are stored. The same reference is always the same appointment (calling again updates it, never duplicates it). No reason or clinical text is taken here.',
   input: z.object({ provider_id: id.optional(), athlete_id: id.optional(), external_reference: z.string().min(2).max(120), starts_at: z.string().datetime({ offset: true }), duration_min: z.number().int().min(10).max(240).default(30), mode: z.enum(['in_person', 'remote']).default('in_person'), status: EXT_STATUS.default('requested'), external_url: z.string().max(500).optional() }),
   async handler({ user }, i) {
     const asProvider = !!i.athlete_id && !i.provider_id;

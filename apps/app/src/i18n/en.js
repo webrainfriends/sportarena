@@ -15637,6 +15637,7 @@ export default {
   'pu.empty_sub': 'Try a different search or filter.',
   'pu.prev': '← Previous',
   'pu.next': 'Next →',
+  'pu.showing': 'Showing {{from}}–{{to}} of {{total}}',
   // ── Academy Staff Usage (academy owner/admin) ─────────────────────────────
   'asu.title': 'Staff usage',
   'asu.sub': 'Storage · AI & API usage for your academy team',

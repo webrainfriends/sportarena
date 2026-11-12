@@ -15574,7 +15574,8 @@ export default {
   'pu.empty_title': 'ಬಳಕೆದಾರರು ಕಂಡುಬಂದಿಲ್ಲ',
   'pu.empty_sub': 'ಬೇರೆ ಹುಡುಕಾಟ ಅಥವಾ ಫಿಲ್ಟರ್ ಪ್ರಯತ್ನಿಸಿ.',
   'pu.prev': '← ಹಿಂದಿನದು',
-  'pu.next': 'ಮುಂದಿನದು →',
+  'pu.next': 'Next →',
+  'pu.showing': 'Showing {{from}}–{{to}} of {{total}}',
   // ── Academy Staff Usage ───────────────────────────────────────────────────
   'asu.title': 'ಸಿಬ್ಬಂದಿ ಬಳಕೆ',
   'asu.sub': 'ನಿಮ್ಮ ಅಕಾಡೆಮಿ ತಂಡಕ್ಕಾಗಿ ಸಂಗ್ರಹಣೆ · AI & API ಬಳಕೆ',

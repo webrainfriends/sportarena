@@ -15574,7 +15574,8 @@ export default {
   'pu.empty_title': 'वापरकर्ते सापडले नाहीत',
   'pu.empty_sub': 'वेगळी शोध किंवा फिल्टर वापरून पहा.',
   'pu.prev': '← मागील',
-  'pu.next': 'पुढील →',
+  'pu.next': 'Next →',
+  'pu.showing': 'Showing {{from}}–{{to}} of {{total}}',
   // ── Academy Staff Usage ───────────────────────────────────────────────────
   'asu.title': 'कर्मचारी वापर',
   'asu.sub': 'तुमच्या अकादमी टीमसाठी स्टोरेज · AI & API वापर',

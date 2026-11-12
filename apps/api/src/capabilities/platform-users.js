@@ -86,6 +86,13 @@ cap({
     const limitP = `$${params.length - 1}`;
     const offsetP = `$${params.length}`;
 
+    // Count params for the filtered total (same WHERE, without LIMIT/OFFSET)
+    const countParams = params.slice(0, params.length - 2);
+    const filteredTotal = await one(
+      `SELECT COUNT(*)::int AS total FROM users u WHERE ${where}`,
+      countParams,
+    );
+
     const rows = await many(
       `WITH storage AS (${STORAGE_CTE}),
             ai AS (SELECT user_id, SUM(tokens_in + tokens_out)::bigint AS ai_tokens FROM ai_token_usage WHERE at >= CURRENT_DATE - 30 GROUP BY user_id),
@@ -135,6 +142,7 @@ cap({
         total_api_calls_30d: Number(usageTotals.total_api_calls_30d),
         offset: offsetVal,
         limit: i.limit,
+        total: filteredTotal.total,
       },
     };
   },

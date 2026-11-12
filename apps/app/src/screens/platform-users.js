@@ -227,20 +227,35 @@ export function PlatformUsers() {
             {data.users.length === 0 && <Empty emoji="👥" title={t('pu.empty_title')} sub={t('pu.empty_sub')} />}
 
             {/* Pagination */}
-            {(offset > 0 || data.users.length === LIMIT) && (
-              <Row style={{ justifyContent: 'center', gap: 16, marginTop: 8 }}>
-                {offset > 0 && (
-                  <TouchableOpacity onPress={() => setOffset(Math.max(0, offset - LIMIT))}>
-                    <T style={{ color: c.pink, fontWeight: '700' }}>{t('pu.prev')}</T>
-                  </TouchableOpacity>
-                )}
-                {data.users.length === LIMIT && (
-                  <TouchableOpacity onPress={() => setOffset(offset + LIMIT)}>
-                    <T style={{ color: c.pink, fontWeight: '700' }}>{t('pu.next')}</T>
-                  </TouchableOpacity>
-                )}
-              </Row>
-            )}
+            {(() => {
+              const total = data.meta?.total ?? (offset + data.users.length);
+              const from = total === 0 ? 0 : offset + 1;
+              const to = offset + data.users.length;
+              const hasNext = to < total;
+              const hasPrev = offset > 0;
+              if (!hasPrev && !hasNext) return null;
+              return (
+                <View style={{ marginTop: 8 }}>
+                  {total > 0 && (
+                    <T style={{ textAlign: 'center', fontSize: 12, color: c.mute, marginBottom: 6 }}>
+                      {t('pu.showing', { from, to, total })}
+                    </T>
+                  )}
+                  <Row style={{ justifyContent: 'center', gap: 16 }}>
+                    {hasPrev && (
+                      <TouchableOpacity onPress={() => setOffset(Math.max(0, offset - LIMIT))}>
+                        <T style={{ color: c.pink, fontWeight: '700' }}>{t('pu.prev')}</T>
+                      </TouchableOpacity>
+                    )}
+                    {hasNext && (
+                      <TouchableOpacity onPress={() => setOffset(offset + LIMIT)}>
+                        <T style={{ color: c.pink, fontWeight: '700' }}>{t('pu.next')}</T>
+                      </TouchableOpacity>
+                    )}
+                  </Row>
+                </View>
+              );
+            })()}
           </>
         )}
       </ScrollView>

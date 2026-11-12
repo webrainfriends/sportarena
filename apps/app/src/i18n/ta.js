@@ -15573,7 +15573,8 @@ export default {
   'pu.empty_title': 'பயனர்கள் எவரும் இல்லை',
   'pu.empty_sub': 'வேறு தேடல் அல்லது வடிகட்டி முயற்சிக்கவும்.',
   'pu.prev': '← முந்தையது',
-  'pu.next': 'அடுத்தது →',
+  'pu.next': 'Next →',
+  'pu.showing': 'Showing {{from}}–{{to}} of {{total}}',
   // ── Academy Staff Usage ───────────────────────────────────────────────────
   'asu.title': 'ஊழியர் பயன்பாடு',
   'asu.sub': 'உங்கள் அகாடமி குழுவிற்கான சேமிப்பு · AI & API பயன்பாடு',

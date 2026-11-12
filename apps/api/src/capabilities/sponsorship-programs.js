@@ -396,19 +396,6 @@ cap({
 });
 
 cap({
-  name: 'list_funding_opportunities', method: 'GET', path: '/funding-opportunities', tag: 'Sponsors',
-  summary: 'Published sponsorship programs that have a round open for applications today, with the sponsor, objective, sports, regions, eligibility, maximum award and open round dates. The program budget and its remaining balance are not shown. Filter by sport slug or text.',
-  input: z.object({ sport: z.string().max(60).optional(), q: z.string().max(80).optional(), ...page }),
-  handler: async ({ user }, i) => many(
-    `SELECT p.id, p.name, p.objective, p.currency, p.sports, p.regions, p.eligibility, p.starts_on, p.ends_on, p.max_award_cents, sp.id AS sponsor_id, sp.name AS sponsor_name, sp.emoji AS sponsor_emoji,
-            (SELECT json_agg(json_build_object('id', r.id, 'seq', r.seq, 'name', r.name, 'opens_on', r.opens_on, 'closes_on', r.closes_on, 'terms_version', r.terms_version, 'has_form', r.form_id IS NOT NULL) ORDER BY r.seq)
-               FROM sponsorship_rounds r WHERE r.program_id=p.id AND ${roundState('r')}='open') AS rounds
-       FROM sponsorship_programs p JOIN sponsors sp ON sp.id=p.sponsor_id
-      WHERE p.status='published' AND EXISTS (SELECT 1 FROM sponsorship_rounds r WHERE r.program_id=p.id AND ${roundState('r')}='open')
-        AND ($1::text IS NULL OR cardinality(p.sports)=0 OR $1 = ANY(p.sports))
-        AND ($2::text IS NULL OR p.name ILIKE '%'||$2||'%' OR p.objective ILIKE '%'||$2||'%' OR sp.name ILIKE '%'||$2||'%')
-      ORDER BY p.published_at DESC NULLS LAST, p.id LIMIT $3 OFFSET $4`,
-    [i.sport ?? null, i.q ? i.q.replace(/[%_\\]/g, '\\$&') : null, i.limit, i.offset]),
   name: 'get_funding_opportunity', method: 'GET', path: '/funding-opportunities/:id', tag: 'Sponsors', auth: 'public',
   summary: 'One sponsorship call\'s program page: sponsor and badges, objective, eligibility, maximum award, every round with its state, deadline instant and timezone (so a closed call shows as closed), the FAQs, and (signed in) your invitations and whether you may apply. A public call is readable by anyone; an invitation-only call is readable only by the people invited to it and by the brand\'s staff - for anyone else it does not exist (404), so private calls cannot be discovered by id. The budget and its balance are never shown. An invited person opening it marks the invitation viewed.',
   input: z.object({ id }),

@@ -15575,7 +15575,8 @@ export default {
   'pu.empty_title': 'පරිශීලකයන් හමු නොවීය',
   'pu.empty_sub': 'වෙනත් සෙවුමක් හෝ පෙරහනක් උත්සාහ කරන්න.',
   'pu.prev': '← පෙර',
-  'pu.next': 'ඊළඟ →',
+  'pu.next': 'Next →',
+  'pu.showing': 'Showing {{from}}–{{to}} of {{total}}',
   // ── Academy Staff Usage ───────────────────────────────────────────────────
   'asu.title': 'කාර්ය මණ්ඩල භාවිතය',
   'asu.sub': 'ඔබේ ඇකඩමි කණ්ඩායම සඳහා ගබඩාව · AI & API භාවිතය',
