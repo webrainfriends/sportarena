@@ -12,7 +12,7 @@ import { useSession } from '../session';
 import { useLayout } from '../layout';
 import { Btn, Card, Chip, Empty, Field, GradCard, H1, Loading, Screen, Section, Seg, Sheet, T, Tag } from '../ui';
 import { FormSheet } from '../FormSheet';
-import { MenuField, MultiMenuField } from '../MenuField';
+import { MenuField, MultiMenuField } from '../menu-field';
 import { c, grad } from '../theme';
 import { Metric, money, Banner } from '../federation-ui';
 import { t } from '../i18n';
