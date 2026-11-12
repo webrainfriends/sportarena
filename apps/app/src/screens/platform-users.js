@@ -2,7 +2,7 @@
 // Shows all accounts: login ID (handle + email), roles, storage, AI token usage, API calls, last login.
 // Entry: More → Workspaces → "Platform users" (platform_admin role only).
 import React, { useState } from 'react';
-import { ScrollView, TouchableOpacity, View } from 'react-native';
+import { FlatList, TouchableOpacity, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { api } from '../api';
 import { useLoad } from '../hooks';
@@ -180,11 +180,17 @@ export function PlatformUsers() {
   }
 
   const meta = data?.meta;
+  const total = data?.meta?.total ?? 0;
+  const from = total === 0 ? 0 : offset + 1;
+  const to = offset + (data?.users?.length ?? 0);
+  const hasNext = to < total;
+  const hasPrev = offset > 0;
+  const sortLabel = SORTS.find((s) => s.value === sort)?.label ?? '';
 
-  return (
-    <Screen scroll={false}>
-      {/* Header */}
-      <View style={{ backgroundColor: c.paper, paddingHorizontal: 20, paddingTop: 16, paddingBottom: 12, borderBottomWidth: 1, borderBottomColor: c.line }}>
+  const listHeader = (
+    <>
+      {/* Page header */}
+      <View style={{ backgroundColor: c.paper, paddingHorizontal: 20, paddingTop: 16, paddingBottom: 12, borderBottomWidth: 1, borderBottomColor: c.line, marginHorizontal: -16, marginTop: -8 }}>
         <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 2 }}>
           <T style={{ fontSize: 22, fontWeight: '800', color: c.ink }}>{t('pu.title')}</T>
           {!!meta && (
@@ -195,74 +201,59 @@ export function PlatformUsers() {
         </View>
         <T style={{ fontSize: 13, color: c.mute }}>{t('pu.sub')}</T>
       </View>
-
       {/* Metric strip */}
       {!!meta && (
-        <View style={{ backgroundColor: c.paper, flexDirection: 'row', gap: 8, padding: 12, borderBottomWidth: 1, borderBottomColor: c.line }}>
+        <View style={{ backgroundColor: c.paper, flexDirection: 'row', gap: 8, padding: 12, borderBottomWidth: 1, borderBottomColor: c.line, marginHorizontal: -16 }}>
           <MetricTile label={t('pu.metric.users')} value={(meta.total_users ?? 0).toLocaleString()} delta={meta.new_7d ? t('pu.metric.new_7d', { n: meta.new_7d }) : null} />
           <MetricTile label={t('pu.metric.ai_tokens')} value={fmtTokens(meta.total_ai_tokens_30d)} delta={t('pu.last_30d')} />
           <MetricTile label={t('pu.metric.api_calls')} value={fmtNum(meta.total_api_calls_30d)} delta={t('pu.last_30d')} />
           <MetricTile label={t('pu.metric.active')} value={(meta.active_7d ?? 0).toLocaleString()} delta={t('pu.last_7d')} />
         </View>
       )}
-
       {/* Sort selector */}
-      <View style={{ backgroundColor: c.paper, borderBottomWidth: 1, borderBottomColor: c.line }}>
-        <Seg
-          value={sort}
-          onChange={(v) => { setSort(v); setOffset(0); }}
-          options={SORTS}
-          style={{ paddingHorizontal: 12, paddingVertical: 8 }}
-        />
+      <View style={{ backgroundColor: c.paper, borderBottomWidth: 1, borderBottomColor: c.line, marginHorizontal: -16, marginBottom: 12 }}>
+        <Seg value={sort} onChange={(v) => { setSort(v); setOffset(0); }} options={SORTS} style={{ paddingHorizontal: 12, paddingVertical: 8 }} />
       </View>
+      {loading && !data ? <Loading /> : null}
+      {!!error ? <ErrorBox error={error} onRetry={reload} /> : null}
+      {!!data && <Section label={t('pu.section_label', { sort: sortLabel })} />}
+    </>
+  );
 
-      {/* List */}
-      <ScrollView style={{ flex: 1 }} contentContainerStyle={{ padding: 12 }}>
-        {loading && !data && <Loading />}
-        {!!error && <ErrorBox error={error} onRetry={reload} />}
-        {!!data && (
-          <>
-            <Section label={t('pu.section_label', { sort: SORTS.find((s) => s.value === sort)?.label ?? '' })} />
-            {data.users.map((item) => (
-              <UserCard key={item.id} item={item} wide={isTablet} />
-            ))}
-            {data.users.length === 0 && <Empty emoji="👥" title={t('pu.empty_title')} sub={t('pu.empty_sub')} />}
-          </>
-        )}
-      </ScrollView>
+  // Pagination footer — rendered outside FlatList so it never scrolls away
+  const pagerFooter = (hasPrev || hasNext) ? (
+    <View style={{ backgroundColor: c.paper, borderTopWidth: 1, borderTopColor: c.line, paddingTop: 10, paddingBottom: 10 + ins.bottom, paddingHorizontal: 16 }}>
+      <T style={{ textAlign: 'center', fontSize: 12, color: c.mute, marginBottom: 8 }}>
+        {t('pu.showing', { from, to, total })}
+      </T>
+      <View style={{ flexDirection: 'row', justifyContent: 'center', gap: 24 }}>
+        <TouchableOpacity onPress={() => setOffset(Math.max(0, offset - LIMIT))} disabled={!hasPrev}
+          style={{ paddingVertical: 8, paddingHorizontal: 20, borderRadius: 8, backgroundColor: hasPrev ? c.pinkSoft : c.wash }}>
+          <T style={{ color: hasPrev ? c.pink : c.mute, fontWeight: '700' }}>{t('pu.prev')}</T>
+        </TouchableOpacity>
+        <TouchableOpacity onPress={() => setOffset(offset + LIMIT)} disabled={!hasNext}
+          style={{ paddingVertical: 8, paddingHorizontal: 20, borderRadius: 8, backgroundColor: hasNext ? c.pinkSoft : c.wash }}>
+          <T style={{ color: hasNext ? c.pink : c.mute, fontWeight: '700' }}>{t('pu.next')}</T>
+        </TouchableOpacity>
+      </View>
+    </View>
+  ) : null;
 
-      {/* Sticky pagination footer — always visible */}
-      {!!data && (() => {
-        const total = data.meta?.total ?? (offset + data.users.length);
-        const from = total === 0 ? 0 : offset + 1;
-        const to = offset + data.users.length;
-        const hasNext = to < total;
-        const hasPrev = offset > 0;
-        if (!hasPrev && !hasNext) return null;
-        return (
-          <View style={{ backgroundColor: c.paper, borderTopWidth: 1, borderTopColor: c.line, paddingTop: 10, paddingBottom: 10 + ins.bottom, paddingHorizontal: 16 }}>
-            <T style={{ textAlign: 'center', fontSize: 12, color: c.mute, marginBottom: 8 }}>
-              {t('pu.showing', { from, to, total })}
-            </T>
-            <View style={{ flexDirection: 'row', justifyContent: 'center', gap: 24 }}>
-              <TouchableOpacity
-                onPress={() => setOffset(Math.max(0, offset - LIMIT))}
-                disabled={!hasPrev}
-                style={{ paddingVertical: 8, paddingHorizontal: 20, borderRadius: 8, backgroundColor: hasPrev ? c.pinkSoft : c.wash }}
-              >
-                <T style={{ color: hasPrev ? c.pink : c.mute, fontWeight: '700' }}>{t('pu.prev')}</T>
-              </TouchableOpacity>
-              <TouchableOpacity
-                onPress={() => setOffset(offset + LIMIT)}
-                disabled={!hasNext}
-                style={{ paddingVertical: 8, paddingHorizontal: 20, borderRadius: 8, backgroundColor: hasNext ? c.pinkSoft : c.wash }}
-              >
-                <T style={{ color: hasNext ? c.pink : c.mute, fontWeight: '700' }}>{t('pu.next')}</T>
-              </TouchableOpacity>
-            </View>
-          </View>
-        );
-      })()}
-    </Screen>
+  return (
+    // Explicit flex column — FlatList takes flex:1, footer is a sibling below it
+    <View style={{ flex: 1, backgroundColor: c.bg }}>
+      <FlatList
+        data={data?.users ?? []}
+        keyExtractor={(item) => item.id}
+        renderItem={({ item }) => <UserCard item={item} wide={isTablet} />}
+        ListHeaderComponent={listHeader}
+        ListEmptyComponent={data && !loading ? <Empty emoji="👥" title={t('pu.empty_title')} sub={t('pu.empty_sub')} /> : null}
+        ItemSeparatorComponent={() => <View style={{ height: 10 }} />}
+        contentContainerStyle={{ padding: 16 }}
+        showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"
+      />
+      {pagerFooter}
+    </View>
   );
 }
