@@ -17740,9 +17740,6 @@ export default {
   'orgOff.comms.empty_sub': 'Send a message to all officials on this panel.',
   'nav.title.OrgOfficialsCommand': 'ଅଧିକାରୀ',
 
-};
-
-
   // Session media & resource library
   'sm.title': 'Session Resources', // reviewed: false
   'sm.section': 'Resources', // reviewed: false

@@ -17740,9 +17740,6 @@ export default {
   'orgOff.comms.empty_sub': 'ఈ జాబితాలోని అన్ని నిర్ణాయకులకు సందేశం పంపండి.',
   'nav.title.OrgOfficialsCommand': 'నిర్ణాయకులు',
 
-};
-
-
   // Session media & resource library
   'sm.title': 'Session Resources', // reviewed: false
   'sm.section': 'Resources', // reviewed: false
