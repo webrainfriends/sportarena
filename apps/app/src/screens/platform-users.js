@@ -3,6 +3,7 @@
 // Entry: More → Workspaces → "Platform users" (platform_admin role only).
 import React, { useState } from 'react';
 import { ScrollView, TouchableOpacity, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { api } from '../api';
 import { useLoad } from '../hooks';
 import { useSession } from '../session';
@@ -158,6 +159,7 @@ function UserCard({ item, wide }) {
 export function PlatformUsers() {
   const { user } = useSession();
   const { isTablet } = useLayout();
+  const ins = useSafeAreaInsets();
   const [sort, setSort] = useState('last_login');
   const [order] = useState('desc');
   const [search, setSearch] = useState('');
@@ -180,7 +182,7 @@ export function PlatformUsers() {
   const meta = data?.meta;
 
   return (
-    <Screen>
+    <Screen scroll={false}>
       {/* Header */}
       <View style={{ backgroundColor: c.paper, paddingHorizontal: 20, paddingTop: 16, paddingBottom: 12, borderBottomWidth: 1, borderBottomColor: c.line }}>
         <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 2 }}>
@@ -238,7 +240,7 @@ export function PlatformUsers() {
         const hasPrev = offset > 0;
         if (!hasPrev && !hasNext) return null;
         return (
-          <View style={{ backgroundColor: c.paper, borderTopWidth: 1, borderTopColor: c.line, paddingVertical: 10, paddingHorizontal: 16 }}>
+          <View style={{ backgroundColor: c.paper, borderTopWidth: 1, borderTopColor: c.line, paddingTop: 10, paddingBottom: 10 + ins.bottom, paddingHorizontal: 16 }}>
             <T style={{ textAlign: 'center', fontSize: 12, color: c.mute, marginBottom: 8 }}>
               {t('pu.showing', { from, to, total })}
             </T>
