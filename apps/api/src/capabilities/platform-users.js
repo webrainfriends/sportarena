@@ -119,7 +119,7 @@ cap({
 
     // Platform-wide totals (lightweight aggregate, computed once per page load)
     const totals = await one(
-      `SELECT COUNT(*)::int AS total_users,
+      `SELECT COUNT(DISTINCT u.id)::int AS total_users,
               COUNT(DISTINCT CASE WHEN s.created_at >= now() - interval '7 days' THEN s.user_id END)::int AS active_7d,
               COUNT(DISTINCT CASE WHEN u.created_at >= now() - interval '7 days' THEN u.id END)::int AS new_7d
          FROM users u LEFT JOIN auth_sessions s ON s.user_id = u.id`,
