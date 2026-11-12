@@ -333,6 +333,7 @@ import './officials-mentoring.js';
 import './officials-education.js';
 import './officials-payout-account.js';
 import './officials-crew.js';
+import './crew-comms.js';
 import './officials-bulk.js';
 import './officials-video-review.js';
 import './media-rights-licensing.js';
