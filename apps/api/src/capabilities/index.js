@@ -385,6 +385,8 @@ import './official-profile-compliance.js';
 import './official-rate-card.js';
 import './official-rate-agreements.js';
 import './official-tax.js';
+import './official-intl.js';
+import './official-grade-schemes.js';
 import './official-invoices.js';
 import './official-expenses.js';
 import './officials-open-slots.js';

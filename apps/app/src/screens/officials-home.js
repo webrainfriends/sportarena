@@ -132,6 +132,7 @@ function Today({ h, reload, go, tz }) {
       ['🧾', t('off.qa.invoices'), null, () => go('OfficialInvoices', { role: 'official' })],
       ['🏦', t('off.qa.payout'), null, () => go('OfficialPayoutAccount', { officialId: h.user_id ?? h.official?.user_id })],
       ['📊', t('off.qa.tax'), null, () => go('OfficialTax')],
+      ['🌐', t('ointl.title'), null, () => go('OfficialIntlSettings')],
     ]],
   ];
   const matches = (
