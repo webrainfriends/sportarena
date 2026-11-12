@@ -12,8 +12,26 @@ import { c } from '../theme';
 import { t } from '../i18n';
 import { downloadPack, listSaved, listSavedSessions } from '../scorer/pack';
 import { waitingCount } from '../scorer/queue';
+import { refereeQueue } from '../referee-queue';
 
 const clock = (iso) => (iso ? new Date(iso).toLocaleString([], { weekday: 'short', hour: '2-digit', minute: '2-digit' }) : '');
+
+function OfflineSyncBar({ fixtureId }) {
+  const [st, setSt] = useState(null);
+  useEffect(() => {
+    if (!fixtureId) return;
+    refereeQueue.getStatus(fixtureId).then(setSt);
+    return refereeQueue.subscribe(() => refereeQueue.getStatus(fixtureId).then(setSt));
+  }, [fixtureId]);
+  if (!st) return null;
+  return (
+    <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginBottom: 6 }}>
+      <Tag label={st.online ? t('rof.online') : t('rof.offline')} color={st.online ? c.mintSoft : c.sunSoft} />
+      {st.queued > 0 ? <Tag label={`${st.queued} ${t('rof.queued_ops')}`} color={c.pinkSoft} /> : null}
+      {st.conflicts > 0 ? <Tag label={`${st.conflicts} ${t('rof.conflicts_section')}`} color={c.sunSoft} /> : null}
+    </View>
+  );
+}
 
 export function MatchDayPack() {
   const { user, toast } = useSession();
@@ -56,6 +74,7 @@ export function MatchDayPack() {
             return (
               <Card key={d.id} pad={12} onPress={() => go('MatchCentre', { id: f.id })} accessibilityLabel={`${f.home?.name ?? 'TBD'} versus ${f.away?.name ?? 'TBD'}, saved ${clock(d.saved_at)}${d.waiting ? `, ${d.waiting} taps waiting to be sent` : ''}`}>
                 <View style={{ gap: 6 }}>
+                  <OfflineSyncBar fixtureId={f.id} />
                   <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
                     <Tag label="✓ Saved offline" color={c.mintSoft} />
                     {d.waiting ? <Tag label={`${d.waiting} waiting to send`} color={c.sunSoft} /> : null}
@@ -64,6 +83,7 @@ export function MatchDayPack() {
                   <T weight="800" size={16}>{f.home?.name ?? 'TBD'} v {f.away?.name ?? 'TBD'}</T>
                   <T size={12.5} color={c.mute}>{f.event_name}{f.round ? ` · ${f.round}` : ''} · {clock(f.scheduled_at)}</T>
                   <T size={12} color={c.mute}>Saved {clock(d.saved_at)} · {d.game.ruleset.label ?? d.game.ruleset.kind}</T>
+                  <Btn title={t('rof.view_sync')} onPress={() => go('RefereeOfflineSync', { fixtureId: f.id })} style={{ minHeight: 40, marginTop: 2 }} accessibilityLabel={t('rof.view_sync')} />
                 </View>
               </Card>
             );
