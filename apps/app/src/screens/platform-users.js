@@ -226,8 +226,11 @@ export function PlatformUsers() {
   // appears at the bottom of the scroll content (standard web pagination UX).
   // On native, render it as a flex sibling OUTSIDE FlatList so it is always visible
   // without scrolling (the FlatList is flex:1 and the bar sits below it).
+  // WEB_TAB_BAR: the bottom tab bar on web is ~65px tall and sits over the scroll content.
+  // Add enough paddingBottom to push content above it.
+  const WEB_TAB_BAR = 80;
   const pagerBar = (hasPrev || hasNext) ? (
-    <View style={{ backgroundColor: c.paper, borderTopWidth: 1, borderTopColor: c.line, paddingTop: 10, paddingBottom: Platform.OS === 'web' ? 24 : 10 + ins.bottom, paddingHorizontal: 16 }}>
+    <View style={{ backgroundColor: c.paper, borderTopWidth: 1, borderTopColor: c.line, paddingTop: 10, paddingBottom: Platform.OS === 'web' ? WEB_TAB_BAR : 10 + ins.bottom, paddingHorizontal: 16 }}>
       <T style={{ textAlign: 'center', fontSize: 12, color: c.mute, marginBottom: 8 }}>
         {t('pu.showing', { from, to, total })}
       </T>
@@ -254,7 +257,7 @@ export function PlatformUsers() {
         ListFooterComponent={Platform.OS === 'web' ? pagerBar : null}
         ListEmptyComponent={data && !loading ? <Empty emoji="👥" title={t('pu.empty_title')} sub={t('pu.empty_sub')} /> : null}
         ItemSeparatorComponent={() => <View style={{ height: 10 }} />}
-        contentContainerStyle={{ padding: 16 }}
+        contentContainerStyle={{ padding: 16, paddingBottom: Platform.OS === 'web' ? WEB_TAB_BAR : 16 }}
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
       />
