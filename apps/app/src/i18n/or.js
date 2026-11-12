@@ -18824,4 +18824,31 @@ export default {
   'ca.profile': 'Profile', // reviewed: false
   'ca.load_more': 'Load next {{n}} athletes', // reviewed: false
   'ca.loading_more': 'Loading…', // reviewed: false
+  // R21: Officials arrival & venue logistics (Issue #1013) — machine-translated (reviewed: false)
+  'arrival.phase_title': 'ଆଗମନ',
+  'arrival.report_in': '{time} ରେ ରିପୋର୍ଟ କରନ୍ତୁ',
+  'arrival.check_in': 'ଚେକ ଇନ',
+  'arrival.checked_in': 'ଚେକ ଇନ ହୋଇଛି',
+  'arrival.overdue': 'ଚେକ-ଇନ ବିଳମ୍ବ',
+  'arrival.qr': 'QR ସ୍କାନ କରନ୍ତୁ',
+  'arrival.geofence': 'ଅଟୋ ଚେକ-ଇନ',
+  'arrival.manual': 'କୋଡ ପ୍ରବେଶ କରନ୍ତୁ',
+  'arrival.code_placeholder': '8-ଅକ୍ଷର କୋଡ ପ୍ରବେଶ କରନ୍ତୁ',
+  'arrival.late_title': 'ବିଳମ୍ବ ଆଗମନ ରିପୋର୍ଟ',
+  'arrival.late_reason': 'ବିଳମ୍ବ କାରଣ',
+  'arrival.late_eta': 'ETA (ଏବେ ଠାରୁ ମିନିଟ)',
+  'arrival.parking': 'ପାର୍କିଂ',
+  'arrival.gate': 'ଗେଟ ପ୍ରବେଶ',
+  'arrival.official_room': 'ଅଧିକାରୀ ଘର',
+  'arrival.directions': 'ଦିଗ ପ୍ରାପ୍ତ କରନ୍ତୁ',
+  'arrival.weather': 'ସ୍ଥାନରେ ପାଣିପାଗ',
+  'arrival.equipment': 'ଉପକରଣ ଚେକଲିଷ୍ଟ',
+  'arrival.emergency': 'ଜରୁରୀ ଯୋଗାଯୋଗ',
+  'arrival.consent_geofence': 'ଅବସ୍ଥାନ ଦ୍ୱାରା ଅଟୋ ଚେକ-ଇନ ଅନୁମତି',
+  'arrival.consent_detail': 'କୌଣସି ସଠିକ ଅବସ୍ଥାନ ସଂଗ୍ରହ ହୁଏ ନାହିଁ।',
+  'arrival.status_checked': 'ପହଞ୍ଚିଛନ୍ତି',
+  'arrival.status_pending': 'ପହଞ୍ଚି ନାହାଁନ୍ତି',
+  'arrival.status_late': 'ବିଳମ୍ବ',
+  'arrival.dispatch_done': 'କ୍ରୁଙ୍କୁ ଲଜିଷ୍ଟିକ୍ସ ପଠାଯାଇଛି',
+  'arrival.logistics_missing': 'ଏହି ଫିକ୍ସଚର ପାଇଁ ଏ ପର୍ଯ୍ୟନ୍ତ ଲଜିଷ୍ଟିକ୍ସ ପଠାଯାଇ ନାହିଁ।',
 };

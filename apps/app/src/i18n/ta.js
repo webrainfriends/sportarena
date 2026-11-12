@@ -18822,4 +18822,31 @@ export default {
   'ca.profile': 'Profile', // reviewed: false
   'ca.load_more': 'Load next {{n}} athletes', // reviewed: false
   'ca.loading_more': 'Loading…', // reviewed: false
+  // R21: Officials arrival & venue logistics (Issue #1013) — machine-translated (reviewed: false)
+  'arrival.phase_title': 'வருகை',
+  'arrival.report_in': '{time}ல் அறிக்கையிடவும்',
+  'arrival.check_in': 'செக் இன்',
+  'arrival.checked_in': 'செக் இன் ஆனது',
+  'arrival.overdue': 'செக்-இன் தாமதமானது',
+  'arrival.qr': 'QR ஸ்கேன் செய்யவும்',
+  'arrival.geofence': 'தானியங்கி செக்-இன்',
+  'arrival.manual': 'குறியீடு உள்ளிடவும்',
+  'arrival.code_placeholder': '8-எழுத்து குறியீட்டை உள்ளிடவும்',
+  'arrival.late_title': 'தாமத வருகையை புகாரளிக்கவும்',
+  'arrival.late_reason': 'தாமதத்திற்கான காரணம்',
+  'arrival.late_eta': 'ETA (இப்போதிலிருந்து நிமிடங்கள்)',
+  'arrival.parking': 'நிறுத்தம்',
+  'arrival.gate': 'கதவு அணுகல்',
+  'arrival.official_room': 'அதிகாரிகள் அறை',
+  'arrival.directions': 'திசைகளைப் பெறுங்கள்',
+  'arrival.weather': 'இடத்தில் வானிலை',
+  'arrival.equipment': 'உபகரண சரிபார்ப்பு பட்டியல்',
+  'arrival.emergency': 'அவசர தொடர்புகள்',
+  'arrival.consent_geofence': 'இடத்தால் தானியங்கி செக்-இனை அனுமதிக்கவும்',
+  'arrival.consent_detail': 'துல்லியமான இடம் சேமிக்கப்படவில்லை.',
+  'arrival.status_checked': 'வந்துவிட்டார்',
+  'arrival.status_pending': 'வரவில்லை',
+  'arrival.status_late': 'தாமதம்',
+  'arrival.dispatch_done': 'குழுவிற்கு லாஜிஸ்டிக்ஸ் அனுப்பப்பட்டது',
+  'arrival.logistics_missing': 'இந்த போட்டிக்கு இன்னும் லாஜிஸ்டிக்ஸ் அனுப்பப்படவில்லை.',
 };

@@ -18824,4 +18824,31 @@ export default {
   'ca.profile': 'Profile', // reviewed: false
   'ca.load_more': 'Load next {{n}} athletes', // reviewed: false
   'ca.loading_more': 'Loading…', // reviewed: false
+  // R21: Officials arrival & venue logistics (Issue #1013) — machine-translated (reviewed: false)
+  'arrival.phase_title': 'آمد',
+  'arrival.report_in': '{time} میں رپورٹ کریں',
+  'arrival.check_in': 'چیک ان',
+  'arrival.checked_in': 'چیک ان ہو گئے',
+  'arrival.overdue': 'چیک-ان تاخیر سے',
+  'arrival.qr': 'QR اسکین کریں',
+  'arrival.geofence': 'خودکار چیک-ان',
+  'arrival.manual': 'کوڈ درج کریں',
+  'arrival.code_placeholder': '8 حروف کا کوڈ درج کریں',
+  'arrival.late_title': 'تاخیر سے آمد کی رپورٹ کریں',
+  'arrival.late_reason': 'تاخیر کی وجہ',
+  'arrival.late_eta': 'ETA (ابھی سے منٹ)',
+  'arrival.parking': 'پارکنگ',
+  'arrival.gate': 'گیٹ رسائی',
+  'arrival.official_room': 'عہدیداروں کا کمرہ',
+  'arrival.directions': 'راستہ حاصل کریں',
+  'arrival.weather': 'مقام پر موسم',
+  'arrival.equipment': 'سازوسامان چیک لسٹ',
+  'arrival.emergency': 'ہنگامی رابطے',
+  'arrival.consent_geofence': 'مقام کے ذریعے خودکار چیک-ان کی اجازت دیں',
+  'arrival.consent_detail': 'کوئی صحیح مقام محفوظ نہیں کیا جاتا۔',
+  'arrival.status_checked': 'آ گئے',
+  'arrival.status_pending': 'نہیں آئے',
+  'arrival.status_late': 'دیر سے',
+  'arrival.dispatch_done': 'ٹیم کو لاجسٹکس بھیجا گیا',
+  'arrival.logistics_missing': 'اس فکسچر کے لیے ابھی تک لاجسٹکس نہیں بھیجا گیا۔',
 };

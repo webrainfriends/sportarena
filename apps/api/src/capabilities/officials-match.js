@@ -17,6 +17,8 @@ import { rulesetForEvent } from '../scoring/state.js';
 import { bookFor } from '../rulebook/catalog.js';
 import { resolveBook, standardHash } from '../rulebook/apply.js';
 import { setView, currentSettings } from './rulebook.js';
+import { mapLinks } from './venues.js';
+import { randomBytes } from 'node:crypto';
 
 const TAG = 'Officials';
 const CATEGORIES = ['match_report', 'misconduct', 'send_off', 'abandonment', 'venue_incident', 'equipment_field', 'protest_noted', 'other'];
@@ -540,5 +542,346 @@ cap({
       isScorer: ctx.isScorer,
       isObserver: ctx.isObserver,
     };
+  },
+});
+
+// ─── R21: Arrival logistics & venue check-in ────────────────────────────────
+
+cap({
+  name: 'dispatch_fixture_logistics', method: 'POST', path: '/fixtures/:id/logistics', tag: TAG,
+  summary: 'Organiser dispatches the venue logistics packet (parking, gate, official room, equipment checklist, emergency contacts) to all accepted officials. Generates per-official check-in codes.',
+  input: z.object({
+    id,
+    parking_notes: z.string().max(1000).optional(),
+    gate_instructions: z.string().max(1000).optional(),
+    official_room: z.string().max(500).optional(),
+    reporting_location_notes: z.string().max(1000).optional(),
+    check_in_deadline_min: z.number().int().min(0).max(120).default(20),
+    emergency_contacts: z.array(z.object({
+      label: z.string().max(100),
+      phone: z.string().max(30),
+      role: z.string().max(80),
+    })).max(10).default([]),
+    equipment_checklist: z.array(z.object({
+      id: z.string().max(60),
+      label: z.string().max(200),
+      required: z.boolean().default(false),
+    })).max(50).default([]),
+  }),
+  async handler({ user }, i) {
+    const x = await standing(user, i.id);
+    if (!x.may) throw notFound();
+
+    const encContacts = i.emergency_contacts.map(c => ({
+      label: c.label,
+      role: c.role,
+      phone_enc: encrypt(c.phone),
+    }));
+
+    await tx(async (c) => {
+      await c.query(
+        `INSERT INTO fixture_logistics
+           (fixture_id, parking_notes, gate_instructions, official_room,
+            reporting_location_notes, emergency_contacts, equipment_checklist,
+            check_in_deadline_min, dispatched_at, created_by, updated_at)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,now(),$9,now())
+         ON CONFLICT (fixture_id) DO UPDATE SET
+           parking_notes=EXCLUDED.parking_notes,
+           gate_instructions=EXCLUDED.gate_instructions,
+           official_room=EXCLUDED.official_room,
+           reporting_location_notes=EXCLUDED.reporting_location_notes,
+           emergency_contacts=EXCLUDED.emergency_contacts,
+           equipment_checklist=EXCLUDED.equipment_checklist,
+           check_in_deadline_min=EXCLUDED.check_in_deadline_min,
+           dispatched_at=now(),
+           updated_at=now()`,
+        [i.id, i.parking_notes??null, i.gate_instructions??null, i.official_room??null,
+         i.reporting_location_notes??null, JSON.stringify(encContacts),
+         JSON.stringify(i.equipment_checklist), i.check_in_deadline_min, user.id],
+      );
+
+      // Assign check-in codes to any accepted officials that don't have one yet
+      const officials = await c.query(
+        `SELECT fo.id, fo.user_id, fo.check_in_code, u.display_name
+         FROM fixture_officials fo JOIN users u ON u.id=fo.user_id
+         WHERE fo.fixture_id=$1 AND fo.status='accepted'`,
+        [i.id],
+      );
+      for (const off of officials.rows) {
+        if (!off.check_in_code) {
+          const code = randomBytes(4).toString('hex').toUpperCase();
+          await c.query(`UPDATE fixture_officials SET check_in_code=$1 WHERE id=$2`, [code, off.id]);
+        }
+        // Notify each official
+        notify(c, off.user_id, {
+          kind: 'logistics_dispatched',
+          title: 'Venue logistics ready',
+          body: `Venue details and check-in code have been sent for your upcoming fixture.`,
+          data: { fixture_id: i.id },
+        });
+      }
+    });
+
+    audit(null, user.id, 'dispatch_fixture_logistics', 'fixture', i.id);
+    return { ok: true, fixture_id: i.id };
+  },
+});
+
+cap({
+  name: 'get_arrival_logistics', method: 'GET', path: '/fixtures/:id/logistics', tag: TAG,
+  summary: 'Official or organiser retrieves the venue logistics packet including map links, check-in code, weather, reporting instructions and equipment checklist.',
+  input: z.object({ id }),
+  async handler({ user }, i) {
+    const x = await standing(user, i.id);
+
+    const [logistics, fixture, fo] = await Promise.all([
+      one(`SELECT fl.*, v.id AS venue_id, v.name AS venue_name, v.address, v.city, v.lat, v.lng
+           FROM fixture_logistics fl
+           LEFT JOIN fixtures f ON f.id=fl.fixture_id
+           LEFT JOIN venues v ON v.id=f.venue_id
+           WHERE fl.fixture_id=$1`, [i.id]),
+      one(`SELECT f.scheduled_at, f.reporting_min, f.venue_id, f.status
+           FROM fixtures f WHERE f.id=$1`, [i.id]),
+      one(`SELECT fo.check_in_code, fo.reporting_min, fo.logistics_viewed_at
+           FROM fixture_officials fo
+           WHERE fo.fixture_id=$1 AND fo.user_id=$2 AND fo.status='accepted' LIMIT 1`,
+          [i.id, user.id]),
+    ]);
+
+    if (!logistics) return { dispatched: false, fixture_id: i.id };
+
+    // Mark logistics as viewed by this official
+    if (fo && !fo.logistics_viewed_at) {
+      pool.query(`UPDATE fixture_officials SET logistics_viewed_at=now()
+                  WHERE fixture_id=$1 AND user_id=$2`, [i.id, user.id]);
+    }
+
+    // Decrypt phones only for the requesting user (not bulk-exposed)
+    const contacts = (logistics.emergency_contacts || []).map(c => ({
+      label: c.label,
+      role: c.role,
+      phone: decrypt(c.phone_enc),
+    }));
+
+    const checkIn = await one(
+      `SELECT checked_in_at, method, is_late FROM fixture_official_check_ins
+       WHERE fixture_id=$1 AND official_id=$2`, [i.id, user.id],
+    );
+
+    audit(null, user.id, 'view_arrival_logistics', 'fixture', i.id);
+
+    const venue = logistics.venue_id ? { id: logistics.venue_id, name: logistics.venue_name, address: logistics.address, city: logistics.city, lat: logistics.lat, lng: logistics.lng } : null;
+    return {
+      fixture_id: i.id,
+      dispatched: true,
+      dispatched_at: logistics.dispatched_at,
+      parking_notes: logistics.parking_notes,
+      gate_instructions: logistics.gate_instructions,
+      official_room: logistics.official_room,
+      reporting_location_notes: logistics.reporting_location_notes,
+      check_in_deadline_min: logistics.check_in_deadline_min,
+      equipment_checklist: logistics.equipment_checklist || [],
+      emergency_contacts: x.may ? contacts : [],   // organiser sees contacts; crew sees empty (use own code)
+      map_links: venue ? mapLinks(venue) : null,
+      weather: logistics.weather_fetched_at && (Date.now() - new Date(logistics.weather_fetched_at).getTime() < 3600_000)
+        ? logistics.weather_cache : null,
+      // Official-specific fields
+      check_in_code: fo?.check_in_code ?? null,
+      reporting_min: fo?.reporting_min ?? fixture?.reporting_min ?? 30,
+      scheduled_at: fixture?.scheduled_at,
+      check_in: checkIn ?? null,
+    };
+  },
+});
+
+cap({
+  name: 'check_in_official', method: 'POST', path: '/fixtures/:id/check-in', tag: TAG,
+  summary: 'Official checks in at the venue via QR scan, geofence auto-detect, or manual code. Idempotent — calling again returns the existing record. Late arrivals trigger organiser alerts.',
+  input: z.object({
+    id,
+    method: z.enum(['qr', 'geofence', 'manual_code', 'organiser_manual']),
+    check_in_code: z.string().max(20).optional(),
+    official_id: z.string().uuid().optional(),   // organiser_manual only
+    location_consent: z.boolean().default(false),
+    late_reason: z.string().max(500).optional(),
+    estimated_arrival_min: z.number().int().min(1).max(240).optional(),
+  }),
+  async handler({ user }, i) {
+    const x = await standing(user, i.id);
+
+    // Determine which official is being checked in
+    const targetOfficialId = (i.method === 'organiser_manual' && x.may && i.official_id)
+      ? i.official_id
+      : user.id;
+
+    // Load official's fixture assignment
+    const fo = await one(
+      `SELECT fo.check_in_code, fo.reporting_min, f.scheduled_at,
+              fl.check_in_deadline_min
+       FROM fixture_officials fo
+       JOIN fixtures f ON f.id=fo.fixture_id
+       LEFT JOIN fixture_logistics fl ON fl.fixture_id=fo.fixture_id
+       WHERE fo.fixture_id=$1 AND fo.user_id=$2 AND fo.status='accepted'`,
+      [i.id, targetOfficialId],
+    );
+    if (!fo) throw badRequest('No accepted assignment found for this official on this fixture.');
+
+    // Code verification
+    if (i.method === 'qr' || i.method === 'manual_code') {
+      if (!i.check_in_code) throw badRequest('check_in_code is required for qr and manual_code methods.');
+      if (fo.check_in_code !== i.check_in_code.toUpperCase()) throw badRequest('Check-in code does not match.');
+    }
+
+    // Geofence requires explicit consent in both request and stored preference
+    if (i.method === 'geofence') {
+      if (!i.location_consent) throw badRequest('location_consent must be true for geofence check-in.');
+      const consent = await one(`SELECT geofence_check_in FROM official_location_consent WHERE official_id=$1`, [targetOfficialId]);
+      if (!consent?.geofence_check_in) throw badRequest('Geofence check-in is not enabled for this official. Update location consent first.');
+    }
+
+    // Idempotency: check if already checked in
+    const existing = await one(
+      `SELECT id, checked_in_at, method, is_late FROM fixture_official_check_ins
+       WHERE fixture_id=$1 AND official_id=$2`, [i.id, targetOfficialId],
+    );
+    if (existing) return { already_checked_in: true, ...existing };
+
+    const now = new Date();
+    const deadline = fo.scheduled_at
+      ? new Date(fo.scheduled_at.getTime() - (fo.check_in_deadline_min ?? 20) * 60_000)
+      : null;
+    const isLate = deadline ? now > deadline : false;
+
+    const record = await tx(async (c) => {
+      const { rows } = await c.query(
+        `INSERT INTO fixture_official_check_ins
+           (fixture_id, official_id, method, is_late, late_reason, estimated_arrival_min,
+            location_consent, actor_id)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
+         ON CONFLICT (fixture_id, official_id) DO NOTHING
+         RETURNING *`,
+        [i.id, targetOfficialId, i.method, isLate, i.late_reason??null,
+         i.estimated_arrival_min??null, i.location_consent, user.id],
+      );
+
+      if (isLate && rows.length > 0) {
+        // Notify organiser(s)
+        const orgs = await c.query(
+          `SELECT u.id FROM fixture_event_orgs feo JOIN users u ON u.id=feo.user_id WHERE feo.fixture_id=$1`,
+          [i.id],
+        );
+        const official = await c.query(`SELECT display_name FROM users WHERE id=$1`, [targetOfficialId]);
+        for (const org of orgs.rows) {
+          notify(c, org.id, {
+            kind: 'official_late',
+            title: 'Official late check-in',
+            body: `${official.rows[0]?.display_name ?? 'An official'} checked in late${i.estimated_arrival_min ? ` (ETA +${i.estimated_arrival_min}min)` : ''}.`,
+            data: { fixture_id: i.id, official_id: targetOfficialId },
+          });
+        }
+      }
+
+      return rows[0] ?? existing;
+    });
+
+    audit(null, user.id, 'check_in_official', 'fixture', i.id);
+    return record;
+  },
+});
+
+cap({
+  name: 'report_late_check_in', method: 'POST', path: '/fixtures/:id/late-report', tag: TAG,
+  summary: 'Official self-reports a late arrival with reason and ETA before physically checking in. Notifies the organiser immediately.',
+  input: z.object({
+    id,
+    reason: z.string().min(1).max(500),
+    estimated_arrival_min: z.number().int().min(1).max(240),
+  }),
+  async handler({ user }, i) {
+    const x = await standing(user, i.id);
+    if (!x.crew) throw notFound();
+
+    const fo = await one(
+      `SELECT fo.id FROM fixture_officials fo WHERE fo.fixture_id=$1 AND fo.user_id=$2 AND fo.status='accepted'`,
+      [i.id, user.id],
+    );
+    if (!fo) throw badRequest('No accepted assignment found.');
+
+    await tx(async (c) => {
+      await c.query(
+        `INSERT INTO fixture_official_check_ins
+           (fixture_id, official_id, method, is_late, late_reason, estimated_arrival_min, location_consent, actor_id)
+         VALUES ($1,$2,'manual_code',true,$3,$4,false,$2)
+         ON CONFLICT (fixture_id, official_id) DO UPDATE SET
+           is_late=true, late_reason=EXCLUDED.late_reason,
+           estimated_arrival_min=EXCLUDED.estimated_arrival_min,
+           checked_in_at=now()`,
+        [i.id, user.id, i.reason, i.estimated_arrival_min],
+      );
+
+      const orgs = await c.query(
+        `SELECT u.id FROM fixture_event_orgs feo JOIN users u ON u.id=feo.user_id WHERE feo.fixture_id=$1`,
+        [i.id],
+      );
+      const official = await c.query(`SELECT display_name FROM users WHERE id=$1`, [user.id]);
+      for (const org of orgs.rows) {
+        notify(c, org.id, {
+          kind: 'official_late_report',
+          title: 'Official reports late arrival',
+          body: `${official.rows[0]?.display_name ?? 'An official'} reports late, ETA +${i.estimated_arrival_min}min: ${i.reason}`,
+          data: { fixture_id: i.id, official_id: user.id },
+        });
+      }
+    });
+
+    audit(null, user.id, 'report_late_check_in', 'fixture', i.id);
+    return { ok: true };
+  },
+});
+
+cap({
+  name: 'list_arrival_status', method: 'GET', path: '/fixtures/:id/arrival-status', tag: TAG,
+  summary: 'Organiser or assignor sees the real-time check-in status of every accepted official crew member for this fixture.',
+  input: z.object({ id }),
+  async handler({ user }, i) {
+    const x = await standing(user, i.id);
+    if (!x.may) throw notFound();
+
+    const rows = await many(
+      `SELECT fo.user_id AS official_id, u.display_name, u.avatar_url,
+              fo.role, fo.reporting_min,
+              ci.checked_in_at, ci.method, ci.is_late, ci.estimated_arrival_min,
+              fo.logistics_viewed_at,
+              CASE WHEN ci.id IS NOT NULL THEN
+                CASE WHEN ci.is_late THEN 'late' ELSE 'checked_in' END
+              ELSE 'pending' END AS status
+       FROM fixture_officials fo
+       JOIN users u ON u.id=fo.user_id
+       LEFT JOIN fixture_official_check_ins ci
+         ON ci.fixture_id=fo.fixture_id AND ci.official_id=fo.user_id
+       WHERE fo.fixture_id=$1 AND fo.status='accepted'
+       ORDER BY fo.role, u.display_name`,
+      [i.id],
+    );
+
+    return { fixture_id: i.id, crew: rows };
+  },
+});
+
+cap({
+  name: 'update_official_location_consent', method: 'POST', path: '/officials/location-consent', tag: TAG,
+  summary: 'Official updates their personal preference for geofence-based automatic check-in. No precise location is ever stored.',
+  input: z.object({
+    geofence_check_in: z.boolean(),
+  }),
+  async handler({ user }, i) {
+    await pool.query(
+      `INSERT INTO official_location_consent (official_id, geofence_check_in, updated_at)
+       VALUES ($1,$2,now())
+       ON CONFLICT (official_id) DO UPDATE SET geofence_check_in=EXCLUDED.geofence_check_in, updated_at=now()`,
+      [user.id, i.geofence_check_in],
+    );
+    audit(null, user.id, 'update_location_consent', 'user', user.id);
+    return { ok: true, geofence_check_in: i.geofence_check_in };
   },
 });

@@ -2,7 +2,7 @@
 // Three sequential phases from one screen: pre-match checks → live scoring & control → post-match review.
 // All backend calls go through the same offline-safe queue as MatchCentre; this is the officials UX layer, not a second scorer.
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Pressable, ScrollView, View } from 'react-native';
+import { Linking, Pressable, ScrollView, TextInput, View } from 'react-native';
 import { api } from '../api';
 import { useLoad } from '../hooks';
 import { useLiveFixture } from '../live';
@@ -517,6 +517,197 @@ function PostMatchReview({ g, f, canScore, go, id, queue }) {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
+// R21: ARRIVAL SECTION — shown before pre-match checklist when approaching kick-off
+// ═══════════════════════════════════════════════════════════════════════════════
+
+/** Countdown label: returns {label, urgent} */
+function arrivalCountdown(scheduledAt, reportingMin) {
+  if (!scheduledAt) return null;
+  const msLeft = new Date(scheduledAt).getTime() - reportingMin * 60_000 - Date.now();
+  if (msLeft < 0) return { label: t('arrival.overdue'), urgent: true };
+  const totalMin = Math.floor(msLeft / 60_000);
+  const h = Math.floor(totalMin / 60);
+  const m = totalMin % 60;
+  const label = h > 0 ? `${h}h ${m}m` : `${m}m`;
+  return { label: t('arrival.report_in', { time: label }), urgent: totalMin <= 20 };
+}
+
+/** Weather widget (compact) */
+function WeatherWidget({ weather }) {
+  if (!weather) return null;
+  return (
+    <Card pad={12} style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+      <T size={28}>{weather.icon ?? '🌤'}</T>
+      <View style={{ flex: 1 }}>
+        <T size={13} weight="700">{t('arrival.weather')}</T>
+        <T size={12} color={c.mute}>{weather.temp_c != null ? `${weather.temp_c}°C` : ''}{weather.condition ? `  ${weather.condition}` : ''}{weather.wind_kph != null ? `  💨 ${weather.wind_kph}km/h` : ''}</T>
+      </View>
+    </Card>
+  );
+}
+
+/** Equipment checklist (local checkbox state) */
+function EquipmentChecklist({ items }) {
+  const [checked, setChecked] = useState({});
+  if (!items?.length) return null;
+  return (
+    <Section title={t('arrival.equipment')}>
+      <Card pad={14} style={{ gap: 8 }}>
+        {items.map((item) => (
+          <Pressable key={item.id} onPress={() => setChecked(p => ({ ...p, [item.id]: !p[item.id] }))}
+            style={{ flexDirection: 'row', alignItems: 'center', gap: 10, minHeight: 44 }}
+            accessibilityRole="checkbox" accessibilityState={{ checked: !!checked[item.id] }}>
+            <View style={{ width: 22, height: 22, borderRadius: 6, borderWidth: 2, borderColor: checked[item.id] ? c.pink : c.mute, backgroundColor: checked[item.id] ? c.pink : 'transparent', alignItems: 'center', justifyContent: 'center' }}>
+              {checked[item.id] ? <T size={13} color="#fff">✓</T> : null}
+            </View>
+            <T size={13} style={{ flex: 1 }}>{item.label}{item.required ? <T size={11} color={c.sun}> *</T> : null}</T>
+          </Pressable>
+        ))}
+      </Card>
+    </Section>
+  );
+}
+
+/** Emergency contacts (phone revealed on tap via Linking) */
+function EmergencyContacts({ contacts }) {
+  const [revealed, setRevealed] = useState({});
+  if (!contacts?.length) return null;
+  return (
+    <Section title={t('arrival.emergency')}>
+      <Card pad={14} style={{ gap: 10 }}>
+        {contacts.map((ct, idx) => (
+          <View key={idx} style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+            <View style={{ flex: 1 }}>
+              <T size={13} weight="700">{ct.label}</T>
+              <T size={12} color={c.mute}>{ct.role}</T>
+            </View>
+            <Pressable onPress={() => { if (revealed[idx]) Linking.openURL(`tel:${ct.phone}`); else setRevealed(p => ({ ...p, [idx]: true })); }}
+              style={{ backgroundColor: c.pink, paddingHorizontal: 14, paddingVertical: 10, borderRadius: 10, minHeight: 44, justifyContent: 'center' }}
+              accessibilityLabel={`Call ${ct.label}`}>
+              <T size={12} weight="700" color="#fff">{revealed[idx] ? (ct.phone ?? '—') : '📞 Reveal'}</T>
+            </Pressable>
+          </View>
+        ))}
+      </Card>
+    </Section>
+  );
+}
+
+/** Main arrival card shown in leftCol */
+export function ArrivalSection({ fixtureId, logistics, onCheckIn, onLate, showSheet, setShowSheet, arrivalTab, setArrivalTab, lateMode, setLateMode, lateReason, setLateReason, lateEta, setLateEta, codeInput, setCodeInput }) {
+  const L = logistics?.data;
+  if (!L) return null;
+
+  const countdown = arrivalCountdown(L.scheduled_at, L.reporting_min ?? 30);
+  const checkedIn = !!L.check_in;
+  const isUrgent = countdown?.urgent && !checkedIn;
+
+  return (
+    <View style={{ gap: 12 }}>
+      {/* Countdown / check-in status strip */}
+      <Card pad={16} color={checkedIn ? '#1a7a4a' : isUrgent ? c.sun : c.pink} style={{ flexDirection: 'row', alignItems: 'center', gap: 12, borderRadius: 16 }}>
+        <T size={28}>{checkedIn ? '✅' : isUrgent ? '⚠️' : '📍'}</T>
+        <View style={{ flex: 1 }}>
+          <T size={15} weight="800" color="#fff">
+            {checkedIn ? t('arrival.checked_in') : (countdown?.label ?? t('arrival.check_in'))}
+          </T>
+          {checkedIn && L.check_in?.checked_in_at ? (
+            <T size={12} color="rgba(255,255,255,.8)">{new Date(L.check_in.checked_in_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}{L.check_in.is_late ? '  •  ' + t('arrival.status_late') : ''}</T>
+          ) : null}
+          {!checkedIn && L.reporting_min ? (
+            <T size={12} color="rgba(255,255,255,.8)">Report {L.reporting_min} min before kick-off</T>
+          ) : null}
+        </View>
+        {!checkedIn ? (
+          <Btn title={t('arrival.check_in')} onPress={() => setShowSheet(true)} color="#fff" ink={c.pink} style={{ minHeight: 44 }} accessibilityLabel={t('arrival.check_in')} />
+        ) : null}
+      </Card>
+
+      {/* Late arrival banner */}
+      {!checkedIn && isUrgent ? (
+        <Pressable onPress={() => setLateMode(true)} style={{ backgroundColor: '#7a1a1a', borderRadius: 12, padding: 14, flexDirection: 'row', alignItems: 'center', gap: 10, minHeight: 44 }} accessibilityRole="button" accessibilityLabel={t('arrival.late_title')}>
+          <T size={22}>🚨</T>
+          <View style={{ flex: 1 }}>
+            <T size={13} weight="700" color="#fff">{t('arrival.late_title')}</T>
+            <T size={12} color="rgba(255,255,255,.75)">Notify the organiser now.</T>
+          </View>
+        </Pressable>
+      ) : null}
+
+      {/* Venue details */}
+      {L.dispatched ? (
+        <Section title="Venue">
+          <Card pad={14} style={{ gap: 10 }}>
+            {L.parking_notes ? <View style={{ flexDirection: 'row', gap: 8 }}><T size={12} weight="700" color={c.mute}>{t('arrival.parking')}</T><T size={12} style={{ flex: 1 }}>{L.parking_notes}</T></View> : null}
+            {L.gate_instructions ? <View style={{ flexDirection: 'row', gap: 8 }}><T size={12} weight="700" color={c.mute}>{t('arrival.gate')}</T><T size={12} style={{ flex: 1 }}>{L.gate_instructions}</T></View> : null}
+            {L.official_room ? <View style={{ flexDirection: 'row', gap: 8 }}><T size={12} weight="700" color={c.mute}>{t('arrival.official_room')}</T><T size={12} style={{ flex: 1 }}>{L.official_room}</T></View> : null}
+            {L.reporting_location_notes ? <T size={12} color={c.mute}>{L.reporting_location_notes}</T> : null}
+            {L.map_links?.google ? (
+              <Pressable onPress={() => Linking.openURL(L.map_links.google)} style={{ backgroundColor: c.pink, borderRadius: 10, paddingVertical: 12, paddingHorizontal: 16, minHeight: 44, alignItems: 'center', justifyContent: 'center' }} accessibilityLabel={t('arrival.directions')}>
+                <T size={13} weight="700" color="#fff">🗺 {t('arrival.directions')}</T>
+              </Pressable>
+            ) : null}
+          </Card>
+        </Section>
+      ) : (
+        <Card pad={14}><T size={13} color={c.mute}>{t('arrival.logistics_missing')}</T></Card>
+      )}
+
+      <WeatherWidget weather={L.weather} />
+      <EquipmentChecklist items={L.equipment_checklist} />
+      <EmergencyContacts contacts={L.emergency_contacts} />
+
+      {/* ArrivalSheet */}
+      <Sheet visible={showSheet} onClose={() => { setShowSheet(false); setLateMode(false); }} title={lateMode ? t('arrival.late_title') : t('arrival.check_in')}>
+        {lateMode ? (
+          <View style={{ gap: 14, padding: 16 }}>
+            <T size={13} color={c.mute}>{t('arrival.late_reason')}</T>
+            <TextInput value={lateReason} onChangeText={setLateReason} placeholder="e.g. Train delayed" placeholderTextColor={c.mute} style={{ borderWidth: 1, borderColor: c.mute, borderRadius: 10, padding: 12, fontSize: 14, color: c.ink, minHeight: 80 }} multiline />
+            <T size={13} color={c.mute}>{t('arrival.late_eta')}</T>
+            <TextInput value={lateEta} onChangeText={setLateEta} placeholder="e.g. 15" placeholderTextColor={c.mute} keyboardType="numeric" style={{ borderWidth: 1, borderColor: c.mute, borderRadius: 10, padding: 12, fontSize: 14, color: c.ink, minHeight: 44 }} />
+            <Btn title="Send alert" onPress={() => onLate(lateReason, parseInt(lateEta, 10))} style={{ minHeight: 52 }} />
+          </View>
+        ) : (
+          <View style={{ gap: 0 }}>
+            {/* Method tabs */}
+            <View style={{ flexDirection: 'row', borderBottomWidth: 1, borderBottomColor: c.mute }}>
+              {[['qr', t('arrival.qr')], ['geofence', t('arrival.geofence')], ['manual', t('arrival.manual')]].map(([k, label]) => (
+                <Pressable key={k} onPress={() => setArrivalTab(k)} style={{ flex: 1, paddingVertical: 14, alignItems: 'center', borderBottomWidth: 2, borderBottomColor: arrivalTab === k ? c.pink : 'transparent' }}>
+                  <T size={12} weight={arrivalTab === k ? '700' : '400'} color={arrivalTab === k ? c.pink : c.mute}>{label}</T>
+                </Pressable>
+              ))}
+            </View>
+            {arrivalTab === 'qr' ? (
+              <View style={{ padding: 16, gap: 12, alignItems: 'center' }}>
+                <T size={13} color={c.mute} style={{ textAlign: 'center' }}>Scan the QR code shown by the organiser, or enter your 8-character code below.</T>
+                {L.check_in_code ? (
+                  <Card pad={16} style={{ alignItems: 'center', gap: 4 }}>
+                    <T size={12} color={c.mute}>Your code</T>
+                    <T size={28} weight="800" style={{ letterSpacing: 4 }}>{L.check_in_code}</T>
+                  </Card>
+                ) : null}
+                <Btn title="Confirm check-in (QR)" onPress={() => onCheckIn('qr', L.check_in_code)} style={{ minHeight: 52, width: '100%' }} />
+              </View>
+            ) : arrivalTab === 'geofence' ? (
+              <View style={{ padding: 16, gap: 12 }}>
+                <T size={13} color={c.mute} style={{ textAlign: 'center' }}>{t('arrival.consent_detail')}</T>
+                <Btn title={t('arrival.geofence')} onPress={() => onCheckIn('geofence', null, true)} style={{ minHeight: 52 }} />
+              </View>
+            ) : (
+              <View style={{ padding: 16, gap: 12 }}>
+                <T size={13} color={c.mute}>{t('arrival.code_placeholder')}</T>
+                <TextInput value={codeInput} onChangeText={setCodeInput} placeholder="e.g. A1B2C3D4" placeholderTextColor={c.mute} autoCapitalize="characters" style={{ borderWidth: 1, borderColor: c.mute, borderRadius: 10, padding: 14, fontSize: 18, color: c.ink, letterSpacing: 3, textAlign: 'center', minHeight: 56 }} />
+                <Btn title="Verify code" onPress={() => onCheckIn('manual_code', codeInput)} disabled={codeInput.length < 6} style={{ minHeight: 52 }} />
+              </View>
+            )}
+          </View>
+        )}
+      </Sheet>
+    </View>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
 // MAIN SCREEN
 // ═══════════════════════════════════════════════════════════════════════════════
 export function OfficialsConsole({ id }) {
@@ -533,7 +724,14 @@ export function OfficialsConsole({ id }) {
   const [confirm, setConfirm] = useState(null); // { op, title, body, label, danger }
   const [who, setWho] = useState({ home: null, away: null });
   const [showRules, setShowRules] = useState(false);
+  const [showArrival, setShowArrival] = useState(false);
+  const [arrivalTab, setArrivalTab] = useState('qr');
+  const [lateMode, setLateMode] = useState(false);
+  const [lateReason, setLateReason] = useState('');
+  const [lateEta, setLateEta] = useState('');
+  const [codeInput, setCodeInput] = useState('');
   const seen = useRef(0);
+  const logistics = useLoad(() => api.get(`/fixtures/${id}/logistics`), [id]);
 
   const queue = useScoreQueue(`sa_queue_fx_${id}`,
     async ({ owner, op, target, ...e }) => {
@@ -626,6 +824,26 @@ export function OfficialsConsole({ id }) {
     await api.post(`/fixtures/${id}/briefing/checks`, { key, checked }).catch((e) => toast(explain(e)));
     briefing.reload();
   };
+
+  const handleCheckIn = async (method, code, locationConsent = false) => {
+    try {
+      await api.post(`/fixtures/${id}/check-in`, { method, check_in_code: code?.toUpperCase(), location_consent: locationConsent });
+      setShowArrival(false);
+      logistics.reload();
+      toast(t('arrival.checked_in'));
+    } catch (e) { toast('' + e.message); }
+  };
+
+  const handleLateReport = async (reason, eta) => {
+    try {
+      await api.post(`/fixtures/${id}/late-report`, { reason, estimated_arrival_min: eta });
+      setShowArrival(false);
+      setLateMode(false);
+      toast('Late arrival reported.');
+    } catch (e) { toast('' + e.message); }
+  };
+
+  const showArrivalPhase = isPreMatch && logistics.data?.dispatched;
 
   const handleInjury = async (reason) => {
     await control('pause');
@@ -720,6 +938,28 @@ export function OfficialsConsole({ id }) {
       {f?.has_para_athletes ? <OfficialsPara fixtureId={id} sport={f.sport} event={f.event} /> : null}
       {isLiveOrPaused ? (
         <ControlStrip f={f} ph={ph} canScore={canScore} onControl={confirmControl} onInjury={() => setInjuryOpen(true)} busy={busy} />
+      ) : null}
+      {showArrivalPhase ? (
+        <Section title={t('arrival.phase_title')} color={c.pink}>
+          <ArrivalSection
+            fixtureId={id}
+            logistics={logistics}
+            onCheckIn={handleCheckIn}
+            onLate={handleLateReport}
+            showSheet={showArrival}
+            setShowSheet={setShowArrival}
+            arrivalTab={arrivalTab}
+            setArrivalTab={setArrivalTab}
+            lateMode={lateMode}
+            setLateMode={setLateMode}
+            lateReason={lateReason}
+            setLateReason={setLateReason}
+            lateEta={lateEta}
+            setLateEta={setLateEta}
+            codeInput={codeInput}
+            setCodeInput={setCodeInput}
+          />
+        </Section>
       ) : null}
       {isPreMatch ? matchMeta : null}
       {isPreMatch ? <ChecklistSection briefing={briefing.data} onCheck={handleCheck} canScore={canScore} /> : null}

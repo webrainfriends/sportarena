@@ -18824,4 +18824,31 @@ export default {
   'ca.profile': 'Profile', // reviewed: false
   'ca.load_more': 'Load next {{n}} athletes', // reviewed: false
   'ca.loading_more': 'Loading…', // reviewed: false
+  // R21: Officials arrival & venue logistics (Issue #1013) — machine-translated (reviewed: false)
+  'arrival.phase_title': 'आगमन',
+  'arrival.report_in': '{time} मध्ये अहवाल द्या',
+  'arrival.check_in': 'चेक इन',
+  'arrival.checked_in': 'चेक इन झाले',
+  'arrival.overdue': 'चेक-इन विलंब',
+  'arrival.qr': 'QR स्कॅन करा',
+  'arrival.geofence': 'ऑटो चेक-इन',
+  'arrival.manual': 'कोड प्रविष्ट करा',
+  'arrival.code_placeholder': '8-अक्षर कोड प्रविष्ट करा',
+  'arrival.late_title': 'उशीरा आगमन नोंदवा',
+  'arrival.late_reason': 'विलंबाचे कारण',
+  'arrival.late_eta': 'ETA (आत्तापासून मिनिटे)',
+  'arrival.parking': 'पार्किंग',
+  'arrival.gate': 'गेट प्रवेश',
+  'arrival.official_room': 'अधिकारी खोली',
+  'arrival.directions': 'दिशा मिळवा',
+  'arrival.weather': 'ठिकाणी हवामान',
+  'arrival.equipment': 'उपकरण यादी',
+  'arrival.emergency': 'आपत्कालीन संपर्क',
+  'arrival.consent_geofence': 'स्थानाद्वारे ऑटो चेक-इनला परवानगी द्या',
+  'arrival.consent_detail': 'कोणतेही अचूक स्थान संग्रहित केले जात नाही.',
+  'arrival.status_checked': 'आले',
+  'arrival.status_pending': 'आले नाहीत',
+  'arrival.status_late': 'उशिरा',
+  'arrival.dispatch_done': 'क्रूला लॉजिस्टिक्स पाठवले',
+  'arrival.logistics_missing': 'या फिक्स्चरसाठी लॉजिस्टिक्स अद्याप पाठवले नाही.',
 };
