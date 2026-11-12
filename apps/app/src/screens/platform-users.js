@@ -225,40 +225,42 @@ export function PlatformUsers() {
               <UserCard key={item.id} item={item} wide={isTablet} />
             ))}
             {data.users.length === 0 && <Empty emoji="👥" title={t('pu.empty_title')} sub={t('pu.empty_sub')} />}
-
-            {/* Pagination */}
-            {(() => {
-              const total = data.meta?.total ?? (offset + data.users.length);
-              const from = total === 0 ? 0 : offset + 1;
-              const to = offset + data.users.length;
-              const hasNext = to < total;
-              const hasPrev = offset > 0;
-              if (!hasPrev && !hasNext) return null;
-              return (
-                <View style={{ marginTop: 8 }}>
-                  {total > 0 && (
-                    <T style={{ textAlign: 'center', fontSize: 12, color: c.mute, marginBottom: 6 }}>
-                      {t('pu.showing', { from, to, total })}
-                    </T>
-                  )}
-                  <Row style={{ justifyContent: 'center', gap: 16 }}>
-                    {hasPrev && (
-                      <TouchableOpacity onPress={() => setOffset(Math.max(0, offset - LIMIT))}>
-                        <T style={{ color: c.pink, fontWeight: '700' }}>{t('pu.prev')}</T>
-                      </TouchableOpacity>
-                    )}
-                    {hasNext && (
-                      <TouchableOpacity onPress={() => setOffset(offset + LIMIT)}>
-                        <T style={{ color: c.pink, fontWeight: '700' }}>{t('pu.next')}</T>
-                      </TouchableOpacity>
-                    )}
-                  </Row>
-                </View>
-              );
-            })()}
           </>
         )}
       </ScrollView>
+
+      {/* Sticky pagination footer — always visible */}
+      {!!data && (() => {
+        const total = data.meta?.total ?? (offset + data.users.length);
+        const from = total === 0 ? 0 : offset + 1;
+        const to = offset + data.users.length;
+        const hasNext = to < total;
+        const hasPrev = offset > 0;
+        if (!hasPrev && !hasNext) return null;
+        return (
+          <View style={{ backgroundColor: c.paper, borderTopWidth: 1, borderTopColor: c.line, paddingVertical: 10, paddingHorizontal: 16 }}>
+            <T style={{ textAlign: 'center', fontSize: 12, color: c.mute, marginBottom: 8 }}>
+              {t('pu.showing', { from, to, total })}
+            </T>
+            <View style={{ flexDirection: 'row', justifyContent: 'center', gap: 24 }}>
+              <TouchableOpacity
+                onPress={() => setOffset(Math.max(0, offset - LIMIT))}
+                disabled={!hasPrev}
+                style={{ paddingVertical: 8, paddingHorizontal: 20, borderRadius: 8, backgroundColor: hasPrev ? c.pinkSoft : c.wash }}
+              >
+                <T style={{ color: hasPrev ? c.pink : c.mute, fontWeight: '700' }}>{t('pu.prev')}</T>
+              </TouchableOpacity>
+              <TouchableOpacity
+                onPress={() => setOffset(offset + LIMIT)}
+                disabled={!hasNext}
+                style={{ paddingVertical: 8, paddingHorizontal: 20, borderRadius: 8, backgroundColor: hasNext ? c.pinkSoft : c.wash }}
+              >
+                <T style={{ color: hasNext ? c.pink : c.mute, fontWeight: '700' }}>{t('pu.next')}</T>
+              </TouchableOpacity>
+            </View>
+          </View>
+        );
+      })()}
     </Screen>
   );
 }
