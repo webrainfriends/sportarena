@@ -998,7 +998,7 @@ cap({
 });
 
 cap({
-  name: 'list_my_certificates', method: 'GET', path: '/officials-education/my-certificates', tag: TAG,
+  name: 'list_my_edu_certificates', method: 'GET', path: '/officials-education/my-certificates', tag: TAG,
   summary: 'List all certificates for the current user.',
   input: z.object({ limit: z.coerce.number().int().min(1).max(100).default(50), offset: z.coerce.number().int().min(0).default(0) }),
   async handler({ user }, i) {
@@ -1020,7 +1020,7 @@ cap({
 });
 
 cap({
-  name: 'revoke_certificate', method: 'POST', path: '/officials-education/certificates/:id/revoke', tag: TAG,
+  name: 'revoke_edu_certificate', method: 'POST', path: '/officials-education/certificates/:id/revoke', tag: TAG,
   summary: 'Revoke a certificate (body staff only). Revocation is recorded on both the certificate and the linked credential.',
   input: z.object({ id, reason: text(500) }),
   handler: ({ user }, i) => tx(async (c) => {
