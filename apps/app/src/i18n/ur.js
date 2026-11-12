@@ -15582,7 +15582,8 @@ export default {
   'pu.empty_title': 'کوئی صارف نہیں ملا',
   'pu.empty_sub': 'مختلف تلاش یا فلٹر آزمائیں۔',
   'pu.prev': '← پچھلا',
-  'pu.next': 'اگلا →',
+  'pu.next': 'Next →',
+  'pu.showing': 'Showing {{from}}–{{to}} of {{total}}',
   // ── Academy Staff Usage ───────────────────────────────────────────────────
   'asu.title': 'عملے کا استعمال',
   'asu.sub': 'آپ کی اکیڈمی ٹیم کے لیے اسٹوریج · AI & API استعمال',

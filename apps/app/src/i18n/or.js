@@ -15575,7 +15575,8 @@ export default {
   'pu.empty_title': 'କୌଣସି ବ୍ୟବହାରକାରୀ ମିଳିଲା ନାହିଁ',
   'pu.empty_sub': 'ଭିନ୍ନ ଖୋଜ ବା ଫିଲ୍ଟର ଚେଷ୍ଟା କରନ୍ତୁ।',
   'pu.prev': '← ପୂର୍ବ',
-  'pu.next': 'ପରବର୍ତ୍ତୀ →',
+  'pu.next': 'Next →',
+  'pu.showing': 'Showing {{from}}–{{to}} of {{total}}',
   // ── Academy Staff Usage ───────────────────────────────────────────────────
   'asu.title': 'ଷ୍ଟାଫ ବ୍ୟବହାର',
   'asu.sub': 'ଆପଣଙ୍କ ଏକାଡେମୀ ଦଳ ପାଇଁ ଷ୍ଟୋରେଜ · AI & API ବ୍ୟବହାର',

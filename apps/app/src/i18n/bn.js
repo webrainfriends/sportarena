@@ -15575,7 +15575,8 @@ export default {
   'pu.empty_title': 'কোনো ব্যবহারকারী পাওয়া যায়নি',
   'pu.empty_sub': 'অন্য অনুসন্ধান বা ফিল্টার চেষ্টা করুন।',
   'pu.prev': '← আগের',
-  'pu.next': 'পরের →',
+  'pu.next': 'Next →',
+  'pu.showing': 'Showing {{from}}–{{to}} of {{total}}',
   // ── Academy Staff Usage ───────────────────────────────────────────────────
   'asu.title': 'স্টাফ ব্যবহার',
   'asu.sub': 'আপনার একাডেমি দলের জন্য স্টোরেজ · AI & API ব্যবহার',
