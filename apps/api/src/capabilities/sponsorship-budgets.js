@@ -10,7 +10,7 @@ import { notify } from '../notify.js';
 import { toCsv } from '../csv.js';
 import { logHistory } from '../sponsor-agreements.js';
 import { sponsorAccess, assertSponsorCan, actionsFor, notifySponsor, sponsorRecipients } from '../sponsor-access.js';
-import { budgetFor, budgetEvent, usageOf, rateFor, rollup, traceOf, KINDS, convert } from '../sponsorship-budgets.js';
+import { budgetFor, budgetEvent, usageOf, rateFor, rollup, traceOf, KINDS, convert, assertBudgetUnlocked } from '../sponsorship-budgets.js';
 import { programFor, checkVersion } from './sponsorship-programs.js';
 
 const currency = z.string().regex(/^[A-Z]{3}$/, 'ISO 4217 code, e.g. USD');
@@ -43,7 +43,12 @@ cap({
     sponsor_id: id, kind: z.enum(KINDS), name: z.string().min(2).max(120), fiscal_year: z.coerce.number().int().min(2000).max(2200).optional(), currency, authorized_cents: money,
     parent_id: id.optional(), department_id: id.optional(), event_id: id.optional(), approval_over_cents: money.optional(), fx_policy: z.enum(['none', 'explicit']).default('none'),
     notes: z.string().trim().max(2000).optional(), basis_budget_id: id.optional(), references: z.array(reference).max(10).optional(),
-  }),
+    cost_centre: z.enum(['coaching','medical','facilities','travel','equipment','scouting','marketing','admin','it','legal','other']).optional(),
+    capex_cents: money.optional(), grant_restricted: z.boolean().default(false), grant_source: z.string().trim().max(200).optional(),
+    vat_exclusive: z.boolean().default(false),
+    alert_at_pcts: z.array(z.number().int().min(1).max(200)).max(10).default([]),
+  }).refine((v) => !v.grant_restricted || v.grant_source, { message: 'grant_source is required when grant_restricted is true', path: ['grant_source'] })
+    .refine((v) => !v.capex_cents || v.capex_cents <= v.authorized_cents, { message: 'capex_cents cannot exceed authorized_cents', path: ['capex_cents'] }),
   async handler({ user }, i) {
     return tx(async (c) => {
       const { sp, access } = await brandView(user, i.sponsor_id, 'budget', c);
@@ -73,9 +78,9 @@ cap({
         await mustFind('events', i.event_id, 'id', c);
       } else if (i.event_id) throw badRequest('Only an event budget has an event');
       const row = (await c.query(
-        `INSERT INTO sponsorship_budgets(sponsor_id, parent_id, kind, name, fiscal_year, currency, authorized_cents, department_id, event_id, approval_over_cents, fx_policy, created_by, notes, basis_budget_id)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14) RETURNING *`,
-        [sp.id, i.parent_id ?? null, i.kind, i.name, fiscal, i.currency, i.authorized_cents, i.department_id ?? null, i.event_id ?? null, i.approval_over_cents ?? null, i.fx_policy, user.id, i.notes || null, i.basis_budget_id ?? null])
+        `INSERT INTO sponsorship_budgets(sponsor_id, parent_id, kind, name, fiscal_year, currency, authorized_cents, department_id, event_id, approval_over_cents, fx_policy, created_by, notes, basis_budget_id, cost_centre, capex_cents, grant_restricted, grant_source, vat_exclusive, alert_at_pcts)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20) RETURNING *`,
+        [sp.id, i.parent_id ?? null, i.kind, i.name, fiscal, i.currency, i.authorized_cents, i.department_id ?? null, i.event_id ?? null, i.approval_over_cents ?? null, i.fx_policy, user.id, i.notes || null, i.basis_budget_id ?? null, i.cost_centre ?? null, i.capex_cents ?? null, i.grant_restricted, i.grant_source ?? null, i.vat_exclusive, i.alert_at_pcts])
         .catch((e) => { if (e.code === '23505') throw conflict('A budget with that name, department or event already exists for this brand'); throw e; })).rows[0];
       for (const r of i.references ?? []) await insertReference(c, row.id, r, user.id);
       await budgetEvent(c, row.id, 'created', user.id, { authorized_cents: i.authorized_cents, currency: i.currency, parent_id: i.parent_id ?? null, basis_budget_id: i.basis_budget_id ?? null, references: (i.references ?? []).length });
@@ -91,6 +96,9 @@ cap({
   input: z.object({
     id, version: z.coerce.number().int().positive(), name: z.string().min(2).max(120).optional(), authorized_cents: money.optional(), approval_over_cents: money.nullable().optional(),
     fx_policy: z.enum(['none', 'explicit']).optional(), status: z.literal('archived').optional(), notes: z.string().trim().max(2000).nullable().optional(),
+    cost_centre: z.enum(['coaching','medical','facilities','travel','equipment','scouting','marketing','admin','it','legal','other']).nullable().optional(),
+    capex_cents: money.nullable().optional(), grant_restricted: z.boolean().optional(), grant_source: z.string().trim().max(200).nullable().optional(),
+    vat_exclusive: z.boolean().optional(), alert_at_pcts: z.array(z.number().int().min(1).max(200)).max(10).optional(),
   }),
   async handler({ user }, i) {
     return tx(async (c) => {
@@ -101,7 +109,7 @@ cap({
       stale(b, i.version);
       if (b.status === 'archived') throw conflict('This budget is archived');
       const u = await usageOf(c, b);
-      const next = { name: i.name ?? b.name, authorized: i.authorized_cents ?? Number(b.authorized_cents), over: i.approval_over_cents === undefined ? b.approval_over_cents : i.approval_over_cents, fx: i.fx_policy ?? b.fx_policy, notes: i.notes === undefined ? b.notes : (i.notes || null) };
+      const next = { name: i.name ?? b.name, authorized: i.authorized_cents ?? Number(b.authorized_cents), over: i.approval_over_cents === undefined ? b.approval_over_cents : i.approval_over_cents, fx: i.fx_policy ?? b.fx_policy, notes: i.notes === undefined ? b.notes : (i.notes || null), cost_centre: i.cost_centre === undefined ? b.cost_centre : i.cost_centre, capex_cents: i.capex_cents === undefined ? b.capex_cents : i.capex_cents, grant_restricted: i.grant_restricted ?? b.grant_restricted, grant_source: i.grant_source === undefined ? b.grant_source : (i.grant_source || null), vat_exclusive: i.vat_exclusive ?? b.vat_exclusive, alert_at_pcts: i.alert_at_pcts ?? b.alert_at_pcts };
       if (next.authorized < u.allocated_cents + u.reserved_cents + u.committed_cents)
         throw conflict(`The budget cannot be lower than what is allocated, reserved and committed (${u.allocated_cents + u.reserved_cents + u.committed_cents} ${b.currency} minor units)`, { floor_cents: u.allocated_cents + u.reserved_cents + u.committed_cents });
       if (b.parent_id && next.authorized > Number(b.authorized_cents)) {
@@ -123,8 +131,9 @@ cap({
       }
       const row = (await c.query(
         `UPDATE sponsorship_budgets SET name=$2, authorized_cents=$3, approval_over_cents=$4, fx_policy=$5, status=coalesce($6,status), archived_at=CASE WHEN $6='archived' THEN now() ELSE archived_at END, notes=$7,
+                cost_centre=$8, capex_cents=$9, grant_restricted=$10, grant_source=$11, vat_exclusive=$12, alert_at_pcts=$13,
                 row_version=row_version+1, updated_at=now() WHERE id=$1 RETURNING *`,
-        [b.id, next.name, next.authorized, next.over, next.fx, i.status ?? null, next.notes]).catch((e) => { if (e.code === '23505') throw conflict('A budget with that name already exists for this brand'); throw e; })).rows[0];
+        [b.id, next.name, next.authorized, next.over, next.fx, i.status ?? null, next.notes, next.cost_centre, next.capex_cents, next.grant_restricted, next.grant_source, next.vat_exclusive, next.alert_at_pcts]).catch((e) => { if (e.code === '23505') throw conflict('A budget with that name already exists for this brand'); throw e; })).rows[0];
       await budgetEvent(c, b.id, i.status === 'archived' ? 'archived' : 'updated', user.id, { from: { authorized_cents: Number(b.authorized_cents), approval_over_cents: b.approval_over_cents == null ? null : Number(b.approval_over_cents), fx_policy: b.fx_policy }, to: { authorized_cents: next.authorized, approval_over_cents: next.over == null ? null : Number(next.over), fx_policy: next.fx } });
       await audit(c, user.id, i.status === 'archived' ? 'archive' : 'update', 'sponsorship_budgets', b.id);
       return shape(row, await usageOf(c, row));
@@ -188,16 +197,19 @@ cap({
     const use = await usageOf(pool, b);
     const kids = [];
     for (const k of (await many("SELECT * FROM sponsorship_budgets WHERE parent_id=$1 AND status='active' ORDER BY lower(name), id", [b.id]))) kids.push(shape(k, await usageOf(pool, k)));
-    const [programs, rates, history, references] = await Promise.all([
+    const [programs, rates, history, references, forecasts, alertEvents] = await Promise.all([
       many("SELECT p.id, p.name, p.status, p.currency, p.row_version, p.budget_cents::bigint AS budget_cents, (p.budget_id=$1) AS is_default FROM sponsorship_program_budgets l JOIN sponsorship_programs p ON p.id=l.program_id WHERE l.budget_id=$1 AND l.unlinked_at IS NULL ORDER BY p.created_at DESC, p.id", [b.id]),
       many('SELECT id, currency, rate::text AS rate, source, source_ref, as_of::text AS as_of, created_at, superseded_at FROM sponsorship_budget_fx_rates WHERE budget_id=$1 ORDER BY created_at DESC, id', [b.id]),
       many('SELECT e.id, e.kind, e.detail, e.created_at, u.display_name AS actor FROM sponsorship_budget_events e LEFT JOIN users u ON u.id=e.actor_id WHERE e.budget_id=$1 ORDER BY e.id DESC LIMIT 25', [b.id]),
-      many('SELECT r.id, r.kind, r.title, r.url, r.ref_no, r.created_at, u.display_name AS added_by FROM sponsorship_budget_references r JOIN users u ON u.id=r.created_by WHERE r.budget_id=$1 AND r.removed_at IS NULL ORDER BY r.created_at DESC, r.id', [b.id])]);
+      many('SELECT r.id, r.kind, r.title, r.url, r.ref_no, r.created_at, u.display_name AS added_by FROM sponsorship_budget_references r JOIN users u ON u.id=r.created_by WHERE r.budget_id=$1 AND r.removed_at IS NULL ORDER BY r.created_at DESC, r.id', [b.id]),
+      many('SELECT f.id, f.name, f.scenario, f.fiscal_year, f.total_projected_cents, f.basis_actual_pct, f.spread_method, f.periods, f.created_at, f.updated_at, u.display_name AS created_by_name FROM sponsorship_budget_forecasts f JOIN users u ON u.id=f.created_by WHERE f.budget_id=$1 AND f.archived_at IS NULL ORDER BY f.fiscal_year DESC, f.scenario, f.id', [b.id]),
+      many('SELECT id, threshold_pct, utilisation_pct, triggered_at, dismissed_at, dismissed_by FROM sponsorship_budget_alert_events WHERE budget_id=$1 ORDER BY triggered_at DESC LIMIT 50', [b.id])]);
     const basis = b.basis_budget_id ? await many('SELECT id, name, fiscal_year FROM sponsorship_budgets WHERE id=$1 AND sponsor_id=$2', [b.basis_budget_id, b.sponsor_id]) : [];
     const parent = b.parent_id ? await many('SELECT id, name, kind FROM sponsorship_budgets WHERE id=$1', [b.parent_id]) : [];
     const event = b.event_id ? await many('SELECT id, name FROM events WHERE id=$1', [b.event_id]) : [];
     const department = b.department_id ? await many('SELECT id, name FROM org_departments WHERE id=$1', [b.department_id]) : [];
-    return { ...shape(b, use), sponsor_name: sp.name, my_role: access.repRole ?? access.role, can: isAdmin(user) ? ['budget_read', 'budget', 'budget_approve', 'export'] : actionsFor(access.role).filter((a) => ['budget_read', 'budget', 'budget_approve', 'export'].includes(a)), parent: parent[0] ?? null, event: event[0] ?? null, department: department[0] ?? null, children: kids, programs, fx_rates: rates, history, references, basis: basis[0] ?? null };
+    const locker = b.locked_by ? (await pool.query('SELECT display_name FROM users WHERE id=$1', [b.locked_by])).rows[0] : null;
+    return { ...shape(b, use), sponsor_name: sp.name, my_role: access.repRole ?? access.role, can: isAdmin(user) ? ['budget_read', 'budget', 'budget_approve', 'export'] : actionsFor(access.role).filter((a) => ['budget_read', 'budget', 'budget_approve', 'export'].includes(a)), parent: parent[0] ?? null, event: event[0] ?? null, department: department[0] ?? null, children: kids, programs, fx_rates: rates, history, references, basis: basis[0] ?? null, forecasts, alert_events: alertEvents, locked_by_name: locker?.display_name ?? null };
   },
 });
 
@@ -481,5 +493,55 @@ cap({
       unmapped_programs: progs.map((p) => ({ ...p, budget_cents: Number(p.budget_cents), spend: spend(p.id) })),
       unmapped_agreements: direct.map((d) => ({ id: d.id, ref: d.agreement_ref, status: d.status, who: d.who, currency: d.currency, committed_cents: Number(d.committed) })),
     };
+  },
+});
+
+cap({
+  name: 'lock_budget', method: 'POST', path: '/sponsorship-budgets/:id/lock', tag: 'Sponsors', status: 200,
+  summary: 'Finance/manager: lock a budget period for audit or period-close. While locked, no new reservations or commitments can be made against this budget. The lock is not rolled forward — it must be explicitly released. Supply a brief reason (shown to anyone who tries to commit while locked).',
+  input: z.object({ id, lock_reason: z.string().trim().min(2).max(500) }),
+  async handler({ user }, i) {
+    return tx(async (c) => {
+      const { b } = await budgetFor(user, i.id, 'budget', c, true);
+      if (b.status !== 'active') throw conflict('This budget is archived');
+      if (b.locked_at) throw conflict('This budget is already locked');
+      const row = (await c.query('UPDATE sponsorship_budgets SET locked_at=now(), locked_by=$2, lock_reason=$3, row_version=row_version+1, updated_at=now() WHERE id=$1 RETURNING *', [b.id, user.id, i.lock_reason])).rows[0];
+      await budgetEvent(c, b.id, 'locked', user.id, { lock_reason: i.lock_reason });
+      await audit(c, user.id, 'lock', 'sponsorship_budgets', b.id);
+      return shape(row, await usageOf(c, row));
+    });
+  },
+});
+
+cap({
+  name: 'unlock_budget', method: 'DELETE', path: '/sponsorship-budgets/:id/lock', tag: 'Sponsors', status: 200,
+  summary: 'Finance/manager: release a budget period lock, restoring the ability to make new reservations and commitments.',
+  input: z.object({ id }),
+  async handler({ user }, i) {
+    return tx(async (c) => {
+      const { b } = await budgetFor(user, i.id, 'budget', c, true);
+      if (!b.locked_at) throw conflict('This budget is not locked');
+      const row = (await c.query('UPDATE sponsorship_budgets SET locked_at=NULL, locked_by=NULL, lock_reason=NULL, row_version=row_version+1, updated_at=now() WHERE id=$1 RETURNING *', [b.id])).rows[0];
+      await budgetEvent(c, b.id, 'unlocked', user.id, {});
+      await audit(c, user.id, 'unlock', 'sponsorship_budgets', b.id);
+      return shape(row, await usageOf(c, row));
+    });
+  },
+});
+
+cap({
+  name: 'dismiss_budget_alert', method: 'POST', path: '/sponsorship-budgets/:id/alerts/:event_id/dismiss', tag: 'Sponsors', status: 200,
+  summary: 'Finance/manager: dismiss a spend-alert event (e.g. acknowledged and actioned). Dismissed alerts remain in the audit trail.',
+  input: z.object({ id, event_id: id }),
+  async handler({ user }, i) {
+    return tx(async (c) => {
+      await budgetFor(user, i.id, 'budget', c, false);
+      const ev = (await c.query('SELECT * FROM sponsorship_budget_alert_events WHERE id=$1 AND budget_id=$2', [i.event_id, i.id])).rows[0];
+      if (!ev) throw notFound('Alert event');
+      if (ev.dismissed_at) throw conflict('Already dismissed');
+      const row = (await c.query('UPDATE sponsorship_budget_alert_events SET dismissed_at=now(), dismissed_by=$2 WHERE id=$1 RETURNING *', [i.event_id, user.id])).rows[0];
+      await audit(c, user.id, 'dismiss_alert', 'sponsorship_budgets', i.id);
+      return row;
+    });
   },
 });

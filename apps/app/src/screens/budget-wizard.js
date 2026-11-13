@@ -23,7 +23,13 @@ const KINDS = [
 const KIND_NAME = { annual: 'annual', program: 'program', department: 'department', event: 'event' };
 const REF_KINDS = [['approval', 'Approval'], ['board_minutes', 'Board minutes'], ['forecast', 'Forecast'], ['purchase_order', 'Purchase order'], ['contract', 'Contract'], ['policy', 'Policy'], ['other', 'Other']];
 const FILE_KINDS = [['approval', 'Approval'], ['forecast', 'Forecast'], ['contract', 'Contract'], ['invoice', 'Invoice'], ['report', 'Report'], ['other', 'Other']];
-const STEPS = ['Scope', 'Amount', 'Controls', 'Support', 'Review'];
+const STEPS = ['Scope', 'Amount', 'Classification', 'Forecast', 'Controls', 'Support', 'Review'];
+const COST_CENTRES = [
+  ['coaching', 'Coaching'], ['medical', 'Medical'], ['facilities', 'Facilities'], ['travel', 'Travel'],
+  ['equipment', 'Equipment'], ['scouting', 'Scouting'], ['marketing', 'Marketing'],
+  ['admin', 'Admin'], ['it', 'IT'], ['legal', 'Legal'], ['other', 'Other'],
+];
+const ALERT_PCTS = [70, 80, 90, 100, 110];
 const MAX_FILES = 10;
 
 const digits = (cur) => { try { return new Intl.NumberFormat('en', { style: 'currency', currency: cur }).resolvedOptions().maximumFractionDigits; } catch { return 2; } };
@@ -133,6 +139,8 @@ export function BudgetWizard({ visible, onClose, brands, brand, events, onCreate
   const guide = useLoad(() => (visible && step === 1 && v.sponsor_id && v.kind && currency ? api.get('/budget-guidance', Object.fromEntries(Object.entries(gq).filter(([, x]) => x !== undefined && x !== ''))) : Promise.resolve(null)), [visible, step, v.sponsor_id, v.kind, v.fiscal_year, v.department_id, v.event_id, currency]);
   const pickedEvent = events.find((e) => e.id === v.event_id);
 
+  const capexCents = toMinor(v.capex_amount, currency);
+
   const problem = (s) => {
     if (s === 0) {
       if (!v.sponsor_id) return 'Choose the brand.';
@@ -145,7 +153,10 @@ export function BudgetWizard({ visible, onClose, brands, brand, events, onCreate
       if (amount == null) return 'Enter the authorized amount.';
       if (parent && amount > parent.available_cents) return `${parent.name} has only ${moneyIn(parent.available_cents, parent.currency)} left to carve out.`;
     }
-    if (s === 2 && v.threshold_on && (threshold == null || threshold <= 0)) return 'Enter the amount above which a second approver is needed, or switch it off.';
+    if (s === 2) {
+      if (v.grant_restricted && !(v.grant_source ?? '').trim()) return 'Enter the grant source or programme name.';
+    }
+    if (s === 4 && v.threshold_on && (threshold == null || threshold <= 0)) return 'Enter the amount above which a second approver is needed, or switch it off.';
     return null;
   };
   const go = (to) => { const p = to > step ? [...Array(to).keys()].map(problem).find(Boolean) : null; if (p) { setErr(p); return; } setErr(null); setStep(to); };
@@ -168,7 +179,7 @@ export function BudgetWizard({ visible, onClose, brands, brand, events, onCreate
   };
 
   const submit = async () => {
-    const bad = [0, 1, 2].map(problem).find(Boolean);
+    const bad = [0, 1, 2, 3, 4].map(problem).find(Boolean);
     if (bad) { setErr(bad); return; }
     setBusy(true); setErr(null);
     let b;
@@ -182,7 +193,28 @@ export function BudgetWizard({ visible, onClose, brands, brand, events, onCreate
       if ((v.notes ?? '').trim()) body.notes = v.notes.trim();
       if (basis) body.basis_budget_id = basis;
       if (refs.length) body.references = refs;
+      // classification fields (step 2)
+      if (v.cost_centre) body.cost_centre = v.cost_centre;
+      if (capexCents && capexCents > 0) body.capex_cents = capexCents;
+      if (v.grant_restricted) { body.grant_restricted = true; body.grant_source = (v.grant_source ?? '').trim(); }
+      if (v.vat_exclusive) body.vat_exclusive = true;
+      if ((v.alert_at_pcts ?? []).length) body.alert_at_pcts = v.alert_at_pcts;
       b = await api.post('/sponsorship-budgets', body);
+      // create forecast if requested (step 3); failure is non-fatal
+      if (v.forecast_now && v.forecast_total) {
+        const fCents = toMinor(v.forecast_total, currency);
+        if (fCents && fCents > 0) {
+          try {
+            await api.post(`/sponsorship-budgets/${b.id}/forecasts`, {
+              name: `${v.name.trim()} — ${v.forecast_scenario ?? 'base'} forecast`,
+              scenario: v.forecast_scenario ?? 'base',
+              fiscal_year: v.fiscal_year ?? new Date().getFullYear(),
+              spread_method: v.forecast_spread ?? 'even',
+              total_projected_cents: fCents,
+            });
+          } catch { /* silent — budget was created */ }
+        }
+      }
     } catch (e) { setErr(explain(e)); setBusy(false); return; }
     // the budget exists now; a file that fails to upload never undoes it, it is reported so it can be added again
     const failed = [];
@@ -262,6 +294,78 @@ export function BudgetWizard({ visible, onClose, brands, brand, events, onCreate
 
       {step === 2 ? (
         <>
+          <Block title="Cost centre" hint="Tag this budget to its function. Used in finance reports and cross-brand health views.">
+            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
+              {COST_CENTRES.map(([k, l]) => <Chip key={k} label={l} active={v.cost_centre === k} onPress={() => set('cost_centre', v.cost_centre === k ? undefined : k)} />)}
+            </View>
+          </Block>
+
+          <Block title="Budget type" hint={`CapEx = assets that last more than one year. OpEx = everything else. ${currency ? `Authorized: ${moneyIn(amount ?? 0, currency)}.` : ''}`}>
+            <View style={{ flexDirection: 'row', gap: 8, flexWrap: 'wrap' }}>
+              <Chip label="All OpEx" active={!v.capex_split} onPress={() => set('capex_split', false)} />
+              <Chip label="Split CapEx + OpEx" active={!!v.capex_split} onPress={() => set('capex_split', true)} />
+            </View>
+            {v.capex_split ? <Field label={`Capital spend (${currency})`} value={v.capex_amount ?? ''} onChangeText={(x) => set('capex_amount', x.replace(/[^0-9.,]/g, ''))} keyboardType="decimal-pad" placeholder="0" hint={`The CapEx portion. OpEx = ${amount != null && capexCents != null ? moneyIn(amount - capexCents, currency) : 'remainder'}.`} accessibilityLabel="Capital expenditure amount" /> : null}
+          </Block>
+
+          <Block title="Grant funding" hint="Grants from governing bodies, foundations or government programmes often have restricted spend rules.">
+            <View style={{ flexDirection: 'row', gap: 8 }}>
+              <Chip label="Not a grant" active={!v.grant_restricted} onPress={() => set('grant_restricted', false)} />
+              <Chip label="Restricted grant" active={!!v.grant_restricted} onPress={() => set('grant_restricted', true)} />
+            </View>
+            {v.grant_restricted ? <Field label="Grant source / programme" value={v.grant_source ?? ''} onChangeText={(x) => set('grant_source', x)} maxLength={200} placeholder="e.g. World Rugby Academy Fund" accessibilityLabel="Grant source" /> : null}
+          </Block>
+
+          <Block title="VAT treatment" hint="When amounts are entered VAT-exclusive, budget reports add it back to show the gross spend.">
+            <View style={{ flexDirection: 'row', gap: 8 }}>
+              <Chip label="Inclusive" active={!v.vat_exclusive} onPress={() => set('vat_exclusive', false)} />
+              <Chip label="Exclusive (net)" active={!!v.vat_exclusive} onPress={() => set('vat_exclusive', true)} />
+            </View>
+          </Block>
+
+          <Block title="Spend alerts" hint="You will be notified when utilisation crosses these thresholds. Finance managers can dismiss alerts.">
+            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
+              {ALERT_PCTS.map((p) => {
+                const on = (v.alert_at_pcts ?? []).includes(p);
+                return <Chip key={p} label={`${p}%`} active={on} onPress={() => { const cur = v.alert_at_pcts ?? []; set('alert_at_pcts', on ? cur.filter(x => x !== p) : [...cur, p].sort((a, b) => a - b)); }} />;
+              })}
+            </View>
+          </Block>
+        </>
+      ) : null}
+
+      {step === 3 ? (
+        <>
+          <Block title="Forecast (optional)" hint="Create a base spend forecast now to track projected vs actual monthly spend across the year. You can add or change forecasts any time.">
+            <View style={{ flexDirection: 'row', gap: 8 }}>
+              <Chip label="Set up later" active={!v.forecast_now} onPress={() => set('forecast_now', false)} />
+              <Chip label="Set up now" active={!!v.forecast_now} onPress={() => set('forecast_now', true)} />
+            </View>
+          </Block>
+          {v.forecast_now ? (
+            <>
+              <Block title="Scenario">
+                <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
+                  {[['base', '📊 Base'], ['best', '🟢 Best'], ['worst', '🔴 Worst']].map(([k, l]) => <Chip key={k} label={l} active={(v.forecast_scenario ?? 'base') === k} onPress={() => set('forecast_scenario', k)} />)}
+                </View>
+              </Block>
+              <Block title="Spread method" hint="How the total projected amount is distributed across the 12 months.">
+                <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
+                  {[['even', 'Even'], ['s_curve', 'S-curve'], ['front', 'Front-loaded'], ['back', 'Back-loaded']].map(([k, l]) => <Chip key={k} label={l} active={(v.forecast_spread ?? 'even') === k} onPress={() => set('forecast_spread', k)} />)}
+                </View>
+              </Block>
+              <Block title={`Total projected (${currency})`} hint="Can differ from authorized — forecasts track expected spend, which may be less or more.">
+                <Field value={v.forecast_total ?? ''} onChangeText={(x) => set('forecast_total', x.replace(/[^0-9.,]/g, ''))} keyboardType="decimal-pad" placeholder="0" accessibilityLabel="Total projected amount" />
+              </Block>
+            </>
+          ) : (
+            <Note>Forecasts can be created from the budget detail view after authorization.</Note>
+          )}
+        </>
+      ) : null}
+
+      {step === 4 ? (
+        <>
           <Block title="Second approver" hint="Offers and awards above this amount wait for another person to approve. Leave it off for none.">
             <View style={{ flexDirection: 'row', gap: 8 }}>
               <Chip label="Not needed" active={!v.threshold_on} onPress={() => set('threshold_on', false)} />
@@ -278,7 +382,7 @@ export function BudgetWizard({ visible, onClose, brands, brand, events, onCreate
         </>
       ) : null}
 
-      {step === 3 ? (
+      {step === 5 ? (
         <>
           <Field label="Why this amount? (optional)" value={v.notes} onChangeText={(x) => set('notes', x)} multiline maxLength={2000} hint="The rationale reviewers and auditors will read: what it funds and how the figure was reached." />
           <Block title="References" hint="Where the authority for this budget is recorded: an approval memo, board minutes, a forecast or a purchase order. Give a link, a reference number, or both.">
@@ -309,7 +413,7 @@ export function BudgetWizard({ visible, onClose, brands, brand, events, onCreate
         </>
       ) : null}
 
-      {step === 4 ? (
+      {step === 6 ? (
         <>
           <View>
             <Row k="Brand" v={brands.find((b) => b.id === v.sponsor_id)?.name ?? ''} onEdit={() => go(0)} />
@@ -317,12 +421,16 @@ export function BudgetWizard({ visible, onClose, brands, brand, events, onCreate
             {parent ? <Row k="Carved out of" v={parent.name} onEdit={() => go(0)} /> : null}
             <Row k="Name" v={v.name} onEdit={() => go(1)} />
             <Row k="Authorized" v={amount != null && currency ? moneyIn(amount, currency) : ''} onEdit={() => go(1)} />
-            <Row k="Second approver" v={threshold ? `Above ${moneyIn(threshold, currency)}` : 'Not needed'} onEdit={() => go(2)} />
-            <Row k="Other currencies" v={v.fx_policy === 'explicit' ? 'Only at a sourced rate' : 'Not allowed'} onEdit={() => go(2)} />
+            {v.cost_centre ? <Row k="Cost centre" v={COST_CENTRES.find(([k]) => k === v.cost_centre)?.[1] ?? v.cost_centre} onEdit={() => go(2)} /> : null}
+            {v.capex_split && capexCents ? <Row k="CapEx" v={moneyIn(capexCents, currency)} onEdit={() => go(2)} /> : null}
+            {v.grant_restricted ? <Row k="Grant" v={v.grant_source ?? ''} onEdit={() => go(2)} /> : null}
+            {(v.alert_at_pcts ?? []).length ? <Row k="Alerts at" v={(v.alert_at_pcts).map(p => `${p}%`).join(', ')} onEdit={() => go(2)} /> : null}
+            <Row k="Second approver" v={threshold ? `Above ${moneyIn(threshold, currency)}` : 'Not needed'} onEdit={() => go(4)} />
+            <Row k="Other currencies" v={v.fx_policy === 'explicit' ? 'Only at a sourced rate' : 'Not allowed'} onEdit={() => go(4)} />
             {basis ? <Row k="Built on" v="An earlier budget" /> : null}
-            {(v.notes ?? '').trim() ? <Row k="Rationale" v={v.notes.trim()} onEdit={() => go(3)} /> : null}
-            <Row k="References" v={refs.length ? refs.map((r) => r.title).join(', ') : 'None'} onEdit={() => go(3)} />
-            <Row k="Files" v={files.length ? files.map((f) => f.name).join(', ') : 'None'} onEdit={() => go(3)} />
+            {(v.notes ?? '').trim() ? <Row k="Rationale" v={v.notes.trim()} onEdit={() => go(5)} /> : null}
+            <Row k="References" v={refs.length ? refs.map((r) => r.title).join(', ') : 'None'} onEdit={() => go(5)} />
+            <Row k="Files" v={files.length ? files.map((f) => f.name).join(', ') : 'None'} onEdit={() => go(5)} />
           </View>
           <T size={12} color={c.mute}>Authorizing records who approved this and when. Nothing is deleted later: budgets are archived and keep their history.</T>
         </>

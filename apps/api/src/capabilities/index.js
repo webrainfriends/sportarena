@@ -191,6 +191,7 @@ import './competitions.js';
 import './competition-operations.js';
 import './sponsorship-awards.js';
 import './sponsorship-budgets.js';
+import './budget-forecast.js';
 import './beneficiary-portfolio.js';
 import './sponsorship-beneficiaries.js';
 import './registration.js';
