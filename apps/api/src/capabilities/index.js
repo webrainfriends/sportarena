@@ -80,6 +80,7 @@ import './tracking-files.js';
 import './rulebook.js';
 import './event-ai.js';
 import './officials.js';
+import './officials-lifecycle.js';
 import './officials-home.js';
 import './officials-availability.js';
 import './officials-match.js';

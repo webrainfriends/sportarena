@@ -140,7 +140,7 @@ cap({
 cap({
   name: 'list_my_official_assignments', method: 'GET', path: '/me/official-assignments', tag: 'Officials',
   summary: 'My officiating requests and assignments with match, event and crew role, soonest first. A confirmed assignment on a completed match reads as completed.',
-  input: z.object({ status: z.enum(['invited', 'accepted', 'declined', 'withdrawn', 'released', 'cancelled', 'completed']).optional(), upcoming: z.boolean().optional(), ...page }),
+  input: z.object({ status: z.enum(['invited','proposed','accepted','confirmed','declined','expired','withdrawn','released','replaced','cancelled','completed']).optional(), upcoming: z.boolean().optional(), ...page }),
   handler: ({ user }, i) => many(
     `SELECT x.* FROM (${ASSIGNMENT_SQL} WHERE fo.user_id=$1) x
       WHERE ($2::text IS NULL OR x.status=$2) AND (NOT coalesce($3::boolean, false) OR x.scheduled_at >= now())

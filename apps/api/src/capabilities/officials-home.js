@@ -61,8 +61,10 @@ cap({
     const all = await myAssignments(user.id, i.sport_id ? 'x.sport_id=$2' : 'TRUE', i.sport_id ? [i.sport_id] : []);
     const now = Date.now(), live = (a) => OPEN_FIXTURE.includes(a.fixture_status);
     const startMs = (a) => new Date(a.scheduled_at).getTime(), endMs = (a) => startMs(a) + a.duration_min * 60000;
-    const confirmed = all.filter((a) => a.status === 'accepted' && live(a) && endMs(a) >= now);
-    const pending = all.filter((a) => a.status === 'invited' && live(a) && endMs(a) >= now);
+    const confirmed = all.filter((a) => ['accepted','confirmed'].includes(a.status) && live(a) && endMs(a) >= now);
+    const proposed = all.filter((a) => a.status === 'proposed' && live(a) && endMs(a) >= now);
+    const pending = all.filter((a) => ['invited','proposed'].includes(a.status) && live(a) && endMs(a) >= now);
+    const expired = all.filter((a) => a.status === 'expired' && new Date(a.scheduled_at) > new Date(now - 7 * DAY));
     const dayKey = (iso, tz) => new Intl.DateTimeFormat('en-CA', { timeZone: tz || 'UTC' }).format(new Date(iso));
     const prefs = await one('SELECT * FROM official_prefs WHERE user_id=$1', [user.id]);
     const tz = prefs?.timezone ?? 'UTC';
@@ -73,8 +75,14 @@ cap({
 
     // action inbox: every item points at the canonical record it concerns
     const inbox = [];
-    for (const a of pending) inbox.push({ kind: 'invitation', fixture_id: a.fixture_id, official_id: a.id, title: `Officiating request: ${a.event_name}`, detail: `${a.role} · ${a.home_name ?? 'TBD'} v ${a.away_name ?? 'TBD'}`, at: a.scheduled_at });
-    for (const a of confirmed.filter((x) => x.needs_ack)) inbox.push({ kind: 'changed', fixture_id: a.fixture_id, official_id: a.id, title: `Match changed: ${a.event_name}`, detail: 'The time or venue changed. Acknowledge to stay on the crew.', at: a.scheduled_at });
+    for (const a of all.filter((x) => x.status === 'invited' && live(x) && endMs(x) >= now))
+      inbox.push({ kind: 'invitation', fixture_id: a.fixture_id, official_id: a.id, title: `Officiating request: ${a.event_name}`, detail: `${a.role} · ${a.home_name ?? 'TBD'} v ${a.away_name ?? 'TBD'}`, at: a.scheduled_at, invitation_deadline: a.invitation_deadline });
+    for (const a of proposed)
+      inbox.push({ kind: 'proposed', fixture_id: a.fixture_id, official_id: a.id, title: `Proposal awaiting review: ${a.event_name}`, detail: `${a.role} · You proposed yourself — awaiting organiser review`, at: a.scheduled_at });
+    for (const a of expired)
+      inbox.push({ kind: 'expired', fixture_id: a.fixture_id, official_id: a.id, title: `Invitation expired: ${a.event_name}`, detail: `${a.role} · Deadline passed without a response`, at: a.scheduled_at });
+    for (const a of confirmed.filter((x) => x.needs_ack))
+      inbox.push({ kind: 'changed', fixture_id: a.fixture_id, official_id: a.id, title: `Match changed: ${a.event_name}`, detail: a.ack_required_reason ?? 'The time or venue changed. Acknowledge to stay on the crew.', at: a.scheduled_at });
     const lost = await many(
       `SELECT h.fixture_official_id AS id, h.to_status, h.reason, h.at, x.fixture_id, x.event_name, x.role FROM fixture_official_history h
          JOIN (${ASSIGNMENT_SQL} WHERE fo.user_id=$1) x ON x.id=h.fixture_official_id
@@ -103,8 +111,8 @@ cap({
     return {
       user_id: user.id,
       sports, sport, timezone: tz, credential, setup: await setupFor(user.id, credential),
-      next: confirmed[0] ?? null, today, pending_requests: pending,
-      stats: { this_week: confirmed.filter((a) => startMs(a) < weekEnd).length, pending: pending.length, completed_this_season: completed.length, actions: inbox.length },
+      next: confirmed[0] ?? null, today, pending_requests: pending, proposed_awaiting_review: proposed,
+      stats: { this_week: confirmed.filter((a) => startMs(a) < weekEnd).length, pending: pending.length, proposed: proposed.length, expired_recent: expired.length, completed_this_season: completed.length, actions: inbox.length },
       inbox: inbox.sort((a, b) => String(a.at ?? '').localeCompare(String(b.at ?? ''))),
     };
   },
