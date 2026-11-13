@@ -388,6 +388,7 @@ import './official-eligibility.js';
 import './official-conflict-interest.js';
 import './org-officials-command.js';
 import './official-profile.js';
+import './official-credentials.js';
 import './official-profile-compliance.js';
 import './official-rate-card.js';
 import './official-rate-agreements.js';
