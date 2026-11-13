@@ -567,6 +567,35 @@ id: 'wellbeing', title: 'Support student wellbeing and development',
     sources: ['apps/app/src/screens/org-officials-command.js', 'apps/api/src/capabilities/org-officials-command.js'],
   },
   {
+    id: 'officiating_analytics',
+    title: 'Officiating analytics & season intelligence (REF-R27)',
+    why: 'Elite academies (Nadal Academy, Real Madrid Academies, FC Barcelona) need a data-driven view of their officiating operations — pool coverage by sport, assignment acceptance rates, fee trends, utilisation, and season-on-season comparisons — to plan panels, budget fees and spot gaps before tournaments. Referees and umpires see their own career analytics: games, hours, sport & role breakdown, repeat clients, accreditation progress and incident trends across every assignment on the platform.',
+    steps: [
+      'As a referee or umpire: open your profile menu and tap Officiating Analytics. The Overview tab shows six key metrics — Games, Hours, Sports active, Utilisation %, Acceptance Rate and Avg Fee — alongside your season summary cards. Tap Recompute current season to refresh the aggregated season stats for the current year.',
+      'Open the Funnel tab to see how your invitations have resolved month-by-month: accepted, declined, cancelled, completed. Use the date-range filter to narrow to any period.',
+      'The Sport & Role tab lists every sport you have officiated at, with the role and level held at the time, games and hours logged, and your average fee — a full career cross-section in one place.',
+      'Utilisation (24-month trend) compares your available slots (from your Availability settings) against filled assignments to show how well the platform is matching you to work.',
+      'Clients shows your top-20 repeat organisations, ranked by games, so you can see your most loyal bookers and when you last worked with them.',
+      'Accreditation shows your current level and target per sport, the number of games and observations still needed, and a RAG (Red / Amber / Green) status chip, so you always know where you stand on the pathway.',
+      'Incidents shows only the count of official reports you have filed, month by month. Report content is never shown here — it is private to those with authorisation.',
+      'Export CSV packages all analytics data for the selected date range into a spreadsheet for your own records. The export is audit-logged.',
+      'As an organiser or assessor: open your Organisation, tap Officials, then Analytics (or navigate to Officiating Analytics from the Command Centre). The Overview tab shows pool size, total assignments, overall acceptance rate, average fee and incident count.',
+      'Pool breaks the official pool down by sport, role and level with a count per segment — useful for identifying gaps before a major tournament.',
+      'Funnel shows your organisation\'s assignment funnel (accepted / declined / cancelled) month by month so you can see if certain sports or months have poor acceptance and act early.',
+      'Season Intelligence gives per-sport season aggregates: total games, unique officials, acceptance rate and average fee, with the season date range. Compare sport by sport to identify where you need to grow your panel.',
+      'Leaderboard (owner and admin only) ranks your officials by games, hours or acceptance rate for the selected period — displayed with first-name privacy — so you can recognise your most committed officials and spot those who may need a conversation.',
+      'Export generates an organiser-side CSV for the selected period, audit-logged on download.',
+    ],
+    target: { screen: 'OrgOfficiatingAnalytics' },
+    modules: ['officiating-analytics.js', 'officiating-season-intelligence.js'],
+    sources: [
+      'apps/app/src/screens/official-analytics.js',
+      'apps/app/src/screens/org-officiating-analytics.js',
+      'apps/api/src/capabilities/officiating-analytics.js',
+      'apps/api/src/capabilities/officiating-season-intelligence.js',
+    ],
+  },
+  {
     id: 'open_match_self_assign',
     title: 'Open match board — publish slots for official self-assignment (REF-R14)',
     why: 'Elite academies (Nadal Academy, FC Barcelona, Real Madrid) publish officiating slots on a self-service board so vetted, eligible officials can claim them without waiting for an organiser invitation. The platform enforces grade, licence and availability eligibility, runs an atomic lock to prevent double-claiming, and optionally requires organiser approval before confirming. A waitlist fills automatically when a confirmed official withdraws. Financial terms are locked at claim time.',
@@ -889,10 +918,12 @@ export const NOT_IN_GUIDE = {
   'officials-open-slots.js': 'Covered by the open_match_self_assign onboarding step (REF-R14).',
   'officials-education.js': 'Covered by the referee_education onboarding step (REF-R19).',
   'official-credentials.js': 'Covered by the official_credentials onboarding step (REF-R02).',
+  'officiating-analytics.js': 'Covered by the officiating_analytics onboarding step (REF-R27).',
+  'officiating-season-intelligence.js': 'Covered by the officiating_analytics onboarding step (REF-R27).',
 };
 
 /** The directories/files the guard test watches for org/academy/venue/coach/tax capability modules. */
-export const WATCHED_MODULES = /^(academy-.*|org-.*|organisations|venue-coaches|gst|provider-tax|coach-classes|para-sport-funding|para-sport-sponsorship-outcomes|para-pathway|para-readiness|para-learn|para-staff-credentials|para-spectator-accessibility|para-ux-conformance|boarding-.*|wearables|wellness.*|integrations|official-rate-card|official-rate-agreements|official-scheduling-recommendations|officials-bulk)\.js$/;
+export const WATCHED_MODULES = /^(academy-.*|org-.*|organisations|venue-coaches|gst|provider-tax|coach-classes|para-sport-funding|para-sport-sponsorship-outcomes|para-pathway|para-readiness|para-learn|para-staff-credentials|para-spectator-accessibility|para-ux-conformance|boarding-.*|wearables|wellness.*|integrations|official-rate-card|official-rate-agreements|official-scheduling-recommendations|officials-bulk|officiating-analytics|officiating-season-intelligence)\.js$/;
 
 export const SHOT_SIZES = { phone: { width: 390, height: 1100 }, desktop: { width: 1280, height: 900 } };
 export const shotFile = (stepId, size) => `${String(ACADEMY_STEPS.findIndex((s) => s.id === stepId) + 1).padStart(2, '0')}-${stepId}-${size}.png`;
