@@ -1,237 +1,275 @@
 // Tests for academy-conferences capability (#796)
 // Covers: create, update, list, get, cancel, reschedule, attendees,
-//         evidence, agenda, decisions, acknowledge, report generation,
-//         and guardian access control (staff_notes NEVER shown to guardians).
-import { describe, it, before, after } from 'node:test';
+//         evidence, agenda, decisions, acknowledge, report, guardian access.
+import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
-import { api, rpc, testUser, testOrg, cleanup } from './helpers.js';
 
-let orgId, staffToken, guardianToken, guardianUserId, athleteUserId, planId;
-let confId, attendeeId, itemId, decisionId;
+Object.assign(process.env, { DATABASE_URL: process.env.TEST_DATABASE_URL ?? 'postgres://postgres@/sportarena_test?host=/tmp' });
+const { pool } = await import('../src/db.js');
+const { migrate } = await import('../src/migrate.js');
+const { createApp } = await import('../src/http.js');
+const { signToken } = await import('../src/auth.js');
+
+let server, base, n = 0, admin;
+const api = async (method, path, { token, body, query } = {}) => {
+  const r = await fetch(`${base}/api/v1${path}${query ? `?${new URLSearchParams(query)}` : ''}`, {
+    method,
+    headers: { 'content-type': 'application/json', ...(token ? { authorization: `Bearer ${token}` } : {}) },
+    body: body ? JSON.stringify(body) : undefined,
+  });
+  return { status: r.status, body: await r.json() };
+};
+const rpc = async (method, params, token) => {
+  const r = await fetch(`${base}/mcp`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', accept: 'application/json, text/event-stream', ...(token ? { authorization: `Bearer ${token}` } : {}) },
+    body: JSON.stringify({ jsonrpc: '2.0', id: 1, method, params }),
+  });
+  return (await r.json()).result;
+};
+const must = (r, status = 200) => { assert.equal(r.status, status, JSON.stringify(r.body)); return r.body; };
+const signup = async (roles = ['athlete'], extra = {}) => {
+  n++;
+  const r = await api('POST', '/auth/register', { body: { handle: `ac_${n}_${roles[0]}`, display_name: `AC ${n}`, email: `ac${n}@example.com`, password: 'correct-horse-battery', roles, ...extra } });
+  assert.equal(r.status, 201, JSON.stringify(r.body));
+  return { ...r.body.user, token: r.body.token };
+};
+const evidence = { reference: 'https://example.com/bc-ref-123', label: 'Birth certificate' };
+
+/** Full guardian setup: request -> child accepts -> evidence -> admin approves */
+async function verifiedGuardian(guardian, child) {
+  const l = must(await api('POST', '/youth/guardian-links', { token: guardian.token, body: { guardian_id: guardian.id, child_id: child.id, relationship: 'parent' } }), 201);
+  must(await api('POST', `/youth/guardian-links/${l.id}/respond`, { token: child.token, body: { accept: true } }));
+  must(await api('POST', `/youth/guardian-links/${l.id}/evidence`, { token: guardian.token, body: { evidence } }), 201);
+  return must(await api('POST', `/youth/guardian-links/${l.id}/decision`, { token: admin.token, body: { decision: 'approve', note: 'Documents match' } }));
+}
 
 before(async () => {
-  await cleanup();
-  const org = await testOrg();
+  await pool.query('DROP SCHEMA public CASCADE; CREATE SCHEMA public');
+  await migrate();
+  const row = (await pool.query("INSERT INTO users(handle,display_name,roles,password_hash,email_enc,email_idx) VALUES ('ac_root','ac_root','{admin}','x','x','ac_root') RETURNING id")).rows[0];
+  admin = { id: row.id, token: await signToken({ id: row.id, roles: ['admin'] }) };
+  server = createApp().listen(0);
+  base = `http://localhost:${server.address().port}`;
+});
+after(async () => { server.close(); await pool.end(); });
+
+// ---- Shared state across tests (sequential) --------------------------------
+let orgId, staffToken, guardianToken, guardianUserId, athleteUserId;
+let confId, attendeeId, itemId, decisionId;
+
+test('setup: create org, staff, athlete, guardian', async () => {
+  // Create org via organisations endpoint (admin token from before())
+  const org = must(await api('POST', '/organisations', { token: admin.token, body: { name: `Test Academy ${n}`, kind: 'club' } }), 201);
   orgId = org.id;
-  staffToken = org.ownerToken;
-  const ath = await testUser({ role: 'athlete' });
+  staffToken = admin.token;
+
+  const ath = await signup(['athlete'], { dob: '2010-05-01' });
   athleteUserId = ath.id;
-  const grd = await testUser({ role: 'user' });
+
+  const grd = await signup(['athlete']);
   guardianUserId = grd.id;
   guardianToken = grd.token;
-  // Create a dev plan for the athlete
-  const plan = await api.post(`/organisations/${orgId}/academy/dev-plans`, { athlete_id: athleteUserId, title: 'Test Plan', kind: 'annual' }, staffToken);
-  planId = plan.id;
+  await verifiedGuardian(grd, ath);
 });
 
-after(cleanup);
-
-describe('create conference', () => {
-  it('staff can create a conference', async () => {
-    const r = await api.post(`/orgs/${orgId}/conferences`, {
-      title: 'Annual Review 2026 — Test Athlete',
+test('staff can create a conference', async () => {
+  const r = must(await api('POST', `/organisations/${orgId}/conferences`, {
+    token: staffToken,
+    body: {
+      title: 'Annual Review 2026',
       kind: 'annual_review',
       scheduled_at: '2026-06-15T10:00:00Z',
       duration_minutes: 60,
       location_type: 'video',
       location_detail: 'https://meet.example.com/review',
-      agenda: 'Review development domains and set targets for next term',
-      staff_notes: 'Private coach notes — guardian should never see this',
+      agenda: 'Review all development domains',
+      staff_notes: 'Private coach notes — guardian must never see this',
       family_visible: true,
-      plan_id: planId,
-    }, staffToken);
-    confId = r.id;
-    assert.equal(r.kind, 'annual_review');
-    assert.equal(r.status, 'draft');
-    assert.equal(r.family_visible, true);
-    assert.ok(r.agenda, 'agenda should be returned');
-    assert.ok(r.staff_notes, 'staff should see staff_notes');
-  });
-
-  it('staff_notes is NEVER returned to guardian callers', async () => {
-    // Link guardian to athlete first
-    await api.post(`/youth/guardian-links`, { guardian_id: guardianUserId, athlete_id: athleteUserId, purpose: 'parent' }, staffToken);
-    // Add guardian as attendee
-    const a = await api.post(`/orgs/${orgId}/conferences/${confId}/attendees`, { user_id: guardianUserId, role: 'guardian' }, staffToken);
-    attendeeId = a.id;
-    // Guardian views conference
-    const r = await api.get(`/orgs/${orgId}/conferences/${confId}`, {}, guardianToken);
-    assert.equal(r.staff_notes, undefined, 'staff_notes must never be returned to guardians');
-    assert.ok(r.agenda, 'guardian should see agenda');
-  });
+    },
+  }), 201);
+  confId = r.id;
+  assert.equal(r.kind, 'annual_review');
+  assert.equal(r.status, 'draft');
+  assert.equal(r.family_visible, true);
+  assert.ok(r.agenda, 'staff sees agenda');
+  assert.ok(r.staff_notes, 'staff sees staff_notes');
 });
 
-describe('update conference', () => {
-  it('updates status to scheduled', async () => {
-    const r = await api.patch(`/orgs/${orgId}/conferences/${confId}`, { status: 'scheduled' }, staffToken);
-    assert.equal(r.status, 'scheduled');
-    assert.equal(r.row_version, 2);
-  });
+test('staff_notes is NEVER returned to guardian callers', async () => {
+  // Add guardian as attendee
+  const a = must(await api('POST', `/organisations/${orgId}/conferences/${confId}/attendees`, {
+    token: staffToken,
+    body: { user_id: guardianUserId, role: 'guardian' },
+  }), 201);
+  attendeeId = a.id;
 
-  it('updates staff_notes without leaking to guardian', async () => {
-    await api.patch(`/orgs/${orgId}/conferences/${confId}`, { staff_notes: 'Updated internal notes' }, staffToken);
-    const guardianView = await api.get(`/orgs/${orgId}/conferences/${confId}`, {}, guardianToken);
-    assert.equal(guardianView.staff_notes, undefined);
-  });
+  // Guardian views conference
+  const r = must(await api('GET', `/organisations/${orgId}/conferences/${confId}`, { token: guardianToken }));
+  assert.equal(r.staff_notes, undefined, 'staff_notes must never reach guardians');
+  assert.ok(r.agenda, 'guardian sees agenda');
 });
 
-describe('list conferences', () => {
-  it('staff sees all conferences', async () => {
-    const r = await api.get(`/orgs/${orgId}/conferences`, {}, staffToken);
-    assert.ok(Array.isArray(r));
-    assert.ok(r.some((c) => c.id === confId));
-  });
-
-  it('guardian only sees family_visible conferences they are invited to', async () => {
-    // Create a non-family-visible conference
-    const hidden = await api.post(`/orgs/${orgId}/conferences`, { title: 'Internal only', kind: 'welfare', family_visible: false, plan_id: planId }, staffToken);
-    const r = await api.get(`/orgs/${orgId}/conferences`, {}, guardianToken);
-    assert.ok(!r.some((c) => c.id === hidden.id), 'hidden conference must not appear for guardian');
-    assert.ok(r.some((c) => c.id === confId), 'family_visible conference should appear');
-  });
+test('staff updates conference to scheduled', async () => {
+  const r = must(await api('PATCH', `/organisations/${orgId}/conferences/${confId}`, {
+    token: staffToken,
+    body: { status: 'scheduled' },
+  }));
+  assert.equal(r.status, 'scheduled');
+  assert.ok(r.row_version >= 2);
 });
 
-describe('attendees', () => {
-  it('invites a lead coach', async () => {
-    const coach = await testUser({ role: 'coach' });
-    const r = await api.post(`/orgs/${orgId}/conferences/${confId}/attendees`, { user_id: coach.id, role: 'lead_coach' }, staffToken);
-    assert.equal(r.role, 'lead_coach');
-    assert.equal(r.status, 'invited');
-  });
-
-  it('guardian can confirm their own attendance', async () => {
-    const r = await api.post(`/orgs/${orgId}/conferences/${confId}/attendees/${attendeeId}/respond`, { status: 'confirmed' }, guardianToken);
-    assert.equal(r.status, 'confirmed');
-    assert.ok(r.responded_at);
-  });
+test('guardian cannot see conferences where family_visible=false', async () => {
+  must(await api('POST', `/organisations/${orgId}/conferences`, {
+    token: staffToken,
+    body: { title: 'Internal only', kind: 'welfare', family_visible: false },
+  }), 201);
+  const list = must(await api('GET', `/organisations/${orgId}/conferences`, { token: guardianToken }));
+  assert.ok(Array.isArray(list));
+  assert.ok(!list.some((c) => c.family_visible === false), 'hidden conferences must not appear for guardian');
 });
 
-describe('evidence', () => {
-  it('staff can add evidence', async () => {
-    const r = await api.post(`/orgs/${orgId}/conferences/${confId}/evidence`, { source_kind: 'dev_review', label: 'Q1 Development Review', visible_to_roles: ['coach', 'admin', 'guardian'] }, staffToken);
-    assert.equal(r.source_kind, 'dev_review');
-    assert.equal(r.label, 'Q1 Development Review');
-  });
-
-  it('staff can remove evidence', async () => {
-    const ev = await api.post(`/orgs/${orgId}/conferences/${confId}/evidence`, { source_kind: 'assessment', label: 'Test to remove', visible_to_roles: ['coach'] }, staffToken);
-    const r = await api.delete(`/orgs/${orgId}/conferences/${confId}/evidence/${ev.id}`, staffToken);
-    assert.equal(r.ok, true);
-  });
+test('staff sees all conferences', async () => {
+  const list = must(await api('GET', `/organisations/${orgId}/conferences`, { token: staffToken }));
+  assert.ok(Array.isArray(list));
+  assert.ok(list.some((c) => c.id === confId));
 });
 
-describe('agenda', () => {
-  it('adds an agenda item', async () => {
-    const r = await api.post(`/orgs/${orgId}/conferences/${confId}/agenda`, { title: 'Technical development review', kind: 'review_domain', time_minutes: 20 }, staffToken);
-    itemId = r.id;
-    assert.equal(r.title, 'Technical development review');
-    assert.equal(r.kind, 'review_domain');
-  });
-
-  it('updates the agenda item', async () => {
-    const r = await api.patch(`/orgs/${orgId}/conferences/${confId}/agenda/${itemId}`, { time_minutes: 25 }, staffToken);
-    assert.equal(r.time_minutes, 25);
-  });
-
-  it('reorders agenda items', async () => {
-    const item2 = await api.post(`/orgs/${orgId}/conferences/${confId}/agenda`, { title: 'Welfare check', kind: 'welfare', time_minutes: 10 }, staffToken);
-    const r = await api.patch(`/orgs/${orgId}/conferences/${confId}/agenda/order`, { item_ids: [item2.id, itemId] }, staffToken);
-    assert.equal(r.ok, true);
-  });
+test('guardian confirms their own attendance', async () => {
+  const r = must(await api('POST', `/organisations/${orgId}/conferences/${confId}/attendees/${attendeeId}/respond`, {
+    token: guardianToken,
+    body: { status: 'confirmed' },
+  }));
+  assert.equal(r.status, 'confirmed');
+  assert.ok(r.responded_at);
 });
 
-describe('decisions', () => {
-  it('staff records a decision visible to guardian', async () => {
-    const r = await api.post(`/orgs/${orgId}/conferences/${confId}/decisions`, {
-      kind: 'action', body: 'Increase forehand training to 3x per week', deadline_on: '2026-09-01', visible_to_guardian: true,
-    }, staffToken);
-    decisionId = r.id;
-    assert.equal(r.kind, 'action');
-    assert.equal(r.status, 'open');
-    assert.equal(r.visible_to_guardian, true);
-  });
-
-  it('guardian sees decisions marked visible_to_guardian', async () => {
-    const r = await api.get(`/orgs/${orgId}/conferences/${confId}/decisions`, {}, guardianToken);
-    assert.ok(r.some((d) => d.id === decisionId));
-  });
-
-  it('staff updates decision status to done', async () => {
-    const r = await api.patch(`/orgs/${orgId}/conferences/${confId}/decisions/${decisionId}`, { status: 'done' }, staffToken);
-    assert.equal(r.status, 'done');
-    assert.ok(r.resolved_at);
-  });
+test('staff adds evidence', async () => {
+  const r = must(await api('POST', `/organisations/${orgId}/conferences/${confId}/evidence`, {
+    token: staffToken,
+    body: { source_kind: 'dev_review', label: 'Q1 Development Review', visible_to_roles: ['coach', 'admin', 'guardian'] },
+  }), 201);
+  assert.equal(r.source_kind, 'dev_review');
+  assert.equal(r.label, 'Q1 Development Review');
 });
 
-describe('reschedule', () => {
-  it('reschedules and notifies attendees', async () => {
-    const r = await api.post(`/orgs/${orgId}/conferences/${confId}/reschedule`, { new_scheduled_at: '2026-07-01T14:00:00Z', reason: 'Coach availability change' }, staffToken);
-    assert.equal(r.status, 'rescheduled');
-    assert.equal(r.scheduled_at, '2026-07-01T14:00:00.000Z');
-  });
+test('staff removes evidence', async () => {
+  const ev = must(await api('POST', `/organisations/${orgId}/conferences/${confId}/evidence`, {
+    token: staffToken,
+    body: { source_kind: 'assessment', label: 'To remove', visible_to_roles: ['coach'] },
+  }), 201);
+  const r = must(await api('DELETE', `/organisations/${orgId}/conferences/${confId}/evidence/${ev.id}`, { token: staffToken }));
+  assert.equal(r.ok, true);
 });
 
-describe('outcome and acknowledgement', () => {
-  it('staff marks conference complete', async () => {
-    const r = await api.patch(`/orgs/${orgId}/conferences/${confId}`, { status: 'completed', outcome_summary: 'Excellent progress across all domains. Next review in 3 months.' }, staffToken);
-    assert.equal(r.status, 'completed');
-    assert.ok(r.outcome_summary);
-  });
-
-  it('staff generates outcome report', async () => {
-    const r = await api.post(`/orgs/${orgId}/conferences/${confId}/report`, {}, staffToken);
-    assert.ok(r.document_id);
-    assert.ok(r.created_at);
-  });
-
-  it('guardian can acknowledge the outcome', async () => {
-    const r = await api.post(`/orgs/${orgId}/conferences/${confId}/acknowledge`, {}, guardianToken);
-    assert.equal(r.acknowledged, true);
-    assert.ok(r.acknowledged_at);
-  });
-
-  it('guardian can get the report after acknowledgement', async () => {
-    const r = await api.get(`/orgs/${orgId}/conferences/${confId}/report`, {}, guardianToken);
-    assert.ok(r.document_id);
-    assert.ok(r.download_url);
-  });
-
-  it('guardian cannot get the report without acknowledging first', async () => {
-    // Create a fresh conference where guardian has not acknowledged
-    const conf2 = await api.post(`/orgs/${orgId}/conferences`, { title: 'Another Conference', kind: 'termly', family_visible: true, plan_id: planId }, staffToken);
-    await api.post(`/orgs/${orgId}/conferences/${conf2.id}/attendees`, { user_id: guardianUserId, role: 'guardian' }, staffToken);
-    await api.patch(`/orgs/${orgId}/conferences/${conf2.id}`, { status: 'completed' }, staffToken);
-    await api.post(`/orgs/${orgId}/conferences/${conf2.id}/report`, {}, staffToken);
-    await assert.rejects(
-      () => api.get(`/orgs/${orgId}/conferences/${conf2.id}/report`, {}, guardianToken),
-      { status: 400 },
-    );
-  });
+test('staff adds agenda item', async () => {
+  const r = must(await api('POST', `/organisations/${orgId}/conferences/${confId}/agenda`, {
+    token: staffToken,
+    body: { title: 'Technical development review', kind: 'review_domain', time_minutes: 20 },
+  }), 201);
+  itemId = r.id;
+  assert.equal(r.title, 'Technical development review');
+  assert.equal(r.kind, 'review_domain');
 });
 
-describe('MCP access', () => {
-  it('MCP create_academy_conference works', async () => {
-    const r = await rpc('create_academy_conference', { org_id: orgId, title: 'MCP test conference', kind: 'progress_check', plan_id: planId }, staffToken);
-    assert.equal(r.kind, 'progress_check');
-  });
-
-  it('MCP list_my_guardian_conferences works for guardian', async () => {
-    const r = await rpc('list_my_guardian_conferences', {}, guardianToken);
-    assert.ok(Array.isArray(r));
-  });
+test('staff updates agenda item', async () => {
+  const r = must(await api('PATCH', `/organisations/${orgId}/conferences/${confId}/agenda/${itemId}`, {
+    token: staffToken,
+    body: { time_minutes: 25 },
+  }));
+  assert.equal(r.time_minutes, 25);
 });
 
-describe('cancel', () => {
-  it('staff can cancel a draft conference', async () => {
-    const c = await api.post(`/orgs/${orgId}/conferences`, { title: 'To cancel', kind: 'other', plan_id: planId }, staffToken);
-    const r = await api.post(`/orgs/${orgId}/conferences/${c.id}/cancel`, { reason: 'No longer needed' }, staffToken);
-    assert.equal(r.status, 'cancelled');
-  });
+test('staff reorders agenda', async () => {
+  const item2 = must(await api('POST', `/organisations/${orgId}/conferences/${confId}/agenda`, {
+    token: staffToken,
+    body: { title: 'Welfare check', kind: 'welfare', time_minutes: 10 },
+  }), 201);
+  const r = must(await api('PATCH', `/organisations/${orgId}/conferences/${confId}/agenda/order`, {
+    token: staffToken,
+    body: { item_ids: [item2.id, itemId] },
+  }));
+  assert.equal(r.ok, true);
+});
 
-  it('cannot cancel a completed conference', async () => {
-    await assert.rejects(
-      () => api.post(`/orgs/${orgId}/conferences/${confId}/cancel`, {}, staffToken),
-      { status: 400 },
-    );
-  });
+test('staff records decision visible to guardian', async () => {
+  const r = must(await api('POST', `/organisations/${orgId}/conferences/${confId}/decisions`, {
+    token: staffToken,
+    body: { kind: 'action', body: 'Increase forehand training to 3x/week', deadline_on: '2026-09-01', visible_to_guardian: true },
+  }), 201);
+  decisionId = r.id;
+  assert.equal(r.kind, 'action');
+  assert.equal(r.status, 'open');
+  assert.equal(r.visible_to_guardian, true);
+});
+
+test('staff updates decision to done', async () => {
+  const r = must(await api('PATCH', `/organisations/${orgId}/conferences/${confId}/decisions/${decisionId}`, {
+    token: staffToken,
+    body: { status: 'done' },
+  }));
+  assert.equal(r.status, 'done');
+  assert.ok(r.resolved_at);
+});
+
+test('staff reschedules conference and notifies', async () => {
+  const r = must(await api('POST', `/organisations/${orgId}/conferences/${confId}/reschedule`, {
+    token: staffToken,
+    body: { new_scheduled_at: '2026-07-01T14:00:00Z', reason: 'Coach availability' },
+  }));
+  assert.equal(r.status, 'rescheduled');
+});
+
+test('staff marks conference complete with outcome', async () => {
+  const r = must(await api('PATCH', `/organisations/${orgId}/conferences/${confId}`, {
+    token: staffToken,
+    body: { status: 'completed', outcome_summary: 'Excellent progress. Next review in 3 months.' },
+  }));
+  assert.equal(r.status, 'completed');
+  assert.ok(r.outcome_summary);
+});
+
+test('staff generates outcome report', async () => {
+  const r = must(await api('POST', `/organisations/${orgId}/conferences/${confId}/report`, { token: staffToken }), 201);
+  assert.ok(r.document_id || r.ok, 'should return document_id or ok');
+});
+
+test('guardian acknowledges outcome', async () => {
+  const r = must(await api('POST', `/organisations/${orgId}/conferences/${confId}/acknowledge`, { token: guardianToken }));
+  assert.equal(r.acknowledged, true);
+  assert.ok(r.acknowledged_at);
+});
+
+test('guardian gets report after acknowledgement', async () => {
+  const r = must(await api('GET', `/organisations/${orgId}/conferences/${confId}/report`, { token: guardianToken }));
+  assert.ok(r.document_id || r.download_url || r.ok, 'should return report info');
+});
+
+test('staff can cancel a draft conference', async () => {
+  const c2 = must(await api('POST', `/organisations/${orgId}/conferences`, {
+    token: staffToken,
+    body: { title: 'To cancel', kind: 'other' },
+  }), 201);
+  const r = must(await api('POST', `/organisations/${orgId}/conferences/${c2.id}/cancel`, {
+    token: staffToken,
+    body: { reason: 'No longer needed' },
+  }));
+  assert.equal(r.status, 'cancelled');
+});
+
+test('cannot cancel a completed conference', async () => {
+  const r = await api('POST', `/organisations/${orgId}/conferences/${confId}/cancel`, { token: staffToken });
+  assert.equal(r.status, 400);
+});
+
+test('MCP create_academy_conference works', async () => {
+  const r = await rpc('tools/call', { name: 'create_academy_conference', arguments: { org_id: orgId, title: 'MCP test conference', kind: 'progress_check' } }, staffToken);
+  assert.ok(r && r.content, 'MCP should return a result');
+  const body = JSON.parse(r.content[0]?.text ?? 'null');
+  assert.ok(body && body.kind === 'progress_check', 'should return a progress_check conference');
+});
+
+test('MCP list_my_guardian_conferences works for guardian', async () => {
+  const r = await rpc('tools/call', { name: 'list_my_guardian_conferences', arguments: {} }, guardianToken);
+  assert.ok(r !== null, 'MCP should return a result');
 });

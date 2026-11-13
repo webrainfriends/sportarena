@@ -40,13 +40,19 @@ async function accessTo(user, conf, c) {
   if (isAdmin(user)) return 'staff';
   const role = await orgRole(user, conf.org_id, c);
   if (role && STAFF_ROLES.includes(role)) return 'staff';
-  if (conf.plan_id && conf.family_visible) {
-    const plan = (await c.query('SELECT athlete_id FROM academy_dev_plans WHERE id=$1', [conf.plan_id])).rows[0];
-    if (plan) {
-      const link = await guardianLink(user.id, plan.athlete_id, c);
-      if (link) {
-        const att = (await c.query('SELECT 1 FROM academy_conference_attendees WHERE conference_id=$1 AND user_id=$2', [conf.id, user.id])).rows[0];
-        if (att) return 'guardian';
+  if (conf.family_visible) {
+    // Check if the caller is listed as an attendee
+    const att = (await c.query('SELECT 1 FROM academy_conference_attendees WHERE conference_id=$1 AND user_id=$2', [conf.id, user.id])).rows[0];
+    if (att) {
+      // Optionally verify via guardian link when a dev plan is linked
+      if (conf.plan_id) {
+        const plan = (await c.query('SELECT athlete_id FROM academy_dev_plans WHERE id=$1', [conf.plan_id])).rows[0];
+        if (plan) {
+          const link = await guardianLink(user.id, plan.athlete_id, c);
+          if (link) return 'guardian';
+        }
+      } else {
+        return 'guardian';
       }
     }
   }
@@ -122,7 +128,7 @@ const logEvent = (c, confId, actorId, action, detail) =>
 
 // ---- 1. Create conference -----------------------------------------------------------------------------------------
 cap({
-  name: 'create_academy_conference', method: 'POST', path: '/orgs/:org_id/conferences', tag: TAG, status: 201,
+  name: 'create_academy_conference', method: 'POST', path: '/organisations/:org_id/conferences', tag: TAG, status: 201,
   summary: 'Schedule a new multi-stakeholder development conference for one athlete, linked to their development plan.',
   input: z.object({
     org_id: id, plan_id: id.optional(), title: text(1, 200), kind: z.enum(CONF_KINDS),
@@ -153,7 +159,7 @@ cap({
 
 // ---- 2. Update conference -----------------------------------------------------------------------------------------
 cap({
-  name: 'update_academy_conference', method: 'PATCH', path: '/orgs/:org_id/conferences/:conference_id', tag: TAG,
+  name: 'update_academy_conference', method: 'PATCH', path: '/organisations/:org_id/conferences/:conference_id', tag: TAG,
   summary: 'Update conference details, status, agenda or staff notes.',
   input: z.object({
     org_id: id, conference_id: id,
@@ -195,7 +201,7 @@ cap({
 
 // ---- 3. List conferences ------------------------------------------------------------------------------------------
 cap({
-  name: 'list_academy_conferences', method: 'GET', path: '/orgs/:org_id/conferences', tag: TAG,
+  name: 'list_academy_conferences', method: 'GET', path: '/organisations/:org_id/conferences', tag: TAG,
   summary: 'List conferences for an organisation. Staff see all; guardians see only family-visible ones where they are an attendee.',
   input: z.object({
     org_id: id,
@@ -235,7 +241,7 @@ cap({
 
 // ---- 4. Get conference --------------------------------------------------------------------------------------------
 cap({
-  name: 'get_academy_conference', method: 'GET', path: '/orgs/:org_id/conferences/:conference_id', tag: TAG,
+  name: 'get_academy_conference', method: 'GET', path: '/organisations/:org_id/conferences/:conference_id', tag: TAG,
   summary: 'Get full conference detail. Staff receive staff notes; guardians never receive staff notes.',
   input: z.object({ org_id: id, conference_id: id }),
   async handler({ user }, i) {
@@ -253,7 +259,7 @@ cap({
 
 // ---- 5. Cancel conference -----------------------------------------------------------------------------------------
 cap({
-  name: 'cancel_academy_conference', method: 'POST', path: '/orgs/:org_id/conferences/:conference_id/cancel', tag: TAG,
+  name: 'cancel_academy_conference', method: 'POST', path: '/organisations/:org_id/conferences/:conference_id/cancel', tag: TAG,
   summary: 'Cancel a conference and notify all attendees.',
   input: z.object({ org_id: id, conference_id: id, reason: z.string().max(500).optional() }),
   async handler({ user }, i) {
@@ -277,7 +283,7 @@ cap({
 
 // ---- 6. Reschedule conference -------------------------------------------------------------------------------------
 cap({
-  name: 'reschedule_academy_conference', method: 'POST', path: '/orgs/:org_id/conferences/:conference_id/reschedule', tag: TAG,
+  name: 'reschedule_academy_conference', method: 'POST', path: '/organisations/:org_id/conferences/:conference_id/reschedule', tag: TAG,
   summary: 'Set a new date/time for a conference and notify attendees.',
   input: z.object({
     org_id: id, conference_id: id,
@@ -306,7 +312,7 @@ cap({
 
 // ---- 7. Invite attendee ------------------------------------------------------------------------------------------
 cap({
-  name: 'invite_conference_attendee', method: 'POST', path: '/orgs/:org_id/conferences/:conference_id/attendees', tag: TAG, status: 201,
+  name: 'invite_conference_attendee', method: 'POST', path: '/organisations/:org_id/conferences/:conference_id/attendees', tag: TAG, status: 201,
   summary: 'Invite a person to a conference as a specific role (coach, guardian, athlete, etc.).',
   input: z.object({
     org_id: id, conference_id: id,
@@ -339,7 +345,7 @@ cap({
 
 // ---- 8. Respond to invite ----------------------------------------------------------------------------------------
 cap({
-  name: 'respond_conference_invite', method: 'POST', path: '/orgs/:org_id/conferences/:conference_id/attendees/:attendee_id/respond', tag: TAG,
+  name: 'respond_conference_invite', method: 'POST', path: '/organisations/:org_id/conferences/:conference_id/attendees/:attendee_id/respond', tag: TAG,
   summary: 'Confirm or decline attendance at a conference. The caller must be the invited attendee or a staff member.',
   input: z.object({
     org_id: id, conference_id: id, attendee_id: id,
@@ -365,7 +371,7 @@ cap({
 
 // ---- 9. Add evidence ---------------------------------------------------------------------------------------------
 cap({
-  name: 'add_conference_evidence', method: 'POST', path: '/orgs/:org_id/conferences/:conference_id/evidence', tag: TAG, status: 201,
+  name: 'add_conference_evidence', method: 'POST', path: '/organisations/:org_id/conferences/:conference_id/evidence', tag: TAG, status: 201,
   summary: 'Attach a development review, assessment, objective or external item as evidence for the conference.',
   input: z.object({
     org_id: id, conference_id: id,
@@ -389,7 +395,7 @@ cap({
 
 // ---- 10. Remove evidence -----------------------------------------------------------------------------------------
 cap({
-  name: 'remove_conference_evidence', method: 'DELETE', path: '/orgs/:org_id/conferences/:conference_id/evidence/:evidence_id', tag: TAG,
+  name: 'remove_conference_evidence', method: 'DELETE', path: '/organisations/:org_id/conferences/:conference_id/evidence/:evidence_id', tag: TAG,
   summary: 'Remove an evidence link from a conference. Only removes the link, not the underlying source record.',
   input: z.object({ org_id: id, conference_id: id, evidence_id: id }),
   async handler({ user }, i) {
@@ -405,7 +411,7 @@ cap({
 
 // ---- 11. Add agenda item -----------------------------------------------------------------------------------------
 cap({
-  name: 'add_conference_agenda_item', method: 'POST', path: '/orgs/:org_id/conferences/:conference_id/agenda', tag: TAG, status: 201,
+  name: 'add_conference_agenda_item', method: 'POST', path: '/organisations/:org_id/conferences/:conference_id/agenda', tag: TAG, status: 201,
   summary: 'Add a structured agenda item to a conference.',
   input: z.object({
     org_id: id, conference_id: id,
@@ -429,9 +435,26 @@ cap({
   },
 });
 
-// ---- 12. Update agenda item --------------------------------------------------------------------------------------
+// ---- 12. Reorder agenda (registered before /:item_id to avoid route shadowing) ----------------------------------
 cap({
-  name: 'update_conference_agenda_item', method: 'PATCH', path: '/orgs/:org_id/conferences/:conference_id/agenda/:item_id', tag: TAG,
+  name: 'reorder_conference_agenda', method: 'PATCH', path: '/organisations/:org_id/conferences/:conference_id/agenda/order', tag: TAG,
+  summary: 'Set the display order for all agenda items at once.',
+  input: z.object({ org_id: id, conference_id: id, item_ids: z.array(id).min(1).max(50) }),
+  async handler({ user }, i) {
+    return tx(async (c) => {
+      await requireStaff(user, i.org_id, c);
+      await requireConf(c, i.org_id, i.conference_id);
+      await Promise.all(i.item_ids.map((itemId, seq) =>
+        c.query('UPDATE academy_conference_agenda_items SET seq=$3 WHERE id=$1 AND conference_id=$2', [itemId, i.conference_id, seq]),
+      ));
+      return { ok: true };
+    });
+  },
+});
+
+// ---- 13. Update agenda item --------------------------------------------------------------------------------------
+cap({
+  name: 'update_conference_agenda_item', method: 'PATCH', path: '/organisations/:org_id/conferences/:conference_id/agenda/:item_id', tag: TAG,
   summary: 'Update a conference agenda item.',
   input: z.object({
     org_id: id, conference_id: id, item_id: id,
@@ -462,26 +485,9 @@ cap({
   },
 });
 
-// ---- 13. Reorder agenda ------------------------------------------------------------------------------------------
-cap({
-  name: 'reorder_conference_agenda', method: 'PATCH', path: '/orgs/:org_id/conferences/:conference_id/agenda/order', tag: TAG,
-  summary: 'Set the display order for all agenda items at once.',
-  input: z.object({ org_id: id, conference_id: id, item_ids: z.array(id).min(1).max(50) }),
-  async handler({ user }, i) {
-    return tx(async (c) => {
-      await requireStaff(user, i.org_id, c);
-      await requireConf(c, i.org_id, i.conference_id);
-      await Promise.all(i.item_ids.map((itemId, seq) =>
-        c.query('UPDATE academy_conference_agenda_items SET seq=$3 WHERE id=$1 AND conference_id=$2', [itemId, i.conference_id, seq]),
-      ));
-      return { ok: true };
-    });
-  },
-});
-
 // ---- 14. Add decision --------------------------------------------------------------------------------------------
 cap({
-  name: 'add_conference_decision', method: 'POST', path: '/orgs/:org_id/conferences/:conference_id/decisions', tag: TAG, status: 201,
+  name: 'add_conference_decision', method: 'POST', path: '/organisations/:org_id/conferences/:conference_id/decisions', tag: TAG, status: 201,
   summary: 'Record a decision, action, recommendation or follow-up from a conference.',
   input: z.object({
     org_id: id, conference_id: id,
@@ -509,7 +515,7 @@ cap({
 
 // ---- 15. Update decision -----------------------------------------------------------------------------------------
 cap({
-  name: 'update_conference_decision', method: 'PATCH', path: '/orgs/:org_id/conferences/:conference_id/decisions/:decision_id', tag: TAG,
+  name: 'update_conference_decision', method: 'PATCH', path: '/organisations/:org_id/conferences/:conference_id/decisions/:decision_id', tag: TAG,
   summary: 'Update a decision/action status, responsible party, deadline or body.',
   input: z.object({
     org_id: id, conference_id: id, decision_id: id,
@@ -546,22 +552,24 @@ cap({
 
 // ---- 16. Acknowledge outcome -------------------------------------------------------------------------------------
 cap({
-  name: 'acknowledge_conference_outcome', method: 'POST', path: '/orgs/:org_id/conferences/:conference_id/acknowledge', tag: TAG,
+  name: 'acknowledge_conference_outcome', method: 'POST', path: '/organisations/:org_id/conferences/:conference_id/acknowledge', tag: TAG,
   summary: 'Guardian authenticates and acknowledges the meeting outcome. Creates an immutable acknowledgement record.',
   input: z.object({ org_id: id, conference_id: id }),
   async handler({ user, req }, i) {
     return tx(async (c) => {
       const conf = await requireConf(c, i.org_id, i.conference_id);
       if (!conf.family_visible) throw notFound('Conference');
-      // Must be an active guardian of the athlete linked to this conference
-      if (!conf.plan_id) throw badRequest('Conference has no linked development plan');
-      const plan = (await c.query('SELECT athlete_id FROM academy_dev_plans WHERE id=$1', [conf.plan_id])).rows[0];
-      if (!plan) throw notFound('Development plan');
-      const link = await guardianLink(user.id, plan.athlete_id, c);
-      if (!link) throw forbidden();
       // Must be listed as an attendee
       const att = (await c.query('SELECT 1 FROM academy_conference_attendees WHERE conference_id=$1 AND user_id=$2', [conf.id, user.id])).rows[0];
       if (!att) throw forbidden();
+      // When a dev plan is linked, verify active guardian relationship
+      if (conf.plan_id) {
+        const plan = (await c.query('SELECT athlete_id FROM academy_dev_plans WHERE id=$1', [conf.plan_id])).rows[0];
+        if (plan) {
+          const link = await guardianLink(user.id, plan.athlete_id, c);
+          if (!link) throw forbidden();
+        }
+      }
       const ipRaw = req?.ip ?? req?.socket?.remoteAddress ?? '';
       const ipHash = ipRaw ? createHash('sha256').update(ipRaw).digest('hex') : null;
       const ack = (await c.query(
@@ -578,7 +586,7 @@ cap({
 
 // ---- 17. Generate outcome report ---------------------------------------------------------------------------------
 cap({
-  name: 'generate_conference_outcome_report', method: 'POST', path: '/orgs/:org_id/conferences/:conference_id/report', tag: TAG, status: 201,
+  name: 'generate_conference_outcome_report', method: 'POST', path: '/organisations/:org_id/conferences/:conference_id/report', tag: TAG, status: 201,
   summary: 'Generate and store a formatted outcome report for the conference. Staff only.',
   input: z.object({ org_id: id, conference_id: id }),
   async handler({ user }, i) {
@@ -635,7 +643,7 @@ cap({
 
 // ---- 18. Get outcome report --------------------------------------------------------------------------------------
 cap({
-  name: 'get_conference_outcome_report', method: 'GET', path: '/orgs/:org_id/conferences/:conference_id/report', tag: TAG,
+  name: 'get_conference_outcome_report', method: 'GET', path: '/organisations/:org_id/conferences/:conference_id/report', tag: TAG,
   summary: 'Get the latest outcome report for a conference. Guardians must acknowledge before downloading.',
   input: z.object({ org_id: id, conference_id: id }),
   async handler({ user }, i) {

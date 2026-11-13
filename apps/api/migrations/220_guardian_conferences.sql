@@ -4,7 +4,7 @@ BEGIN;
 
 CREATE TABLE IF NOT EXISTS academy_conferences (
   id               uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  org_id           uuid NOT NULL REFERENCES orgs(id),
+  org_id           uuid NOT NULL REFERENCES organisations(id),
   plan_id          uuid REFERENCES academy_dev_plans(id),
   title            text NOT NULL,
   kind             text NOT NULL CHECK (kind IN (
