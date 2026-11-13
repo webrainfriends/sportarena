@@ -122,7 +122,7 @@ import { ParaPathway, SharedParaPathway } from './screens/para-pathway';
 import { PathDetail, ModuleView } from './screens/para-learn';
 import { VenueRevenueIntelligence } from './screens/venue-revenue-intelligence';
 import { AdaptiveEquipmentExplore, AdaptiveEquipmentHub, AdaptiveLoanFlow, FittingAppointmentFlow, AssetServiceSheet, MyAdaptiveLoans, SupplierAssetCatalogue, AdaptiveEventReadiness } from './screens/adaptive-equipment';
-import { DataResidency, DataResidencyConsent, DataResidencyMigration, DataResidencyAdmin } from './screens/data-residency';
+import { DataResidency, DataResidencyConsent, DataResidencyDeclined, DataResidencyGuardian, DataResidencyMigration, DataResidencyAdmin, OrgDataResidency } from './screens/data-residency';
 import { OfficialsDevelopment } from './screens/officials-development';
 import { OfficialsEducation } from './screens/officials-education';
 import { OfficialsHome, OfficialMatch } from './screens/officials-home';
