@@ -19973,7 +19973,7 @@ export default {
   'physio.invoices.add_line': 'Add line item',
 
   // Physio routine player (exercise log)
-  'physio.routine.title': 'Today's exercises',
+  'physio.routine.title': 'Today\'s exercises',
   'physio.routine.exercise': 'Exercise',
   'physio.routine.exercise_count': '{{count}} exercises today',
   'physio.routine.sets': 'Sets',
