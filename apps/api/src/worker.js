@@ -64,6 +64,7 @@ import { syncCoachPackages } from './coach-packages.js';
 import { adSweeps } from './ads/engine.js';
 import { raiseTeamDues } from './team-money.js';
 import { reconcileFinance } from './finance.js';
+import { sixRoleAuditStep } from './finance-audit.js';
 import { sealAuditLog } from './audit-chain.js';
 import { integrationSweep } from './integrations/engine.js';
 
@@ -138,6 +139,7 @@ export const STEPS = [
   ['team_dues', 'team_dues_raised', raiseTeamDues, 0],
   ['advertising', 'advertising', adSweeps, null],
   ['finance', 'finance', reconcileFinance, null],
+  ['six_role_audit', 'six_role_audit', sixRoleAuditStep, null],
   ['integrations', 'integrations', integrationSweep, null],
 ];
 

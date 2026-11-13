@@ -94,6 +94,24 @@ const OBLIGATIONS = [
           LEFT JOIN player_payout_lines l ON l.id = x.run_line_id LEFT JOIN player_payout_runs r ON r.id = l.run_id
           WHERE coalesce(t.organisation_id, e.organisation_id) IS NOT NULL`,
   },
+  {
+    type: 'physio_package', module: 'physio', cumulative: false,
+    sql: `SELECT p.id, NULL::uuid AS payer_id, p.physio_id AS payee_id, p.organisation_id AS payer_org, NULL::uuid AS payee_org, p.currency,
+            p.price_cents AS gross, 0::bigint AS tax,
+            p.created_at::date AS due_on,
+            CASE WHEN p.status = 'active' THEN 'open' ELSE 'cancelled' END AS state,
+            NULL::uuid AS event_id, NULL::uuid AS team_id, NULL::uuid AS workspace_id, p.created_at AS at, NULL::timestamptz AS paid_at, 0::bigint AS paid_total
+          FROM physio_packages p WHERE p.price_cents > 0`,
+  },
+  {
+    type: 'physio_appointment', module: 'physio', cumulative: true,
+    sql: `SELECT a.id, a.client_id AS payer_id, a.physio_id AS payee_id, a.organisation_id AS payer_org, NULL::uuid AS payee_org, a.currency,
+            a.amount_cents AS gross, 0::bigint AS tax,
+            a.scheduled_at::date AS due_on,
+            CASE WHEN a.status IN ('completed','confirmed') THEN 'open' WHEN a.status = 'cancelled' THEN 'cancelled' ELSE 'open' END AS state,
+            NULL::uuid AS event_id, NULL::uuid AS team_id, NULL::uuid AS workspace_id, a.created_at AS at, a.paid_at, coalesce(a.amount_cents,0) AS paid_total
+          FROM physio_appointments a WHERE a.amount_cents > 0`,
+  },
 ];
 
 const entryOf = (d, r, extra) => ({
@@ -434,6 +452,61 @@ async function syncContractCreditNotes(limit) {
   return { posted };
 }
 
+/**
+ * Idempotently writes fin_role_links rows that connect ledger entries back to their
+ * role-domain entity (coach, referee, academy, organisation, sponsor, physio).
+ * Called at the end of syncLedger so any new transactions from this cycle are covered.
+ */
+async function syncCrossRoleLinks() {
+  const queries = [
+    // Coach: coach_sessions fee_transactions → coaching module transactions
+    `INSERT INTO fin_role_links (transaction_id, role, entity_id, entity_type)
+      SELECT f.id, 'coach', cs.coach_id, 'coach_profile'
+      FROM fin_transactions f
+      JOIN coach_sessions cs ON cs.id = f.source_id AND f.source_type = 'coach_session'
+      WHERE NOT EXISTS (SELECT 1 FROM fin_role_links l WHERE l.transaction_id = f.id AND l.role = 'coach' AND l.entity_id = cs.coach_id)`,
+    // Referee: official_assignments → referee_profiles
+    `INSERT INTO fin_role_links (transaction_id, role, entity_id, entity_type)
+      SELECT f.id, 'referee', oa.official_id, 'referee_profile'
+      FROM fin_transactions f
+      JOIN official_assignments oa ON oa.id = f.source_id AND f.source_type IN ('official_fee','referee_fee')
+      WHERE NOT EXISTS (SELECT 1 FROM fin_role_links l WHERE l.transaction_id = f.id AND l.role = 'referee' AND l.entity_id = oa.official_id)`,
+    // Academy: academy_enrolments obligation → organisation (academy kind)
+    `INSERT INTO fin_role_links (transaction_id, role, entity_id, entity_type)
+      SELECT f.id, 'academy', f.payer_org_id, 'organisation'
+      FROM fin_transactions f
+      WHERE f.source_type IN ('academy_enrolment','academy_package','academy_subscription')
+        AND f.payer_org_id IS NOT NULL
+        AND NOT EXISTS (SELECT 1 FROM fin_role_links l WHERE l.transaction_id = f.id AND l.role = 'academy')`,
+    // Organisation: venue_invoice → organisations
+    `INSERT INTO fin_role_links (transaction_id, role, entity_id, entity_type)
+      SELECT f.id, 'organisation', coalesce(f.payer_org_id, f.payee_org_id), 'organisation'
+      FROM fin_transactions f
+      WHERE f.source_type = 'venue_invoice'
+        AND coalesce(f.payer_org_id, f.payee_org_id) IS NOT NULL
+        AND NOT EXISTS (SELECT 1 FROM fin_role_links l WHERE l.transaction_id = f.id AND l.role = 'organisation')`,
+    // Sponsor: sponsorship_deal_term → sponsor entity
+    `INSERT INTO fin_role_links (transaction_id, role, entity_id, entity_type)
+      SELECT f.id, 'sponsor', sd.id, 'sponsor_deal'
+      FROM fin_transactions f
+      JOIN sponsorship_deal_terms sdt ON sdt.id = f.source_id AND f.source_type = 'sponsorship_deal_term'
+      JOIN sponsorship_deals sd ON sd.id = sdt.deal_id
+      WHERE NOT EXISTS (SELECT 1 FROM fin_role_links l WHERE l.transaction_id = f.id AND l.role = 'sponsor' AND l.entity_id = sd.id)`,
+    // Physio: physio_appointment → physio entity
+    `INSERT INTO fin_role_links (transaction_id, role, entity_id, entity_type)
+      SELECT f.id, 'physio', a.physio_id, 'physio_profile'
+      FROM fin_transactions f
+      JOIN physio_appointments a ON a.id = f.source_id AND f.source_type = 'physio_appointment'
+      WHERE NOT EXISTS (SELECT 1 FROM fin_role_links l WHERE l.transaction_id = f.id AND l.role = 'physio' AND l.entity_id = a.physio_id)`,
+  ];
+  let linked = 0;
+  for (const q of queries) {
+    const r = await many(q, []);
+    linked += r.length;
+  }
+  return { linked };
+}
+
 /** Catch the canonical ledger up with every source above and fill the filter dimensions. Idempotent; called by reconcileFinance (worker step `finance`). */
 export async function syncLedger({ limit = 500 } = {}) {
   const out = { obligations: 0, obligations_updated: 0, receipts: 0, spend: 0, spend_reversed: 0, more: false, commissions: 0, contract_credit_notes: 0, venue_credit_notes: 0, pos: 0, wallet: 0, credit_notes: 0, trip_payments: 0, sponsorship_refunds: 0 };
@@ -453,5 +526,7 @@ export async function syncLedger({ limit = 500 } = {}) {
   // after the wallet and front-desk tenders, so what they already hold is netted before the rest is treated as paid at the venue
   out.receipts += (await syncCumulativeReceipts(VENUE_INVOICE_RECEIPTS, limit)).posted;
   await applyDimensions(null, null);
+  const links = await syncCrossRoleLinks();
+  out.role_links = links.linked;
   return out;
 }

@@ -9,7 +9,7 @@ import { Btn, Chip, Empty, ErrorBox, Loading, Row, Section, T, Tag } from '../ui
 import { MenuField } from '../menu-field';
 import { EntityPicker } from '../entity-picker';
 import { c, day } from '../theme';
-import { Kpi, Split } from './academy-ui';
+import { Kpi, Split, Fact, Block } from './academy-ui';
 import { Detail, atLeast, modLabel, money, statusLabel } from './finance-parts';
 
 const BUCKETS = ['current', 'd1_30', 'd31_60', 'd61_90', 'd90_plus'];
@@ -152,6 +152,89 @@ export function AccessAudit({ scope, whole, level, toast, onChanged }) {
           ))}
         </Section>
       ) : null}
+    </View>
+  );
+}
+
+const SIX_ROLES = ['coach', 'referee', 'academy', 'organisation', 'sponsor', 'physio'];
+const roleColor = { coach: 'blue', referee: 'orange', academy: 'green', organisation: 'violet', sponsor: 'gold', physio: 'teal' };
+
+export function SixRoleAudit({ scope, whole, toast }) {
+  const [role, setRole] = useState(null);
+  const [busy, setBusy] = useState(false);
+
+  const summary = useLoad(() => api.get('/finance/six-role-audit/summary', scope?.org_id ? { org_id: scope.org_id } : {}), [scope?.org_id]);
+  const gaps = useLoad(() => api.get('/finance/six-role-audit/gaps', { ...(scope?.org_id ? { org_id: scope.org_id } : {}), ...(role ? { role } : {}), status: 'open', limit: 100 }), [scope?.org_id, role]);
+  const runs = useLoad(() => api.get('/finance/six-role-audit/runs', { ...(scope?.org_id ? { org_id: scope.org_id } : {}), limit: 5 }), [scope?.org_id]);
+
+  const triggerAudit = async () => {
+    setBusy(true);
+    try {
+      await api.post('/finance/six-role-audit/run', scope?.org_id ? { org_id: scope.org_id } : {});
+      toast(t('fin.six_role.run_done'));
+      summary.reload(); gaps.reload(); runs.reload();
+    } catch (e) { toast(e.message ?? t('fin.six_role.run_error'), 'error'); }
+    finally { setBusy(false); }
+  };
+
+  const resolveGap = async (gapId) => {
+    try {
+      await api.post(`/finance/six-role-audit/gaps/${gapId}/resolve`, {});
+      toast(t('fin.six_role.gap_resolved'));
+      gaps.reload(); summary.reload();
+    } catch (e) { toast(e.message ?? t('fin.six_role.resolve_error'), 'error'); }
+  };
+
+  const byRole = summary.data?.by_role ?? [];
+  const latestRun = summary.data?.latest_run;
+
+  const roleOpts = [{ value: '', label: t('fin.six_role.all_roles') }, ...SIX_ROLES.map((r) => ({ value: r, label: t(`fin.six_role.role.${r}`) }))];
+
+  return (
+    <View style={{ gap: 14 }}>
+      <Block title={t('fin.six_role.health_title')} right={<Btn small title={t('fin.six_role.run_btn')} loading={busy} onPress={triggerAudit} />}>
+        {summary.loading && !summary.data ? <Loading /> : summary.error ? <ErrorBox error={summary.error} onRetry={summary.reload} /> : (
+          <View style={{ gap: 8 }}>
+            <Split>
+              {byRole.map((r) => (
+                <Kpi key={r.kind} label={r.kind.replace(/_unlinked$|^six_role_/, '')} value={r.open_count} color={r.open_count > 0 ? c.red : c.green} />
+              ))}
+              {!byRole.length ? <T size={13} color={c.mute}>{t('fin.six_role.no_gaps')}</T> : null}
+            </Split>
+            {latestRun ? (
+              <View style={{ gap: 4, marginTop: 4 }}>
+                <Fact k={t('fin.six_role.last_run')} v={day(latestRun.ran_at)} />
+                <Fact k={t('fin.six_role.gaps_open')} v={String(latestRun.gaps_open)} />
+                <Fact k={t('fin.six_role.gaps_resolved')} v={String(latestRun.gaps_resolved)} />
+              </View>
+            ) : null}
+          </View>
+        )}
+      </Block>
+
+      <Section title={t('fin.six_role.gaps_title')}>
+        <MenuField label={t('fin.six_role.filter_role')} value={role ?? ''} onChange={(v) => setRole(v || null)} options={roleOpts} />
+        {gaps.loading && !gaps.data ? <Loading /> : gaps.error ? <ErrorBox error={gaps.error} onRetry={gaps.reload} /> :
+          !gaps.data?.length ? <T size={13} color={c.mute} style={{ padding: 12 }}>{t('fin.six_role.no_open_gaps')}</T> :
+          gaps.data.map((g) => (
+            <Row
+              key={g.id}
+              title={t(`fin.six_role.kind.${g.kind}`, { defaultValue: g.kind })}
+              sub={[t(`fin.six_role.role.${g.source_module}`, { defaultValue: g.source_module }), g.currency, g.amount_cents != null ? money(g.amount_cents, g.currency) : null, day(g.opened_at)].filter(Boolean).join(' · ')}
+              right={<Btn small title={t('fin.six_role.resolve')} onPress={() => resolveGap(g.id)} />}
+            />
+          ))
+        }
+      </Section>
+
+      <Section title={t('fin.six_role.runs_title')}>
+        {runs.loading && !runs.data ? <Loading /> : runs.error ? null :
+          !runs.data?.length ? <T size={13} color={c.mute}>{t('fin.six_role.no_runs')}</T> :
+          runs.data.map((r) => (
+            <Row key={r.id} title={day(r.ran_at)} sub={`${t('fin.six_role.gaps_total')}: ${r.gaps_total} · ${t('fin.six_role.source')}: ${r.source}`} />
+          ))
+        }
+      </Section>
     </View>
   );
 }
