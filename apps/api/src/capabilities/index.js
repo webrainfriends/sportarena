@@ -105,6 +105,7 @@ import './svc-finance.js';
 import './svc-documents.js';
 import './svc-reports.js';
 import './event-venues.js';
+import './event-external-venues.js';
 import './event-ops.js';
 import './scores.js';
 import './metric-governance.js';
