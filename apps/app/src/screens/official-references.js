@@ -27,11 +27,11 @@ const TYPE_COLOR = {
 };
 
 const STATUS_STYLE = {
-  pending:  { bg: c.cyanSoft,  fg: c.ink },
-  approved: { bg: '#D4EDDA',   fg: '#155724' },
-  declined: { bg: '#F8D7DA',   fg: '#721C24' },
+  pending:  { bg: c.cyanSoft,   fg: c.cyan },
+  approved: { bg: c.mintSoft,   fg: c.mint },
+  declined: { bg: c.redSoft,    fg: c.red },
   revoked:  { bg: c.violetSoft, fg: c.mute },
-  expired:  { bg: c.line,      fg: c.mute },
+  expired:  { bg: c.line,       fg: c.mute },
 };
 
 function statusStyle(ref) {
@@ -115,8 +115,8 @@ function RefCard({ item, onPress }) {
           <View style={{ alignItems: 'flex-end', gap: 6 }}>
             <StatusChip item={item} />
             {item.is_verified ? (
-              <View style={{ backgroundColor: c.mintSoft ?? '#D4EDDA', borderRadius: r.pill, paddingHorizontal: 8, paddingVertical: 2 }}>
-                <T size={10} weight="700" color="#155724">✓ {t('oref.badge.verified')}</T>
+              <View style={{ backgroundColor: c.mintSoft, borderRadius: r.pill, paddingHorizontal: 8, paddingVertical: 2 }}>
+                <T size={10} weight="700" color={c.mint}>✓ {t('oref.badge.verified')}</T>
               </View>
             ) : null}
             {item.is_confidential ? (
@@ -125,8 +125,8 @@ function RefCard({ item, onPress }) {
               </View>
             ) : null}
             {item.conflict_flag ? (
-              <View style={{ backgroundColor: c.sunSoft ?? '#FEF3C7', borderRadius: r.pill, paddingHorizontal: 8, paddingVertical: 2 }}>
-                <T size={10} weight="700" color="#92400E">⚠ {t('oref.badge.conflict')}</T>
+              <View style={{ backgroundColor: c.sunSoft, borderRadius: r.pill, paddingHorizontal: 8, paddingVertical: 2 }}>
+                <T size={10} weight="700" color={c.sun}>⚠ {t('oref.badge.conflict')}</T>
               </View>
             ) : null}
           </View>
@@ -145,7 +145,7 @@ function RequestReferenceWizard({ visible, onClose, onSaved, sports }) {
   const [tenureFrom, setTenureFrom] = useState('');
   const [tenureTo, setTenureTo] = useState('');
   const [sportId, setSportId] = useState(null);
-  const [inviteMethod, setInviteMethod] = useState('direct');
+  const [inviteMethod, setInviteMethod] = useState('verified_association');
   const [inviteeEmail, setInviteeEmail] = useState('');
   const [isConfidential, setIsConfidential] = useState(false);
   const [consentGiven, setConsentGiven] = useState(false);
@@ -274,7 +274,7 @@ function RequestReferenceWizard({ visible, onClose, onSaved, sports }) {
                   flexDirection: 'row', alignItems: 'center', gap: 12, padding: 14, marginBottom: 8,
                   borderRadius: r.card, borderWidth: sel ? 2 : 1,
                   borderColor: sel ? c.pink : c.line,
-                  backgroundColor: sel ? c.pinkSoft + '44' : c.paper,
+                  backgroundColor: sel ? c.violetSoft : c.paper,
                   minHeight: 56,
                 }}>
                 <T size={22}>{opt.icon}</T>
@@ -287,7 +287,7 @@ function RequestReferenceWizard({ visible, onClose, onSaved, sports }) {
           })}
           {inviteMethod === 'secure_link' ? (
             <Field
-              label="Email address"
+              label={t('oref.invite.email')}
               value={inviteeEmail}
               onChangeText={setInviteeEmail}
               keyboardType="email-address"
@@ -312,7 +312,12 @@ function RequestReferenceWizard({ visible, onClose, onSaved, sports }) {
               <T weight="700" size={13}>{t('oref.confidential.label')}</T>
               <T size={11} color={c.mute}>{t('oref.confidential.hint')}</T>
             </View>
-            <Switch value={isConfidential} onValueChange={setIsConfidential} trackColor={{ true: c.pink }} />
+            <Switch
+              value={isConfidential}
+              onValueChange={setIsConfidential}
+              trackColor={{ true: c.pink, false: c.line }}
+              thumbColor={Platform.OS === 'android' ? c.paper : undefined}
+            />
           </View>
 
           {/* expiry date */}
@@ -397,8 +402,8 @@ function ReferenceDetailSheet({ item, visible, onClose, onRevoke, onCorrection, 
           {item.referee_type ? <TypeBadge type={item.referee_type} /> : null}
           <StatusChip item={item} />
           {item.is_verified ? (
-            <View style={{ backgroundColor: '#D4EDDA', borderRadius: r.pill, paddingHorizontal: 8, paddingVertical: 3 }}>
-              <T size={11} weight="700" color="#155724">✓ {t('oref.badge.verified')}</T>
+            <View style={{ backgroundColor: c.mintSoft, borderRadius: r.pill, paddingHorizontal: 8, paddingVertical: 3 }}>
+              <T size={11} weight="700" color={c.mint}>✓ {t('oref.badge.verified')}</T>
             </View>
           ) : null}
         </View>
@@ -406,7 +411,7 @@ function ReferenceDetailSheet({ item, visible, onClose, onRevoke, onCorrection, 
         {/* tenure */}
         {(item.tenure_from || item.tenure_to) ? (
           <View style={{ backgroundColor: c.violetSoft, borderRadius: r.input, padding: 12, marginBottom: 12 }}>
-            <T size={11} color={c.mute}>{t('oref.tenure.from')} {item.tenure_from ?? '—'} &nbsp;→&nbsp; {t('oref.tenure.to').split(' ')[0]} {item.tenure_to ?? 'present'}</T>
+            <T size={11} color={c.mute}>{t('oref.tenure.from')} {item.tenure_from ?? '—'} → {item.tenure_to ?? t('oref.tenure.present')}</T>
             {item.sport_name ? <T size={12} style={{ marginTop: 4 }}>{item.sport_name} {item.sport_emoji ?? ''}</T> : null}
           </View>
         ) : null}
@@ -429,11 +434,11 @@ function ReferenceDetailSheet({ item, visible, onClose, onRevoke, onCorrection, 
 
         {/* conflict notice */}
         {item.conflict_flag ? (
-          <View style={{ backgroundColor: c.sunSoft ?? '#FEF3C7', borderRadius: r.input, padding: 12, marginBottom: 12, flexDirection: 'row', gap: 8, alignItems: 'center' }}>
+          <View style={{ backgroundColor: c.sunSoft, borderRadius: r.input, padding: 12, marginBottom: 12, flexDirection: 'row', gap: 8, alignItems: 'center' }}>
             <T size={18}>⚠</T>
             <View style={{ flex: 1 }}>
-              <T size={12} weight="700" color="#92400E">{t('oref.badge.conflict')}</T>
-              {item.conflict_reason ? <T size={11} color="#92400E">{item.conflict_reason}</T> : null}
+              <T size={12} weight="700" color={c.sun}>{t('oref.badge.conflict')}</T>
+              {item.conflict_reason ? <T size={11} color={c.sun}>{item.conflict_reason}</T> : null}
             </View>
           </View>
         ) : null}
@@ -446,7 +451,7 @@ function ReferenceDetailSheet({ item, visible, onClose, onRevoke, onCorrection, 
         ) : null}
 
         {/* timeline */}
-        <T weight="800" size={13} style={{ marginBottom: 10 }}>Timeline</T>
+        <T weight="800" size={13} style={{ marginBottom: 10 }}>{t('oref.timeline.label')}</T>
         <TimelineRow icon="📤" label={t('oref.timeline.requested')} date={item.created_at?.slice(0, 10)} done />
         <TimelineRow
           icon={responded ? (item.response_status === 'approved' ? '✅' : '✗') : '⏳'}
@@ -549,7 +554,7 @@ function ReportSheet({ item, visible, onClose, onSaved }) {
               onPress={() => setReason(rr)}
               accessibilityLabel={rr}
               style={{
-                backgroundColor: sel ? c.pink : c.pinkSoft + '44',
+                backgroundColor: sel ? c.pink : c.violetSoft,
                 borderRadius: r.pill, paddingHorizontal: 12, paddingVertical: 8, minHeight: 36,
               }}>
               <T size={12} weight="700" color={sel ? '#fff' : c.pink}>{rr.replace(/_/g, ' ')}</T>
@@ -557,7 +562,7 @@ function ReportSheet({ item, visible, onClose, onSaved }) {
           );
         })}
       </View>
-      <Field label="Detail (optional)" value={detail} onChangeText={setDetail} multiline maxLength={800} placeholder={t('oref.write.placeholder')} />
+      <Field label={t('oref.report.detail')} value={detail} onChangeText={setDetail} multiline maxLength={800} placeholder={t('oref.write.placeholder')} />
       {error ? <T size={12} color={c.red} style={{ marginTop: 4 }}>{error}</T> : null}
       <Btn label={saving ? t('common.loading') : t('oref.report.title')} onPress={submit} disabled={saving} style={{ marginTop: 12 }} />
     </FormSheet>
@@ -621,7 +626,7 @@ function OrgRespondSheet({ item, orgId, visible, onClose, onSaved }) {
       <Card style={{ marginBottom: 12 }}>
         <T weight="800" size={14}>{item.referee_name ?? '—'}</T>
         {item.sport_name ? <T size={12} color={c.mute}>{item.sport_name}</T> : null}
-        {item.tenure_from ? <T size={11} color={c.mute}>{item.tenure_from} → {item.tenure_to ?? 'present'}</T> : null}
+        {item.tenure_from ? <T size={11} color={c.mute}>{item.tenure_from} → {item.tenure_to ?? t('oref.tenure.present')}</T> : null}
         {item.context_note ? <T size={12} style={{ marginTop: 6, fontStyle: 'italic' }}>{item.context_note}</T> : null}
         {item.is_confidential ? (
           <View style={{ flexDirection: 'row', gap: 6, marginTop: 8, alignItems: 'center' }}>
@@ -650,7 +655,7 @@ function OrgRespondSheet({ item, orgId, visible, onClose, onSaved }) {
         }}
       />
 
-      <Field label={t('oref.pub.summary')} value={pubSummary} onChangeText={setPubSummary} maxLength={300} placeholder="A one-line public summary (optional)" style={{ marginTop: 10 }} />
+      <Field label={t('oref.pub.summary')} value={pubSummary} onChangeText={setPubSummary} maxLength={300} placeholder={t('oref.pub.summary.hint')} style={{ marginTop: 10 }} />
 
       {error ? <T size={12} color={c.red} style={{ marginTop: 4 }}>{error}</T> : null}
       <View style={{ flexDirection: 'row', gap: 8, marginTop: 14 }}>
