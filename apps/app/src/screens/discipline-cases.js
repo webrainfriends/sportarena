@@ -125,7 +125,7 @@ export function DisciplineCases({ competitionId, eventId }) {
       {cases.loading && !cases.data ? <Loading /> : null}
 
       {!cases.loading && items.length === 0 ? (
-        <Empty emoji="⚖️" title={t('disc.empty_title')} subtitle={t('disc.empty_sub')} />
+        <Empty emoji="⚖️" title={t('gov.disc.emptyTitle')} subtitle={t('gov.disc.emptySub')} />
       ) : (
         <View style={{ gap: 0, marginTop: 4 }}>
           {items.map((k) => (
