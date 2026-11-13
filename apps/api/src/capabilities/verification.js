@@ -100,9 +100,32 @@ cap({
 cap({
   name: 'submit_verification', method: 'POST', path: '/verification/cases', tag: TAG, status: 201,
   summary: 'Raise a verification case with the platform team for yourself (gamer / coach / physio / doctor), or for a sponsor or event you own. Attach the evidence the rules require; files and references are encrypted and only the review team can read them. A badge that is about to expire (30 days) or has expired can be renewed the same way.',
-  input: z.object({ type: z.enum(TYPES), subject_id: id.optional().describe('sponsor or event id; omit for yourself'), sport: id.optional().describe('sport id the claim is about; a doctor/physio credential with a sport only covers athletes of that sport'), jurisdiction: z.string().min(2).max(40).optional().describe('where the registration was issued (e.g. a country code); used when the platform restricts accepted jurisdictions'), claim_note: z.string().max(1000).optional(), issuing_authority: z.string().trim().max(120).optional().describe('coach cases: who issued the credential'), credential_title: z.string().trim().max(160).optional(), scope_disciplines: z.array(z.string().max(40)).max(12).default([]).describe('coach cases: para disciplines the credential covers'), credential_expires_on: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional().describe('coach cases: the credential\'s own expiry date'), evidence: z.array(evidenceIn).min(1).max(MAX_EVIDENCE) }),
+  input: z.object({
+    type: z.enum(TYPES), subject_id: id.optional().describe('sponsor or event id; omit for yourself'),
+    sport: id.optional().describe('sport id the claim is about; a doctor/physio credential with a sport only covers athletes of that sport'),
+    jurisdiction: z.string().min(2).max(40).optional().describe('where the registration was issued (e.g. a country code); used when the platform restricts accepted jurisdictions'),
+    claim_note: z.string().max(1000).optional(),
+    issuing_authority: z.string().trim().max(120).optional().describe('coach / referee cases: who issued the credential'),
+    credential_title: z.string().trim().max(160).optional(),
+    scope_disciplines: z.array(z.string().max(40)).max(12).default([]).describe('coach cases: para disciplines the credential covers'),
+    credential_expires_on: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional().describe('coach / referee cases: the credential\'s own expiry date'),
+    referee_grade_label: z.string().trim().max(120).optional().describe('referee cases: grade or panel level (e.g. FIFA Badge, National List)'),
+    referee_competition_scope: z.string().trim().max(200).optional().describe('referee cases: competition scope (e.g. National, Regional, Club)'),
+    referee_official_role: z.enum(['referee','umpire','assistant_referee','fourth_official','video_review','scorer','line_judge','touch_judge','table_official']).optional(),
+    physio_professional_body: z.string().trim().max(200).optional().describe('physio cases: professional body / registration council name'),
+    physio_registration_no: z.string().trim().max(60).optional().describe('physio cases: registration number (encrypted at rest)'),
+    physio_specialisations: z.array(z.string().max(60)).max(10).default([]).describe('physio cases: sports specialisations'),
+    physio_indemnity_insurer: z.string().trim().max(200).optional().describe('physio cases: professional indemnity insurer name'),
+    evidence: z.array(evidenceIn).min(1).max(MAX_EVIDENCE),
+  }),
   async handler({ user }, i) {
-    if (i.type !== 'coach' && (i.issuing_authority || i.credential_title || i.scope_disciplines.length || i.credential_expires_on)) throw badRequest('Credential detail applies to coach cases only');
+    const isCredentialRole = ['coach','referee','physio'].includes(i.type);
+    if (!isCredentialRole && (i.issuing_authority || i.credential_title || i.scope_disciplines.length || i.credential_expires_on
+      || i.referee_grade_label || i.referee_competition_scope || i.referee_official_role
+      || i.physio_professional_body || i.physio_registration_no || i.physio_specialisations?.length || i.physio_indemnity_insurer))
+      throw badRequest('Credential detail applies to coach, referee and physio cases only');
+    if (!['coach','referee'].includes(i.type) && (i.issuing_authority || i.credential_title || i.scope_disciplines.length || i.credential_expires_on || i.referee_grade_label || i.referee_competition_scope || i.referee_official_role) && i.type !== 'physio')
+      throw badRequest('Credential fields must match the case type');
     if (i.type === 'lawyer' && !PACK_CODES.includes(i.jurisdiction?.toUpperCase())) throw badRequest(`Name the country you are admitted in: ${PACK_CODES.join(', ')}. Admission in one jurisdiction does not cover another.`);
     const subject = await resolveSubject(user, i.type, i.subject_id);
     const missing = missingEvidence(i.type, i.evidence.map((e) => e.kind));
@@ -112,9 +135,21 @@ cap({
       const prev = (await c.query(`SELECT id, status, expires_at FROM verification_cases WHERE type=$1 AND subject_id=$2 ORDER BY submitted_at DESC LIMIT 1`, [i.type, subject.id])).rows[0];
       if (prev && OPEN.includes(prev.status)) throw conflict('There is already an open verification case for this. Add evidence to it or withdraw it first.');
       if (prev?.status === 'approved' && prev.expires_at > new Date(Date.now() + RENEW_WINDOW_DAYS * 864e5)) throw conflict('This is already verified. You can renew within 30 days of expiry.');
+      const physioRegEnc = i.physio_registration_no ? encrypt(i.physio_registration_no, 'verification_cases.registration_no') : null;
       const row = (await c.query(
-        `INSERT INTO verification_cases(type, subject_type, subject_id, sport_id, requested_by, claim_note, rules_version, previous_case_id, jurisdiction, issuing_authority, credential_title, scope_disciplines, credential_expires_on) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13) RETURNING id, case_no, type, subject_type, subject_id, status, submitted_at`,
-        [i.type, RULES[i.type].subject, subject.id, i.sport ?? null, user.id, i.claim_note ?? null, RULES_VERSION, prev?.id ?? null, i.jurisdiction?.toUpperCase() ?? null, i.issuing_authority ?? null, i.credential_title ?? null, i.scope_disciplines, i.credential_expires_on ?? null])).rows[0];
+        `INSERT INTO verification_cases(
+           type, subject_type, subject_id, sport_id, requested_by, claim_note, rules_version, previous_case_id,
+           jurisdiction, issuing_authority, credential_title, scope_disciplines, credential_expires_on,
+           referee_grade_label, referee_competition_scope, referee_official_role,
+           physio_professional_body, physio_registration_no_enc, physio_specialisations, physio_indemnity_insurer
+         ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20)
+         RETURNING id, case_no, type, subject_type, subject_id, status, submitted_at`,
+        [i.type, RULES[i.type].subject, subject.id, i.sport ?? null, user.id, i.claim_note ?? null, RULES_VERSION,
+         prev?.id ?? null, i.jurisdiction?.toUpperCase() ?? null, i.issuing_authority ?? null, i.credential_title ?? null,
+         i.scope_disciplines, i.credential_expires_on ?? null,
+         i.referee_grade_label ?? null, i.referee_competition_scope ?? null, i.referee_official_role ?? null,
+         i.physio_professional_body ?? null, physioRegEnc, i.physio_specialisations, i.physio_indemnity_insurer ?? null,
+        ])).rows[0];
       for (const p of prepared) await insertEvidence(c, row.id, user.id, p);
       await logEvent(c, row.id, user.id, 'submit', null, 'submitted', i.claim_note);
       for (const a of await adminIds(c)) await notify(c, a, { kind: 'verification_submitted', title: `Verification case #${row.case_no}`, body: `${user.display_name} asked for ${RULES[i.type].label} (${subject.name}).`, data: { case_id: row.id } });
@@ -324,5 +359,95 @@ cap({
       await notify(c, row.requested_by, { kind: 'verification_decision', title: `${RULES[row.type].label} badge revoked`, body: i.reason, data: { case_id: row.id } });
       return { id: row.id, status: 'revoked' };
     });
+  },
+});
+
+// ---- physio registration number: admin decrypt (audit-logged) -----------------
+cap({
+  name: 'get_verification_physio_registration', method: 'GET', path: '/admin/verification/cases/:id/physio-registration', tag: TAG, auth: ['admin'],
+  summary: 'Platform team: decrypted physio registration number for a case (audit-logged). Only for physio cases.',
+  input: z.object({ id }),
+  async handler({ user }, i) {
+    const row = await one('SELECT id, type, physio_registration_no_enc, requested_by FROM verification_cases WHERE id=$1', [i.id]);
+    if (!row || row.type !== 'physio') throw notFound('Physio verification case');
+    if (row.requested_by === user.id) throw forbidden('Another platform team member must review your own request');
+    await audit(null, user.id, 'read_physio_registration_no', 'verification_cases', i.id);
+    return { registration_no: row.physio_registration_no_enc ? decrypt(row.physio_registration_no_enc, 'verification_cases.registration_no') : null };
+  },
+});
+
+// ---- credential verification matrix ------------------------------------------
+cap({
+  name: 'get_credential_verification_matrix', method: 'GET', path: '/verification/matrix', tag: TAG, auth: true,
+  summary: 'Credential verification matrix: approved + expiry status for every role across all staff in an org or event scope.',
+  input: z.object({ owner_type: z.enum(['org','event']), owner_id: id, roles: z.array(z.enum(['coach','referee','physio'])).optional() }),
+  async handler(c, i) {
+    const roles = i.roles ?? ['coach','referee','physio'];
+    const { rows } = await c.db.query(
+      `SELECT u.id AS user_id, u.display_name, r.role,
+              vc.id AS case_id, vc.status, vc.decided_at, vc.expires_at,
+              CASE WHEN vc.status='approved' AND vc.expires_at > now() THEN 'verified'
+                   WHEN vc.status='approved' AND vc.expires_at <= now() THEN 'expired'
+                   WHEN vc.status IN ('submitted','in_review') THEN 'pending'
+                   ELSE 'unverified' END AS verification_status,
+              CASE WHEN vc.expires_at IS NOT NULL THEN extract(day FROM vc.expires_at - now())::int END AS days_to_expiry,
+              p.require_verified AS policy_required, p.grace_days
+         FROM (
+           SELECT DISTINCT osh.user_id, 'coach' AS role FROM org_staff_hires osh
+             WHERE osh.org_id=$1 AND osh.role='coach' AND osh.left_at IS NULL
+           UNION ALL
+           SELECT DISTINCT osh.user_id, 'physio' AS role FROM org_staff_hires osh
+             WHERE osh.org_id=$1 AND osh.role='physio' AND osh.left_at IS NULL
+           UNION ALL
+           SELECT DISTINCT ea.user_id, 'referee' AS role FROM event_assignments ea
+             JOIN events ev ON ev.id=ea.event_id
+             WHERE ($2='org' AND ev.org_id=$1 OR $2='event' AND ea.event_id=$1::uuid)
+               AND ea.role='referee' AND ea.cancelled_at IS NULL
+         ) r
+         JOIN users u ON u.id=r.user_id
+         LEFT JOIN LATERAL (
+           SELECT * FROM verification_cases
+            WHERE subject_type='user' AND subject_id=r.user_id AND type=r.role
+            ORDER BY CASE WHEN status='approved' THEN 0 ELSE 1 END, decided_at DESC NULLS LAST
+            LIMIT 1
+         ) vc ON true
+         LEFT JOIN credential_verification_policies p
+           ON p.owner_type=$2 AND p.owner_id=$1 AND p.role=r.role
+         WHERE r.role = ANY($3::text[])
+         ORDER BY r.role, u.display_name`,
+      [i.owner_id, i.owner_type, roles]);
+    return rows;
+  },
+});
+
+cap({
+  name: 'get_role_verification_summary', method: 'GET', path: '/verification/role-summary/:userId', tag: TAG, auth: true,
+  summary: 'Verification summary for a single user across all credential roles (coach, referee, physio).',
+  input: z.object({ userId: id }),
+  async handler(c, i) {
+    const { rows } = await c.db.query(
+      `SELECT DISTINCT ON (type) type, status, decided_at, expires_at, credential_expires_on,
+              CASE WHEN status='approved' AND expires_at > now() THEN 'verified'
+                   WHEN status='approved' AND expires_at <= now() THEN 'expired'
+                   WHEN status IN ('submitted','in_review') THEN 'pending'
+                   ELSE 'unverified' END AS verification_status,
+              CASE WHEN expires_at IS NOT NULL THEN extract(day FROM expires_at - now())::int END AS days_to_expiry
+         FROM verification_cases
+        WHERE subject_type='user' AND subject_id=$1 AND type IN ('coach','referee','physio')
+        ORDER BY type, CASE WHEN status='approved' THEN 0 ELSE 1 END, decided_at DESC NULLS LAST`,
+      [i.userId]);
+    return rows;
+  },
+});
+
+cap({
+  name: 'acknowledge_renewal_reminder', method: 'POST', path: '/verification/cases/:id/acknowledge-reminder', tag: TAG,
+  summary: 'Acknowledge a credential renewal reminder so the platform knows the holder has seen it.',
+  input: z.object({ id }),
+  async handler({ user }, i) {
+    const row = await one('SELECT id FROM verification_cases WHERE id=$1 AND subject_id=$2 AND type IN (\'coach\',\'referee\',\'physio\')', [i.id, user.id]);
+    if (!row) throw notFound('Verification case');
+    await pool.query('UPDATE verification_renewal_reminders SET sent_at=now() WHERE case_id=$1', [i.id]);
+    return { acknowledged: true };
   },
 });

@@ -53,6 +53,7 @@ import { runMediaRightsSweeps } from './media-rights-sweeps.js';
 import { runClipJobs } from './smart-clips.js';
 import { sendFollowerAlerts } from './spectator.js';
 import { snapshotAll } from './rankings/data.js';
+import { sweepVerificationRenewals } from './credential-renewal-sweeps.js';
 import { hourlyRatingSweep } from './ratings/data.js';
 
 /** Weekly ranking snapshots: the worker runs often, so only act once a week (Monday UTC), and a rerun on identical results adds nothing. */
@@ -139,6 +140,7 @@ export const STEPS = [
   ['advertising', 'advertising', adSweeps, null],
   ['finance', 'finance', reconcileFinance, null],
   ['integrations', 'integrations', integrationSweep, null],
+  ['credential_renewals', 'credential_renewal_reminders_sent', sweepVerificationRenewals, 0],
 ];
 
 export async function maintenanceCycle() {
