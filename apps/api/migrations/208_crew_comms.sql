@@ -67,9 +67,13 @@ CREATE TABLE IF NOT EXISTS crew_messages (
   created_at  timestamptz NOT NULL DEFAULT now(),
   seq         bigint GENERATED ALWAYS AS IDENTITY,
 
-  CONSTRAINT crew_messages_body_check CHECK (body IS NOT NULL OR body_enc IS NOT NULL OR msg_type IN ('attachment','system')),
   UNIQUE (thread_id, sender_id, client_id) DEFERRABLE
 );
+DO $$ BEGIN
+  ALTER TABLE crew_messages ADD CONSTRAINT crew_messages_body_check
+    CHECK (body IS NOT NULL OR body_enc IS NOT NULL OR msg_type IN ('attachment','system'));
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
 
 CREATE INDEX IF NOT EXISTS crew_messages_thread_seq ON crew_messages(thread_id, seq);
 CREATE INDEX IF NOT EXISTS crew_messages_thread_time ON crew_messages(thread_id, created_at DESC) WHERE deleted_at IS NULL;
