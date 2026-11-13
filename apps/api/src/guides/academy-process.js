@@ -818,6 +818,23 @@ id: 'wellbeing', title: 'Support student wellbeing and development',
     modules: ['medical.js', 'provider-services.js', 'provider-offers.js', 'provider-packages.js', 'provider-tax.js', 'treatment-plans.js', 'physio-intake.js', 'physio-sessions.js', 'physio-milestones.js', 'physio-flareup.js', 'physio-education.js', 'physio-reminders.js', 'clinical-messaging.js', 'physio-invoices.js', 'physio-dashboard.js', 'physio-tracking.js', 'physio-reports.js', 'physio-insights.js'],
     sources: ['apps/app/src/screens/physio-practice.js'],
   },
+  {
+    id: 'officials_marketplace',
+    title: 'Find officials on the marketplace',
+    why: 'Elite academies hosting high-volume fixture programmes need fast, verified access to freelance referees and officials. The Officials Marketplace lets organisers discover verified officials by sport, role, grade, event type and location, request a quote, agree a contract, and link that booking to a fixture assignment — all without leaving the platform. Officials list themselves with their grade, rate card and equipment; organisers shortlist, quote, pay and review through the same workflow used for coaches and physios.',
+    steps: [
+      'From your event console, open the Officials tab and tap Find on Marketplace.',
+      'Filter by sport, role (Referee, Umpire, VAR, etc.), event type (League, Cup, Tournament…), verification status and location. Only officials who have published a service listing and completed their profile to at least 60% appear.',
+      'Tap an official card to view their full service profile: grades, rate cards, equipment they bring, travel radius and past reviews with 5-criteria scoring.',
+      'Tap Request a quote. Enter a title, brief, the sport, the role you need, the event date and your budget. The official is notified immediately.',
+      'The engagement moves through the standard quote → counter → contract flow. Once contracted, return to the official\'s booking in My Official Bookings and tap Assign to fixture to link the contract to a specific fixture. Eligibility checks (grade, licence, COI, availability) run server-side at that point.',
+      'After the event, review the official using 5 criteria (punctuality, communication, officiating quality, professionalism, rules adherence). The review updates their public marketplace rating.',
+      'Officials can also browse organiser-posted opportunities (service requests) from their Services screen and respond to open requests. Responding creates the same engagement flow from the official\'s side.',
+    ],
+    target: { screen: 'FindOfficialsHub' },
+    modules: ['officials-services.js'],
+    sources: ['apps/app/src/screens/officials-services.js', 'apps/app/src/screens/marketplace-engagement.js'],
+  },
 ];
 
 /** Org/academy API modules with no step of their own, and why. Anything not here and not in a step fails the guard test. */
