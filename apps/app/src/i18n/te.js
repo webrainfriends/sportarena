@@ -21037,7 +21037,7 @@ export default {
   'guide.talent_crm.step5': 'Create shortlist boards to compare multiple candidates side-by-side.',
   'guide.talent_crm.step6': 'Use analytics to track pipeline conversion, source quality and ageing.',
   'guide.talent_crm.step7': 'Hand off signed prospects to player contracts or the transfers workflow.',
-  'cdh.missing.today': 'No data today', 'cdh.missing.thisWeek': 'No data this week', 'cdh.missing.thisMonth': 'No data this month', 'cdh.missing.allPresent': 'All athletes have data',,
+  'cdh.missing.today': 'No data today', 'cdh.missing.thisWeek': 'No data this week', 'cdh.missing.thisMonth': 'No data this month', 'cdh.missing.allPresent': 'All athletes have data',
 
   // Athlete profile panel (#310) — machine-translated, reviewed: false
   'ap.title': 'క్రీడాకారుడి ప్రొఫైల్',
@@ -21119,7 +21119,7 @@ export default {
   'guide.athlete-profile.s3': '+ కొలత జోడించు నొక్కి జీవ సంబంధ కొలత నమోదు చేయండి.',
   'guide.athlete-profile.s4': 'ధృవీకరించబడిన అనుబంధాలు స్వయంచాలకంగా కనిపిస్తాయి.',
   'guide.athlete-profile.s5': 'కోచ్‌లు మరియు రిక్రూటర్లు మీరు పంచుకున్నవి మాత్రమే చూస్తారు.',
-  'guide.athlete-profile.s6': 'క్రీడా కార్డ్‌ను ఆర్కైవ్ చేయవచ్చు; చరిత్ర భద్రపరచబడుతుంది.',,
+  'guide.athlete-profile.s6': 'క్రీడా కార్డ్‌ను ఆర్కైవ్ చేయవచ్చు; చరిత్ర భద్రపరచబడుతుంది.',
   'ap.completeness_missing': 'ఇంకా పూర్తి కాలేదు: {missing}. ప్రతిదీ ఐచ్ఛికం — మీరు ఏమి పంచుకోవాలో మీరే నిర్ణయించుకోండి.',
   'ap.completeness_done': 'పూర్తయింది. ఎవరు ఏమి చూడవచ్చో మీరే నిర్ణయిస్తారు.',
 };
