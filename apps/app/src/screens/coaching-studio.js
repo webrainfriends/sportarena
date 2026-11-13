@@ -22,6 +22,7 @@ import { SharedByPlayers } from './player-goals';
 import { t, tEnum } from '../i18n';
 import { VideoPlayer } from '../video-player';
 import { SessionGuidePanel, ParaAdaptationEditor, AccessibleMediaEditor, ParaTemplateToggle } from './coaching-para';
+import { RichStepEditor } from '../rich-editor';
 import { useSports } from '../sportpicker';
 
 const GOAL_CATEGORIES = ['technical', 'tactical', 'physical', 'mental_performance', 'teamwork', 'match_objective', 'custom'];
@@ -1058,7 +1059,7 @@ function DrillStepBuilder({ steps, onChange, drillId, toast: toastFn }) {
           </View>
           <View style={{ padding: 10, gap: 8 }}>
             {step.type === 'text' ? (
-              <Field value={step.text} onChangeText={(v) => updateStep(idx, { text: v })} placeholder={t('cs.step_text_ph')} multiline style={{ minHeight: 72 }} />
+              <RichStepEditor value={step.text} onChange={(v) => updateStep(idx, { text: v })} placeholder={t('cs.step_text_ph')} />
             ) : step.type === 'photo' ? (
               <Pressable onPress={() => pickMedia(idx, 'photo')} accessibilityRole="button" accessibilityLabel={step.media_id ? t('cs.change_media') : t('cs.tap_add_photo')}>
                 {step.media_id && drillId ? (
