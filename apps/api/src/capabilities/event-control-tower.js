@@ -75,6 +75,33 @@ export async function towerOf(user, ev) {
     };
   })();
 
+  const external_source = await section(async () => {
+    if (!ev.origin_type || ev.origin_type === 'native') return { available: false };
+    const link = await one(
+      'SELECT id, provider_key, link_mode, trust_level, status, last_sync_at, last_sync_status, source_title, origin_label, sync_policy FROM event_external_links WHERE event_id=$1 AND archived_at IS NULL ORDER BY linked_at DESC LIMIT 1',
+      [ev.id]
+    );
+    if (!link) return { available: false };
+    const pending = await one(
+      'SELECT count(*)::int AS n FROM event_external_sync_log WHERE link_id=$1 AND ack_required=true AND acked_at IS NULL AND rejected_at IS NULL',
+      [link.id]
+    );
+    return {
+      kind: 'external_source',
+      provider: link.provider_key,
+      trust: link.trust_level,
+      link_mode: link.link_mode,
+      status: link.status,
+      last_sync_at: link.last_sync_at,
+      last_sync_status: link.last_sync_status,
+      source_title: link.source_title,
+      origin_label: link.origin_label,
+      managed_capabilities: link.sync_policy?.managed_capabilities ?? [],
+      pending_changes: pending?.n ?? 0,
+      attention_required: link.last_sync_status === 'failed' || link.status === 'stale' || (pending?.n ?? 0) > 0,
+    };
+  });
+
   const [participants, finance, venue, workforce, tickets, commercial, procurement, compliance, media, travel, results] = await Promise.all([
     section(async () => {
       const [entries, invites, regs, acc] = await Promise.all([
@@ -245,7 +272,7 @@ export async function towerOf(user, ev) {
     },
     phase, stage: { steps: STAGES, index: stageIndex(ev.status), paused: ev.status === 'paused' }, card_order: PHASE_ORDER[phase],
     access: { organiser, manager: access.manager }, as_of: new Date().toISOString(),
-    cards: { readiness: readiness ?? { available: false }, attention: { items: attention.slice(0, 8), total: attention.length, critical: attention.filter((a) => a.severity === 'critical').length }, today_next, operations, participants, finance, venue, workforce, tickets, commercial, procurement, compliance, media, travel, results, ai: aiSection },
+    cards: { readiness: readiness ?? { available: false }, attention: { items: attention.slice(0, 8), total: attention.length, critical: attention.filter((a) => a.severity === 'critical').length }, today_next, operations, participants, finance, venue, workforce, tickets, commercial, procurement, compliance, media, travel, results, external_source, ai: aiSection },
   };
 }
 

@@ -12,7 +12,7 @@ import { createHmac, timingSafeEqual } from 'node:crypto';
 import { fetchIcs, parseBusy } from '../ics.js';
 import { send } from './http.js';
 
-export const CATEGORIES = ['payments', 'sso', 'calendar', 'email_sms', 'wearables', 'video', 'federation_feed', 'accounting', 'ticket_scanner', 'sports_data', 'travel', 'venue_booking'];
+export const CATEGORIES = ['payments', 'sso', 'calendar', 'email_sms', 'wearables', 'video', 'federation_feed', 'accounting', 'ticket_scanner', 'sports_data', 'travel', 'venue_booking', 'event_source'];
 
 const hmacOk = (secret, raw, sig) => {
   const want = Buffer.from(createHmac('sha256', secret).update(raw).digest('hex'));
@@ -138,6 +138,80 @@ Object.assign(PROVIDERS, {
     searchVenues, mockQuote,
     async test() { return sandboxTest(); },
     inbound: sandboxInbound,
+  },
+});
+
+// ---- Event Source Connectors (#1135): providers that describe an event created outside GotMyGame.
+// link_mode: what the connection can do (reference_only | read_sync | file_import).
+// trust: the default trust level assigned to links made via this provider.
+// SSRF: all URL fields go through checkTarget() before any outbound fetch; private/loopback IPs are always rejected.
+Object.assign(PROVIDERS, {
+  event_source_generic_url: {
+    category: 'event_source', name: 'External event URL (reference only)', version: '1.0',
+    auth: 'none', sandbox: false, link_mode: 'reference_only', trust: 'organiser_attested',
+    capabilities: ['reference_link', 'manual_metadata'],
+    scopes: [{ key: 'event_source.reference', label: 'Store a reference link', description: 'Saves the HTTPS link as an organiser-attested reference. No data is fetched from the URL automatically.' }],
+    fields: z.object({}).strict(), secrets: [],
+    async test() { return { ok: true, message: 'Reference link stored — no outbound connection is made.' }; },
+  },
+  event_source_bookmyshow_in: {
+    category: 'event_source', name: 'BookMyShow India (event reference)', version: '1.0',
+    auth: 'none', sandbox: false, country: 'IN', link_mode: 'reference_only', trust: 'organiser_attested',
+    capabilities: ['reference_link', 'manual_metadata', 'linkout'],
+    url_pattern: /^https:\/\/(in\.)?bookmyshow\.com\//,
+    scopes: [{ key: 'event_source.reference', label: 'Store a BookMyShow event reference', description: 'Saves the BookMyShow sports event link as an organiser-attested reference. No data is scraped; ticket sales, attendee lists and refund policy remain with BookMyShow.' }],
+    fields: z.object({}).strict(), secrets: [],
+    disclaimer: 'BookMyShow is an independent platform. GotMyGame does not access BookMyShow's data APIs, participant records, or ticket inventory. The event organiser is responsible for ensuring they have authority over the event being linked.',
+    async test() { return { ok: true, message: 'BookMyShow reference ready — no outbound connection required.' }; },
+  },
+  event_source_ics_feed: {
+    category: 'event_source', name: 'Calendar / ICS feed', version: '1.0',
+    auth: 'none', sandbox: false, link_mode: 'file_import', trust: 'organiser_attested',
+    capabilities: ['ics_import', 'manual_metadata'],
+    scopes: [{ key: 'event_source.ics', label: 'Import from an ICS calendar feed', description: 'Reads event details from an iCalendar feed URL or uploaded .ics file. Only the specified event is imported; personal calendar data is never stored.' }],
+    fields: z.object({ url: urlField.optional() }).strict(), secrets: [],
+    async test(cfg) {
+      if (cfg.url) { const text = await fetchIcs(cfg.url); if (!text || text.length < 10) throw new Error('ICS feed returned no content'); }
+      return { ok: true, message: 'ICS feed readable' };
+    },
+    async pull(cfg) {
+      if (!cfg.url) return { summary: { events: 0 } };
+      const text = await fetchIcs(cfg.url);
+      const lines = text.split('\n').filter((l) => l.startsWith('VEVENT') || l.startsWith('BEGIN:VEVENT')).length;
+      return { summary: { events: lines } };
+    },
+  },
+  event_source_federation_xml: {
+    category: 'event_source', name: 'Federation / league data feed', version: '1.0',
+    auth: 'api_key', sandbox: true, link_mode: 'read_sync', trust: 'verified_source',
+    capabilities: ['pull', 'read_sync', 'external_ids', 'sandbox'],
+    scopes: [
+      { key: 'event_source.read', label: 'Read event metadata', description: 'Pulls event title, dates, sport and venue from the federation or league feed. No participant personal data is imported.' },
+      { key: 'event_source.fixtures', label: 'Read fixtures and schedule', description: 'Imports fixture schedule and published results when the organiser has governing rights.' },
+    ],
+    fields: z.object({ url: urlField, api_key: z.string().min(8).max(500), sandbox_url: urlField.optional() }).strict(), secrets: ['api_key'],
+    target: (cfg, mode) => (mode === 'sandbox' && cfg.sandbox_url ? cfg.sandbox_url : cfg.url),
+    async test(cfg, ctx) {
+      const r = await send('GET', this.target(cfg, ctx?.mode ?? 'live'), { headers: { accept: 'application/json', authorization: `Bearer ${cfg.api_key}` } });
+      if (r.status === 401 || r.status === 403) throw Object.assign(new Error('The feed rejected the API key'), { permanent: true });
+      if (r.status !== 200) throw new Error(`The feed answered ${r.status}`);
+      return { ok: true, message: 'Federation feed reachable' };
+    },
+    async pull(cfg, ctx) {
+      const r = await send('GET', this.target(cfg, ctx?.mode ?? 'live'), { headers: { accept: 'application/json', authorization: `Bearer ${cfg.api_key}` } });
+      if (r.status !== 200) throw new Error(`Feed answered ${r.status}`);
+      let json; try { json = JSON.parse(r.text); } catch { throw Object.assign(new Error('Feed did not return JSON'), { permanent: true }); }
+      const events = Array.isArray(json) ? json : (Array.isArray(json?.events) ? json.events : []);
+      return { summary: { events: events.length } };
+    },
+  },
+  event_source_manual: {
+    category: 'event_source', name: 'Manual / document reference', version: '1.0',
+    auth: 'none', sandbox: false, link_mode: 'reference_only', trust: 'organiser_attested',
+    capabilities: ['manual_metadata'],
+    scopes: [{ key: 'event_source.manual', label: 'Manual event reference', description: 'All fields are entered manually by the organiser. No external system is connected; all data is organiser-attested.' }],
+    fields: z.object({}).strict(), secrets: [],
+    async test() { return { ok: true, message: 'Manual reference — no connectivity required.' }; },
   },
 });
 
