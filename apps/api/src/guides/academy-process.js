@@ -164,6 +164,24 @@ export const ACADEMY_STEPS = [
     modules: ['academy-scouting.js', 'academy-scouting-pipeline.js'], sources: ['apps/app/src/screens/academy-scouting.js', 'apps/app/src/screens/academy-scouting-wizard.js', 'apps/app/src/screens/academy-scouting-entry.js'],
   },
   {
+    id: 'talent_crm', title: 'Club Talent CRM & Recruiting Pipeline',
+    why: 'Own a club-side pipeline with 10 stages (Prospect → Identified → Watching → Scouted → Trial → Shortlisted → Negotiating → Offered → Signed/Rejected). Assign scouts, build evaluation templates, compare prospects on shortlist boards, and hand off signed athletes directly to contracts or transfers.',
+    steps: [
+      'Open your Organisation workspace, then Talent CRM (or tap Open Talent CRM in the team\'s Recruit tab). The Pipeline tab shows a Kanban board with one column per stage.',
+      'Add a prospect: tap + Add prospect, enter their name (or link an on-platform athlete), choose sport, source and priority. Off-platform athlete names are field-level encrypted.',
+      'Assign a scout: open the prospect file, then Overview, and tap Assign scout. Choose the scout (must be an org member) and their role (Lead, Secondary or Observer).',
+      'Log evaluations: open the prospect file, then Evaluations, and tap + New evaluation. Pick a template your org created, the basis (live viewing, video, match report, trial or profile only) and score each criterion.',
+      'Create evaluation templates: in Talent CRM → Settings → Evaluation templates, tap + New template, name it, attach a sport if needed, and add criteria with weights. Templates are reused across all evaluations for that sport.',
+      'Move stage: open the prospect file, tap Move stage, select the target stage and add a note. Stage moves are logged in History and cannot skip more than two steps back.',
+      'Compare on a board: tap Boards, then + New shortlist board, name it and pick a sport and position. Open any prospect file and add them to the board. The board shows evaluation scores side-by-side.',
+      'Log communication: open the prospect file, tap Communication, and tap + Log communication. Choose the type (call, meeting, decision, trial outcome, offer sent, offer response), write a summary and set an optional follow-up date.',
+      'View analytics: open the Analytics tab to see the pipeline funnel, conversion rate, ageing alerts (overdue SLAs in red), source quality and scout performance.',
+      'Handoff: when a prospect is signed, open their file and tap Handoff. Choose Contract (links to Player Contracts), Transfer (links to the transfers workflow) or Opportunity (links to Billboard). The handoff is recorded in History.',
+    ],
+    target: { org: 'talent_crm' },
+    modules: ['talent-crm.js'], sources: ['apps/app/src/screens/talent-crm.js'],
+  },
+  {
     id: 'development', title: 'Plan athlete development',
     why: 'Give every athlete one season plan that coordinates coaches, conditioning, psychology, school and family, without copying their private records.',
     steps: ['Open Academy, then Progress, then Development plans, and tap New plan for an enrolled athlete.', 'Name the accountable lead, the season dates and the pathway it serves, then add the specialists who work on it.', 'Add objectives with the guided builder: pick the domain and the sport-specific competency, check the athlete\'s current figure and the anonymised peer benchmark, set the target, and tick the usual tasks.', 'Set the season phases (pre-season, competition, exams, recovery) so clashes are flagged, then activate the plan.', 'Run a review each cycle: specialists add their view, the lead signs off and can share it with the athlete and guardians, who acknowledge it.', 'Use the Squad board to see who needs attention across all six domains, with the reasons spelled out.', 'Review technique with video: open a session, then the Video tab, and link a clip the athlete has shared, add timed annotations, and create the shared development action it belongs to. Athletes and guardians reply from their Progress tab; Progress, then Video feedback, lists every reply. Viewing stops at once if sharing is revoked or guardian media consent is withdrawn.', 'Carry a promotion, squad transfer or graduation through: record the decision in the review queue, open the athlete, tap Plan promotion and choose the new group, squad or certificate. The pre-flight checks capacity, age band, consent and unpaid fees; a person approves; the system moves the group and invites the squad, and the athlete or guardian answers. A graduation issues the certificate only after a final approval. Follow every run under Progress, then Promotions; a failed step can be retried or rolled back with the history kept.'],
@@ -183,6 +201,21 @@ export const ACADEMY_STEPS = [
     steps: ['Open Academy, then Operations.', 'Use Week to build the term timetable: group, term dates, weekdays, start time and lead coach.', 'Use Today to open a session and mark attendance.', 'Use Insights for attendance and delivery trends.'],
     target: { academy: 'ops' },
     modules: ['academy-sessions.js', 'academy-attendance.js', 'academy-ops-board.js', 'academy-desk.js'], sources: ['apps/app/src/screens/academy-ops.js'],
+  },
+  {
+    id: 'athlete-profile', title: 'Build the athlete profile',
+    why: 'Give every athlete one verified, privacy-controlled card per sport: positions, dominant side, biometrics and playing preferences, shared only with the people they choose.',
+    steps: [
+      'Open your profile, then select a sport card, to see the Athlete profile panel.',
+      'Set your dominant side, positions and playing preferences. Each field defaults to private — tap Who can see it to share it with coaches, recruiters or everyone.',
+      'Tap + Add measurement to record a biometric (height, weight, wingspan, vertical jump, sprint, standing long jump, agility, etc.) with the date and who measured it. Values are encrypted at rest.',
+      'Your verified affiliations — active teams and credentials issued by organisations on the platform — appear automatically and can be shared from the same panel.',
+      'Coaches and verified recruiters who have been granted access see only the fields you have shared at their tier.',
+      'Archive a sport card at any time; your matches and history are preserved and you can restore the card later.',
+    ],
+    target: { screen: 'MySports' },
+    modules: ['player.js', 'athlete-profile.js'],
+    sources: ['apps/app/src/screens/athlete-profile.js', 'apps/app/src/screens/player.js'],
   },
   {
     id: 'wearable_integration', title: 'Connect performance devices',
@@ -219,11 +252,22 @@ export const ACADEMY_STEPS = [
     modules: ['event-external.js'], sources: ['apps/app/src/screens/event-command.js'],
   },
   {
-    id: 'tax', title: 'Set up taxation',
-    why: 'Know the tax collected and paid, with your own tax rules and tax details on invoices.',
-    steps: ['Open Finance and choose the Tax tab (finance access is required).', 'Add your tax registration and tax rules.', 'Read collected, paid and net tax by period and rate.', 'Tax figures are informational, not tax advice.'],
+    id: 'tax', title: 'Set up taxation & India GST',
+    why: 'Know the tax collected and paid, with your own tax rules and legally-compliant GST details frozen on every invoice.',
+    steps: [
+      'Open Finance and choose the Tax tab (finance access is required).',
+      'Add your tax registration and tax rules.',
+      'For India GST: open Organisation Settings → India Tax and set up your Organisation Billing Profile. Enter your GSTIN (validated against the MOD-36 checksum), Legal Name, Trade Name, Entity Type (Pvt Ltd / LLP / Trust / Society), CIN, PAN/TAN (stored encrypted, visible only to finance staff with an audit trail), State code, Invoice Prefix and Series, and your Withholding (TDS) matrix — Section 194J for professional services, 194C for contracts, 194I for rent, with per-section threshold amounts.',
+      'Set GST Registration Type: Regular, Composition, SEZ, Unregistered, or Overseas. For exports, enter your LUT / Bond Number. Toggle E-Invoice Threshold if your turnover exceeds ₹5 Cr (IRN generation via a connected adapter).',
+      'Once a billing profile is active, every invoice issued — venue bookings, academy charges, physio sessions — automatically freezes the correct CGST + SGST (intra-state) or IGST (inter-state) breakdown at issue time. The supplier GSTIN, legal name, state code and invoice series are also frozen, so the document is always a valid tax invoice.',
+      'Open Finance → GST Report to see your GSTR-1 period summary: taxable value, CGST, SGST, IGST, credit notes and net GST payable, broken down by document type (B2B, B2CS, B2CL, Nil/Exempt, Advance Receipts, RCM) and by HSN/SAC code. Export to GSTR-1 JSON or CSV for filing.',
+      'Issue credit and debit notes from the invoice detail screen. Select a GST-mandated reason code (01 Return, 02 Discount, 03 Deficiency in services, 04 Correction, 05 Change in POS, 06 Other); the GST reversal is calculated and the original invoice remains immutable.',
+      'E-Invoice: once an IRP adapter is connected in Organisation Settings, tap Request IRN on any invoice meeting the threshold. Until then, a clear "No adapter configured" message is shown — no false IRN or QR code is generated.',
+      'Read collected, paid and net tax by period and rate. Tax figures are informational, not tax advice.',
+    ],
     target: { screen: 'Finance' },
-    modules: ['gst.js', 'provider-tax.js', 'academy-billing.js'], sources: ['apps/app/src/screens/finance-tax.js'],
+    modules: ['gst.js', 'provider-tax.js', 'academy-billing.js', 'einvoice-adapter.js'],
+    sources: ['apps/app/src/screens/finance-tax.js', 'apps/app/src/screens/gst-profile.js', 'apps/app/src/screens/gst-report.js'],
   },
   {
     id: 'six_role_audit', title: 'Six-role financial reconciliation',
@@ -900,6 +944,20 @@ id: 'wellbeing', title: 'Support student wellbeing and development',
     modules: ['integrations.js', 'integration-access.js'],
     sources: ['apps/app/src/screens/integration-hub.js'],
   },
+  {
+    id: 'data_hub',
+    title: 'guide.data_hub.title',
+    why: 'guide.data_hub.why',
+    steps: [
+      'guide.data_hub.step1',
+      'guide.data_hub.step2',
+      'guide.data_hub.step3',
+      'guide.data_hub.step4',
+    ],
+    target: { screen: 'AthleteDataHub' },
+    modules: ['athlete-data-hub.js', 'wearables.js'],
+    sources: ['apps/app/src/screens/athlete-data-hub.js', 'apps/app/src/screens/coach-data-hub.js'],
+  },
 ];
 
 /** Org/academy API modules with no step of their own, and why. Anything not here and not in a step fails the guard test. */
@@ -923,7 +981,7 @@ export const NOT_IN_GUIDE = {
 };
 
 /** The directories/files the guard test watches for org/academy/venue/coach/tax capability modules. */
-export const WATCHED_MODULES = /^(academy-.*|org-.*|organisations|venue-coaches|gst|provider-tax|coach-classes|para-sport-funding|para-sport-sponsorship-outcomes|para-pathway|para-readiness|para-learn|para-staff-credentials|para-spectator-accessibility|para-ux-conformance|boarding-.*|wearables|wellness.*|integrations|official-rate-card|official-rate-agreements|official-scheduling-recommendations|officials-bulk|officiating-analytics|officiating-season-intelligence)\.js$/;
+export const WATCHED_MODULES = /^(academy-.*|org-.*|organisations|venue-coaches|gst|provider-tax|coach-classes|para-sport-funding|para-sport-sponsorship-outcomes|para-pathway|para-readiness|para-learn|para-staff-credentials|para-spectator-accessibility|para-ux-conformance|boarding-.*|wearables|wellness.*|integrations|official-rate-card|official-rate-agreements|official-scheduling-recommendations|officials-bulk|officiating-analytics|officiating-season-intelligence|player|athlete-profile)\.js$/;
 
 export const SHOT_SIZES = { phone: { width: 390, height: 1100 }, desktop: { width: 1280, height: 900 } };
 export const shotFile = (stepId, size) => `${String(ACADEMY_STEPS.findIndex((s) => s.id === stepId) + 1).padStart(2, '0')}-${stepId}-${size}.png`;

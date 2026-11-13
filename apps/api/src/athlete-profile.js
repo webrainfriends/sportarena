@@ -12,6 +12,12 @@ export const METRICS = {
   vertical_jump: { label: 'Vertical jump', units: { cm: 1, in: 2.54 }, min: 5, max: 200 },
   sprint_20m: { label: '20 m sprint', units: { s: 1 }, min: 1.5, max: 10 },
   sprint_40m: { label: '40 m sprint', units: { s: 1 }, min: 3, max: 15 },
+  standing_long_jump: { label: 'Standing long jump', units: { cm: 1, in: 2.54 }, min: 50, max: 400 },
+  sit_and_reach: { label: 'Sit and reach', units: { cm: 1, in: 2.54 }, min: -30, max: 60 },
+  grip_strength: { label: 'Grip strength', units: { kg: 1, lb: 0.45359237 }, min: 5, max: 150 },
+  illinois_agility: { label: 'Illinois agility', units: { s: 1 }, min: 10, max: 30 },
+  beep_test_level: { label: 'Beep test level', units: { level: 1 }, min: 1, max: 21 },
+  reaction_time: { label: 'Reaction time', units: { ms: 1 }, min: 50, max: 600 },
 };
 export const METRIC_KEYS = Object.keys(METRICS);
 
@@ -34,11 +40,24 @@ export const POSITIONS = {
   rugby: ['Prop', 'Hooker', 'Lock', 'Flanker', 'Number 8', 'Scrum-half', 'Fly-half', 'Centre', 'Wing', 'Full-back'],
   baseball: ['Pitcher', 'Catcher', 'Infield', 'Outfield', 'Designated hitter'],
   handball: ['Goalkeeper', 'Wing', 'Back', 'Pivot'],
+  tennis: ['Singles', 'Doubles', 'Mixed doubles'],
+  padel: ['Drive side', 'Backhand side'],
+  badminton: ['Singles', 'Doubles', 'Mixed doubles'],
+  netball: ['Goal shooter', 'Goal attack', 'Wing attack', 'Centre', 'Wing defence', 'Goal defence', 'Goal keeper'],
+  swimming: ['Freestyle', 'Backstroke', 'Breaststroke', 'Butterfly', 'Individual medley', 'Open water'],
+  athletics: ['Sprints', 'Middle distance', 'Long distance', 'Hurdles', 'Jumping', 'Throwing', 'Combined events', 'Race walking', 'Cross country'],
+  aussie_rules: ['Ruck', 'Key defender', 'Key forward', 'Midfielder', 'Half-back', 'Half-forward', 'General defender', 'General forward'],
+  water_polo: ['Goalkeeper', 'Field player', 'Utility'],
+  lacrosse: ['Goalkeeper', 'Defender', 'Midfielder', 'Attacker'],
 };
 const PREFS = {
   football: ['Short passing', 'Long passing', 'Pressing', 'Counter-attack', 'Set pieces', 'Aerial duels'],
   basketball: ['Drive to the basket', 'Three-point shooting', 'Post play', 'Pick and roll', 'Defence first'],
   cricket: ['Aggressive', 'Anchor', 'Powerplay', 'Death overs'],
+  tennis: ['Serve and volley', 'Baseline rallies', 'Aggressive baseliner', 'All-court', 'Defensive counter'],
+  swimming: ['Sprint', 'Endurance', 'Open water', 'Relay specialist'],
+  athletics: ['Track', 'Field', 'Cross country', 'Road'],
+  netball: ['Shooting circle', 'Centre court', 'Defensive end'],
 };
 const GENERIC_PREFS = ['Team play', 'Individual play', 'Attacking', 'Defensive', 'Indoor', 'Outdoor'];
 

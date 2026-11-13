@@ -3,19 +3,28 @@ import { Pressable, View } from 'react-native';
 import { api } from '../api';
 import { useLoad } from '../hooks';
 import { useSession } from '../session';
+import { t } from '../i18n';
 import { Btn, Card, Chip, ErrorBox, H2, Loading, Tag, T, Wrap } from '../ui';
 import { FormSheet } from '../FormSheet';
 import { c, day } from '../theme';
 
-const SCOPES = [
-  { value: 'private', label: 'Only me' },
-  { value: 'coach', label: 'My coaches' },
-  { value: 'recruiter', label: 'Recruiters' },
-  { value: 'public', label: 'Everyone' },
+const scopes = () => [
+  { value: 'private', label: t('ap.scope_private') },
+  { value: 'coach', label: t('ap.scope_coach') },
+  { value: 'recruiter', label: t('ap.scope_recruiter') },
+  { value: 'public', label: t('ap.scope_public') },
 ];
-const SCOPE_LABEL = Object.fromEntries(SCOPES.map((s) => [s.value, s.label]));
-const SIDES = [{ value: 'left', label: 'Left' }, { value: 'right', label: 'Right' }, { value: 'both', label: 'Both' }];
-const SOURCES = [{ value: 'self', label: 'Measured by me' }, { value: 'coach', label: 'By my coach' }, { value: 'test', label: 'At a test / trial' }];
+const scopeLabel = (v) => scopes().find((s) => s.value === v)?.label ?? v;
+const sides = () => [
+  { value: 'left', label: t('ap.side_left') },
+  { value: 'right', label: t('ap.side_right') },
+  { value: 'both', label: t('ap.side_both') },
+];
+const sources = () => [
+  { value: 'self', label: t('ap.source_self') },
+  { value: 'coach', label: t('ap.source_coach') },
+  { value: 'test', label: t('ap.source_test') },
+];
 const nice = (s) => String(s).replace(/_/g, ' ');
 const cap1 = (s) => nice(s).replace(/^./, (x) => x.toUpperCase());
 
@@ -23,7 +32,7 @@ const Row = ({ label, value, scope }) => (
   <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 8, borderTopWidth: 1, borderColor: c.line }}>
     <T weight="700" size={13} color={c.mute} style={{ width: 110 }}>{label}</T>
     <T weight="700" size={14} style={{ flex: 1 }}>{value}</T>
-    {scope ? <T size={11.5} color={c.mute} weight="700">{SCOPE_LABEL[scope]}</T> : null}
+    {scope ? <T size={11.5} color={c.mute} weight="700">{scopeLabel(scope)}</T> : null}
   </View>
 );
 
@@ -47,67 +56,69 @@ export function AthleteProfilePanel({ p, onChanged }) {
 
   return (
     <View style={{ marginTop: 24 }}>
-      <H2>Athlete profile</H2>
+      <H2>{t('ap.title')}</H2>
       <Card style={{ marginTop: 10 }}>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
           <T weight="800" size={22} style={{ fontVariant: ['tabular-nums'] }}>{a.completeness.percent}%</T>
           <View style={{ flex: 1, height: 8, borderRadius: 4, backgroundColor: c.line, overflow: 'hidden' }} accessibilityRole="progressbar" accessibilityValue={{ min: 0, max: 100, now: a.completeness.percent }}>
-            <View style={{ width: `${a.completeness.percent}%`, height: 8, backgroundColor: c.lime }} />
+            <View style={{ width: `${a.completeness.percent}%`, height: 8, backgroundColor: c.pink }} />
           </View>
         </View>
         <T size={12} color={c.mute} style={{ marginTop: 6 }}>
-          {a.completeness.missing.length ? `Still open: ${a.completeness.missing.map(nice).join(', ')}. Everything here is optional — you choose what to share.` : 'Complete. You choose who sees each part.'}
+          {a.completeness.missing.length
+            ? t('ap.completeness_missing', { missing: a.completeness.missing.map(nice).join(', ') })
+            : t('ap.completeness_done')}
         </T>
         <View style={{ marginTop: 10 }}>
-          <Row label="Dominant side" value={a.dominant_side ? cap1(a.dominant_side) : '—'} scope={a.dominant_side ? sc.dominant_side ?? 'private' : null} />
-          <Row label="Positions" value={a.positions.length ? a.positions.join(', ') : '—'} scope={a.positions.length ? sc.positions ?? 'private' : null} />
-          <Row label="Preferences" value={a.play_prefs.length ? a.play_prefs.join(', ') : '—'} scope={a.play_prefs.length ? sc.play_prefs ?? 'private' : null} />
-          <Row label="Affiliations" value={a.affiliations.length ? a.affiliations.map((x) => `✔ ${x.label}`).join('   ') : 'None verified yet'} scope={a.affiliations.length ? sc.affiliations ?? 'private' : null} />
+          <Row label={t('ap.dominant_side')} value={a.dominant_side ? cap1(a.dominant_side) : '—'} scope={a.dominant_side ? sc.dominant_side ?? 'private' : null} />
+          <Row label={t('ap.positions')} value={a.positions.length ? a.positions.join(', ') : '—'} scope={a.positions.length ? sc.positions ?? 'private' : null} />
+          <Row label={t('ap.preferences')} value={a.play_prefs.length ? a.play_prefs.join(', ') : '—'} scope={a.play_prefs.length ? sc.play_prefs ?? 'private' : null} />
+          <Row label={t('ap.affiliations')} value={a.affiliations.length ? a.affiliations.map((x) => `✔ ${x.label}`).join('   ') : t('ap.affiliations_none')} scope={a.affiliations.length ? sc.affiliations ?? 'private' : null} />
         </View>
-        <View style={{ marginTop: 10, alignItems: 'flex-start' }}><Btn small title="Edit athlete details" color={c.paper} onPress={() => setEdit(true)} /></View>
+        <View style={{ marginTop: 10, alignItems: 'flex-start' }}><Btn small title={t('ap.edit_btn')} color={c.paper} onPress={() => setEdit(true)} /></View>
       </Card>
 
-      <T weight="800" size={15} style={{ marginTop: 18 }}>Measurements</T>
-      <T size={12} color={c.mute}>Optional and dated. Stored encrypted, private until you share a measurement, and you can withdraw it at any time.</T>
+      <T weight="800" size={15} style={{ marginTop: 18 }}>{t('ap.measurements_title')}</T>
+      <T size={12} color={c.mute}>{t('ap.measurements_hint')}</T>
       <View style={{ gap: 8, marginTop: 8 }}>
         {live.map((m) => (
           <Card key={m.id} pad={12}>
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
               <View style={{ flex: 1 }}>
                 <T weight="800" size={15}>{cap1(m.metric)}: {m.value} {m.unit}</T>
-                <T size={12} color={c.mute}>{day(m.measured_on + 'T12:00:00')} · {SOURCES.find((s) => s.value === m.source)?.label}{m.note ? ` · ${m.note}` : ''}</T>
+                <T size={12} color={c.mute}>{day(m.measured_on + 'T12:00:00')} · {sources().find((s) => s.value === m.source)?.label}{m.note ? ` · ${m.note}` : ''}</T>
               </View>
-              <T size={11.5} color={c.mute} weight="700">{SCOPE_LABEL[m.scope]}</T>
+              <T size={11.5} color={c.mute} weight="700">{scopeLabel(m.scope)}</T>
             </View>
             <View style={{ flexDirection: 'row', gap: 6, flexWrap: 'wrap', marginTop: 8 }}>
-              {SCOPES.map((s) => <Chip key={s.value} label={s.label} active={m.scope === s.value} onPress={act(() => api.patch(`/me/measurements/${m.id}`, { scope: s.value }), 'Sharing updated')} />)}
-              <Pressable hitSlop={8} onPress={act(() => api.post(`/me/measurements/${m.id}/revoke`), 'Withdrawn — kept privately')} style={{ justifyContent: 'center' }}><T size={13} weight="700" color={c.red}>Withdraw</T></Pressable>
+              {scopes().map((s) => <Chip key={s.value} label={s.label} active={m.scope === s.value} onPress={act(() => api.patch(`/me/measurements/${m.id}`, { scope: s.value }), t('ap.sharing_updated'))} />)}
+              <Pressable hitSlop={8} onPress={act(() => api.post(`/me/measurements/${m.id}/revoke`), t('ap.meas_withdrawn_toast'))} style={{ justifyContent: 'center' }}><T size={13} weight="700" color={c.red}>{t('ap.withdraw')}</T></Pressable>
             </View>
           </Card>
         ))}
-        {!live.length ? <T size={13} color={c.mute}>No measurements recorded. Nothing is required.</T> : null}
+        {!live.length ? <T size={13} color={c.mute}>{t('ap.no_measurements')}</T> : null}
         {revoked.map((m) => (
           <View key={m.id} style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-            <T size={12.5} color={c.mute} style={{ flex: 1 }}>Withdrawn: {nice(m.metric)} {m.value} {m.unit} · {m.measured_on}</T>
-            <Pressable hitSlop={8} onPress={act(() => api.post(`/me/measurements/${m.id}/restore`), 'Restored — still private')}><T size={13} weight="700">Restore</T></Pressable>
+            <T size={12.5} color={c.mute} style={{ flex: 1 }}>{t('ap.withdrawn_label', { metric: nice(m.metric), value: m.value, unit: m.unit, date: m.measured_on })}</T>
+            <Pressable hitSlop={8} onPress={act(() => api.post(`/me/measurements/${m.id}/restore`), t('ap.meas_restored_toast'))}><T size={13} weight="700">{t('ap.restore')}</T></Pressable>
           </View>
         ))}
       </View>
-      <View style={{ marginTop: 10, alignItems: 'flex-start' }}><Btn small title="+ Add measurement" color={c.paper} onPress={() => setAdding(true)} /></View>
+      <View style={{ marginTop: 10, alignItems: 'flex-start' }}><Btn small title={t('ap.add_measurement')} color={c.paper} onPress={() => setAdding(true)} /></View>
 
       {edit ? (
-        <FormSheet visible onClose={() => setEdit(false)} title="Athlete details" submitLabel="Save"
+        <FormSheet visible onClose={() => setEdit(false)} title={t('ap.edit_title')} submitLabel={t('ap.save')}
           initial={{ dominant_side: a.dominant_side ?? undefined, positions: open ? undefined : a.positions, positions_text: open ? a.positions.join(', ') : undefined, play_prefs: a.play_prefs,
             s_dominant_side: sc.dominant_side ?? 'private', s_positions: sc.positions ?? 'private', s_play_prefs: sc.play_prefs ?? 'private', s_affiliations: sc.affiliations ?? 'private' }}
           fields={[
-            { key: 'dominant_side', label: 'Dominant side (foot / hand)', type: 'chips', options: SIDES, optional: true },
-            open ? { key: 'positions_text', label: 'Positions you play (separate with commas)', optional: true } : { key: 'positions', label: 'Positions you play', type: 'multi', options: a.options.positions, optional: true },
-            { key: 'play_prefs', label: 'How you like to play', type: 'multi', options: a.options.play_prefs, optional: true },
-            { key: 'sec', label: 'Who can see what', type: 'section' },
-            { key: 's_dominant_side', label: 'Dominant side', type: 'chips', options: SCOPES },
-            { key: 's_positions', label: 'Positions', type: 'chips', options: SCOPES },
-            { key: 's_play_prefs', label: 'Preferences', type: 'chips', options: SCOPES },
-            { key: 's_affiliations', label: 'Verified affiliations', type: 'chips', options: SCOPES, hint: 'Teams and credentials already verified on GotMyGame.' },
+            { key: 'dominant_side', label: t('ap.form_dominant_side'), type: 'chips', options: sides(), optional: true },
+            open ? { key: 'positions_text', label: t('ap.form_positions_open'), optional: true } : { key: 'positions', label: t('ap.form_positions'), type: 'multi', options: a.options.positions, optional: true },
+            { key: 'play_prefs', label: t('ap.form_play_prefs'), type: 'multi', options: a.options.play_prefs, optional: true },
+            { key: 'sec', label: t('ap.form_scopes_section'), type: 'section' },
+            { key: 's_dominant_side', label: t('ap.dominant_side'), type: 'chips', options: scopes() },
+            { key: 's_positions', label: t('ap.positions'), type: 'chips', options: scopes() },
+            { key: 's_play_prefs', label: t('ap.preferences'), type: 'chips', options: scopes() },
+            { key: 's_affiliations', label: t('ap.affiliations'), type: 'chips', options: scopes(), hint: t('ap.form_affiliations_hint') },
           ]}
           onSubmit={async (v) => {
             const positions = open ? String(v.positions_text ?? '').split(',').map((x) => x.trim()).filter(Boolean) : v.positions ?? [];
@@ -116,32 +127,33 @@ export function AthleteProfilePanel({ p, onChanged }) {
               field_scopes: { dominant_side: v.s_dominant_side, positions: v.s_positions, play_prefs: v.s_play_prefs, affiliations: v.s_affiliations },
             });
             await reload();
-            return 'Saved';
+            return t('ap.saved');
           }} />
       ) : null}
       {adding ? (
-        <FormSheet visible onClose={() => setAdding(false)} title="Add a measurement" submitLabel="Save measurement"
+        <FormSheet visible onClose={() => setAdding(false)} title={t('ap.meas_add_title')} submitLabel={t('ap.meas_save_btn')}
           initial={{ metric: 'height', unit: 'cm', measured_on: new Date().toISOString().slice(0, 10), source: 'self', scope: 'private' }}
           fields={[
-            { key: 'metric', label: 'What was measured', type: 'chips', options: a.options.metrics.map((m) => ({ value: m.metric, label: m.label })) },
-            { key: 'unit', label: 'Unit', type: 'chips', options: (v) => (a.options.metrics.find((m) => m.metric === v.metric)?.units ?? ['cm']).map((u) => ({ value: u, label: u })) },
-            { key: 'value', label: 'Value', type: 'number' },
-            { key: 'measured_on', label: 'Measured on', type: 'date', max: new Date().toISOString().slice(0, 10) },
-            { key: 'source', label: 'Who measured it', type: 'choice', options: SOURCES },
-            { key: 'scope', label: 'Who can see it', type: 'chips', options: SCOPES },
+            { key: 'metric', label: t('ap.meas_metric'), type: 'chips', options: a.options.metrics.map((m) => ({ value: m.metric, label: m.label })) },
+            { key: 'unit', label: t('ap.meas_unit'), type: 'chips', options: (v) => (a.options.metrics.find((m) => m.metric === v.metric)?.units ?? ['cm']).map((u) => ({ value: u, label: u })) },
+            { key: 'value', label: t('ap.meas_value'), type: 'number' },
+            { key: 'measured_on', label: t('ap.meas_date'), type: 'date', max: new Date().toISOString().slice(0, 10) },
+            { key: 'source', label: t('ap.meas_source'), type: 'choice', options: sources() },
+            { key: 'scope', label: t('ap.meas_scope'), type: 'chips', options: scopes() },
           ]}
-          onSubmit={async (v) => { await api.post(`/me/sport-profiles/${p.id}/measurements`, { ...v, value: Number(v.value) }); await reload(); return 'Measurement saved'; }} />
+          onSubmit={async (v) => { await api.post(`/me/sport-profiles/${p.id}/measurements`, { ...v, value: Number(v.value) }); await reload(); return t('ap.meas_saved'); }} />
       ) : null}
     </View>
   );
 }
 
-const NEED_LABEL_AP = {
-  wav: 'WAV', securement: 'Securement', guide_dog: 'Guide dog', hearing_loop: 'Hearing loop',
-  escort: 'Escort', manual_support: 'Manual support', medication_carry_on: 'Medication carry-on',
-  rooming_roll_in: 'Roll-in shower', rooming_hoist: 'Room hoist', rooming_ground_floor: 'Ground floor / lift',
+const NEED_KEY = {
+  wav: 'ap.need.wav', securement: 'ap.need.securement', guide_dog: 'ap.need.guide_dog', hearing_loop: 'ap.need.hearing_loop',
+  escort: 'ap.need.escort', manual_support: 'ap.need.manual_support', medication_carry_on: 'ap.need.medication_carry_on',
+  rooming_roll_in: 'ap.need.rooming_roll_in', rooming_hoist: 'ap.need.rooming_hoist', rooming_ground_floor: 'ap.need.rooming_ground_floor',
 };
-const NEED_OPTS_AP = Object.entries(NEED_LABEL_AP).map(([k, v]) => ({ value: k, label: v }));
+const needLabel = (k) => t(NEED_KEY[k] ?? 'ap.need.wav');
+const needOpts = () => Object.keys(NEED_KEY).map((k) => ({ value: k, label: needLabel(k) }));
 
 /** Travel assistance: athlete's consented access needs across all open trips they are a party to. */
 export function TravelAssistanceSection({ participantId, canEdit }) {
@@ -152,32 +164,30 @@ export function TravelAssistanceSection({ participantId, canEdit }) {
   return (
     <Card style={{ marginTop: 16 }}>
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 8 }}>
-        <H2 style={{ flex: 1 }}>Travel assistance</H2>
-        {canEdit ? <Btn small title="＋ Add need" onPress={() => setAdding(true)} /> : null}
+        <H2 style={{ flex: 1 }}>{t('ap.travel_title')}</H2>
+        {canEdit ? <Btn small title={t('ap.travel_add')} onPress={() => setAdding(true)} /> : null}
       </View>
-      <T size={12.5} color={c.mute} style={{ marginBottom: 10 }}>
-        Your consented access requirements across active trips. Notes are encrypted — only trip ops/managers can read them. Providers receive only the need type when you share it.
-      </T>
+      <T size={12.5} color={c.mute} style={{ marginBottom: 10 }}>{t('ap.travel_hint')}</T>
       {needs.length ? (
         <Wrap gap={8}>
           {needs.map((n) => (
             <View key={n.id} style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
-              <Tag label={NEED_LABEL_AP[n.need_type] ?? n.need_type} color={n.scope === 'provider_minimal' ? c.cyanSoft : c.violetSoft} />
+              <Tag label={needLabel(n.need_type)} color={n.scope === 'provider_minimal' ? c.cyanSoft : c.violetSoft} />
               <T size={10}>{n.scope === 'ops_only' ? '🔒' : '🔓'}</T>
             </View>
           ))}
         </Wrap>
       ) : (
-        <T size={13} color={c.mute}>No access needs declared. Add one to let trip managers plan appropriate transport and accommodation.</T>
+        <T size={13} color={c.mute}>{t('ap.travel_no_needs')}</T>
       )}
-      {st.error ? <T size={12} color={c.red} style={{ marginTop: 6 }}>Could not load travel needs.</T> : null}
+      {st.error ? <T size={12} color={c.red} style={{ marginTop: 6 }}>{t('ap.travel_error')}</T> : null}
       {adding ? (
-        <FormSheet visible onClose={() => setAdding(false)} title="Add travel access need" submitLabel="Save"
-          notice="Your note is encrypted — only trip ops/managers can read it. Providers receive only the need type when you set scope to 'Share with provider'."
+        <FormSheet visible onClose={() => setAdding(false)} title={t('ap.travel_form_title')} submitLabel={t('ap.save')}
+          notice={t('ap.travel_notice')}
           fields={[
-            { key: 'need_type', label: 'Need type', type: 'chips', options: NEED_OPTS_AP },
-            { key: 'scope', label: 'Share with provider', type: 'switch', default: false },
-            { key: 'note', label: 'Private note (optional)', type: 'text', optional: true, multiline: true },
+            { key: 'need_type', label: t('ap.travel_form_type'), type: 'chips', options: needOpts() },
+            { key: 'scope', label: t('ap.travel_form_share'), type: 'switch', default: false },
+            { key: 'note', label: t('ap.travel_form_note'), type: 'text', optional: true, multiline: true },
           ]}
           onSubmit={async (v) => {
             const trips = await api.get('/trips', { status: 'open', limit: 20 });
@@ -190,7 +200,7 @@ export function TravelAssistanceSection({ participantId, canEdit }) {
             }
             await st.reload();
             setAdding(false);
-            toast('Access need saved');
+            toast(t('ap.travel_saved_toast'));
           }} />
       ) : null}
     </Card>
@@ -204,16 +214,16 @@ export function ArchivedSports({ onRestored, refreshKey }) {
   if (!list.data?.length) return null;
   return (
     <Card style={{ marginTop: 18 }}>
-      <H2>Archived sports</H2>
-      <T size={12} color={c.mute} style={{ marginTop: 2 }}>Your matches and history stay safe. Restore a sport to bring its card back.</T>
+      <H2>{t('ap.archived_title')}</H2>
+      <T size={12} color={c.mute} style={{ marginTop: 2 }}>{t('ap.archived_hint')}</T>
       {list.data.map((a) => (
         <View key={a.id} style={{ flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 10, borderTopWidth: 1, borderColor: c.line, marginTop: 8 }}>
           <T size={22}>{a.sport_emoji}</T>
           <View style={{ flex: 1 }}>
             <T weight="800" size={14}>{a.sport}</T>
-            <T size={12} color={c.mute}>{a.matches_kept} match{a.matches_kept === 1 ? '' : 'es'} kept · archived {day(a.archived_on + 'T12:00:00')}</T>
+            <T size={12} color={c.mute}>{t('ap.archived_matches', { count: a.matches_kept })} · {t('ap.archived_on', { date: day(a.archived_on + 'T12:00:00') })}</T>
           </View>
-          <Btn small title="Restore" color={c.paper} onPress={async () => { try { await api.post(`/me/sport-profiles/${a.id}/restore`); toast('Sport restored'); await list.reload(); await onRestored?.(); } catch (e) { toast(e.message); } }} />
+          <Btn small title={t('ap.archived_restore')} color={c.paper} onPress={async () => { try { await api.post(`/me/sport-profiles/${a.id}/restore`); toast(t('ap.archived_restored_toast')); await list.reload(); await onRestored?.(); } catch (e) { toast(e.message); } }} />
         </View>
       ))}
     </Card>

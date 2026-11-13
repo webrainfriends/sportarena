@@ -16,7 +16,22 @@ export const METRICS = {
   spo2: { unit: '%', label: 'Blood oxygen (SpO₂)', min: 70, max: 100, agg: 'avg' },
   vo2max: { unit: 'ml/kg/min', label: 'VO₂max estimate', min: 20, max: 90, agg: 'avg' },
   sprint_distance: { unit: 'm', label: 'Sprint distance', min: 0, max: 10000, agg: 'sum' },
-  max_speed: { unit: 'km/h', label: 'Max speed', min: 0, max: 50, agg: 'avg' },
+  max_speed:          { unit: 'km/h',  label: 'Max speed',                     min: 0,   max: 50,     agg: 'avg' },
+  // Data Hub extensions (#566): elite lab/field assessment metrics
+  acceleration:       { unit: 'm/s²',  label: 'Peak acceleration',             min: 0,   max: 30,     agg: 'avg' },
+  jump_height:        { unit: 'cm',    label: 'Jump height (CMJ)',              min: 0,   max: 150,    agg: 'avg' },
+  jump_power:         { unit: 'W',     label: 'Peak power (jump)',              min: 0,   max: 8000,   agg: 'avg' },
+  sprint_10m:         { unit: 's',     label: '10 m sprint time',              min: 0.5, max: 5,      agg: 'avg' },
+  sprint_30m:         { unit: 's',     label: '30 m sprint time',              min: 2,   max: 12,     agg: 'avg' },
+  sprint_40m:         { unit: 's',     label: '40 m / 40 yd sprint time',      min: 3,   max: 16,     agg: 'avg' },
+  body_fat_pct:       { unit: '%',     label: 'Body fat percentage',           min: 1,   max: 60,     agg: 'avg' },
+  lean_mass:          { unit: 'kg',    label: 'Lean body mass',                min: 10,  max: 150,    agg: 'avg' },
+  muscle_mass:        { unit: 'kg',    label: 'Skeletal muscle mass',          min: 5,   max: 100,    agg: 'avg' },
+  squat_1rm:          { unit: 'kg',    label: 'Back squat 1RM',                min: 0,   max: 500,    agg: 'avg' },
+  deadlift_1rm:       { unit: 'kg',    label: 'Deadlift 1RM',                  min: 0,   max: 600,    agg: 'avg' },
+  bench_1rm:          { unit: 'kg',    label: 'Bench press 1RM',               min: 0,   max: 400,    agg: 'avg' },
+  peak_force:         { unit: 'N',     label: 'Peak force (isometric / jump)', min: 0,   max: 10000,  agg: 'avg' },
+  rate_of_force_dev:  { unit: 'N/s',   label: 'Rate of force development',     min: 0,   max: 100000, agg: 'avg' },
 };
 
 // factor to the canonical unit; a function for non-linear conversions
@@ -33,6 +48,14 @@ const UNITS = {
   'ml/kg/min': { 'ml/kg/min': 1 },
   'm': { m: 1, km: 1000 },
   'km/h': { 'km/h': 1, 'm/s': 3.6, mph: 1.60934 },
+  // Data Hub unit extensions (#566)
+  'm/s²': { 'm/s²': 1, 'g': 9.80665 },
+  cm:     { cm: 1, m: 100, in: 2.54, ft: 30.48 },
+  W:      { W: 1, kW: 1000 },
+  N:      { N: 1 },
+  'N/s':  { 'N/s': 1 },
+  kg:     { kg: 1, lb: 0.453592, g: 0.001 },
+  s:      { s: 1, ms: 0.001 },
 };
 
 /** Convert a vendor reading. Returns { value, flags } or null when the unit is not understood (the caller records it as unmapped, never guesses). */
@@ -105,6 +128,48 @@ export const ADAPTERS = {
       row('high_speed_running', 'sprint_distance', d.high_speed_running_m, 'm', d.start_time),
       row('max_vel', 'max_speed', d.max_velocity_kmh, 'km/h', d.start_time),
       row('player_load', 'training_load', d.player_load, 'au', d.start_time),
+      row('max_acceleration', 'acceleration', d.max_acceleration_ms2, 'm/s²', d.start_time),
+    ]),
+  },
+  // Vald ForceDecks REST API v2 — jump and force plate data
+  forcedecks: {
+    base: 'https://prd-api.valdperformance.com',
+    path: '/v2/tests',
+    parse: (j) => arr(j, 'data').flatMap((d) => [
+      row('jumpHeight_cm',  'jump_height',       d.jumpHeight_cm,  'cm',  d.startTime),
+      row('peakForce_N',    'peak_force',        d.peakForce_N,    'N',   d.startTime),
+      row('rfd_Ns',         'rate_of_force_dev', d.rfd_Ns,         'N/s', d.startTime),
+      row('peakPower_W',    'jump_power',        d.peakPower_W,    'W',   d.startTime),
+    ]),
+  },
+  // InBody body composition analyser — CSV/API export
+  inbody: {
+    base: 'https://inbody.com',
+    path: null,
+    parse: (j) => arr(j, 'results').flatMap((d) => [
+      row('bodyFatPercent',        'body_fat_pct', d.bodyFatPercent,         '%',  d.testDate),
+      row('leanBodyMass_kg',       'lean_mass',    d.leanBodyMass_kg,        'kg', d.testDate),
+      row('skeletalMuscleMass_kg', 'muscle_mass',  d.skeletalMuscleMass_kg,  'kg', d.testDate),
+    ]),
+  },
+  // Brower timing gates CSV export
+  brower: {
+    base: null,
+    path: null,
+    parse: (j) => arr(j, 'splits').flatMap((d) => [
+      row('split_10m', 'sprint_10m', d.split10m, 's', d.date),
+      row('split_30m', 'sprint_30m', d.split30m, 's', d.date),
+      row('split_40m', 'sprint_40m', d.split40m, 's', d.date),
+    ]),
+  },
+  // SmartSpeed timing system (same CSV schema as Brower, different field names)
+  smartspeed: {
+    base: null,
+    path: null,
+    parse: (j) => arr(j, 'runs').flatMap((d) => [
+      row('time_10m', 'sprint_10m', d.time_10m, 's', d.session_date),
+      row('time_30m', 'sprint_30m', d.time_30m, 's', d.session_date),
+      row('time_40m', 'sprint_40m', d.time_40m, 's', d.session_date),
     ]),
   },
 };

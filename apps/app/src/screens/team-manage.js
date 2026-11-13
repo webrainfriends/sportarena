@@ -270,12 +270,12 @@ export function RecruitTab({ t, toast }) {
         )) : <Empty emoji="📣" title="No posts yet" sub="Advertise for players or a coach and review the applications here." />}
       </Section>
       {post('team_recruiting')}{post('coach_wanted')}
-      <Responses post={open} toast={toast} onClose={() => setOpen(null)} onChanged={posts.reload} />
+      <Responses post={open} toast={toast} orgId={t.org_id} onClose={() => setOpen(null)} onChanged={posts.reload} />
     </>
   );
 }
 
-function Responses({ post, toast, onClose, onChanged }) {
+function Responses({ post, toast, orgId, onClose, onChanged }) {
   const { push } = useNav();
   const res = useLoad(() => (post ? api.get(`/billboard/${post.id}/responses`) : []), [post?.id]);
   const close = async () => { try { await api.post(`/billboard/${post.id}/close`); toast('Post closed'); onChanged(); onClose(); } catch (e) { toast('' + e.message); } };
@@ -287,6 +287,7 @@ function Responses({ post, toast, onClose, onChanged }) {
         ))}
         {/* shortlist, trials, evaluation and versioned offers live in one place: the recruitment pipeline */}
         <Btn title="Open recruitment pipeline" onPress={() => { onClose(); push('RecruitmentPipeline', { id: post.id }); }} />
+        <Btn title="Open Talent CRM" color={c.violet} onPress={() => { onClose(); push('TalentCRM', { org_id: orgId }); }} />
       </> : <Empty emoji="⏳" title="No applications yet" />}
       {post?.status === 'open' ? <Btn title="Close this post" color={c.orange} onPress={close} /> : null}
     </Sheet>

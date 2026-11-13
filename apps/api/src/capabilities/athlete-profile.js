@@ -5,7 +5,7 @@ import { badRequest, notFound } from '../errors.js';
 import { encrypt, decrypt } from '../crypto.js';
 import { audit, sportBySlugOrId } from '../helpers.js';
 import { isYouth } from '../youth.js';
-import { METRICS, METRIC_KEYS, SCOPES, SCOPED_FIELDS, canonical, completeness, optionsFor } from '../athlete-profile.js';
+import { METRICS, METRIC_KEYS, SCOPES, SCOPED_FIELDS, canonical, completeness, optionsFor, viewerTiers, visibleFields } from '../athlete-profile.js';
 
 const TAG = 'Player';
 const scope = z.enum(SCOPES);
@@ -179,5 +179,31 @@ cap({
       `SELECT p.id, p.role, p.level, to_char(p.archived_at,'YYYY-MM-DD') AS archived_on, s.slug AS sport_slug, s.name AS sport, s.emoji AS sport_emoji,
               (SELECT count(*)::int FROM player_matches m WHERE m.sport_profile_id=p.id AND m.archived_at IS NULL) AS matches_kept
          FROM sport_profiles p JOIN sports s ON s.id=p.sport_id WHERE p.user_id=$1 AND p.archived_at IS NOT NULL ORDER BY p.archived_at DESC, p.id`, [user.id]);
+  },
+});
+
+cap({
+  name: 'get_public_athlete_profile',
+  method: 'GET', path: '/people/:userId/sport-profiles/:profileId/athlete', tag: TAG, auth: 'optional',
+  summary: "View another athlete's profile card at the viewer's tier (public/coach/recruiter). Only the fields the athlete has shared at that tier are returned — the rest are absent. Returns 404 to prevent existence leakage.",
+  input: z.object({ userId: id, profileId: id }),
+  async handler({ user }, i) {
+    if (user?.id === i.userId) throw badRequest('Use /me/sport-profiles for your own profile');
+    const card = await one('SELECT * FROM sport_profiles WHERE id=$1 AND user_id=$2 AND archived_at IS NULL', [i.profileId, i.userId]);
+    if (!card) throw notFound('Athlete profile');
+    const [sport, affiliations_, tiers_] = await Promise.all([
+      one('SELECT slug FROM sports WHERE id=$1', [card.sport_id]),
+      affiliationsFor(i.userId, card.sport_id),
+      viewerTiers(user, i.userId, card.sport_id),
+    ]);
+    const { tiers } = tiers_;
+    const affiliations = tiers.some((t) => ['coach', 'recruiter', 'public'].includes(t)) ? affiliations_ : [];
+    const visible = visibleFields({ ...card, affiliations }, tiers);
+    return {
+      sport: sport.slug, role: card.role, level: card.level, jersey_no: card.jersey_no,
+      club: card.club, region: card.region, experience_years: card.experience_years,
+      ...visible,
+      completeness: completeness(card, { affiliations: affiliations.length }),
+    };
   },
 });
