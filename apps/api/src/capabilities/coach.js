@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import { cap, id, page } from '../registry.js';
 import { one, many } from '../db.js';
-import { badRequest, forbidden, notFound } from '../errors.js';
+import { badRequest, conflict, forbidden, notFound } from '../errors.js';
 import { isAdmin, PUBLIC_USER, sportBySlugOrId } from '../helpers.js';
 import { RELATIONSHIP_SQL, hiddenYouth, sessionKinds } from '../coaching.js';
 import { canCoachTeam } from './teams.js';
@@ -140,10 +140,10 @@ cap({
 cap({
   name: 'create_coach_template', method: 'POST', path: '/coach/templates', tag: TAG, auth: COACH, status: 201,
   summary: 'Save a reusable drill/session structure. Templates hold no athlete data.',
-  input: z.object({ title: z.string().min(2).max(120), sport: z.string().optional(), kind: z.enum(sessionKinds).optional(), structure: z.object({ duration_min: z.number().int().min(15).max(480).optional(), instructions: z.string().max(2000).optional(), target_rpe: z.number().int().min(1).max(10).optional(), drills: z.array(z.string().max(200)).max(30).optional() }).default({}) }),
+  input: z.object({ title: z.string().min(2).max(120), sport: z.string().optional(), kind: z.enum(sessionKinds).optional(), structure: z.object({ duration_min: z.number().int().min(15).max(480).optional(), instructions: z.string().max(2000).optional(), target_rpe: z.number().int().min(1).max(10).optional(), drills: z.array(z.string().max(200)).max(30).optional() }).default({}), steps: z.array(z.object({ type: z.enum(['text', 'photo', 'video']), text: z.string().trim().max(2000).optional(), media_id: z.string().uuid().optional(), caption: z.string().trim().max(500).optional() })).max(30).optional() }),
   async handler({ user }, i) {
     const sport = i.sport ? await sportBySlugOrId(i.sport) : null;
-    return one('INSERT INTO coach_templates(coach_id, sport_id, title, kind, structure) VALUES ($1,$2,$3,$4,$5) RETURNING *', [user.id, sport?.id ?? null, i.title, i.kind, JSON.stringify(i.structure)]);
+    return one('INSERT INTO coach_templates(coach_id, sport_id, title, kind, structure, steps) VALUES ($1,$2,$3,$4,$5,$6) RETURNING *', [user.id, sport?.id ?? null, i.title, i.kind, JSON.stringify(i.structure), JSON.stringify(i.steps ?? [])]);
   },
 });
 
@@ -152,7 +152,7 @@ cap({
   summary: 'Templates you can use: your own, those you shared, and those shared with a team you coach or an organisation where you hold a coach, admin or owner role. Filter by scope (drill, block, session), sport, a skill tag used in its blocks, or a word in the title, objective or instructions - this is the drill library.',
   input: z.object({ scope: z.enum(['drill', 'block', 'session']).optional(), sport: z.string().max(80).optional(), tag: z.string().trim().max(60).optional(), q: z.string().trim().max(80).optional(), ...page }),
   handler: ({ user }, i) => many(
-    `SELECT t.id, t.title, t.kind, t.scope, t.structure, t.blocks, t.version, t.sport_id, s.slug AS sport_slug, s.name AS sport_name, t.shared_team_id, t.shared_organisation_id, t.created_at, t.updated_at, (t.coach_id=$1) AS mine, u.display_name AS shared_by
+    `SELECT t.id, t.title, t.kind, t.scope, t.structure, t.blocks, t.steps, t.version, t.sport_id, s.slug AS sport_slug, s.name AS sport_name, t.shared_team_id, t.shared_organisation_id, t.created_at, t.updated_at, (t.coach_id=$1) AS mine, u.display_name AS shared_by
        FROM coach_templates t LEFT JOIN sports s ON s.id=t.sport_id JOIN users u ON u.id=t.coach_id
       WHERE t.archived_at IS NULL AND ($2::text IS NULL OR t.scope=$2)
         AND ($5::text IS NULL OR s.slug=$5 OR s.id::text=$5)
@@ -170,6 +170,28 @@ cap({
   async handler({ user }, i) {
     const r = await one('UPDATE coach_templates SET archived_at=now() WHERE id=$1 AND coach_id=$2 RETURNING id, archived_at', [i.id, user.id]);
     if (!r) throw notFound('Template');
+    return r;
+  },
+});
+
+cap({
+  name: 'update_drill_steps', method: 'PATCH', path: '/coach/templates/:id/steps', tag: TAG, auth: COACH,
+  summary: 'Update the content steps (text, photos, videos) of one of your drills. Version must match to prevent lost edits.',
+  input: z.object({
+    id,
+    version: z.number().int().min(1),
+    steps: z.array(z.object({
+      type: z.enum(['text', 'photo', 'video']),
+      text: z.string().trim().max(2000).optional(),
+      media_id: z.string().uuid().optional(),
+      caption: z.string().trim().max(500).optional(),
+    })).max(30),
+  }),
+  async handler({ user }, i) {
+    const r = await one(
+      "UPDATE coach_templates SET steps=$3, version=version+1, updated_at=now() WHERE id=$1 AND version=$2 AND coach_id=$4 AND scope='block' AND archived_at IS NULL RETURNING id, title, steps, version, updated_at",
+      [i.id, i.version, JSON.stringify(i.steps), user.id]);
+    if (!r) throw conflict('Drill not found or version mismatch — reload and try again');
     return r;
   },
 });

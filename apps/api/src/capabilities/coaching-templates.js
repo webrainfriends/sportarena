@@ -32,7 +32,7 @@ async function readable(user, templateId) {
 cap({
   name: 'save_coaching_template', method: 'POST', path: '/coaching/templates', tag: TAG, auth: COACH, status: 201,
   summary: 'Save a whole session plan, or one block of it, as a private template. Only the generic parts are kept - no athletes, groups or coach-only notes. Send session_record_id (and block_id for a single block), or the blocks directly.',
-  input: z.object({ title: text(120).min(2), scope: z.enum(['block', 'session']).default('session'), session_record_id: id.optional(), block_id: z.string().max(60).optional(), blocks: z.array(block).max(30).optional(), sport: z.string().max(80).optional().describe('sport slug or id, so the drill can be found by sport; a session\'s own sport is used when you save from a session') }),
+  input: z.object({ title: text(120).min(2), scope: z.enum(['block', 'session']).default('session'), session_record_id: id.optional(), block_id: z.string().max(60).optional(), blocks: z.array(block).max(30).optional(), sport: z.string().max(80).optional().describe('sport slug or id, so the drill can be found by sport; a session\'s own sport is used when you save from a session'), steps: z.array(z.object({ type: z.enum(['text', 'photo', 'video']), text: z.string().trim().max(2000).optional(), media_id: z.string().uuid().optional(), caption: z.string().trim().max(500).optional() })).max(30).optional() }),
   async handler({ user }, i) {
     let blocks = i.blocks, sportId = null;
     if (i.sport) {
@@ -52,7 +52,7 @@ cap({
     }
     if (!blocks?.length) throw badRequest('There are no blocks to save');
     if (i.scope === 'block' && blocks.length !== 1) throw badRequest('A block template holds exactly one block');
-    return one('INSERT INTO coach_templates(coach_id, sport_id, title, scope, blocks) VALUES ($1,$2,$3,$4,$5) RETURNING id, title, scope, blocks, version, created_at', [user.id, sportId, i.title, i.scope, JSON.stringify(clean(blocks))]);
+    return one('INSERT INTO coach_templates(coach_id, sport_id, title, scope, blocks, steps) VALUES ($1,$2,$3,$4,$5,$6) RETURNING id, title, scope, blocks, steps, version, created_at', [user.id, sportId, i.title, i.scope, JSON.stringify(clean(blocks)), JSON.stringify(i.steps ?? [])]);
   },
 });
 
