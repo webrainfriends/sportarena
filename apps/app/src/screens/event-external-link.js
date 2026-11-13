@@ -1,7 +1,7 @@
 // 5-step wizard: link an externally created event into GotMyGame's managed workspace.
 // Source → Verify → Preview → Capabilities → Review → Create Managed Workspace.
 import React, { useState } from 'react';
-import { FlatList, Linking, Platform, ScrollView, Switch, TouchableOpacity, View } from 'react-native';
+import { FlatList, Linking, Platform, ScrollView, StyleSheet, Switch, TouchableOpacity, View } from 'react-native';
 import { api } from '../api';
 import { useLoad } from '../hooks';
 import { useSession } from '../session';
@@ -361,7 +361,6 @@ function FieldWithBadge({ label, badge, children }) {
   );
 }
 
-import { StyleSheet } from 'react-native';
 const styles = StyleSheet.create({
   providerRow: { flexDirection: 'row', alignItems: 'center', gap: 10, padding: 12, borderRadius: 12, borderWidth: 1.5, marginBottom: 8, minHeight: 56 },
   trustBox: { borderRadius: 10, padding: 12, borderWidth: 1, gap: 4 },
