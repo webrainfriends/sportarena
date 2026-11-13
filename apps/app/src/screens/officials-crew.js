@@ -2,6 +2,7 @@
 // Two roles, one screen: organiser sees crew completeness, requirements setup, emergency substitution and broadcast.
 // Officials see their assignment, duties, crew list and broadcast channel — no organiser or financial controls.
 import React, { useState } from 'react';
+// R20: Comms tab navigates to OfficialCrewComms screen
 import { View, ScrollView } from 'react-native';
 import { api } from '../api';
 import { useLoad } from '../hooks';
@@ -253,9 +254,13 @@ export function OfficialCrewHub({ route }) {
             { value: 'crew', label: t('crew.tab_crew') },
             { value: 'requirements', label: t('crew.tab_requirements') },
             { value: 'broadcast', label: t('crew.tab_broadcast') },
+            { value: 'comms', label: t('crew.tab_comms') },
           ]}
           value={tab}
-          onChange={setTab}
+          onChange={(v) => {
+            if (v === 'comms') { nav.push('OfficialCrewComms', { fixtureId, eventId }); return; }
+            setTab(v);
+          }}
           style={{ marginBottom: 16 }}
         />
         {content}
