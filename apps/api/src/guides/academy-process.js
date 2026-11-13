@@ -264,10 +264,14 @@ export const ACADEMY_STEPS = [
       'Issue credit and debit notes from the invoice detail screen. Select a GST-mandated reason code (01 Return, 02 Discount, 03 Deficiency in services, 04 Correction, 05 Change in POS, 06 Other); the GST reversal is calculated and the original invoice remains immutable.',
       'E-Invoice: once an IRP adapter is connected in Organisation Settings, tap Request IRN on any invoice meeting the threshold. Until then, a clear "No adapter configured" message is shown — no false IRN or QR code is generated.',
       'Read collected, paid and net tax by period and rate. Tax figures are informational, not tax advice.',
+      'Connect your accounting software (Tally ERP or Zoho Books) from Finance → Accounting: tap Connect on the provider card, complete the credential form, then tap Test Connection to verify.',
+      'Configure ledger mappings: in the Mappings tab, add a mapping for each income category, tax component (CGST, SGST, IGST) and clearing account, linking them to the account codes in your Chart of Accounts. Set an Effective From date — the platform never overwrites historical mappings. Intra-state transactions are split CGST+SGST automatically; inter-state use IGST.',
+      'Queue documents for export: in the Exports tab, filter by status and tap Sync Now to push all Queued rows to your connected provider. Tally ERP generates a TDL import file you can download; Zoho Books receives entries via its API with idempotent reference IDs. Completed rows show the external reference number.',
+      'Reconcile discrepancies: the Reconciliation tab shows exports that failed or have no external reference. Use Mark Reconciled to record the external reference or Write Off with a reason to close an irrecoverable row. Every action is audit-logged.',
     ],
     target: { screen: 'Finance' },
-    modules: ['gst.js', 'provider-tax.js', 'academy-billing.js', 'einvoice-adapter.js'],
-    sources: ['apps/app/src/screens/finance-tax.js', 'apps/app/src/screens/gst-profile.js', 'apps/app/src/screens/gst-report.js'],
+    modules: ['gst.js', 'provider-tax.js', 'academy-billing.js', 'einvoice-adapter.js', 'accounting-integrations.js'],
+    sources: ['apps/app/src/screens/finance-tax.js', 'apps/app/src/screens/gst-profile.js', 'apps/app/src/screens/gst-report.js', 'apps/app/src/screens/accounting-integration.js', 'apps/app/src/screens/accounting-mapping.js', 'apps/app/src/screens/accounting-export-detail.js'],
   },
   {
     id: 'six_role_audit', title: 'Six-role financial reconciliation',
@@ -1032,14 +1036,18 @@ id: 'wellbeing', title: 'Support student wellbeing and development',
     target: { screen: 'ScoutingWatchlists' },
     modules: ['scouting-watchlists.js', 'scouting-evaluations.js', 'scouting-recommendations.js', 'opponent-analysis.js'],
     sources: ['apps/app/src/screens/scouting-watchlists.js', 'apps/app/src/screens/scouting-comparisons.js', 'apps/app/src/screens/opponent-analysis.js'],
+  },
+  {
     id: 'community_engagement',
     title: 'Community & Fan Engagement',
     why: 'Build your academy brand, grow your fan base and run sponsor-branded challenges that keep athletes engaged year-round.',
+    steps: [
       'guide.community_engagement.step1',
       'guide.community_engagement.step2',
       'guide.community_engagement.step3',
       'guide.community_engagement.step4',
       'guide.community_engagement.step5',
+    ],
     target: { screen: 'FeedChallenges' },
     modules: ['feed-graph.js', 'feed-cards.js', 'feed-challenges.js', 'feed-moderation.js'],
     sources: ['apps/app/src/screens/entity-feed.js', 'apps/app/src/screens/feed-challenges.js'],
@@ -1069,7 +1077,7 @@ export const NOT_IN_GUIDE = {
 };
 
 /** The directories/files the guard test watches for org/academy/venue/coach/tax capability modules. */
-export const WATCHED_MODULES = /^(academy-.*|org-.*|organisations|venue-coaches|gst|provider-tax|coach-classes|para-sport-funding|para-sport-sponsorship-outcomes|para-pathway|para-readiness|para-learn|para-staff-credentials|para-spectator-accessibility|para-ux-conformance|boarding-.*|wearables|wellness.*|integrations|official-rate-card|official-rate-agreements|official-scheduling-recommendations|officials-bulk|officiating-analytics|officiating-season-intelligence|player|athlete-profile)\.js$/;
+export const WATCHED_MODULES = /^(academy-.*|org-.*|organisations|venue-coaches|gst|provider-tax|coach-classes|para-sport-funding|para-sport-sponsorship-outcomes|para-pathway|para-readiness|para-learn|para-staff-credentials|para-spectator-accessibility|para-ux-conformance|boarding-.*|wearables|wellness.*|integrations|official-rate-card|official-rate-agreements|official-scheduling-recommendations|officials-bulk|officiating-analytics|officiating-season-intelligence|accounting-integrations|player|athlete-profile)\.js$/;
 
 export const SHOT_SIZES = { phone: { width: 390, height: 1100 }, desktop: { width: 1280, height: 900 } };
 export const shotFile = (stepId, size) => `${String(ACADEMY_STEPS.findIndex((s) => s.id === stepId) + 1).padStart(2, '0')}-${stepId}-${size}.png`;
