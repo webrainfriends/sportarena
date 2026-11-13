@@ -85,6 +85,8 @@ export function RequestSheet({ visible, onClose, rules, onDone, preset, presetSu
   const [note, setNote] = useState('');
   const [country, setCountry] = useState(null);
   const [cred, setCred] = useState({ authority: '', title: '', scope: [], expires: null });   // coach credential detail (#837): issuer, name, disciplines covered, own expiry
+  const [refCred, setRefCred] = useState({ grade_label: '', competition_scope: '', official_role: null });   // referee credential detail
+  const [physioCred, setPhysioCred] = useState({ professional_body: '', registration_no: '', specialisations: [], indemnity_insurer: '' });   // physio credential detail
   const disc = useLoad(() => (visible ? api.get('/coaches/adaptive/catalogue') : Promise.resolve(null)), [visible]);
   const legalPacks = useLoad(() => (visible ? api.get('/legal/packs') : Promise.resolve(null)), [visible]);
   const [err, setErr] = useState(null);
@@ -96,7 +98,28 @@ export function RequestSheet({ visible, onClose, rules, onDone, preset, presetSu
     setBusy(true); setErr(null);
     try {
       const evidence = await buildEvidence(inputs);
-      await api.post('/verification/cases', { type: t.type, subject_id: t.subject === 'user' ? undefined : subject, claim_note: note || undefined, ...(t.type === 'lawyer' ? { jurisdiction: country } : {}), ...(t.type === 'coach' ? { ...(cred.authority.trim() ? { issuing_authority: cred.authority.trim() } : {}), ...(cred.title.trim() ? { credential_title: cred.title.trim() } : {}), scope_disciplines: cred.scope, ...(cred.expires ? { credential_expires_on: cred.expires } : {}) } : {}), evidence });
+      await api.post('/verification/cases', {
+        type: t.type, subject_id: t.subject === 'user' ? undefined : subject, claim_note: note || undefined,
+        ...(t.type === 'lawyer' ? { jurisdiction: country } : {}),
+        ...(t.type === 'coach' ? {
+          ...(cred.authority.trim() ? { issuing_authority: cred.authority.trim() } : {}),
+          ...(cred.title.trim() ? { credential_title: cred.title.trim() } : {}),
+          scope_disciplines: cred.scope,
+          ...(cred.expires ? { credential_expires_on: cred.expires } : {}),
+        } : {}),
+        ...(t.type === 'referee' ? {
+          ...(refCred.grade_label.trim() ? { referee_grade_label: refCred.grade_label.trim() } : {}),
+          ...(refCred.competition_scope.trim() ? { referee_competition_scope: refCred.competition_scope.trim() } : {}),
+          ...(refCred.official_role ? { referee_official_role: refCred.official_role } : {}),
+        } : {}),
+        ...(t.type === 'physio' ? {
+          ...(physioCred.professional_body.trim() ? { physio_professional_body: physioCred.professional_body.trim() } : {}),
+          ...(physioCred.registration_no.trim() ? { physio_registration_no: physioCred.registration_no.trim() } : {}),
+          physio_specialisations: physioCred.specialisations,
+          ...(physioCred.indemnity_insurer.trim() ? { physio_indemnity_insurer: physioCred.indemnity_insurer.trim() } : {}),
+        } : {}),
+        evidence,
+      });
       toast('Sent to the platform team'); onDone(); onClose();
     } catch (e) { setErr(e.message); } finally { setBusy(false); }
   };
@@ -115,6 +138,23 @@ export function RequestSheet({ visible, onClose, rules, onDone, preset, presetSu
             <MultiMenuField label={i18n('adp.c_scope')} value={cred.scope} onChange={(v) => setCred({ ...cred, scope: v })} options={(disc.data?.disciplines ?? []).map((d) => ({ value: d.key, label: i18n(`inc.tpl_${d.key}`) }))} />
             <DateField label={i18n('adp.c_expiry')} value={cred.expires} onChange={(v) => setCred({ ...cred, expires: v })} optional />
           </View> : null}
+          {t.type === 'referee' ? <View style={{ gap: 8 }}>
+            <T weight="800" size={13}>{i18n('cred.referee.section')}</T>
+            <Field label={i18n('cred.referee.grade_label')} hint={i18n('cred.referee.grade_hint')} value={refCred.grade_label} onChangeText={(x) => setRefCred({ ...refCred, grade_label: x })} maxLength={120} optional />
+            <Field label={i18n('cred.referee.competition_scope')} hint={i18n('cred.referee.competition_scope_hint')} value={refCred.competition_scope} onChangeText={(x) => setRefCred({ ...refCred, competition_scope: x })} maxLength={200} optional />
+            <T size={12} weight="700">{i18n('cred.referee.official_role')}</T>
+            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
+              {['referee','umpire','assistant_referee','fourth_official','video_review','scorer','line_judge','touch_judge','table_official'].map((role) => (
+                <Chip key={role} label={i18n(`cred.referee.role.${role}`)} active={refCred.official_role === role} onPress={() => setRefCred({ ...refCred, official_role: refCred.official_role === role ? null : role })} />
+              ))}
+            </View>
+          </View> : null}
+          {t.type === 'physio' ? <View style={{ gap: 8 }}>
+            <T weight="800" size={13}>{i18n('cred.physio.section')}</T>
+            <Field label={i18n('cred.physio.professional_body')} hint={i18n('cred.physio.professional_body_hint')} value={physioCred.professional_body} onChangeText={(x) => setPhysioCred({ ...physioCred, professional_body: x })} maxLength={200} optional />
+            <Field label={i18n('cred.physio.registration_no')} hint={i18n('cred.physio.registration_no_hint')} value={physioCred.registration_no} onChangeText={(x) => setPhysioCred({ ...physioCred, registration_no: x })} maxLength={60} optional />
+            <Field label={i18n('cred.physio.indemnity_insurer')} value={physioCred.indemnity_insurer} onChangeText={(x) => setPhysioCred({ ...physioCred, indemnity_insurer: x })} maxLength={200} optional />
+          </View> : null}
           <T weight="800" size={13}>Evidence — {t.required.length ? 'all required' : 'at least one'}{t.one_of?.length && t.required.length ? ', plus one of the optional proofs' : ''}</T>
           {t.required.map((k) => <EvidenceInput key={k} kind={k} label={`${rules.evidence_kinds[k]} · required`} value={inputs[k]} onChange={(v) => setInputs({ ...inputs, [k]: v })} />)}
           {(t.one_of ?? []).map((k) => <EvidenceInput key={k} kind={k} label={`${rules.evidence_kinds[k]} · give at least one of these`} value={inputs[k]} onChange={(v) => setInputs({ ...inputs, [k]: v })} />)}
@@ -125,6 +165,60 @@ export function RequestSheet({ visible, onClose, rules, onDone, preset, presetSu
         </> : null}
       </>}
     </Sheet>
+  );
+}
+
+// ------------------------------------------------------------------ credential status tile (single role; for coach hub, physio practice, official page)
+export function CredentialStatusTile({ role, summary, onRequest }) {
+  const s = (summary ?? []).find((x) => x.type === role);
+  const statusColor = s?.verification_status === 'verified' ? c.limeSoft
+    : s?.verification_status === 'pending' ? c.sunSoft
+    : s?.verification_status === 'expired' ? c.orangeSoft
+    : c.line;
+  const statusLabel = s?.verification_status === 'verified' ? i18n('cred.matrix.verified')
+    : s?.verification_status === 'pending' ? i18n('cred.status.tile.pending_review')
+    : s?.verification_status === 'expired' ? i18n('cred.matrix.expired')
+    : i18n('cred.matrix.unverified');
+  return (
+    <Card color={statusColor} pad={14}>
+      <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+        <View style={{ flex: 1 }}>
+          <T size={12} weight="800" color={c.mute}>{i18n('cred.status.tile.title').toUpperCase()}</T>
+          <T weight="800" size={16}>{statusLabel}</T>
+          {s?.expires_at ? <T size={12} color={c.mute}>{i18n('cred.matrix.days_left').replace('{n}', s.days_to_expiry ?? '?')}</T> : null}
+        </View>
+        {(!s || s.verification_status === 'unverified' || s.verification_status === 'expired') && onRequest
+          ? <Btn small title={i18n('cred.status.tile.renew')} color={c.pink} onPress={onRequest} /> : null}
+      </View>
+    </Card>
+  );
+}
+
+// ------------------------------------------------------------------ credential matrix (org/event verifier desk)
+export function CredentialMatrixCard({ ownerId, ownerType }) {
+  const { useLoad: loadHook } = { useLoad };
+  const matrix = useLoad(() => api.get('/verification/matrix', { owner_type: ownerType, owner_id: ownerId }), [ownerId]);
+  if (matrix.loading && !matrix.data) return <Loading />;
+  if (matrix.error) return <ErrorBox error={matrix.error} onRetry={matrix.reload} />;
+  const rows = matrix.data ?? [];
+  if (!rows.length) return <Empty emoji="✅" title={i18n('cred.matrix.empty')} />;
+  const statusColor = (s) => s === 'verified' ? c.limeSoft : s === 'pending' ? c.sunSoft : s === 'expired' ? c.orangeSoft : c.line;
+  return (
+    <Section title={i18n('cred.matrix.title')}>
+      {rows.map((r) => (
+        <Card key={`${r.user_id}-${r.role}`} color={statusColor(r.verification_status)} pad={12}>
+          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+            <View style={{ flex: 1 }}>
+              <T weight="800">{r.display_name}</T>
+              <T size={12} color={c.mute}>{i18n(`cred.matrix.${r.role}`) ?? r.role} · {r.verification_status}</T>
+              {r.days_to_expiry != null && r.days_to_expiry < 60
+                ? <T size={11} color={c.red}>{i18n('cred.matrix.days_left').replace('{n}', r.days_to_expiry)}</T> : null}
+            </View>
+            <Tag label={r.verification_status} color={statusColor(r.verification_status)} />
+          </View>
+        </Card>
+      ))}
+    </Section>
   );
 }
 

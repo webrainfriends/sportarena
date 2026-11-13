@@ -25,7 +25,7 @@ cap({
     id, user_id: id, job_title: z.string().trim().min(2).max(80), template: z.enum(Object.keys(TEMPLATES)).default('custom'),
     engagement_type: z.enum(['employee', 'contractor', 'volunteer']).default('employee'), staff_ref: z.string().max(40).optional(), state: z.enum(['active', 'leave', 'suspended', 'ended']).default('active'),
     starts_on: day.optional(), ends_on: day.optional(), manager_id: id.optional(), permissions: z.array(z.enum(PERMS)).max(PERMS.length).optional(),
-    scope_sports: z.array(z.string().max(40)).max(20).default([]), scope_cohort_ids: z.array(id).max(100).default([]), required_credentials: z.array(z.enum(['coach_badge'])).default([]),
+    scope_sports: z.array(z.string().max(40)).max(20).default([]), scope_cohort_ids: z.array(id).max(100).default([]), required_credentials: z.array(z.enum(['coach_badge', 'physio_badge'])).default([]),
     notes: z.string().max(2000).optional(), row_version: z.number().int().optional(),
   }),
   handler: ({ user }, i) => tx(async (c) => {
@@ -78,9 +78,20 @@ cap({
       templates: Object.entries(TEMPLATES).map(([key, t]) => ({ key, title: t.title, permissions: t.permissions })),
       staff: rows.map((r) => {
         const b = (badges.get(r.user_id) ?? []).find((x) => x.type === 'coach');
+        const pb = (badges.get(r.user_id) ?? []).find((x) => x.type === 'physio');
         const days = b ? Math.ceil((new Date(b.expires_at) - Date.now()) / 86400000) : null;
+        const pdays = pb ? Math.ceil((new Date(pb.expires_at) - Date.now()) / 86400000) : null;
         const ad = adaptive.get(r.user_id);
-        return { ...r, adaptive: ad?.opted_in ? { state: ad.state, disciplines: ad.expertise.map((e) => e.discipline) } : null, credential: { coach_badge: b ? { verified_at: b.verified_at, expires_at: b.expires_at, days_left: days, expiring_soon: days != null && days <= 60 } : null, missing: (r.required_credentials ?? []).includes('coach_badge') && !b } };
+        const req = r.required_credentials ?? [];
+        return {
+          ...r,
+          adaptive: ad?.opted_in ? { state: ad.state, disciplines: ad.expertise.map((e) => e.discipline) } : null,
+          credential: {
+            coach_badge: b ? { verified_at: b.verified_at, expires_at: b.expires_at, days_left: days, expiring_soon: days != null && days <= 60 } : null,
+            physio_badge: pb ? { verified_at: pb.verified_at, expires_at: pb.expires_at, days_left: pdays, expiring_soon: pdays != null && pdays <= 60 } : null,
+            missing: [...(req.includes('coach_badge') && !b ? ['coach_badge'] : []), ...(req.includes('physio_badge') && !pb ? ['physio_badge'] : [])],
+          },
+        };
       }),
     };
   },

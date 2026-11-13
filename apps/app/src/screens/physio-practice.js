@@ -6,6 +6,7 @@ import { useSession } from '../session';
 import { FormSheet } from '../FormSheet';
 import { PaySheet } from '../PaySheet';
 import { Btn, Card, Chip, Empty, ErrorBox, Field, GradCard, Loading, Section, Seg, Sheet, StatPill, T, Tag } from '../ui';
+import { CredentialStatusTile, RequestSheet } from './verification';
 import { PracticeCompliance } from './health-privacy';
 import { Counter, DateField, DateRangeField } from '../pickers';
 import { ProviderPanels } from './insurance-panel';
@@ -524,6 +525,20 @@ function AnalyticsTab() {
   );
 }
 
+// ------------------------------------------------------------------ Credentials tab
+function PhysioCredentialsTab() {
+  const { user } = useSession();
+  const rules = useLoad(() => api.get('/verification/rules'), []);
+  const summary = useLoad(() => api.get(`/verification/role-summary/${user.id}`), [user.id]);
+  const [showRequest, setShowRequest] = useState(false);
+  return (
+    <View style={{ gap: 12 }}>
+      <CredentialStatusTile role="physio" summary={summary.data} onRequest={() => setShowRequest(true)} />
+      {showRequest ? <RequestSheet visible rules={rules.data} onClose={() => setShowRequest(false)} onDone={() => { setShowRequest(false); summary.reload(); }} preset="physio" /> : null}
+    </View>
+  );
+}
+
 // ------------------------------------------------------------------ Provider workspace
 export function PracticePanel() {
   const [tab, setTab] = useState('overview'), [focus, setFocus] = useState(null);
@@ -532,7 +547,7 @@ export function PracticePanel() {
   const go = (t, f = null) => { setFocus(f); setTab(t); };
   return (
     <View style={{ gap: 10 }}>
-      <Seg options={[{ value: 'overview', label: 'Overview', emoji: '🏠' }, { value: 'patients', label: 'Patients', emoji: '🧑‍⚕️' }, { value: 'plans', label: 'Plans', emoji: '📝' }, { value: 'adaptive', label: 'Adaptive', emoji: '♿' }, { value: 'library', label: 'Exercises', emoji: '🏃' }, { value: 'insights', label: 'Insights', emoji: '📊' }, { value: 'services', label: 'Services', emoji: '🩺' }, { value: 'offers', label: 'Offers', emoji: '🏷️' }, { value: 'packages', label: 'Packages', emoji: '🎟️' }, { value: 'money', label: 'Tax & revenue', emoji: '🧾' }, { value: 'invoices', label: 'Invoices', emoji: '🧾' }, { value: 'analytics', label: 'Analytics', emoji: '📈' }, { value: 'panels', label: 'Insurance', emoji: '🛡️' }, { value: 'compliance', label: 'Compliance', emoji: '🛡️' }]} value={tab} onChange={(t) => go(t)} color={c.violet} />
+      <Seg options={[{ value: 'overview', label: 'Overview', emoji: '🏠' }, { value: 'patients', label: 'Patients', emoji: '🧑‍⚕️' }, { value: 'plans', label: 'Plans', emoji: '📝' }, { value: 'adaptive', label: 'Adaptive', emoji: '♿' }, { value: 'library', label: 'Exercises', emoji: '🏃' }, { value: 'insights', label: 'Insights', emoji: '📊' }, { value: 'services', label: 'Services', emoji: '🩺' }, { value: 'offers', label: 'Offers', emoji: '🏷️' }, { value: 'packages', label: 'Packages', emoji: '🎟️' }, { value: 'money', label: 'Tax & revenue', emoji: '🧾' }, { value: 'invoices', label: 'Invoices', emoji: '🧾' }, { value: 'analytics', label: 'Analytics', emoji: '📈' }, { value: 'panels', label: 'Insurance', emoji: '🛡️' }, { value: 'compliance', label: 'Compliance', emoji: '🛡️' }, { value: 'credentials', label: 'Credentials', emoji: '🏅' }]} value={tab} onChange={(t) => go(t)} color={c.violet} />
       {tab === 'overview' && <Overview go={go} />}
       {tab === 'patients' && <PatientsTab focus={focus} onFocusDone={() => setFocus(null)} />}
       {tab === 'insights' && <Insights onOpen={(x) => go('patients', { patient_id: x.patient_id, section: x.tab === 'plans' ? 'home' : x.tab })} />}
@@ -547,6 +562,7 @@ export function PracticePanel() {
       {tab === 'analytics' && <AnalyticsTab />}
       {tab === 'compliance' && <PracticeCompliance />}
       {tab === 'panels' && <ProviderPanels />}
+      {tab === 'credentials' && <PhysioCredentialsTab />}
     </View>
   );
 }

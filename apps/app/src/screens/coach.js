@@ -15,6 +15,7 @@ import { localToIso, dateTimeIn } from '../vtime';
 import { locale } from '../locale';
 import { t } from '../i18n';
 import { WorkoutPlan, Compliance, Phases, WeeklyLoad, FOCUS, phaseFields, saveFile, blockFields, toBlock, resultFields, toActuals } from './workout';
+import { CredentialStatusTile } from './verification';
 
 const tz = (() => { try { return Intl.DateTimeFormat().resolvedOptions().timeZone; } catch { return 'UTC'; } })();
 const KINDS = ['skill', 'tactical', 'conditioning', 'strength', 'recovery', 'mobility'].map((value) => ({ value, label: value[0].toUpperCase() + value.slice(1) }));
@@ -181,6 +182,8 @@ export function CoachHome() {
   const { tablet: wide } = useLayout();
   const home = useLoad(() => api.get('/coach/home'), []);
   const cal = useLoad(() => api.get('/coach/calendar'), []);
+  const { user } = useSession();
+  const credSummary = useLoad(() => api.get(`/verification/role-summary/${user.id}`), [user.id]);
   const h = home.data;
   if (home.loading && !h) return <Screen><Loading /></Screen>;
   if (home.error) return <Screen><ErrorBox error={home.error} onRetry={home.reload} /></Screen>;
@@ -202,6 +205,7 @@ export function CoachHome() {
         {h.next_session ? <T color="#fff" weight="700" size={13}>Next: {h.next_session.title ?? 'Coaching session'} · {dateTimeIn(h.next_session.starts_at, tz)}</T> : null}
       </GradCard>
       {h.warnings.map((w) => <Card key={w.kind} onPress={() => open(w.link)}><T weight="700">⚠ {w.title}</T></Card>)}
+      <CredentialStatusTile role="coach" summary={credSummary.data} onRequest={() => push('Verification')} />
       <View style={{ marginTop: 14, marginBottom: 6 }}><CoachToolGrid push={push} counts={{ board: h.counts.requests || null }} /></View>
       <View style={{ flexDirection: wide ? 'row' : 'column', gap: 16, alignItems: 'flex-start' }}>
         <View style={{ flex: 1, width: '100%' }}>
