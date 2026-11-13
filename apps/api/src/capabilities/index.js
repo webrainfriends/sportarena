@@ -328,6 +328,7 @@ import './federation-governance.js';
 import './federation-home.js';
 import './federation-administration.js';
 import './federation-scale.js';
+import './federation-data-exchange.js';
 import './officials-assessors.js';
 import './officials-assessments.js';
 import './officials-progression.js';

@@ -349,3 +349,126 @@ test('a national hierarchy of 500 bodies and 40,000 records resolves permissions
   assert.equal((await api('GET', `/federation/bodies/${leagues[0].id}/rollup`, { token: outsider.token })).status, 404, 'isolation holds at scale');
   for (const [label, ms, limit] of [['rollup', tRoll, 4000], ['aggregate', tAgg, 4000], ['jurisdiction report', tRep, 6000], ['20 deep permission-checked rollups', tAuth, 8000]]) assert.ok(ms < limit, `${label} took ${ms}ms (limit ${limit}ms)`);
 });
+
+test('data exchange: profile scope, run log, reconciliation and four-eyes for personal outbound', async () => {
+  const { root, u, N } = await setupFederation();
+  const outsider = await mkUser('outsider_exc');
+
+  // Create an inbound profile (no personal data — no four-eyes required)
+  const inbound = must(await api('POST', `/federation/bodies/${N.id}/exchange-profiles`, { token: root.token, body: {
+    direction: 'inbound',
+    name: 'Anti-doping register feed',
+    recipient_name: 'WADA',
+    recipient_type: 'anti_doping',
+    lawful_purpose: 'Receipt of prohibited-substance testing results for sanctioned athletes under WADA code Article 10.',
+    field_scope: { affiliations: ['id','status'], licences: ['id','status'] },
+    includes_youth: false,
+    includes_health: false,
+    frequency: 'weekly',
+    approved_by: 'Legal counsel',
+    approval_ref: 'DPA-2025-001',
+  }}), 201);
+  assert.ok(inbound.id, 'inbound profile created');
+  assert.equal(inbound.direction, 'inbound');
+  assert.equal(inbound.status, 'active');
+
+  // Create an outbound profile with personal fields (triggers four-eyes)
+  const outbound = must(await api('POST', `/federation/bodies/${N.id}/exchange-profiles`, { token: root.token, body: {
+    direction: 'outbound',
+    name: 'National athlete licence export',
+    recipient_name: 'Sports Ministry',
+    recipient_type: 'government',
+    lawful_purpose: 'Annual licence holder report to Sports Ministry under National Sports Act s.42 for funding allocation purposes.',
+    field_scope: { licences: ['id','body_id','sport_id','status','licence_class','expires_on'] },
+    includes_youth: false,
+    includes_health: false,
+    frequency: 'annual',
+    approved_by: 'CEO',
+    approval_ref: 'DPA-2025-002',
+  }}), 201);
+  assert.ok(outbound.id, 'outbound profile with personal fields created');
+
+  // List profiles — both visible
+  const list = must(await api('GET', `/federation/bodies/${N.id}/exchange-profiles`, { token: root.token }));
+  assert.ok(list.profiles.length >= 2, 'both profiles listed');
+
+  // Outsider cannot list profiles
+  assert.equal((await api('GET', `/federation/bodies/${N.id}/exchange-profiles`, { token: outsider.token })).status, 404, 'outsider blocked');
+
+  // Record a successful inbound run (no approval needed)
+  const run1 = must(await api('POST', `/federation/exchange-profiles/${inbound.id}/runs`, { token: root.token, body: {
+    status: 'success',
+    row_count: 150,
+    sha256: 'abc123',
+    finished_at: new Date().toISOString(),
+    reconciliation: { expected: 150, received: 150, matched: 148, unmatched: 2, new_rows: 5 },
+  }}), 201);
+  assert.equal(run1.status, 'success');
+  assert.equal(run1.row_count, 150);
+
+  // Record a partial run
+  const run2 = must(await api('POST', `/federation/exchange-profiles/${inbound.id}/runs`, { token: root.token, body: {
+    status: 'partial',
+    row_count: 80,
+    error_summary: 'Timeout on batch 3 of 4',
+    finished_at: new Date().toISOString(),
+    reconciliation: { expected: 150, received: 80, matched: 78, unmatched: 2, new_rows: 1 },
+  }}), 201);
+  assert.equal(run2.status, 'partial');
+
+  // Outbound with personal fields requires bulk_export approval — rejected without one
+  const noApproval = await api('POST', `/federation/exchange-profiles/${outbound.id}/runs`, { token: root.token, body: {
+    status: 'success', row_count: 300, finished_at: new Date().toISOString(),
+  }});
+  assert.equal(noApproval.status, 403, 'personal outbound run blocked without approval');
+
+  // Create a bulk_export approval then run successfully
+  await rule(root, N, 'bulk_export');
+  const secondUser = await mkUser('approver_exc');
+  must(await api('POST', `/federation/bodies/${N.id}/roles`, { token: root.token, body: { user_id: secondUser.id, role: 'admin' } }), 201);
+  const apReq = must(await api('POST', `/federation/bodies/${N.id}/approvals`, { token: root.token, body: { action: 'bulk_export', report: 'licences', summary: 'Annual national licence export to Sports Ministry DPA-2025-002' } }), 201);
+  const apDec = must(await api('POST', `/federation/approvals/${apReq.id}/decision`, { token: secondUser.token, body: { decision: 'approve', reason: 'DPA reviewed and approved' } }));
+  const run3 = must(await api('POST', `/federation/exchange-profiles/${outbound.id}/runs`, { token: root.token, body: {
+    status: 'success', row_count: 300, approval_id: apReq.id,
+    sha256: 'def456', finished_at: new Date().toISOString(),
+    reconciliation: { expected: 300, received: 300, matched: 300, unmatched: 0, new_rows: 0 },
+  }}), 201);
+  assert.equal(run3.status, 'success', 'outbound run succeeds with approval');
+  assert.equal(run3.approval_id, apReq.id);
+
+  // List runs for inbound profile
+  const runs = must(await api('GET', `/federation/exchange-profiles/${inbound.id}/runs`, { token: root.token }));
+  assert.equal(runs.runs.length, 2);
+
+  // Reconciliation aggregation
+  const rec = must(await api('GET', `/federation/exchange-profiles/${inbound.id}/reconciliation`, { token: root.token }));
+  assert.equal(rec.totals.expected, 300, 'reconciliation sums expected across both runs');
+  assert.equal(rec.totals.matched, 226);
+  assert.equal(rec.runs_examined, 2);
+
+  // Suspend profile
+  const suspended = must(await api('POST', `/federation/exchange-profiles/${inbound.id}/suspend`, { token: root.token, body: { action: 'suspend', reason: 'Under legal review' } }));
+  assert.equal(suspended.status, 'suspended');
+
+  // Run against suspended profile fails
+  const runSusp = await api('POST', `/federation/exchange-profiles/${inbound.id}/runs`, { token: root.token, body: { status: 'success', row_count: 10, finished_at: new Date().toISOString() } });
+  assert.equal(runSusp.status, 409, 'run blocked on suspended profile');
+
+  // Reactivate
+  const reactivated = must(await api('POST', `/federation/exchange-profiles/${inbound.id}/suspend`, { token: root.token, body: { action: 'reactivate' } }));
+  assert.equal(reactivated.status, 'active');
+
+  // Field scope with disallowed field is rejected
+  const badScope = await api('POST', `/federation/bodies/${N.id}/exchange-profiles`, { token: root.token, body: {
+    direction: 'inbound', name: 'Bad scope test', recipient_name: 'Test', recipient_type: 'other',
+    lawful_purpose: 'Testing disallowed field scope rejection.',
+    field_scope: { affiliations: ['id', 'SECRET_COLUMN'] },
+    frequency: 'on_demand', approved_by: 'Nobody', approval_ref: null,
+  }});
+  assert.equal(badScope.status, 422, 'disallowed field scope rejected');
+
+  // Get profile detail
+  const detail = must(await api('GET', `/federation/exchange-profiles/${inbound.id}`, { token: root.token }));
+  assert.ok(detail.profile, 'profile returned');
+  assert.ok(Array.isArray(detail.runs), 'runs array returned');
+});

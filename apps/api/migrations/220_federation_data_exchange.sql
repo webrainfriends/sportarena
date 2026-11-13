@@ -49,6 +49,13 @@ CREATE TABLE fed_exchange_runs (
 CREATE INDEX fed_exchange_runs_profile ON fed_exchange_runs (profile_id, started_at DESC);
 CREATE INDEX fed_exchange_runs_body    ON fed_exchange_runs (body_id, started_at DESC);
 
+-- Extend fed_events subject_type to include exchange subjects
+ALTER TABLE fed_events DROP CONSTRAINT IF EXISTS fed_events_subject_type_check;
+ALTER TABLE fed_events ADD CONSTRAINT fed_events_subject_type_check CHECK (subject_type IN (
+  'body','link','role','affiliation','licence','sanction','policy','date','delegation',
+  'approval','approval_rule','access_review','exchange_profile','exchange_run'
+));
+
 -- Runs are never deleted
 CREATE FUNCTION fed_exchange_runs_guard() RETURNS trigger LANGUAGE plpgsql AS $$
 BEGIN RAISE EXCEPTION 'exchange run logs are immutable and cannot be deleted'; END $$;
