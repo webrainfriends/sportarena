@@ -272,3 +272,6 @@ export async function activityItem(userId, kind, sourceId) {
       WHERE i.kind=$2 AND i.source_id=$3 AND s.moderated_at IS NULL`, [[userId], kind, String(sourceId)]);
   return r ? { kind: r.kind, source_id: r.source_id, at: r.at, sport: r.sport ? { slug: r.sport, name: r.sport_name } : null, data: r.data } : null;
 }
+
+// Community Feed entity follow kinds — imported by feed-graph.js and feed-cards.js.
+export const ENTITY_KINDS = ['team','academy','venue','event','coach','organisation'];

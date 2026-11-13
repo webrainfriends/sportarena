@@ -9,10 +9,42 @@ import { useLayout } from '../layout';
 import { Btn, Card, Empty, ErrorBox, Field, H1, H2, Loading, Screen, Seg, Sheet, T } from '../ui';
 import { MenuField } from '../menu-field';
 import { ConnectButtons, PersonRow, Small } from '../social/people';
-import { c } from '../theme';
+import { c, r } from '../theme';
 import { t } from '../i18n';
+import { EntityFollowButton } from './entity-feed';
 
 const SECTIONS = ['following', 'followers', 'friends', 'requests', 'suggestions'];
+
+/** EntityRow — a row for an entity follow (team, academy, venue, event, coach, organisation). */
+export function EntityRow({ entity }) {
+  const kindLabel = t(`cf.entity_kind_${entity.entity_kind}`) || entity.entity_kind;
+  return (
+    <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: 10, borderBottomWidth: 1, borderColor: c.line }}>
+      <View style={{ flex: 1, paddingEnd: 12 }}>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 2 }}>
+          <View style={{ backgroundColor: c.bg, borderRadius: r.xs, paddingHorizontal: 7, paddingVertical: 3 }}>
+            <T size={11} color={c.mute}>{kindLabel}</T>
+          </View>
+          <T size={15} weight="600">{entity.name ?? entity.entity_id}</T>
+        </View>
+      </View>
+      <EntityFollowButton entity_kind={entity.entity_kind} entity_id={entity.entity_id} initialFollowing />
+    </View>
+  );
+}
+
+/** EntityFollows — teams and organisations the user follows. */
+function EntityFollows() {
+  const follows = useLoad(() => api.get('/me/entity-follows'), []);
+  if (follows.loading && !follows.data) return <Loading />;
+  if (follows.error) return <ErrorBox error={follows.error} onRetry={follows.reload} />;
+  if (!follows.data?.length) return <Empty emoji="🏆" title={t('cf.teams_orgs')} sub={t('cf.no_posts')} />;
+  return (
+    <View>
+      {follows.data.map((e) => <EntityRow key={`${e.entity_kind}:${e.entity_id}`} entity={e} />)}
+    </View>
+  );
+}
 
 function Following({ data, reload }) {
   const { toast } = useSession();
@@ -196,6 +228,11 @@ export default function Network({ section: initial }) {
         {section === 'friends' && friends.data ? <Friends data={friends.data} reload={reload} /> : null}
         {section === 'requests' && reqs.data ? <Requests follow={reqs.data} friends={friends.data} reload={reload} /> : null}
         {section === 'suggestions' ? <Suggestions reload={reload} /> : null}
+      </View>
+      {/* Teams & Organisations (entity follows) */}
+      <View style={{ marginTop: 24 }}>
+        <H2>{t('cf.teams_orgs')}</H2>
+        <EntityFollows />
       </View>
       <PrivacySheet visible={privacy} onClose={() => setPrivacy(false)} />
     </Screen>

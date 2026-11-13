@@ -21,6 +21,8 @@ import { AdSlot } from '../ads';
 import { ActivityCard, Small } from '../social/people';
 import { Seg } from '../ui';
 import { t } from '../i18n';
+import { FeedCard, EntityFollowButton } from './entity-feed';
+import { api as _api } from '../api';
 
 const PAGE = 10;
 
@@ -95,10 +97,11 @@ export function Feed({ header, narrow }) {
   useResumeIntent(gate, user, { onPost: () => setCompose({}), onAdvertise: () => setCompose({ ad: true }), onBook: (b) => push('BookFlow', { venueId: b.venueId, resourceId: b.resourceId, date: b.date, time: b.time }), onApplyPosition: setResumeApply });
 
   const switcher = (
-    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-      <View style={{ flex: 1 }}><Seg options={[{ value: 'market', label: t('social.feed_market') }, { value: 'following', label: t('social.feed_following') }]} value={mode} onChange={setMode} /></View>
-      <Small label={t('social.title')} onPress={() => push('Network')} />
-      <Small label={t('community.title')} onPress={() => push('Communities')} />
+    <View style={{ gap: 8 }}>
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+        <View style={{ flex: 1 }}><Seg options={[{ value: 'market', label: t('social.feed_market') }, { value: 'following', label: t('social.feed_following') }, { value: 'community', label: t('cf.for_you') }, { value: 'discover', label: t('cf.discover') }]} value={mode} onChange={setMode} /></View>
+        <Small label={t('social.title')} onPress={() => push('Network')} />
+      </View>
     </View>
   );
   const feed = mode === 'following' ? (
@@ -167,6 +170,29 @@ export function Feed({ header, narrow }) {
       {compose ? <Composer visible onClose={() => setCompose(null)} initialKind={compose.kind ?? 'wanted'} ad={compose.ad} onPosted={() => load(0)} /> : null}
       {sheets}
       {resumeApply ? <ResumeApply positionId={resumeApply} onDone={() => setResumeApply(null)} /> : null}
+    </View>
+  );
+}
+
+/** DiscoverTab — trending challenges and entity suggestions (community feed discovery). */
+export function DiscoverTab({ push }) {
+  const [challenges, setChallenges] = useState([]);
+  const [busy, setBusy] = useState(true);
+  useEffect(() => {
+    _api.get('/feed/challenges', { status: 'active', limit: 5 }).then(setChallenges).catch(() => {}).finally(() => setBusy(false));
+  }, []);
+  if (busy) return <Loading />;
+  return (
+    <View style={{ gap: 14 }}>
+      <T size={17} weight="800" style={{ letterSpacing: -0.3 }}>{t('cf.challenges_title')}</T>
+      {challenges.map((ch) => (
+        <Card key={ch.id} pad={14} onPress={() => push?.('FeedChallengeDetail', { id: ch.id })}>
+          <T weight="700" size={15}>{ch.title}</T>
+          <T size={12} color={c.mute} style={{ marginTop: 4 }}>{ch.org_name} · {ch.sport_name}</T>
+          <T size={12} color={c.pink} style={{ marginTop: 4 }}>{ch.entries_count} entries</T>
+        </Card>
+      ))}
+      {!challenges.length && <Empty label={t('cf.no_posts')} />}
     </View>
   );
 }
