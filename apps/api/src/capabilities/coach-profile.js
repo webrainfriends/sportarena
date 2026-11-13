@@ -125,7 +125,7 @@ const UPSERT_INPUT = z.object({
 });
 
 cap({
-  name: 'upsert_coach_profile', method: 'POST', path: '/me/coach-profile', tag: TAG,
+  name: 'upsert_my_coach_profile', method: 'POST', path: '/me/coach-profile', tag: TAG,
   summary: 'Create or update coach profile draft. Auto-saves after each wizard step. row_version required on updates (409 on stale). step_reached is never decremented.',
   input: UPSERT_INPUT,
   async handler({ user, body }) {
