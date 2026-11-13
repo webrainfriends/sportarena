@@ -40,7 +40,7 @@ function StepBar({ current }) {
           <React.Fragment key={s.key}>
             <View style={{ width: 28, height: 28, borderRadius: 14, alignItems: 'center', justifyContent: 'center',
               backgroundColor: active ? A.p2 : done ? A.green : A.panel2 }}>
-              <AT size={13} weight="800" color={active || done ? '#fff' : A.mute}>{done ? '✓' : idx + 1}</AT>
+              <AT size={13} weight="800" color={active || done ? c.on : A.mute}>{done ? '✓' : idx + 1}</AT>
             </View>
             {idx < STEPS.length - 1 ? <View style={{ flex: 1, height: 2, backgroundColor: done ? A.green : A.panel2, marginHorizontal: 4 }} /> : null}
           </React.Fragment>
@@ -66,7 +66,7 @@ function VenueResultCard({ item, selected, onSelect, onCompare, compareList }) {
           </View>
           <View style={{ gap: 6, alignItems: 'flex-end' }}>
             <ATag tone={avail.tone} label={avail.label} />
-            {isExternal ? <View style={{ backgroundColor: '#06B6D422', borderRadius: 6, paddingHorizontal: 8, paddingVertical: 3 }}><AT size={11} weight="700" color="#06B6D4">{item.provider_name ?? item.provider_key}</AT></View> : null}
+            {isExternal ? <View style={{ backgroundColor: c.cyanSoft, borderRadius: 6, paddingHorizontal: 8, paddingVertical: 3 }}><AT size={11} weight="700" color={c.cyan}>{item.provider_name ?? item.provider_key}</AT></View> : null}
           </View>
         </View>
 
@@ -294,8 +294,8 @@ export function VenueSourcingWizard({ eventId, orgId, eventName, onDone, visible
             <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
               {[{ key: '', label: '🌐 Any' }, { key: 'SG', label: '🇸🇬 Singapore' }, { key: 'IN', label: '🇮🇳 India' }, { key: 'AU', label: '🇦🇺 Australia' }].map((opt) => (
                 <Pressable key={opt.key} onPress={() => setCountry(opt.key)} accessibilityRole="radio" accessibilityState={{ selected: country === opt.key }}
-                  style={{ backgroundColor: country === opt.key ? A.p2 : A.panel2, borderRadius: 20, paddingHorizontal: 14, paddingVertical: 8 }}>
-                  <AT size={13} weight="700" color={country === opt.key ? '#fff' : A.ink}>{opt.label}</AT>
+                  style={{ backgroundColor: country === opt.key ? A.p2 : c.line, borderRadius: 20, paddingHorizontal: 14, paddingVertical: 8 }}>
+                  <AT size={13} weight="700" color={country === opt.key ? c.on : A.ink}>{opt.label}</AT>
                 </Pressable>
               ))}
             </View>
@@ -307,8 +307,8 @@ export function VenueSourcingWizard({ eventId, orgId, eventName, onDone, visible
             <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
               {SOURCE_OPTIONS.map((opt) => (
                 <Pressable key={opt.key} onPress={() => setSourceFilter(opt.key)} accessibilityRole="radio" accessibilityState={{ selected: sourceFilter === opt.key }}
-                  style={{ backgroundColor: sourceFilter === opt.key ? A.p2 : A.panel2, borderRadius: 20, paddingHorizontal: 14, paddingVertical: 8 }}>
-                  <AT size={13} weight="700" color={sourceFilter === opt.key ? '#fff' : A.ink}>{opt.label}</AT>
+                  style={{ backgroundColor: sourceFilter === opt.key ? A.p2 : c.line, borderRadius: 20, paddingHorizontal: 14, paddingVertical: 8 }}>
+                  <AT size={13} weight="700" color={sourceFilter === opt.key ? c.on : A.ink}>{opt.label}</AT>
                 </Pressable>
               ))}
             </View>
@@ -368,8 +368,8 @@ export function VenueSourcingWizard({ eventId, orgId, eventName, onDone, visible
             <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
               {SOURCE_STATUS_OPTIONS.map((opt) => (
                 <Pressable key={opt.key} onPress={() => setManualSourceStatus(opt.key)} accessibilityRole="radio" accessibilityState={{ selected: manualSourceStatus === opt.key }}
-                  style={{ backgroundColor: manualSourceStatus === opt.key ? A.p2 : A.panel2, borderRadius: 20, paddingHorizontal: 14, paddingVertical: 8 }}>
-                  <AT size={13} weight="700" color={manualSourceStatus === opt.key ? '#fff' : A.ink}>{opt.label}</AT>
+                  style={{ backgroundColor: manualSourceStatus === opt.key ? A.p2 : c.line, borderRadius: 20, paddingHorizontal: 14, paddingVertical: 8 }}>
+                  <AT size={13} weight="700" color={manualSourceStatus === opt.key ? c.on : A.ink}>{opt.label}</AT>
                 </Pressable>
               ))}
             </View>

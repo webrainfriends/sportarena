@@ -51,8 +51,8 @@ function ProviderCard({ p, orgId, isPlatformAdmin, onRequest }) {
         <View style={{ flex: 1, gap: 4 }}>
           <AT size={15} weight="800" numberOfLines={2}>{p.name}</AT>
           <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
-            <View style={{ backgroundColor: '#06B6D422', borderRadius: 6, paddingHorizontal: 8, paddingVertical: 3 }}>
-              <AT size={11} weight="700" color="#06B6D4">{t('cc.external_provider')}</AT>
+            <View style={{ backgroundColor: c.cyanSoft, borderRadius: 6, paddingHorizontal: 8, paddingVertical: 3 }}>
+              <AT size={11} weight="700" color={c.cyan}>{t('cc.external_provider')}</AT>
             </View>
             {p.sandbox ? <View style={{ backgroundColor: A.sunSoft, borderRadius: 6, paddingHorizontal: 8, paddingVertical: 3 }}><AT size={11} weight="700" color={A.sun}>{t('cc.sandbox')}</AT></View> : null}
             {p.country ? <AT size={12} weight="600" color={A.mute}>{p.country}</AT> : null}
@@ -158,9 +158,9 @@ export function ConnectorCards({ orgId, isPlatformAdmin = false, toast }) {
             onPress={() => setRegion(r.key)}
             accessibilityRole="button"
             accessibilityLabel={r.label}
-            style={{ backgroundColor: region === r.key ? A.p2 : A.panel2, borderRadius: 20, paddingHorizontal: 14, paddingVertical: 7 }}
+            style={{ backgroundColor: region === r.key ? A.p2 : c.line, borderRadius: 20, paddingHorizontal: 14, paddingVertical: 7 }}
           >
-            <AT size={13} weight="700" color={region === r.key ? '#fff' : A.ink}>{r.label}</AT>
+            <AT size={13} weight="700" color={region === r.key ? c.on : A.ink}>{r.label}</AT>
           </Pressable>
         ))}
       </ScrollView>
