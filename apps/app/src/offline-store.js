@@ -136,3 +136,5 @@ export function makeStore(ns) {
 export const offlineStore = makeStore({ db: 'sa_offline', prefix: 'sa_off' });
 // the referee's match-day pack (lineups and live state of the games they may score)
 export const packStore = makeStore({ db: 'sa_scorer_pack', prefix: 'sa_pack' });
+// the referee's durable offline op queue (clock / score / events / corrections / reports captured with no signal)
+export const refereeStore = makeStore({ db: 'sa_referee_ops', prefix: 'sa_ref' });

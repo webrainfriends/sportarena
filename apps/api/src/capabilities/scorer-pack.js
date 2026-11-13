@@ -61,3 +61,38 @@ cap({
     return { generated_at: new Date().toISOString(), games, sessions };
   },
 });
+
+cap({
+  name: 'get_referee_pack', method: 'GET', path: '/fixtures/:id/referee-pack', tag: TAG,
+  summary: 'Download the full match-day pack for an authorised referee: lineup, crew, ruleset, scoring template and a signed pack token. The pack is encrypted on-device and allows clock, score, events, corrections and reports with no signal.',
+  input: z.object({ id }),
+  async handler({ user }, i) {
+    const x = await fixtureContext(user, i.id);
+    if (!x?.canScore) throw Object.assign(new Error('Not found'), { status: 404 });
+    const live = await liveState(i.id, null, { sinceSeq: 0, limit: 100000, includeVoided: true });
+    const lineup = await call('list_fixture_appearances', user, { id: i.id });
+    const crew = await many(
+      `SELECT fo.user_id, fo.role, u.display_name, u.avatar_url
+         FROM fixture_officials fo JOIN users u ON u.id = fo.user_id
+        WHERE fo.fixture_id = $1 AND fo.status = 'accepted'`, [i.id]);
+    const pack_version = live.events?.length ?? 0;
+    const { SignJWT } = await import('jose');
+    const secret = new TextEncoder().encode(process.env.JWT_SECRET ?? 'dev-secret');
+    const pack_token = await new SignJWT({
+      sub: user.id, fixture_id: i.id, pack_version, role: 'referee_pack',
+    }).setProtectedHeader({ alg: 'HS256' }).setExpirationTime('8h').sign(secret);
+    await audit(null, user.id, 'referee_pack.download', 'fixture', i.id);
+    return {
+      generated_at: new Date().toISOString(),
+      pack_version,
+      pack_token,
+      fixture: live.fixture,
+      ruleset: live.ruleset ?? {},
+      scoring_template: live.scoring_template ?? null,
+      events: live.events,
+      lineup: lineup.appearances,
+      crew,
+      viewer: { can_score: true, organiser: !!x.organiser, side: x.side ?? null },
+    };
+  },
+});

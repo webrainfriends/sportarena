@@ -714,6 +714,23 @@ id: 'wellbeing', title: 'Support student wellbeing and development',
     modules: ['officials-safeguarding.js'],
     sources: ['apps/app/src/screens/officials-safeguarding.js', 'apps/app/src/screens/officials-home.js'],
   },
+  {
+    id: 'officials_offline_pack',
+    title: 'Match-day offline preparation',
+    why: 'Officials working in venues with poor signal can download the full match-day pack before kick-off and run clock, score, events, corrections and reports entirely offline. Ops are encrypted on the device, queued durably, and replayed idempotently the moment signal returns.',
+    steps: [
+      'Each assigned official (referee, umpire, scorer) opens Officials hub → Match-day pack. While online, tap "Save my games for offline" to download the full referee pack for every upcoming fixture (GET /fixtures/:id/referee-pack). The pack includes: live fixture state, complete event log, lineup, officiation crew, sport ruleset and a signed 8-hour pack token.',
+      'All clock, score, match-event, event-correction and report operations flow through the referee queue (refereeQueue.enqueue). On iOS, iPadOS and Android the queue is backed by the hardware-secured keystore; on web it uses an AES-GCM non-extractable WebCrypto key in IndexedDB.',
+      'The Match Centre and Officials Console detect airplane mode via AppState and the browser online/offline events. An amber "Offline" banner appears; all ops continue to work locally and are appended to the queue with a monotonically increasing seq.',
+      'On reconnect the queue auto-flushes (POST /fixtures/:id/referee-sync, up to 200 ops per batch). The server bounds each occurred_at to within 24 h of server clock, records clock_drift_ms, and applies each op idempotently using (fixture_id, client_key) UNIQUE. Duplicates are silently acked.',
+      'If a conflict arises (an op contradicts a later server event) the op is flagged conflict and surfaced in the Offline sync screen (Officials hub → Match-day pack card → "Sync details"). The official resolves each conflict individually: Accept (force-apply) or Discard (reject).',
+      'The Offline sync screen shows: online/offline status, queued op count, unresolved conflicts, clock-drift chip (if >5 s), last-sync timestamp, and a full op-by-op audit history. Organisers and head referees can view the history for all devices on a fixture.',
+      'Sign-out flushes the queue (6 s timeout) before erasing all encrypted data from the device store.',
+    ],
+    target: { screen: 'OfficialsHome' },
+    modules: ['scorer-pack.js', 'referee-offline.js'],
+    sources: ['apps/app/src/screens/match-day-pack.js', 'apps/app/src/screens/referee-offline-sync.js', 'apps/app/src/screens/officials-home.js'],
+  },
 ];
 
 /** Org/academy API modules with no step of their own, and why. Anything not here and not in a step fails the guard test. */

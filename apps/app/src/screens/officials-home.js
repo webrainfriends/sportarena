@@ -23,6 +23,7 @@ import { OfficialProfileWizard } from './official-profile-wizard';
 import { Cols } from '../federation-bits';
 import { VerificationSection } from './verification';
 import { MatchDayPack } from './match-day-pack';
+import { RefereeOfflineSync } from './referee-offline-sync';
 import { OfficialSafeguardingDesk } from './officials-safeguarding';
 import { RulesTab } from './rule-session';
 import { AvailabilityTab } from './officials-availability';

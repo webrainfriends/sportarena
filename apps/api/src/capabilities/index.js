@@ -72,6 +72,7 @@ import './match-tracking.js';
 import './score-sheets.js';
 import './live-scoring.js';
 import './scorer-pack.js';
+import './referee-offline.js';
 import './tracking-sheets.js';
 import './result-proposals.js';
 import './tracking-files.js';
