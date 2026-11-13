@@ -835,6 +835,27 @@ id: 'wellbeing', title: 'Support student wellbeing and development',
     modules: ['officials-services.js'],
     sources: ['apps/app/src/screens/officials-services.js', 'apps/app/src/screens/marketplace-engagement.js'],
   },
+  {
+    id: 'guardian_conferences',
+    title: 'Run elite guardian & athlete development conferences',
+    why: 'Structured multi-stakeholder conferences — annual reviews, termly check-ins, welfare meetings, emergency sessions — keep guardians informed, decisions accountable and development plans on track. Every conference has an agenda, an evidence pack linked to the athlete\'s dev plan, immutable decisions with owners and deadlines, authenticated guardian acknowledgements, and a downloadable outcome report. Staff notes are strictly internal — never visible to guardians.',
+    steps: [
+      'Open Academy → Families, search for the athlete, then scroll to Development Conferences. Tap "Schedule" to create the first conference.',
+      'Choose the conference kind (Annual Review, Termly, Progress Check, Welfare, Emergency, Guardian Request or Other) and set a date, duration, location type (in-person, video, phone, hybrid) and a location detail if applicable.',
+      'Set "Family visible" to true so the invited guardian can see the conference in their app. Leave it off for internal planning drafts.',
+      'Open the conference and tap "Invite" to add each participant: lead coach, coach, guardian, athlete, admin or external. Each invitee receives an in-app notification with the date and time.',
+      'Build the agenda by adding structured items: Review domain, Objective progress, Welfare, Guardian concern, Admin, AOB. Set a time allocation and an owner for each item.',
+      'Attach evidence: link existing dev reviews, objectives, interventions, assessments or external documents as evidence items and control which roles can see each one. Evidence links do not copy or move data.',
+      'During or after the meeting, record decisions and actions: choose Decision, Action, Recommendation, Follow-up or Concern noted; write the body; set a responsible person, a deadline and whether it is visible to the guardian.',
+      'Staff notes are stored encrypted and are only ever shown to org staff. Never enter notes intended for guardians in the staff notes field.',
+      'Once the meeting is complete, set the status to Completed, then tap "Generate outcome report" to create a signed, encrypted PDF.',
+      'Guardians tap "Acknowledge" in their app (Family → Development conferences) to give authenticated sign-off. Only after they acknowledge can they download the outcome report.',
+      'Track open actions: decisions with status "Open" or "In progress" appear in the conference detail and can be updated as they are resolved.',
+    ],
+    target: { screen: 'AcademyFamilies' },
+    modules: ['academy-conferences.js'],
+    sources: ['apps/app/src/screens/academy-conferences.js', 'apps/app/src/screens/academy-families.js', 'apps/app/src/screens/family-dashboard.js'],
+  },
 ];
 
 /** Org/academy API modules with no step of their own, and why. Anything not here and not in a step fails the guard test. */

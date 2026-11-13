@@ -10,6 +10,7 @@ import { Btn, Chip, Empty, ErrorBox, Field, Loading, Row, T, Tag } from '../ui';
 import { c } from '../theme';
 import { moneyIn } from '../vtime';
 import { Block, Fact, Initials, LetterSheet, Origin, Split, StageBadge, when } from './academy-ui';
+import { ConferencesBlock } from './academy-conferences';
 
 export function Families({ o, onOpenApplication }) {
   const [q, setQ] = useState(''), [status, setStatus] = useState(null), [open, setOpen] = useState(null);
@@ -61,6 +62,7 @@ function Athlete({ o, id, onOpenApplication }) {
         {d.agreements.length ? d.agreements.map((g, i) => <Fact key={i} k={`${g.title} v${g.version}`} v={`${when(g.created_at)} · ${g.acknowledged_by}${g.as_guardian ? ' (guardian)' : ''}`} />) : <T size={13} color={c.mute}>Nothing acknowledged yet.</T>}
       </Block>
       <Sections o={o} id={id} />
+      <ConferencesBlockWrapper o={o} athleteId={id} />
       <T size={11} color={c.mute}>Health information is not part of the academy record. Viewing this page is logged.</T>
     </View>
   );
@@ -104,5 +106,17 @@ function Sections({ o, id }) {
         <Block title="Funding">{x.funding.data.map((f) => <Fact key={f.funding_source + f.currency} k={f.funding_source} v={`${moneyIn(f.funded_minor, f.currency)} across ${f.charges} charge${f.charges === 1 ? '' : 's'}${f.sponsorship_linked ? ' · linked to a sponsorship agreement' : ''}`} />)}</Block>
       ) : null}
     </View>
+  );
+}
+
+/** Thin wrapper that loads the athlete's dev plan id before rendering ConferencesBlock. */
+function ConferencesBlockWrapper({ o, athleteId }) {
+  const plan = useLoad(() => api.get(`/organisations/${o.id}/academy/dev-plans`, { athlete_id: athleteId, limit: 1 }).catch(() => []), [o.id, athleteId]);
+  if (!plan.data) return null;
+  const planId = plan.data[0]?.id ?? null;
+  return (
+    <Block title="Development conferences">
+      <ConferencesBlock o={o} planId={planId} />
+    </Block>
   );
 }
