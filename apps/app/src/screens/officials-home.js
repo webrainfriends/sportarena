@@ -128,6 +128,7 @@ function Today({ h, reload, go, tz }) {
       ['💼', t('off.qa.opportunities'), null, () => go('Openings')],
       ['⚡', t('open_slot.title'), t('open_slot.metric_open_sub'), () => go('OpenMatchSlots')],
       ['📂', t('nav.title.OfficialPortfolio'), null, () => go('OfficialPortfolio')],
+      ['🛎️', t('officials.svc.title'), t('officials.svc.subtitle'), () => go('OfficialServicesHub')],
     ]],
     [t('off.qa.money'), [
       ['💰', t('off.qa.earnings'), null, () => go('OfficialEarnings')],
