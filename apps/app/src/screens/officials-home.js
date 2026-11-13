@@ -36,7 +36,10 @@ export const ROLE_LABEL = {
   shot_clock_operator: 'Shot clock', timekeeper: 'Timekeeper', goal_line_official: 'Goal-line official', technical_official: 'Technical official',
 };
 const STATUS = {
-  invited: ['⏳ Awaiting your reply', c.sunSoft], accepted: ['✅ Confirmed', c.mintSoft], completed: ['🏁 Completed', c.violetSoft], declined: ['Declined', c.paper],
+  invited: ['⏳ Awaiting your reply', c.sunSoft], proposed: ['📋 Awaiting organiser review', c.cyanSoft],
+  accepted: ['✅ Confirmed', c.mintSoft], confirmed: ['✅ Crew confirmed', c.mintSoft],
+  completed: ['🏁 Completed', c.violetSoft], declined: ['Declined', c.paper],
+  expired: ['⏱ Invitation expired', c.paper], replaced: ['🔄 Replaced', c.paper],
   withdrawn: ['Withdrawn', c.paper], released: ['Released by organiser', c.paper], cancelled: ['Match cancelled', c.paper],
 };
 const CRED = {
@@ -61,6 +64,8 @@ const arriveByTime = (scheduledAt, reportingMin, tz) => {
   return d.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit', ...(tz ? { timeZone: tz } : {}) });
 };
 
+const deadlineColor = (dl) => { const h = (new Date(dl) - Date.now()) / 36e5; return h < 4 ? c.sunSoft : h < 24 ? '#FFF3CD' : c.paper; };
+
 // ------------------------------------------------------------------ one assignment
 function Assignment({ a, tz, onOpen, children, prominent }) {
   return (
@@ -70,6 +75,7 @@ function Assignment({ a, tz, onOpen, children, prominent }) {
           {roleTag(a.role)}
           {statusTag(a.status)}
           {a.needs_ack ? <Tag label="🔔 Changed: acknowledge" color={c.sunSoft} /> : null}
+          {a.invitation_deadline && ['invited','proposed'].includes(a.status) ? <Tag label={`⏰ ${t('oal.deadline_label')}: ${when(a.invitation_deadline, tz)}`} color={deadlineColor(a.invitation_deadline)} /> : null}
           {a.locked_at ? <Tag label={`🔒 ${t('officials.lock.badge')}`} color={c.pinkSoft} /> : null}
           {payTag(a)}
         </View>

@@ -19,7 +19,7 @@ export const OFFICIAL_ROLES = [
   // REF-R30: expanded taxonomy roles
   'chair_umpire', 'match_commissioner', 'technical_delegate', 'starter', 'marshal',
 ];
-const OPEN = ['invited', 'accepted'];
+const OPEN = ['invited', 'proposed', 'accepted', 'confirmed'];
 
 /** Serialise all assignment decisions for one official (released at commit/rollback). */
 export const lockOfficial = (c, userId) => c.query("SELECT pg_advisory_xact_lock(hashtextextended('official:' || $1::text, 0))", [userId]);
@@ -293,9 +293,19 @@ export { OPEN };
 
 /** One official's assignments joined to match, event and crew context. Shared by the list, the home, the calendar and the history so none of them copies fixtures. */
 export const ASSIGNMENT_SQL = `
-  SELECT fo.id, fo.fixture_id, fo.role, CASE WHEN fo.status='accepted' AND f.status='completed' THEN 'completed' ELSE fo.status END AS status, fo.status = 'accepted' AS confirmed, fo.needs_ack, fo.reason, fo.created_at AS requested_at, fo.fee_minor::float8 AS fee_minor, fo.fee_currency, fo.pay_status, fo.pay_confirmed_at, fo.reporting_min, fo.locked_at, fo.locked_by, fo.lock_reason, f.scheduled_at, f.duration_min, f.status AS fixture_status, f.round,
-         e.id AS event_id, e.name AS event_name, e.official_policy, s.id AS sport_id, s.slug AS sport_slug, s.name AS sport_name, s.emoji AS sport_emoji,
-         h.name AS home_name, a.name AS away_name, r.name AS resource_name, ve.id AS venue_id, ve.name AS venue_name, ve.city AS venue_city, ve.timezone AS venue_timezone
+  SELECT fo.id, fo.fixture_id, fo.role,
+         CASE WHEN fo.status IN ('accepted','confirmed') AND f.status='completed' THEN 'completed' ELSE fo.status END AS status,
+         fo.status IN ('accepted','confirmed') AS confirmed,
+         fo.needs_ack, fo.ack_required_reason, fo.ack_at,
+         fo.invitation_deadline, fo.confirmed_at, fo.confirmed_by, fo.replace_of,
+         fo.reason, fo.created_at AS requested_at, fo.responded_at,
+         fo.fee_minor::float8 AS fee_minor, fo.fee_currency, fo.pay_status, fo.pay_confirmed_at,
+         fo.reporting_min, fo.locked_at, fo.locked_by, fo.lock_reason,
+         f.scheduled_at, f.duration_min, f.status AS fixture_status, f.round,
+         e.id AS event_id, e.name AS event_name, e.official_policy, e.organizer_id,
+         s.id AS sport_id, s.slug AS sport_slug, s.name AS sport_name, s.emoji AS sport_emoji,
+         h.name AS home_name, a.name AS away_name, r.name AS resource_name,
+         ve.id AS venue_id, ve.name AS venue_name, ve.city AS venue_city, ve.timezone AS venue_timezone
     FROM fixture_officials fo JOIN fixtures f ON f.id=fo.fixture_id JOIN events e ON e.id=f.event_id JOIN sports s ON s.id=e.sport_id
     LEFT JOIN teams h ON h.id=f.home_team_id LEFT JOIN teams a ON a.id=f.away_team_id LEFT JOIN resources r ON r.id=f.resource_id LEFT JOIN venues ve ON ve.id=r.venue_id`;
 
