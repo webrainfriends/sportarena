@@ -177,17 +177,146 @@ function UploadsTab() {
   );
 }
 
+// ------------------------------------------------------------------ access events
+const SEV_COLOR = { critical: c.red, high: c.orange, medium: c.sun, low: c.lime };
+const SEV_SOFT  = { critical: c.redSoft, high: c.orangeSoft, medium: c.sunSoft, low: c.limeSoft };
+
+function AccessEventsTab() {
+  const [severity, setSeverity] = useState('');
+  const state = useLoad(() => api.get('/security/access-denied-events', { limit: 50, ...(severity ? { severity } : {}) }), [severity]);
+  const summary = useLoad(() => api.get('/security/tenant-isolation-summary'));
+  const L = useLayout();
+  return (
+    <Block state={state}>
+      {summary.data ? (
+        <View style={{ flexDirection: L.tablet ? 'row' : 'column', gap: 10, marginBottom: 16 }}>
+          {[
+            { label: t('sec.idor_attempts'), value: summary.data.idor_attempts_24h, color: c.red },
+            { label: t('sec.events_24h'), value: summary.data.total_access_denied_24h, color: c.orange },
+            { label: 'Role boundary blocks', value: summary.data.role_boundary_blocks_24h, color: c.sun },
+            { label: 'Revocations (24h)', value: summary.data.revocations_24h, color: c.pink },
+          ].map((s) => (
+            <View key={s.label} style={{ flex: 1, backgroundColor: c.paper, borderRadius: 14, padding: 14, gap: 4 }}>
+              <T weight="800" size={28} color={s.color}>{s.value ?? 0}</T>
+              <T size={11} weight="600" color={c.mute} style={{ textTransform: 'uppercase', letterSpacing: 0.6 }}>{s.label}</T>
+            </View>
+          ))}
+        </View>
+      ) : null}
+      <View style={{ flexDirection: 'row', gap: 6, flexWrap: 'wrap', marginBottom: 12 }}>
+        {['', 'critical', 'high', 'medium', 'low'].map((s) => (
+          <Chip key={s || 'all'} label={s ? t(`sec.severity_${s}`) : 'All'} active={severity === s} onPress={() => setSeverity(s)} />
+        ))}
+      </View>
+      {!state.data?.events?.length ? (
+        <Empty emoji="✅" title="No access denied events" sub="All requests are passing authorisation checks." />
+      ) : state.data.events.map((ev) => (
+        <Card key={ev.id} style={{ marginBottom: 8 }}>
+          <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 12 }}>
+            <View style={{ width: 10, height: 10, borderRadius: 5, backgroundColor: SEV_COLOR[ev.severity] ?? c.mute, marginTop: 5 }} />
+            <View style={{ flex: 1, gap: 3 }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                <T weight="700" size={13}>{ev.capability ?? ev.path ?? '—'}</T>
+                <Tag label={ev.block_reason ?? 'Blocked'} color={SEV_SOFT[ev.severity] ?? c.pinkSoft} />
+              </View>
+              <T size={12} color={c.mute}>{[ev.actor_id ? `actor: ${ev.actor_id.slice(0, 8)}…` : null, ev.active_role, ev.mcp_call ? 'MCP' : 'REST', label(ev.error_code)].filter(Boolean).join(' · ')}</T>
+              <T size={11} color={c.mute}>{when(ev.at)}</T>
+            </View>
+            <Tag label="Blocked" color={c.limeSoft} />
+          </View>
+        </Card>
+      ))}
+    </Block>
+  );
+}
+
+// ------------------------------------------------------------------ permission matrix
+function PermissionMatrixTab() {
+  const state = useLoad(() => api.get('/security/permission-matrix'));
+  const { toast } = useSession();
+  const seed = async () => { try { await api.post('/security/permission-matrix/seed'); toast('Matrix seeded'); state.reload(); } catch (e) { toast(e.message); } };
+  const PERM_ICON = { allow: '✓', deny: '✗', conditional: '⚠', na: '—' };
+  const PERM_COLOR = { allow: c.lime, deny: c.red, conditional: c.sun, na: c.mute };
+  const ROLES = ['athlete','coach','referee','physio','academy_admin','org_owner','sponsor_rep','platform_admin','guardian'];
+  if (!state.data) return state.loading ? <Loading /> : <ErrorBox error={state.error} onRetry={state.reload} />;
+  // Group by domain
+  const byDomain = {};
+  for (const e of state.data) {
+    if (!byDomain[e.domain]) byDomain[e.domain] = { data_owner: e.data_owner, roles: {} };
+    byDomain[e.domain].roles[e.role_key] = e;
+  }
+  return (
+    <View style={{ gap: 12 }}>
+      <View style={{ flexDirection: 'row', gap: 8, alignItems: 'center' }}>
+        <T size={12} color={c.mute} style={{ flex: 1 }}>✓ allow · ✗ deny · ⚠ conditional · — n/a. Negative cases run in CI.</T>
+        <Btn small title="Re-seed" onPress={seed} />
+      </View>
+      {Object.entries(byDomain).map(([domain, { data_owner, roles }]) => (
+        <Card key={domain} style={{ gap: 8 }}>
+          <T weight="700" size={13}>{label(domain)}</T>
+          <T size={11} color={c.mute}>{data_owner}</T>
+          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
+            {ROLES.map((rk) => {
+              const e = roles[rk];
+              if (!e) return null;
+              return (
+                <View key={rk} style={{ backgroundColor: c.bg, borderRadius: 8, padding: 6, alignItems: 'center', minWidth: 64 }}>
+                  <T size={16} color={PERM_COLOR[e.permission] ?? c.mute}>{PERM_ICON[e.permission] ?? '?'}</T>
+                  <T size={10} color={c.mute} style={{ textAlign: 'center' }}>{label(rk)}</T>
+                </View>
+              );
+            })}
+          </View>
+        </Card>
+      ))}
+    </View>
+  );
+}
+
+// ------------------------------------------------------------------ revocations
+function RevocationsTab() {
+  const state = useLoad(() => api.get('/security/revocation-log', { limit: 30 }));
+  if (!state.data) return state.loading ? <Loading /> : <ErrorBox error={state.error} onRetry={state.reload} />;
+  return !state.data.length
+    ? <Empty emoji="✅" title="No revocations recorded" sub="Membership removals and grant expirations will appear here." />
+    : state.data.map((r) => (
+      <Card key={r.id} style={{ marginBottom: 8 }}>
+        <Row
+          title={r.user_display_name ?? r.user_id?.slice(0, 12) ?? '—'}
+          sub={[r.org_name ?? r.org_id?.slice(0, 12) ?? 'No org', label(r.reason), when(r.at)].join(' · ')}
+          right={<Tag label={`${r.notifications_cancelled} notifs cleared`} color={c.pinkSoft} />}
+        />
+      </Card>
+    ));
+}
+
 export function PlatformSecurity() {
   const { user } = useSession();
   const [tab, setTab] = useState('keys');
   if (!user?.roles?.includes('platform_admin')) return <Screen><Empty emoji="🔒" title="Not available" sub="This area is for the platform admin." /></Screen>;
   return (
     <Screen wide>
-      <H1>Keys & audit</H1>
-      <T color={c.mute} style={{ marginBottom: 12 }}>Encryption keys, the tamper-evident audit log and the document upload limit.</T>
-      <Seg options={[{ value: 'keys', label: 'Keys' }, { value: 'audit', label: 'Audit log' }, { value: 'uploads', label: t('upload.tab') }]} value={tab} onChange={setTab} />
+      <H1>{t('sec.console.title')}</H1>
+      <T color={c.mute} style={{ marginBottom: 12 }}>Encryption keys, audit log, access-denied telemetry, permission matrix and membership revocations.</T>
+      <Seg
+        options={[
+          { value: 'keys', label: 'Keys' },
+          { value: 'audit', label: 'Audit log' },
+          { value: 'access', label: t('sec.access_denied') },
+          { value: 'matrix', label: t('sec.permission_matrix') },
+          { value: 'revocations', label: t('sec.revocations') },
+          { value: 'uploads', label: t('upload.tab') },
+        ]}
+        value={tab}
+        onChange={setTab}
+      />
       <View style={{ height: 12 }} />
-      {tab === 'keys' ? <KeysTab /> : tab === 'uploads' ? <UploadsTab /> : <AuditTab />}
+      {tab === 'keys' ? <KeysTab />
+        : tab === 'audit' ? <AuditTab />
+        : tab === 'access' ? <AccessEventsTab />
+        : tab === 'matrix' ? <PermissionMatrixTab />
+        : tab === 'revocations' ? <RevocationsTab />
+        : <UploadsTab />}
     </Screen>
   );
 }
