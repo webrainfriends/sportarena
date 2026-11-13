@@ -12,6 +12,7 @@ import { PaySheet } from '../PaySheet';
 import { FormSheet } from '../FormSheet';
 import { t as tr } from '../i18n';
 import { Avatar, Btn, Card, Chip, Empty, ErrorBox, HScroll, Loading, Section, StatPill, T, Tag } from '../ui';
+import { GuardianConferences } from './academy-conferences';
 import { c } from '../theme';
 import { locale } from '../locale';
 import { dateTimeIn, moneyIn } from '../vtime';
@@ -235,6 +236,9 @@ export function FamilyDashboard({ onConsents }) {
       </Section>
       <ScopesSheet target={scopes} onClose={() => setScopes(null)} onDone={reload} />
       {pay ? <PaySheet target={pay} onClose={() => setPay(null)} onDone={reload} /> : null}
+      <Section title="Development conferences" color={c.violet}>
+        <GuardianConferences />
+      </Section>
     </View>
   );
 }
