@@ -21037,7 +21037,7 @@ export default {
   'guide.talent_crm.step5': 'Create shortlist boards to compare multiple candidates side-by-side.',
   'guide.talent_crm.step6': 'Use analytics to track pipeline conversion, source quality and ageing.',
   'guide.talent_crm.step7': 'Hand off signed prospects to player contracts or the transfers workflow.',
-  'cdh.missing.today': 'No data today', 'cdh.missing.thisWeek': 'No data this week', 'cdh.missing.thisMonth': 'No data this month', 'cdh.missing.allPresent': 'All athletes have data',,
+  'cdh.missing.today': 'No data today', 'cdh.missing.thisWeek': 'No data this week', 'cdh.missing.thisMonth': 'No data this month', 'cdh.missing.allPresent': 'All athletes have data',
 
   // Athlete profile panel (#310) — machine-translated, reviewed: false
   'ap.title': 'അത്‌ലറ്റ് പ്രൊഫൈൽ',
@@ -21119,7 +21119,7 @@ export default {
   'guide.athlete-profile.s3': '+ അളവ് ചേർക്കുക അമർത്തി ബയോമെട്രിക് രേഖപ്പെടുത്തുക.',
   'guide.athlete-profile.s4': 'സ്ഥിരീകരിക്കപ്പെട്ട അഫിലിയേഷനുകൾ സ്വയം പ്രത്യക്ഷപ്പെടും.',
   'guide.athlete-profile.s5': 'കോച്ചുകൾക്കും റിക്രൂട്ടർമാർക്കും നിങ്ങൾ പങ്കുവച്ചവ മാത്രം കാണാം.',
-  'guide.athlete-profile.s6': 'ഒരു കായിക കാർഡ് ആർക്കൈവ് ചെയ്യാം; ചരിത്രം സുരക്ഷിതമായി സൂക്ഷിക്കും.',,
+  'guide.athlete-profile.s6': 'ഒരു കായിക കാർഡ് ആർക്കൈവ് ചെയ്യാം; ചരിത്രം സുരക്ഷിതമായി സൂക്ഷിക്കും.',
   'ap.completeness_missing': 'ഇനിയും പൂർണ്ണമായിട്ടില്ല: {missing}. എല്ലാം ഐച്ഛികമാണ് — നിങ്ങൾ എന്ത് പങ്കുവയ്ക്കണമെന്ന് നിങ്ങൾ തന്നെ തീരുമാനിക്കുക.',
   'ap.completeness_done': 'പൂർണ്ണം. ആര് എന്ത് കാണണമെന്ന് നിങ്ങൾ തന്നെ തീരുമാനിക്കുക.',
 };
