@@ -349,6 +349,107 @@ cap({
        FROM official_availability_history h WHERE h.user_id=$1 ORDER BY h.at DESC, h.id LIMIT $2 OFFSET $3`, [user.id, i.limit, i.offset]),
 });
 
+// ------------------------------------------------------------------ insights: earnings forecast, season workload, AI scheduler hint
+cap({
+  name: 'get_my_availability_insights', method: 'GET', path: '/me/officials/availability/insights', tag: TAG,
+  summary: 'Earnings forecast (confirmed + tentative assignments × the official\'s active rate card, by currency), season workload ring (confirmed / pending / remaining slots across the current season), and an AI scheduler hint when patterns warrant one (back-to-back weekends, approaching weekly cap, travel-heavy stretches). Read-only; never exposes a home address or exact location.',
+  async handler({ user }) {
+    const now = Date.now();
+    const { prefs } = await loadAvailability(pool, user.id);
+    const tz = prefs.timezone ?? 'UTC';
+
+    // ── upcoming open assignments (next 90 days) ──────────────────────────────
+    const upcoming = await pool.query(
+      `SELECT x.id, x.fixture_id, x.status, x.fixture_status, x.scheduled_at, x.duration_min, x.sport_id, x.event_name
+         FROM (${ASSIGNMENT_SQL} WHERE fo.user_id=$1) x
+        WHERE x.status IN ('invited','accepted') AND x.fixture_status IN ('scheduled','live')
+          AND x.scheduled_at > now() AND x.scheduled_at < now() + interval '90 days'
+        ORDER BY x.scheduled_at`,
+      [user.id],
+    ).then((r) => r.rows);
+
+    const confirmed = upcoming.filter((a) => a.status === 'accepted');
+    const tentative = upcoming.filter((a) => a.status === 'invited');
+
+    // ── earnings forecast: use the official's first active rate card per sport/currency ──
+    const rateRows = await pool.query(
+      `SELECT sport_id, fee_minor, fee_currency FROM official_profile_rates
+        WHERE user_id=$1 AND status='active' ORDER BY created_at DESC`,
+      [user.id],
+    ).then((r) => r.rows);
+    const rateMap = new Map(); // sport_id → { fee_minor, fee_currency }
+    for (const r of rateRows) if (!rateMap.has(r.sport_id)) rateMap.set(r.sport_id, r);
+
+    const totals = new Map(); // currency → { confirmed_minor, tentative_minor }
+    for (const a of confirmed) {
+      const rate = rateMap.get(a.sport_id);
+      if (!rate) continue;
+      const e = totals.get(rate.fee_currency) ?? { confirmed_minor: 0, tentative_minor: 0 };
+      e.confirmed_minor += Number(rate.fee_minor);
+      totals.set(rate.fee_currency, e);
+    }
+    for (const a of tentative) {
+      const rate = rateMap.get(a.sport_id);
+      if (!rate) continue;
+      const e = totals.get(rate.fee_currency) ?? { confirmed_minor: 0, tentative_minor: 0 };
+      e.tentative_minor += Number(rate.fee_minor);
+      totals.set(rate.fee_currency, e);
+    }
+    const earnings = [...totals.entries()].map(([currency, e]) => ({
+      currency, confirmed_minor: e.confirmed_minor, tentative_minor: e.tentative_minor,
+      total_minor: e.confirmed_minor + e.tentative_minor,
+    }));
+
+    // ── season workload: current season = last 120 days + next 180 days ────────
+    const seasonAll = await pool.query(
+      `SELECT x.id, x.status, x.fixture_status, x.scheduled_at FROM (${ASSIGNMENT_SQL} WHERE fo.user_id=$1) x
+        WHERE x.scheduled_at > now() - interval '120 days' AND x.scheduled_at < now() + interval '180 days'
+        ORDER BY x.scheduled_at`,
+      [user.id],
+    ).then((r) => r.rows);
+    const season_confirmed = seasonAll.filter((a) => a.status === 'accepted').length;
+    const season_pending   = seasonAll.filter((a) => a.status === 'invited').length;
+    const season_total     = season_confirmed + season_pending;
+    const season_pct       = season_total === 0 ? 0 : Math.round((season_confirmed / season_total) * 100);
+
+    // ── 12-week load for AI hint ───────────────────────────────────────────────
+    const weekLoad = await pool.query(
+      `SELECT date_trunc('week', x.scheduled_at AT TIME ZONE 'UTC')::date AS week_start,
+              COUNT(*) FILTER (WHERE x.status='accepted') AS confirmed,
+              COUNT(*) FILTER (WHERE x.status='invited')  AS tentative
+         FROM (${ASSIGNMENT_SQL} WHERE fo.user_id=$1) x
+        WHERE x.scheduled_at > now() - interval '6 weeks' AND x.scheduled_at < now() + interval '6 weeks'
+          AND x.fixture_status IN ('scheduled','live')
+        GROUP BY 1 ORDER BY 1`,
+      [user.id],
+    ).then((r) => r.rows.map((w) => ({ week_start: w.week_start, confirmed: Number(w.confirmed), tentative: Number(w.tentative) })));
+
+    // ── AI scheduler hint ─────────────────────────────────────────────────────
+    // Simple rule engine — no ML; pure deterministic analysis.
+    const hints = [];
+    const cap = prefs.max_per_week;
+    const future = weekLoad.filter((w) => new Date(w.week_start).getTime() >= now - 7 * DAY);
+    const overCap = cap ? future.filter((w) => w.confirmed + w.tentative >= cap) : [];
+    if (overCap.length >= 2) hints.push('approaching_cap');
+    // consecutive weekend blocks
+    let backToBack = 0, maxBtB = 0;
+    for (const w of future) { if (w.confirmed + w.tentative >= 2) backToBack++; else backToBack = 0; maxBtB = Math.max(maxBtB, backToBack); }
+    if (maxBtB >= 3) hints.push('back_to_back_weekends');
+    // heavy stretch: any 2 consecutive weeks ≥ 6
+    for (let i = 0; i < future.length - 1; i++) {
+      if (future[i].confirmed + future[i + 1].confirmed >= 12) { hints.push('heavy_stretch'); break; }
+    }
+
+    return {
+      earnings,
+      season: { confirmed: season_confirmed, pending: season_pending, total: season_total, pct: season_pct },
+      week_load: weekLoad,
+      scheduler_hint: hints.length ? hints[0] : null,
+      scheduler_hints: hints,
+    };
+  },
+});
+
 // ------------------------------------------------------------------ the organiser's view
 cap({
   name: 'get_fixture_official_availability', method: 'GET', path: '/fixtures/:id/officials/:user_id/availability', tag: TAG,

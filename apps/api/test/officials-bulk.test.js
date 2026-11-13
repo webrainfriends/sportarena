@@ -1,6 +1,6 @@
 import { describe, it, before, after } from 'node:test';
 import assert from 'node:assert/strict';
-import { db, tx } from '../src/db.js';
+import { pool as db, tx } from '../src/db.js';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -76,7 +76,8 @@ async function addToEventPool(eventId, userId) {
 // Lightweight HTTP-style capability invoker (calls handler fn directly)
 async function cap(name, params, ctx = {}) {
   // Dynamically resolve capability from registry
-  const { registry } = await import('../src/capabilities/registry.js');
+  const { capabilities } = await import('../src/registry.js');
+  const registry = new Map(capabilities.map((c) => [c.name, c.handler]));
   const handler = registry.get(name);
   if (!handler) throw new Error(`Capability not found: ${name}`);
   return handler(params, { user: ctx.user || { id: ctx.userId, role: 'org_admin' }, ...ctx });
@@ -421,7 +422,8 @@ describe('list_event_official_pool', () => {
 
 describe('REST / OpenAPI / MCP parity', () => {
   it('all 8 bulk-assignment capabilities are registered in the registry', async () => {
-    const { registry } = await import('../src/capabilities/registry.js');
+    const { capabilities } = await import('../src/registry.js');
+    const registry = new Map(capabilities.map((c) => [c.name, c.handler]));
     const expected = [
       'get_assignment_board',
       'suggest_fixture_officials',
@@ -438,7 +440,8 @@ describe('REST / OpenAPI / MCP parity', () => {
   });
 
   it('each capability definition has method, path, schema and handler', async () => {
-    const { registry } = await import('../src/capabilities/registry.js');
+    const { capabilities } = await import('../src/registry.js');
+    const registry = new Map(capabilities.map((c) => [c.name, { ...c, getDef: () => c }]));
     const bulkCaps = [
       'get_assignment_board',
       'suggest_fixture_officials',
@@ -446,8 +449,8 @@ describe('REST / OpenAPI / MCP parity', () => {
       'swap_fixture_official',
     ];
     for (const name of bulkCaps) {
-      const def = registry.getDef(name);
-      if (!def) continue; // registry may only expose handler; shape test where possible
+      const def = capabilities.find((c) => c.name === name);
+      if (!def) continue;
       assert.ok(def.method || def.handler, `${name} has method or handler`);
     }
   });
