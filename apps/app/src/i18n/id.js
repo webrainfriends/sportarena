@@ -19806,7 +19806,6 @@ export default {
   'spw.rv.legalName': 'Legal name',
   'spw.rv.confirm': 'Confirm sponsor identity',
 
-},
   // reviewed: false — machine-drafted reputation keys
   'reputation.title': 'Reputation',
   'reputation.tab.hub': 'Hub',
