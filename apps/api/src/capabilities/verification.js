@@ -441,7 +441,7 @@ cap({
 });
 
 cap({
-  name: 'acknowledge_renewal_reminder', method: 'POST', path: '/verification/cases/:id/acknowledge-reminder', tag: TAG,
+  name: 'acknowledge_verification_renewal_reminder', method: 'POST', path: '/verification/cases/:id/acknowledge-reminder', tag: TAG,
   summary: 'Acknowledge a credential renewal reminder so the platform knows the holder has seen it.',
   input: z.object({ id }),
   async handler({ user }, i) {
