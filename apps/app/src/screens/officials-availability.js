@@ -118,6 +118,7 @@ export function AvailabilityTab({ sports = [], go }) {
   const { toast } = useSession();
   const L = useLayout();
   const q = useLoad(() => api.get('/me/officials/availability'), []);
+  const ins = useLoad(() => api.get('/me/officials/availability/insights'), []);
   const [form, setForm] = useState(null);      // { kind, row? }
   const [impact, setImpact] = useState(null);  // { affected, run }
   const [showHistory, setShowHistory] = useState(false);
@@ -191,6 +192,101 @@ export function AvailabilityTab({ sports = [], go }) {
   const needs = s.conflicts + s.outside_hours;
   const takenHolidays = new Set(holidays.map((h) => h.holiday_day_id));
   const hasBlocks = off.length + recurring.length + holidays.length > 0;
+
+  // ── insights panel ────────────────────────────────────────────────────────
+  const insData = ins.data;
+  const HINT_ICON = { approaching_cap: '⚠️', back_to_back_weekends: '🔁', heavy_stretch: '🔥' };
+  const fmtMoney = (minor, currency) => {
+    try { return new Intl.NumberFormat(undefined, { style: 'currency', currency, maximumFractionDigits: 0 }).format(minor / 100); }
+    catch { return `${currency} ${(minor / 100).toFixed(0)}`; }
+  };
+  const insightsPanel = insData ? (
+    <View style={{ gap: 10 }}>
+      {/* AI Scheduler Insight pill */}
+      {insData.scheduler_hint ? (
+        <View style={{ backgroundColor: c.sunSoft, borderRadius: 10, paddingHorizontal: 14, paddingVertical: 10, flexDirection: 'row', alignItems: 'center', gap: 10, borderWidth: 1, borderColor: c.sun }}>
+          <T size={22}>{HINT_ICON[insData.scheduler_hint] ?? '🤖'}</T>
+          <View style={{ flex: 1 }}>
+            <T weight="800" size={13}>{t(`oav.insights.hint.${insData.scheduler_hint}`)}</T>
+            <T size={12} color={c.mute}>{t('oav.insights.ai_note')}</T>
+          </View>
+        </View>
+      ) : (
+        <View style={{ backgroundColor: c.mintSoft, borderRadius: 10, paddingHorizontal: 14, paddingVertical: 10, flexDirection: 'row', alignItems: 'center', gap: 10, borderWidth: 1, borderColor: c.mint }}>
+          <T size={22}>✅</T>
+          <T weight="800" size={13} style={{ flex: 1 }}>{t('oav.insights.hint.clear')}</T>
+        </View>
+      )}
+      <View style={{ flexDirection: L.tablet ? 'row' : 'column', gap: 10 }}>
+        {/* Earnings Forecast */}
+        {insData.earnings.length > 0 ? (
+          <Card style={L.tablet ? { flex: 1 } : null}>
+            <View style={{ gap: 6 }}>
+              <T weight="800" size={14}>{t('oav.insights.earnings_title')}</T>
+              <T size={11.5} color={c.mute}>{t('oav.insights.earnings_sub')}</T>
+              {insData.earnings.map(({ currency, confirmed_minor, tentative_minor, total_minor }) => (
+                <View key={currency} style={{ gap: 3, marginTop: 4 }}>
+                  <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 6 }}>
+                    <T weight="800" size={22} color={c.cyan}>{fmtMoney(total_minor, currency)}</T>
+                    <T size={12} color={c.mute}>{t('oav.insights.total_90')}</T>
+                  </View>
+                  <View style={{ flexDirection: 'row', gap: 10 }}>
+                    <T size={12} color={c.mint}>✓ {fmtMoney(confirmed_minor, currency)} {t('oav.insights.confirmed')}</T>
+                    {tentative_minor > 0 ? <T size={12} color={c.sun}>◷ {fmtMoney(tentative_minor, currency)} {t('oav.insights.tentative')}</T> : null}
+                  </View>
+                </View>
+              ))}
+            </View>
+          </Card>
+        ) : null}
+        {/* Season Workload ring */}
+        <Card style={L.tablet ? { flex: 1 } : null}>
+          <View style={{ gap: 6 }}>
+            <T weight="800" size={14}>{t('oav.insights.season_title')}</T>
+            <T size={11.5} color={c.mute}>{t('oav.insights.season_sub')}</T>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 14, marginTop: 4 }}>
+              {/* simple arc: ring visualised as a stacked-radius view */}
+              <View style={{ width: 64, height: 64, borderRadius: 32, borderWidth: 8, borderColor: c.line, alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}>
+                <View style={{ position: 'absolute', width: 64, height: 64, borderRadius: 32, borderWidth: 8, borderColor: c.cyan, opacity: (insData.season.pct / 100) }} />
+                <T weight="800" size={15}>{insData.season.pct}%</T>
+              </View>
+              <View style={{ gap: 3 }}>
+                <T size={13}><T weight="800" color={c.cyan}>{insData.season.confirmed}</T> {t('oav.insights.s_confirmed')}</T>
+                {insData.season.pending > 0 ? <T size={13}><T weight="800" color={c.sun}>{insData.season.pending}</T> {t('oav.insights.s_pending')}</T> : null}
+                <T size={12} color={c.mute}>{t('oav.insights.s_total', { n: insData.season.total })}</T>
+              </View>
+            </View>
+          </View>
+        </Card>
+      </View>
+      {/* Smart Open Slots */}
+      {insData.week_load.length > 0 ? (
+        <Card>
+          <View style={{ gap: 6 }}>
+            <T weight="800" size={14}>{t('oav.insights.slots_title')}</T>
+            <T size={11.5} color={c.mute}>{t('oav.insights.slots_sub')}</T>
+            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 4 }}>
+              {insData.week_load.slice(0, 8).map((w) => {
+                const total = w.confirmed + w.tentative;
+                const cap = prefs.max_per_week;
+                const pct = cap ? Math.min(100, Math.round((total / cap) * 100)) : (total >= 5 ? 90 : total * 18);
+                const tone = pct >= 80 ? c.redSoft : pct >= 50 ? c.sunSoft : c.mintSoft;
+                const ink = pct >= 80 ? c.red : pct >= 50 ? c.sun : c.mint;
+                return (
+                  <View key={w.week_start} style={{ backgroundColor: tone, borderRadius: 8, paddingHorizontal: 10, paddingVertical: 6, alignItems: 'center', minWidth: 64 }}>
+                    <T weight="800" size={13} color={ink}>{100 - pct}</T>
+                    <T size={10} color={c.mute}>{w.week_start.slice(5)}</T>
+                    <T size={10} color={c.mute}>{total} {t('oav.insights.slots_booked')}</T>
+                  </View>
+                );
+              })}
+            </View>
+            <T size={11} color={c.mute}>{t('oav.insights.slots_key')}</T>
+          </View>
+        </Card>
+      ) : null}
+    </View>
+  ) : ins.error ? null : <Loading />;
 
   const planner = (
     <Card>
@@ -275,6 +371,8 @@ export function AvailabilityTab({ sports = [], go }) {
           </View>
         </Card>
       ) : null}
+
+      {insightsPanel ? <Section title={t('oav.insights.title')} color={c.violet}>{insightsPanel}</Section> : null}
 
       <Cols ratio={[3, 2]} a={planner} b={loadCard} />
 

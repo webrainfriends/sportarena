@@ -17469,6 +17469,28 @@ export default {
   'guide.officials_availability.s6': 'නිලධාරියා පිළිගන්නා තෙක් ඉල්ලීමක් තාවකාලික රැඳවීමකි. පිළිගැනීමෙන් වේලාව වෙන් වන අතර, එම වේලාව සඳහා බලා සිටින වෙනත් සංවිධායකයින්ට දන්වනු ලැබේ. තරගයක් අවලංගු කළ විට වේලාව නැවත නිදහස් වේ. දින දර්ශන ටැබය මේ සියල්ල නිලධාරියාගේ වේලා කලාපයෙන් පෙන්වන අතර, වෙනස් වන විට ස්ථානයේ වේලාවද පෙන්වයි.',
   'oav.edit': 'සංස්කරණය',
 
+  // oav insights panel
+  'oav.insights.title': 'AI Scheduler Insights',
+  'oav.insights.ai_note': 'Deterministic analysis · no personal data leaves the platform',
+  'oav.insights.hint.clear': 'Schedule looks healthy — no issues detected',
+  'oav.insights.hint.approaching_cap': 'Approaching weekly cap on multiple upcoming weeks',
+  'oav.insights.hint.back_to_back_weekends': '3+ consecutive busy weeks detected — recovery time?',
+  'oav.insights.hint.heavy_stretch': 'High-intensity stretch: two back-to-back weeks with 12+ fixtures',
+  'oav.insights.earnings_title': 'Earnings Forecast',
+  'oav.insights.earnings_sub': 'Confirmed + tentative assignments × your active rate card (next 90 days)',
+  'oav.insights.total_90': 'next 90 days',
+  'oav.insights.confirmed': 'confirmed',
+  'oav.insights.tentative': 'tentative',
+  'oav.insights.season_title': 'Season Workload',
+  'oav.insights.season_sub': 'Last 120 days → next 180 days',
+  'oav.insights.s_confirmed': 'confirmed',
+  'oav.insights.s_pending': 'pending',
+  'oav.insights.s_total': '{{n}} total assignments in window',
+  'oav.insights.slots_title': 'Smart Open Slots',
+  'oav.insights.slots_sub': 'Availability score (0–100) per week · higher = more open',
+  'oav.insights.slots_booked': 'booked',
+  'oav.insights.slots_key': 'Green = available · Amber = filling up · Red = at capacity',
+
 
   // ─── Official eligibility (oe.*) — issue #1000 REF-R09 ───────────────────
   'oe.header_label': 'OFFICIALS · ELIGIBILITY', // reviewed: false
