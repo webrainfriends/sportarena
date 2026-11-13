@@ -2,7 +2,7 @@
 // (venues that really have courts for those sports, one booking request per venue), then the details. A single sport
 // makes a normal event; several make a multi-sport programme with one discipline per sport.
 import React, { useState } from 'react';
-import { Switch, View } from 'react-native';
+import { StyleSheet, Switch, TouchableOpacity, View } from 'react-native';
 import { api } from '../api';
 import { useLoad } from '../hooks';
 import { useSession } from '../session';
@@ -13,6 +13,8 @@ import { c } from '../theme';
 import { moneyIn } from '../vtime';
 import { RegionPicker } from '../region-picker';
 import { LEVEL_OPTIONS } from '../who-for';
+import { t } from '../i18n';
+import { EventExternalLink } from './event-external-link';
 
 const KINDS = ['tournament', 'league', 'friendly', 'camp', 'trial'];
 const STEPS = ['Basics', 'Sports', 'When & where', 'Details'];
@@ -20,6 +22,7 @@ const STEPS = ['Basics', 'Sports', 'When & where', 'Details'];
 export function CreateEvent({ visible, onClose, onCreated }) {
   const { toast } = useSession();
   const sports = useSports();
+  const [mode, setMode] = useState(null); // null=choice, 'native'=create here, 'external'=link wizard
   const [step, setStep] = useState(0);
   const [busy, setBusy] = useState(false);
   const [f, setF] = useState({ name: '', kind: 'tournament', description: '', sports: [], from: undefined, to: undefined, city: '', picks: {}, capacity: 0, fee: '', deadline: undefined, sponsors: false, levels: [], region: '', ageLimited: false, minAge: 12, maxAge: 18 });
@@ -56,8 +59,47 @@ export function CreateEvent({ visible, onClose, onCreated }) {
     } catch (e) { toast('' + e.message); } finally { setBusy(false); }
   };
 
+  if (mode === 'external') {
+    return (
+      <EventExternalLink
+        visible={visible}
+        onClose={() => { setMode(null); onClose?.(); }}
+        onCreated={onCreated}
+      />
+    );
+  }
+
   return (
-    <Sheet visible={visible} onClose={onClose} title="Create an event">
+    <Sheet visible={visible} onClose={() => { setMode(null); onClose?.(); }} title={mode === 'native' ? t('event.ext.create_native') : t('event.ext.create_choice_title')}>
+      {/* Mode choice — shown before entering the native create flow */}
+      {mode === null ? (
+        <View style={{ gap: 14 }}>
+          <T size={15} weight="700" color={c.ink}>{t('event.ext.create_choice')}</T>
+          <TouchableOpacity
+            onPress={() => setMode('native')}
+            accessibilityLabel={t('event.ext.create_native')}
+            style={[ceStyles.choiceCard, { borderColor: c.pink, backgroundColor: c.pinkSoft }]}>
+            <T size={28}>🏟️</T>
+            <View style={{ flex: 1 }}>
+              <T size={15} weight="700" color={c.ink}>{t('event.ext.create_native')}</T>
+              <T size={13} color={c.mute}>{t('event.ext.create_native_hint')}</T>
+            </View>
+            <T size={18} color={c.pink}>›</T>
+          </TouchableOpacity>
+          <TouchableOpacity
+            onPress={() => setMode('external')}
+            accessibilityLabel={t('event.ext.create_external')}
+            style={[ceStyles.choiceCard, { borderColor: c.violet, backgroundColor: c.violetSoft }]}>
+            <T size={28}>🔗</T>
+            <View style={{ flex: 1 }}>
+              <T size={15} weight="700" color={c.ink}>{t('event.ext.create_external')}</T>
+              <T size={13} color={c.mute}>{t('event.ext.create_external_hint')}</T>
+            </View>
+            <T size={18} color={c.violet}>›</T>
+          </TouchableOpacity>
+        </View>
+      ) : (
+        <>
       <View style={{ flexDirection: 'row', gap: 6 }}>
         {STEPS.map((s, i) => <View key={s} style={{ flex: 1, gap: 4 }}><View style={{ height: 4, borderRadius: 2, backgroundColor: i <= step ? c.pink : c.line }} /><T size={11} weight={i === step ? '800' : '500'} color={i === step ? c.ink : c.mute}>{s}</T></View>)}
       </View>
@@ -130,9 +172,15 @@ export function CreateEvent({ visible, onClose, onCreated }) {
       ) : null}
 
       <View style={{ flexDirection: 'row', gap: 8 }}>
-        {step > 0 ? <Btn title="Back" color={c.paper} ink={c.ink} onPress={() => setStep(step - 1)} style={{ flex: 1 }} /> : null}
+        {step > 0 ? <Btn title="Back" color={c.paper} ink={c.ink} onPress={() => setStep(step - 1)} style={{ flex: 1 }} /> : <Btn title={t('common.back')} color={c.paper} ink={c.ink} onPress={() => setMode(null)} style={{ flex: 1 }} />}
         {step < 3 ? <Btn title="Next" disabled={!can} onPress={() => setStep(step + 1)} style={{ flex: 2 }} /> : <Btn title="Create event" loading={busy} onPress={create} style={{ flex: 2 }} />}
       </View>
+        </>
+      )}
     </Sheet>
   );
 }
+
+const ceStyles = StyleSheet.create({
+  choiceCard: { flexDirection: 'row', alignItems: 'center', gap: 12, padding: 16, borderRadius: 14, borderWidth: 2, minHeight: 80 },
+});
