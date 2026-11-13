@@ -207,6 +207,20 @@ export const ACADEMY_STEPS = [
     modules: ['gst.js', 'provider-tax.js', 'academy-billing.js'], sources: ['apps/app/src/screens/finance-tax.js'],
   },
   {
+    id: 'six_role_audit', title: 'Six-role financial reconciliation',
+    why: 'Every role — Coach, Referee, Academy, Organisation, Sponsor and Physio — posts to the same canonical ledger. The six-role audit finds any obligation, fee or receipt that did not make it across, so the books are always a single source of truth.',
+    steps: [
+      'Open Finance and choose the Six-Role Audit tab (platform admin only). The health strip shows open gap counts by role.',
+      'Tap Run Audit to scan all six role modules against the ledger. The audit is idempotent: running it twice adds no duplicates.',
+      'Review each gap item: it shows the role, source entity, currency and amount. Tap Resolve once you have traced and corrected the root cause.',
+      'The Lineage API (Finance → Six-Role Audit → lineage endpoint) traces any transaction back to its originating role entity — useful for disputes and external audits.',
+      'The worker runs the audit automatically in every maintenance cycle. Use the Runs tab to see the history and confirm the last clean pass.',
+    ],
+    target: { screen: 'Finance' },
+    modules: ['finance-reconciliation-audit.js', 'finance-audit.js', 'finance-sync.js'],
+    sources: ['apps/app/src/screens/finance-books.js', 'apps/app/src/screens/finance.js'],
+  },
+  {
     id: 'revenue', title: 'Share revenue',
     why: 'Agree how money is shared with coaches and how shared costs are spread across programmes.',
     steps: ['For coaches: in the venue workspace, Coaches tab, choose Revenue share as the pay model and set the percentage.', 'For shared costs: in Academy, Finance, open Costs, add a cost and choose how it is spread (participants, revenue share or evenly).', 'Open Profit & loss to review the result per programme, branch and cohort; staff cost is read from approved payroll, venue cost from confirmed bookings, supplier cost from delivered supplier requests and payment fees from the Finance ledger.', 'Open Reconciliation: it lists every cost or charge with no programme and records that could be counted twice; decide each one with a reason.', 'Before adding a cohort or promoting athletes, open Forecast and choose New capacity scenario: pick the period, programme changes, promotions, venue, days, times and coaches. It shows real venue, coach and School timetable conflicts, coaches and hours needed, pathway bottlenecks and cost, and lists what is missing. It changes nothing; you decide on each recommendation.'],

@@ -159,6 +159,7 @@ import './payment-reconciliation.js';
 import './gst.js';
 import './settlement.js';
 import './finance.js';
+import './finance-reconciliation-audit.js';
 import './sponsors.js';
 import './sponsorship-agreements.js';
 import './sponsorship-fulfilment.js';
