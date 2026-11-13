@@ -1,8 +1,7 @@
-// Venue & courts tab of the event console: the venues it uses, the court bookings (made here, by the tournament scheduler or by a
-// finalized venue request), and a guided flow: pick a venue (photo cards), pick days / times / courts with live
-// availability, review, confirm.
+// Venue & courts tab of the event console: native bookings + external venue reservations.
+// External tab shows event_venue_reservation_links with the VenueSourcingWizard flow.
 import React, { useEffect, useMemo, useState } from 'react';
-import { Image, Pressable, View } from 'react-native';
+import { Image, Pressable, ScrollView, View } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { api, mediaUrl } from '../api';
 import { useLoad } from '../hooks';
@@ -12,6 +11,8 @@ import { DateRangeField, TimeField, todayLocal } from '../pickers';
 import { c } from '../theme';
 import { locale } from '../locale';
 import { moneyIn } from '../vtime';
+import { t } from '../i18n';
+import { VenueSourcingWizard } from './venue-sourcing';
 
 const fmtDay = (iso) => new Date(iso).toLocaleDateString(locale, { weekday: 'short', day: 'numeric', month: 'short' });
 const fmtTime = (iso, tz) => new Date(iso).toLocaleTimeString(locale, { hour: 'numeric', minute: '2-digit', timeZone: tz });
@@ -31,23 +32,108 @@ function Photo({ v, height = 130, badge, children }) {
   );
 }
 
+const EVR_STATUS_TAG = {
+  draft:                  { label: t('evr.status.draft'),                 tone: A.mute },
+  quoted:                 { label: t('evr.status.quoted'),                tone: A.cyan },
+  hold_pending:           { label: t('evr.status.hold_pending'),          tone: A.sun },
+  redirect_pending:       { label: t('evr.status.redirect_pending'),      tone: A.sun },
+  awaiting_confirmation:  { label: t('evr.status.awaiting_confirmation'), tone: A.sun },
+  confirmed:              { label: t('evr.status.confirmed'),             tone: A.green },
+  fulfilled:              { label: t('evr.status.fulfilled'),             tone: A.green },
+  failed:                 { label: t('evr.status.failed'),                tone: A.red },
+  expired:                { label: t('evr.status.expired'),               tone: A.mute },
+  cancelled:              { label: t('evr.status.cancelled'),             tone: A.red },
+  refunded:               { label: t('evr.status.refunded'),              tone: A.mute },
+  disputed:               { label: t('evr.status.disputed'),              tone: A.red },
+};
+
+const EVR_SOURCE_TAG = {
+  provider_confirmed:  { label: t('evr.source_status.provider_confirmed'),  tone: A.green },
+  organiser_attested:  { label: t('evr.source_status.organiser_attested'),  tone: A.cyan },
+  unverified_linkout:  { label: t('evr.source_status.unverified_linkout'),  tone: A.mute },
+};
+
+function ExternalReservationCard({ evr, onCancel, onRefresh }) {
+  const st = EVR_STATUS_TAG[evr.status] ?? EVR_STATUS_TAG.draft;
+  const src = EVR_SOURCE_TAG[evr.source_status] ?? EVR_SOURCE_TAG.unverified_linkout;
+  const isAlert = ['failed','cancelled','disputed'].includes(evr.status);
+  return (
+    <ACard pad={14} style={{ gap: 10, borderWidth: isAlert ? 1 : 0, borderColor: isAlert ? A.red : 'transparent' }}>
+      {isAlert ? (
+        <View style={{ backgroundColor: `${A.red}22`, borderRadius: 8, padding: 8 }}>
+          <AT size={12} weight="700" color={A.red}>⚠ {t('evr.conflict_alert')}</AT>
+        </View>
+      ) : null}
+      <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 10 }}>
+        <View style={{ flex: 1, gap: 4 }}>
+          <AT size={15} weight="800" numberOfLines={2}>{evr.external_venue_name}</AT>
+          {evr.external_venue_city ? <AT size={12} color={A.mute}>{evr.external_venue_city}{evr.external_venue_country ? ` · ${evr.external_venue_country}` : ''}</AT> : null}
+        </View>
+        <View style={{ gap: 6, alignItems: 'flex-end' }}>
+          <ATag tone={st.tone} label={st.label} />
+          <ATag tone={src.tone} label={src.label} />
+        </View>
+      </View>
+      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+        {evr.provider_key ? <View style={{ backgroundColor: '#06B6D422', borderRadius: 6, paddingHorizontal: 8, paddingVertical: 3 }}><AT size={11} weight="700" color="#06B6D4">{evr.provider_key}</AT></View> : null}
+        {evr.courts_requested ? <ATag tone={A.mute} label={`${evr.courts_requested} court${evr.courts_requested === 1 ? '' : 's'}`} /> : null}
+        {evr.sport_keys?.length ? <ATag tone={A.mute} label={evr.sport_keys.join(', ')} /> : null}
+      </View>
+      {evr.starts_at ? <AT size={12} color={A.mute}>{new Date(evr.starts_at).toLocaleDateString(locale, { weekday: 'short', day: 'numeric', month: 'short' })} – {evr.ends_at ? new Date(evr.ends_at).toLocaleDateString(locale, { weekday: 'short', day: 'numeric', month: 'short' }) : '…'}</AT> : null}
+      {evr.price_minor != null ? <AT size={13} weight="700">{evr.currency} {(evr.price_minor / 100).toFixed(2)}{evr.tax_minor ? ` +${(evr.tax_minor / 100).toFixed(2)} tax` : ''}</AT> : null}
+      {evr.external_booking_reference ? <AT size={12} color={A.mute}>{t('evr.ref_masked')}: {evr.external_booking_reference}</AT> : null}
+      <View style={{ flexDirection: 'row', gap: 8 }}>
+        <ABtn small tone="ghost" title={t('evr.refresh')} onPress={() => onRefresh?.(evr)} />
+        {!['cancelled','refunded','fulfilled'].includes(evr.status) ? <ABtn small tone="ghost" title={t('evr.cancel')} onPress={() => onCancel?.(evr)} /> : null}
+      </View>
+    </ACard>
+  );
+}
+
 /** The venues of an event with their bookings. `onChange` lets the parent refresh its own numbers. */
 export function EventVenues({ e, toast, onChange }) {
   const id = e.id;
   const list = useLoad(() => api.get(`/events/${id}/venues`), [id]);
   const [book, setBook] = useState(false);
+  const [tab, setTab] = useState('native');
+  const [sourcingOpen, setSourcingOpen] = useState(false);
+
+  // Support both old flat-array and new { venues, external_reservations } shapes
+  const nativeVenues = useMemo(() => Array.isArray(list.data) ? list.data : (list.data?.venues ?? []), [list.data]);
+  const externalReservations = useMemo(() => list.data?.external_reservations ?? [], [list.data]);
+
   const refresh = () => { list.reload(); onChange?.(); };
   const release = async (b) => { try { await api.post(`/event-bookings/${b.id}/release`, {}); toast('Court released'); refresh(); } catch (x) { toast('' + x.message); } };
+  const cancelEvr = async (evr) => {
+    try { await api.post(`/events/${id}/external-venue-reservations/${evr.id}/cancel`, {}); toast(t('evr.cancelled')); refresh(); } catch (x) { toast('' + x.message); }
+  };
+  const refreshEvr = async (evr) => {
+    try { await api.post(`/events/${id}/external-venue-reservations/${evr.id}/refresh`, {}); toast(t('evr.refreshed')); refresh(); } catch (x) { toast('' + x.message); }
+  };
+
   return (
     <>
-      <ABtn title={list.data?.length ? 'Book more courts' : 'Find a venue & book courts'} onPress={() => setBook(true)} />
-      {list.data?.length ? <FitCard id={id} version={list.data} toast={toast} onChange={refresh} /> : null}
-      {!list.data ? <Loading /> : !list.data.length ? (
-        <AEmpty emoji="🏟️" title="No venue yet" sub="Pick a venue that has courts for your sport, see which days are free, and book them in one go." />
-      ) : list.data.map((v) => {
-        const live = v.bookings.filter((b) => b.status === 'confirmed');
-        const days = [...new Set(live.map((b) => b.starts_at.slice(0, 10)))];
-        return (
+      {/* Segment tabs */}
+      <View style={{ flexDirection: 'row', marginHorizontal: 0, marginBottom: 4 }}>
+        {[{ key: 'native', label: t('evr.tab_native') }, { key: 'external', label: t('evr.tab_external') + (externalReservations.length ? ` (${externalReservations.length})` : '') }].map((s) => (
+          <Pressable key={s.key} onPress={() => setTab(s.key)} accessibilityRole="tab" accessibilityState={{ selected: tab === s.key }}
+            style={{ flex: 1, paddingVertical: 10, alignItems: 'center', borderBottomWidth: 2, borderBottomColor: tab === s.key ? A.p2 : 'transparent' }}>
+            <AT size={13} weight="800" color={tab === s.key ? A.p2 : A.mute}>{s.label}</AT>
+          </Pressable>
+        ))}
+      </View>
+
+      {/* Native venues tab */}
+      {tab === 'native' ? (
+        <>
+          <ABtn title={nativeVenues.length ? 'Book more courts' : 'Find a venue & book courts'} onPress={() => setBook(true)} />
+          {nativeVenues.length ? <FitCard id={id} version={nativeVenues} toast={toast} onChange={refresh} /> : null}
+          {!list.data ? <Loading /> : !nativeVenues.length ? (
+            <AEmpty emoji="🏟️" title="No venue yet" sub="Pick a venue that has courts for your sport, see which days are free, and book them in one go." />
+          ) : nativeVenues.map((v) => {
+            const live = v.bookings.filter((b) => b.status === 'confirmed');
+            const days = [...new Set(live.map((b) => b.starts_at.slice(0, 10)))];
+            return (
           <ACard key={v.id} pad={12} style={{ gap: 10 }}>
             <Photo v={v} badge={v.summary.total_cents ? moneyIn(v.summary.total_cents, v.currency) : undefined}>
               <View style={{ position: 'absolute', left: 12, bottom: 10, right: 90 }}>
@@ -78,7 +164,35 @@ export function EventVenues({ e, toast, onChange }) {
           </ACard>
         );
       })}
-      {book ? <BookSheet e={e} toast={toast} onClose={() => setBook(false)} onBooked={() => { setBook(false); refresh(); }} /> : null}
+          {book ? <BookSheet e={e} toast={toast} onClose={() => setBook(false)} onBooked={() => { setBook(false); refresh(); }} /> : null}
+        </>
+      ) : null}
+
+      {/* External reservations tab */}
+      {tab === 'external' ? (
+        <>
+          <ABtn title={t('evr.add')} onPress={() => setSourcingOpen(true)} />
+          {!list.data ? <Loading /> : !externalReservations.length ? (
+            <AEmpty emoji="🌐" title={t('evr.empty_title')} sub={t('evr.empty_sub')} />
+          ) : (
+            <ScrollView contentContainerStyle={{ gap: 10, paddingVertical: 8 }}>
+              {externalReservations.map((evr) => (
+                <ExternalReservationCard key={evr.id} evr={evr} onCancel={cancelEvr} onRefresh={refreshEvr} />
+              ))}
+            </ScrollView>
+          )}
+          {sourcingOpen ? (
+            <VenueSourcingWizard
+              eventId={id}
+              orgId={e.organisation_id}
+              eventName={e.name}
+              visible={sourcingOpen}
+              onClose={() => setSourcingOpen(false)}
+              onDone={() => { setSourcingOpen(false); refresh(); toast(t('evr.saved')); }}
+            />
+          ) : null}
+        </>
+      ) : null}
     </>
   );
 }

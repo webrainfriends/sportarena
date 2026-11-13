@@ -12,7 +12,7 @@ import { createHmac, timingSafeEqual } from 'node:crypto';
 import { fetchIcs, parseBusy } from '../ics.js';
 import { send } from './http.js';
 
-export const CATEGORIES = ['payments', 'sso', 'calendar', 'email_sms', 'wearables', 'video', 'federation_feed', 'accounting', 'ticket_scanner', 'sports_data', 'travel'];
+export const CATEGORIES = ['payments', 'sso', 'calendar', 'email_sms', 'wearables', 'video', 'federation_feed', 'accounting', 'ticket_scanner', 'sports_data', 'travel', 'venue_booking'];
 
 const hmacOk = (secret, raw, sig) => {
   const want = Buffer.from(createHmac('sha256', secret).update(raw).digest('hex'));
@@ -101,6 +101,46 @@ Object.assign(PROVIDERS, {
   catapult_opf: wearable('Catapult OpenField (GPS)', { scopes: GPS_SCOPES, capabilities: ['athlete_consent', 'daily_metrics', 'unit_normalisation', 'gps_tracking', 'sprint_data'] }),
 });
 
+// ---- Venue Booking Connectors (#1134): approved external venue booking partners.
+// Each adapter is redirect/link-out only until a formal partner API agreement is in place.
+import { buildLinkoutUrl as activeSgLinkout } from './providers/activesg.js';
+import * as activeSgProvider from './providers/activesg.js';
+import * as bmsProvider from './providers/bookmyshow.js';
+import { inbound as sandboxInbound, test as sandboxTest, searchVenues, mockQuote } from './providers/venue-booking-sandbox.js';
+Object.assign(PROVIDERS, {
+  activesg_sg: {
+    category: 'venue_booking', name: 'ActiveSG (Sport Singapore)', version: '1.0',
+    auth: 'none', sandbox: false, country: 'SG',
+    capabilities: ['redirect.out'],
+    scopes: [{ key: 'venue.linkout', label: 'Open ActiveSG venue search', description: 'Provides a convenience link to ActiveSG for venue search and booking. No data is shared with ActiveSG automatically.' }],
+    fields: z.object({}).strict(), secrets: [],
+    linkout: activeSgLinkout,
+    disclaimer: activeSgProvider.DISCLAIMER,
+    async test() { return activeSgProvider.test(); },
+  },
+  bookmyshow_in: {
+    category: 'venue_booking', name: 'BookMyShow (India sports events)', version: '1.0',
+    auth: 'none', sandbox: false, country: 'IN',
+    capabilities: ['redirect.out'],
+    scopes: [{ key: 'venue.linkout', label: 'Open BookMyShow sports events', description: 'Provides a convenience link to BookMyShow sport event listings. No venue rental support.' }],
+    fields: z.object({}).strict(), secrets: [],
+    linkout: bmsProvider.buildLinkoutUrl,
+    disclaimer: bmsProvider.DISCLAIMER,
+    capability_note: bmsProvider.CAPABILITY_NOTE,
+    async test() { return bmsProvider.test(); },
+  },
+  venue_booking_sandbox: {
+    category: 'venue_booking', name: 'Venue Booking Sandbox (no real bookings)', version: '1.0',
+    auth: 'api_key', sandbox: true, country: '',
+    capabilities: ['redirect.out', 'venue.search', 'venue.availability.read', 'venue.price.quote', 'venue.hold', 'venue.book', 'venue.cancel', 'booking.status.read', 'booking.webhook'],
+    scopes: [{ key: 'venue.book', label: 'Search, hold and book venues (sandbox)', description: 'Sandbox mock — searches synthetic venues, generates mock quotes and simulates webhooks. Nothing real is booked.' }],
+    fields: z.object({}).strict(), secrets: [], generatesWebhookSecret: true,
+    searchVenues, mockQuote,
+    async test() { return sandboxTest(); },
+    inbound: sandboxInbound,
+  },
+});
+
 // Integrations that already have their own console. Listed so one catalogue shows everything; install is refused with a pointer, not duplicated.
 export const MANAGED = [
   { key: 'payments_stripe_paypal', category: 'payments', name: 'Payments (Stripe, PayPal)', managed_in: 'PaymentsSetup' },
@@ -109,4 +149,4 @@ export const MANAGED = [
 ];
 
 export const providerOf = (key) => PROVIDERS[key] ?? null;
-export const describe = (key, p) => ({ key, category: p.category, name: p.name, version: p.version, auth: p.auth, sandbox: p.sandbox, capabilities: p.capabilities, scopes: p.scopes, credential_fields: p.secrets, fields: Object.keys(p.fields.shape), sync: typeof p.pull === 'function', inbound_webhook: !!p.inbound, managed_in: null });
+export const describe = (key, p) => ({ key, category: p.category, name: p.name, version: p.version, auth: p.auth, sandbox: p.sandbox, country: p.country ?? null, capabilities: p.capabilities, scopes: p.scopes, credential_fields: p.secrets, fields: Object.keys(p.fields.shape), sync: typeof p.pull === 'function', inbound_webhook: !!p.inbound, managed_in: null, disclaimer: p.disclaimer ?? null, capability_note: p.capability_note ?? null });

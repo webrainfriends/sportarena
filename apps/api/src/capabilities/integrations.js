@@ -49,7 +49,7 @@ async function openCredential(c, installId, kind, secretObj, userId, hintText) {
 cap({
   name: 'list_integration_catalogue', method: 'GET', path: '/integrations/catalogue', tag: TAG,
   summary: 'Every integration a tenant can connect, by category: its version, capabilities, authentication, the data scopes it asks for, whether it supports a sandbox, and the settings it needs. Integrations that already have their own console (payments, single sign-on, WhatsApp/SMS) are listed with where to manage them.',
-  input: z.object({ category: z.enum(CATEGORIES).optional(), organisation_id: id.optional().describe('Add this organisation\'s access state to every provider') }),
+  input: z.object({ category: z.enum(CATEGORIES).optional(), country: z.string().length(2).optional().describe('ISO-3166-1 alpha-2 country code — filters providers scoped to a country (providers with no country are always included)'), organisation_id: id.optional().describe('Add this organisation\'s access state to every provider') }),
   async handler({ user }, i) {
     let access = {};
     if (i.organisation_id) {
@@ -58,7 +58,9 @@ cap({
       access = Object.fromEntries(rows.map((r) => [r.provider_key, r.status]));
     }
     const platform = await isPlatformAdminNow(user);
-    const live = Object.entries(PROVIDERS).map(([k, p]) => ({ ...describe(k, p), gated: true, access: platform ? 'enabled' : (access[k] ?? 'none') })).filter((p) => !PROVIDERS[p.key].private || p.access === 'enabled');
+    const live = Object.entries(PROVIDERS).map(([k, p]) => ({ ...describe(k, p), gated: true, access: platform ? 'enabled' : (access[k] ?? 'none') }))
+      .filter((p) => !PROVIDERS[p.key].private || p.access === 'enabled')
+      .filter((p) => !i.country || !PROVIDERS[p.key].country || PROVIDERS[p.key].country === '' || PROVIDERS[p.key].country === i.country);
     const managed = MANAGED.map((m) => ({ key: m.key, category: m.category, name: m.name, version: null, auth: null, sandbox: false, capabilities: [], scopes: [], credential_fields: [], fields: [], sync: false, inbound_webhook: false, managed_in: m.managed_in }));
     return { categories: CATEGORIES, providers: [...live, ...managed].filter((p) => !i.category || p.category === i.category), event_types: EVENT_TYPES };
   },

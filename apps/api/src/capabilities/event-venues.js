@@ -102,7 +102,7 @@ cap({
 
 cap({
   name: 'get_event_venues', method: 'GET', path: '/events/:id/venues', tag: TAG,
-  summary: 'Every venue the event uses (chosen venue, finalized venue requests, court bookings — including those made by the tournament scheduler) with its bookings, cost so far and the request status.',
+  summary: 'Every venue the event uses (chosen venue, finalized venue requests, court bookings — including those made by the tournament scheduler) with its bookings, cost so far and the request status. Also returns external venue reservations (booking references masked).',
   input: z.object({ id }),
   async handler({ user }, i) {
     const ev = await eventForOrganizer(user, i.id);
@@ -114,7 +114,9 @@ cap({
       `SELECT b.id, b.resource_id, r.name AS resource_name, r.venue_id, b.starts_at, b.ends_at, b.price_cents, b.status, b.payment_status, b.source, b.note
          FROM bookings b JOIN resources r ON r.id=b.resource_id WHERE b.event_id=$1 AND b.status IN ('confirmed','cancelled') ORDER BY b.starts_at`, [ev.id]);
     const requests = await many("SELECT id, venue_id, status, quote_cents, offer_cents, title FROM event_requests WHERE event_id=$1 AND kind='venue' AND status <> 'cancelled' ORDER BY created_at", [ev.id]);
-    return venues.map((v) => {
+    const externalRows = await many(
+      "SELECT * FROM event_venue_reservation_links WHERE event_id=$1 AND revoked_at IS NULL AND status NOT IN ('cancelled','expired','refunded') ORDER BY created_at DESC", [ev.id]);
+    const nativeVenues = venues.map((v) => {
       const mine = bookings.filter((b) => b.venue_id === v.id), live = mine.filter((b) => b.status === 'confirmed');
       return {
         ...v, chosen: v.id === ev.venue_id, requests: requests.filter((r) => r.venue_id === v.id),
@@ -122,6 +124,19 @@ cap({
         summary: { courts: new Set(live.map((b) => b.resource_id)).size, slots: live.length, from: live[0]?.starts_at ?? null, to: live.length ? live[live.length - 1].ends_at : null, total_cents: live.reduce((s, b) => s + Number(b.price_cents), 0) },
       };
     });
+    const external = externalRows.map((r) => ({
+      id: r.id, provider_key: r.provider_key, external_venue_name: r.external_venue_name,
+      external_venue_city: r.external_venue_city, external_venue_country: r.external_venue_country,
+      status: r.status, source_status: r.source_status, venue_source: r.venue_source,
+      starts_at: r.starts_at, ends_at: r.ends_at, timezone: r.timezone,
+      sport_keys: r.sport_keys, courts_requested: r.courts_requested,
+      price_minor: r.price_minor ? Number(r.price_minor) : null, currency: r.currency,
+      tax_minor: r.tax_minor ? Number(r.tax_minor) : null,
+      external_booking_reference: r.external_booking_reference_enc ? '••••••' : null,
+      created_at: r.created_at, updated_at: r.updated_at,
+    }));
+    // Return both shapes; frontend uses data.venues ?? data for backward compat
+    return { venues: nativeVenues, external_reservations: external };
   },
 });
 
