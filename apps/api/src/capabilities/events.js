@@ -186,7 +186,10 @@ cap({
       `SELECT cm.id AS competition_id, cm.name AS competition, cm.is_public, cm.status AS competition_status, cm.owner_id, cm.organisation_id, s.id AS season_id, s.label AS season, s.status AS season_status
          FROM comp_seasons s JOIN comp_competitions cm ON cm.id=s.competition_id WHERE s.event_id=$1`, [ev.id]);
     const competition = cs && ((cs.is_public && cs.competition_status !== 'draft' && cs.season_status !== 'draft') || (user && (isAdmin(user) || cs.owner_id === user.id || (await hasOrgGrant(user, cs.organisation_id, ['owner', 'admin']))))) ? { id: cs.competition_id, name: cs.competition, season_id: cs.season_id, season: cs.season, season_status: cs.season_status } : null;
-    return { ...ev, verified: (await badgesFor('event', [ev.id])).get(ev.id) ?? [], venue, entrants, standings: table, sponsors, rating, competition };
+    const externalSource = ev.origin_type && ev.origin_type !== 'native' && ev.external_link_id
+      ? await one('SELECT id, provider_key, link_mode, trust_level, status, last_sync_at, last_sync_status, source_title, source_starts_on, source_ends_on, source_venue_name, source_organiser_name, origin_label, sync_policy FROM event_external_links WHERE id=$1', [ev.external_link_id])
+      : null;
+    return { ...ev, verified: (await badgesFor('event', [ev.id])).get(ev.id) ?? [], venue, entrants, standings: table, sponsors, rating, competition, external_source: externalSource };
   },
 });
 

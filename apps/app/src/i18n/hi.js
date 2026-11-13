@@ -20180,6 +20180,8 @@ export default {
   'guide.physio_practice.s10': 'Send encrypted clinical messages to patients.',
   'guide.physio_practice.s11': 'Generate and issue GST-compliant invoices.',
   'guide.physio_practice.s12': 'Monitor the Practice Dashboard for today appointments, revenue and compliance.',
+  'guide.external_events.title': 'Manage externally created events',
+  'guide.external_events.why': 'Elite academies regularly participate in federation tournaments and external competitions. Link any such event into GotMyGame to run the full professional operations suite — staff, officials, suppliers, budget, scoring, venue, compliance — without claiming ownership of tickets, registration or official results.',
 
   // Connector Cards (cc.*) — reviewed: false
   'cc.title': 'Venue connectors',

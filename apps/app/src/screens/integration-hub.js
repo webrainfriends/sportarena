@@ -13,6 +13,8 @@ import { MenuField } from '../menu-field';
 import { t } from '../i18n';
 import { TravelPartnersAdmin } from './travel-partners';
 import { c } from '../theme';
+import { ExternalSourceCard } from '../components/ExternalSourceCard';
+import { EventExternalLink } from './event-external-link';
 
 const nice = (s) => String(s).replace(/[._]/g, ' ').replace(/^./, (x) => x.toUpperCase());
 const TONE = { connected: c.mint, paused: c.sun, error: c.red, disconnected: c.violetSoft };
@@ -268,6 +270,53 @@ function Webhooks({ orgId, installs }) {
   );
 }
 
+function EventSourcesSection({ orgId }) {
+  const { toast } = useSession();
+  const nav = useNav();
+  const [addingExternal, setAddingExternal] = useState(false);
+  // List org events that have external links by fetching org events with origin_type != native
+  const links = useLoad(() => api.get(`/organisations/${orgId}/events`, { origin_type: 'external_reference,external_integrated', limit: 50 }).catch(() => null), [orgId]);
+  const items = (links.data?.items ?? links.data ?? []).filter((e) => e.external_source);
+  const [busy, setBusy] = useState({});
+  const run = async (evId, fn, msg) => {
+    setBusy((p) => ({ ...p, [evId]: true }));
+    try { await fn(); toast(msg); if (links.reload) links.reload(); } catch (e) { toast('' + e.message); }
+    finally { setBusy((p) => ({ ...p, [evId]: false })); }
+  };
+  return (
+    <View style={{ marginTop: 20, gap: 10 }}>
+      <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+        <View style={{ flex: 1 }}>
+          <H2>{t('event.ext.hub_section_title')}</H2>
+          <T size={12} color={c.mute}>{t('event.ext.hub_section_hint')}</T>
+        </View>
+        <Btn small title={`+ ${t('event.ext.add_source')}`} onPress={() => setAddingExternal(true)} accessibilityLabel={t('event.ext.add_source')} />
+      </View>
+      {links.loading && !links.data ? <Loading /> : !items.length ? (
+        <Empty emoji="🔗" title={t('event.ext.hub_empty')} sub={t('event.ext.hub_empty_sub')} />
+      ) : items.map((ev) => (
+        <View key={ev.id}>
+          <T size={13} weight="700" color={c.ink} style={{ marginBottom: 4 }}>{ev.name}</T>
+          <ExternalSourceCard
+            link={ev.external_source}
+            isOrganiser
+            onSync={() => run(ev.id, () => api.post(`/events/${ev.id}/external-source/sync`, {}), t('event.ext.sync_started'))}
+            onUnlink={() => run(ev.id, () => api.post(`/events/${ev.id}/external-source/unlink`, { reason: 'organiser_requested' }), t('event.ext.unlinked_ok'))}
+            onViewSource={() => nav.push('EventCommand', { id: ev.id })}
+          />
+        </View>
+      ))}
+      {addingExternal && (
+        <EventExternalLink
+          visible
+          onClose={() => setAddingExternal(false)}
+          onCreated={() => { setAddingExternal(false); if (links.reload) links.reload(); }}
+        />
+      )}
+    </View>
+  );
+}
+
 export function IntegrationHub({ organisation_id }) {
   const orgs = useLoad(() => api.get('/organisations', { limit: 100 }), []);
   const mine = useMemo(() => (orgs.data ?? []).filter((o) => o.my_status === 'active' && ['owner', 'admin'].includes(o.my_role) && o.status === 'active'), [orgs.data]);
@@ -315,6 +364,7 @@ export function IntegrationHub({ organisation_id }) {
               {r.status === 'quoted' ? <T size={12} color={c.sun} weight="700">{t('ih.access.quoted')}</T> : null}
             </Card>))}
         </View>) : null}
+      <EventSourcesSection orgId={org.id} />
       <View style={{ marginTop: 20 }}><Webhooks orgId={org.id} installs={items} /></View>
       {adding && cat.data ? <Connect orgId={org.id} catalogue={cat.data} onClose={() => setAdding(false)} onDone={async () => { setAdding(false); await list.reload(); }} onSecret={(r) => setSecret(r.webhook_secret)} onRequest={setRequesting} /> : null}
       {requesting ? <RequestForm orgId={org.id} provider={requesting.custom ? null : requesting} onClose={() => setRequesting(null)} onDone={async () => { setRequesting(null); await cat.reload(); await reqs.reload(); }} /> : null}

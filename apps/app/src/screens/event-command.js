@@ -3,7 +3,7 @@
 // (open, start, pause, resume, end) and the media side: broadcast rights, production, streams, media and data feeds. It replaces the separate Tournament console and Plan & budget screens: one feature, one place.
 import { locale } from '../locale';
 import React, { useState } from 'react';
-import { View } from 'react-native';
+import { Linking, View } from 'react-native';
 import { api } from '../api';
 import { useLoad } from '../hooks';
 import { useSession } from '../session';
@@ -37,6 +37,7 @@ import { PublicPageTab } from './event-public';
 import { EventOfficialsSettings } from './officials-home';
 import { OperationsTab } from './event-ops';
 import { EventTower } from './event-tower';
+import { ExternalSourceCard } from '../components/ExternalSourceCard';
 
 const STEPS = [['draft', 'Setup'], ['open', 'Open'], ['ongoing', 'Running'], ['completed', 'Ended']];
 const rank = { draft: 0, open: 1, ongoing: 2, paused: 2, completed: 3, cancelled: 3 };
@@ -131,6 +132,15 @@ export function EventCommand({ id, tab: first = 'overview', sub: firstSub, plan:
         {st === 'paused' && e.pause_reason ? <AT size={13} weight="700" color="#fff" style={{ marginTop: 10 }}>⏸ {e.pause_reason}</AT> : null}
       </AHero>
       <StageRail steps={steps} />
+      {e.origin_type !== 'native' && e.external_source ? (
+        <ExternalSourceCard
+          link={e.external_source}
+          isOrganiser={isOrg}
+          onSync={() => run(() => api.post(`/events/${id}/external-source/sync`, {}), t('event.ext.sync_started'))}
+          onUnlink={() => run(() => api.post(`/events/${id}/external-source/unlink`, { reason: 'organiser_requested' }), t('event.ext.unlinked_ok'))}
+          onViewSource={() => { if (e.external_source?.canonical_url) Linking.openURL(e.external_source.canonical_url); }}
+        />
+      ) : null}
       <ABtn small tone="ghost" title="🧮 Scoring & tracking" onPress={() => nav.push('ScoringTool', { eventId: id, tab: isOrg ? 'rules' : 'home' })} style={{ alignSelf: 'flex-start' }} />
 
       {isOrg && !['completed', 'cancelled'].includes(st) ? (
