@@ -198,7 +198,7 @@ cap({
   tag: TAG,
   summary: 'Full assessment detail including all measurements and provenance.',
   method: 'GET', path: '/me/assessments/:id',
-  input: z.object({ id: id() }),
+  input: z.object({ id: id }),
   output: z.object({ assessment: z.any(), measurements: z.array(z.any()) }),
   async handler({ user, params }) {
     const assessment = await one(
@@ -231,7 +231,7 @@ cap({
   tag: TAG,
   summary: 'Soft-void a measurement (original row kept for audit).',
   method: 'PATCH', path: '/me/assessments/:id/measurements/:mid/void',
-  input: z.object({ id: id(), mid: id(), void_reason: z.string().min(1).max(500) }),
+  input: z.object({ id: id, mid: id, void_reason: z.string().min(1).max(500) }),
   output: z.object({ voided: z.boolean() }),
   async handler({ user, params, body }) {
     const meas = await one(
@@ -335,7 +335,7 @@ cap({
   tag: TAG,
   summary: 'Squad overview: avg readiness, ACWR alert count, missing data, session response summary.',
   method: 'GET', path: '/orgs/:org_id/data-hub',
-  input: z.object({ org_id: id() }),
+  input: z.object({ org_id: id }),
   output: z.object({ squad_size: z.number(), avg_readiness: z.any(), acwr_alert_count: z.number(), missing_data_count: z.number(), athletes: z.array(z.any()) }),
   async handler({ user, params }) {
     await shareBlock(user.id, params.org_id, 'wearables');
@@ -393,7 +393,7 @@ cap({
   tag: TAG,
   summary: 'Per-athlete latest value and 7-day trend for a chosen metric.',
   method: 'GET', path: '/orgs/:org_id/data-hub/squad',
-  input: z.object({ org_id: id(), metric_key: metricKey }),
+  input: z.object({ org_id: id, metric_key: metricKey }),
   output: z.object({ metric_key: z.string(), rows: z.array(z.any()) }),
   async handler({ user, params, query: q }) {
     await shareBlock(user.id, params.org_id, 'wearables');
@@ -425,7 +425,7 @@ cap({
   tag: TAG,
   summary: 'Which athletes are missing which data today, this week and this month.',
   method: 'GET', path: '/orgs/:org_id/data-hub/missing',
-  input: z.object({ org_id: id() }),
+  input: z.object({ org_id: id }),
   output: z.object({ today: z.array(z.any()), this_week: z.array(z.any()), this_month: z.array(z.any()) }),
   async handler({ user, params }) {
     await shareBlock(user.id, params.org_id, 'wearables');
@@ -464,7 +464,7 @@ cap({
   tag: TAG,
   summary: 'Squad HRV, resting HR, sleep and wellness 48 h before vs after a training session.',
   method: 'GET', path: '/orgs/:org_id/data-hub/session-response/:session_id',
-  input: z.object({ org_id: id(), session_id: id() }),
+  input: z.object({ org_id: id, session_id: id }),
   output: z.object({ session: z.any(), metrics: z.array(z.any()) }),
   async handler({ user, params }) {
     await shareBlock(user.id, params.org_id, 'wearables');
