@@ -448,3 +448,7 @@ import './data-residency.js';
 import './officials-para.js';
 import './officials-para-training.js';
 import './official-career-portfolio.js';
+
+import './coach-profile.js';
+import './physio-profile.js';
+import './onboarding.js';
