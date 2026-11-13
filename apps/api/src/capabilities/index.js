@@ -472,3 +472,4 @@ import './physio-invoices.js';
 import './physio-dashboard.js';
 import './physio-analytics.js';
 import './athlete-data-hub.js';
+import './talent-crm.js';
