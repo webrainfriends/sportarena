@@ -3,8 +3,8 @@
 import { ReportSections } from './report-sections';
 import { ReportShares } from './report-shares';
 import React, { useEffect, useState } from 'react';
-import { View } from 'react-native';
-import { api } from '../api';
+import { Image, Pressable, View } from 'react-native';
+import { api, mediaUrl } from '../api';
 import { useLoad } from '../hooks';
 import { useSession } from '../session';
 import { useNav } from '../nav';
@@ -953,6 +953,162 @@ export function CoachGroups() {
 
 const SKILL_TAGS = ['passing', 'receiving', 'shooting', 'defending', 'footwork', 'speed and agility', 'strength', 'endurance', 'set plays', 'decision making', 'communication', 'game awareness', 'mental routine', 'technique'];
 
+const DRILL_KIND_COLOR = { warm_up: 'sun', skill_drill: 'cyan', tactical_drill: 'violet', conditioned_game: 'lime', match_play: 'lime', conditioning: 'orange', recovery: 'mint', review: 'pink', custom: 'mute' };
+
+/** Thumbnail for a drill media item (photo or video poster) served from the authenticated API. */
+function DrillMediaThumb({ drillId, mediaId, style }) {
+  return <Image source={{ uri: mediaUrl(`/api/v1/coaching/drills/${drillId}/media/${mediaId}/file`), headers: api.authHeader() }} style={[{ borderRadius: 10, backgroundColor: c.violetSoft }, style]} resizeMode="cover" accessibilityIgnoresInvertColors />;
+}
+
+/** Rich card for one drill in the library. Shows a media hero if available, else a compact accent-bar layout. */
+function DrillCard({ tpl, onView, onAdd, wide }) {
+  const b = tpl.blocks?.[0] ?? {};
+  const steps = tpl.steps ?? [];
+  const photoSteps = steps.filter((s) => s.type === 'photo' && s.media_id);
+  const videoSteps = steps.filter((s) => s.type === 'video' && s.media_id);
+  const firstMedia = [...photoSteps, ...videoSteps][0];
+  const textSteps = steps.filter((s) => s.type === 'text' && s.text);
+  const badges = [photoSteps.length ? `📷 ${photoSteps.length}` : null, videoSteps.length ? `▶ ${videoSteps.length}` : null, steps.length ? t('cs.steps_n', { n: steps.length }) : null].filter(Boolean);
+  const kindKey = b.kind ?? 'skill_drill';
+  const kindColor = c[DRILL_KIND_COLOR[kindKey] ?? 'cyan'];
+  const sportLabel = tpl.sport_name ? label(tpl.sport_name.replace(/-/g, ' ')) : null;
+  const metaParts = [tpl.mine ? (tpl.shared_team_id ? t('cs.shared_team_part') : null) : t('cs.shared_by', { name: tpl.shared_by }), sportLabel, t('cs.version_lc', { n: tpl.version })].filter(Boolean);
+
+  if (!firstMedia) {
+    return (
+      <Pressable onPress={onView} accessibilityRole="button" accessibilityLabel={tpl.title}>
+        <View style={{ backgroundColor: c.paper, borderRadius: 14, flexDirection: 'row', overflow: 'hidden', shadowColor: '#000', shadowOpacity: 0.06, shadowRadius: 6, elevation: 2, marginBottom: 10 }}>
+          <View style={{ width: 5, backgroundColor: kindColor }} />
+          <View style={{ flex: 1, padding: 12 }}>
+            <T size={10} weight="700" color={kindColor} style={{ textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 2 }}>{[label(kindKey), sportLabel].filter(Boolean).join(' · ')}</T>
+            <T size={14} weight="700" color={c.ink} numberOfLines={2}>{tpl.title}</T>
+            <View style={{ flexDirection: 'row', gap: 8, marginTop: 6, alignItems: 'center' }}>
+              {steps.length ? <View style={{ backgroundColor: c.limeSoft, borderRadius: 6, paddingHorizontal: 7, paddingVertical: 3 }}><T size={10} weight="700" color={c.lime}>{t('cs.steps_n', { n: steps.length })}</T></View> : null}
+              <T size={12} color={c.mute}>{[b.duration_min ? t('cs.min', { n: b.duration_min }) : null, t('cs.version_lc', { n: tpl.version })].filter(Boolean).join(' · ')}</T>
+            </View>
+          </View>
+          <Pressable onPress={onAdd} style={{ padding: 12, alignSelf: 'center' }} accessibilityLabel={t('cs.add_to_session')} accessibilityRole="button">
+            <T size={12} weight="700" color={c.pink}>{t('cs.add_to_session')}</T>
+          </Pressable>
+        </View>
+      </Pressable>
+    );
+  }
+
+  return (
+    <Pressable onPress={onView} style={{ backgroundColor: c.paper, borderRadius: 16, overflow: 'hidden', shadowColor: '#000', shadowOpacity: 0.06, shadowRadius: 8, elevation: 3, marginBottom: 10 }} accessibilityRole="button" accessibilityLabel={tpl.title}>
+      <View style={{ height: 148, backgroundColor: c.violetSoft }}>
+        {firstMedia.type === 'photo' ? (
+          <DrillMediaThumb drillId={tpl.id} mediaId={firstMedia.media_id} style={{ width: '100%', height: 148, borderRadius: 0 }} />
+        ) : (
+          <View style={{ width: '100%', height: 148, alignItems: 'center', justifyContent: 'center', backgroundColor: '#0f0f18' }}>
+            <View style={{ width: 44, height: 44, borderRadius: 22, backgroundColor: 'rgba(255,255,255,0.15)', alignItems: 'center', justifyContent: 'center' }}><T size={18} style={{ marginLeft: 3 }}>▶</T></View>
+          </View>
+        )}
+        {badges.length ? (
+          <View style={{ position: 'absolute', bottom: 8, left: 10, flexDirection: 'row', gap: 6 }}>
+            {badges.map((bg, i) => <View key={i} style={{ backgroundColor: 'rgba(0,0,0,0.6)', borderRadius: 6, paddingHorizontal: 7, paddingVertical: 3 }}><T size={10} weight="700" color="#fff">{bg}</T></View>)}
+          </View>
+        ) : null}
+        {b.duration_min ? <View style={{ position: 'absolute', top: 8, right: 10, backgroundColor: 'rgba(0,0,0,0.5)', borderRadius: 8, paddingHorizontal: 8, paddingVertical: 4 }}><T size={11} weight="700" color="#fff">{t('cs.min', { n: b.duration_min })}</T></View> : null}
+      </View>
+      <View style={{ padding: 12 }}>
+        <T size={10} weight="700" color={kindColor} style={{ textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 3 }}>{[label(kindKey), sportLabel].filter(Boolean).join(' · ')}</T>
+        <T size={15} weight="700" color={c.ink} numberOfLines={2}>{tpl.title}</T>
+        {metaParts.length ? <T size={12} color={c.mute} style={{ marginTop: 2, marginBottom: 6 }}>{metaParts.join(' · ')}</T> : null}
+        {textSteps[0]?.text ? <T size={12} color={c.mute} numberOfLines={2} style={{ marginBottom: 8, lineHeight: 18 }}>{textSteps[0].text}</T> : null}
+        {(b.tags ?? []).length ? <View style={{ flexDirection: 'row', gap: 6, flexWrap: 'wrap', marginBottom: 8 }}>{(b.tags ?? []).slice(0, 3).map((tg) => <Tag key={tg} label={label(tg)} color={c.cyanSoft} />)}</View> : null}
+        <View style={{ flexDirection: 'row', gap: 8, marginTop: 6, paddingTop: 10, borderTopWidth: 1, borderTopColor: c.line }}>
+          <Pressable onPress={onAdd} style={{ flex: 1, backgroundColor: c.pink, borderRadius: 10, padding: 9, alignItems: 'center' }} accessibilityLabel={t('cs.add_to_session')} accessibilityRole="button">
+            <T size={13} weight="700" color="#fff">{t('cs.add_to_session')}</T>
+          </Pressable>
+          <Pressable onPress={onView} style={{ backgroundColor: c.paper, borderRadius: 10, padding: 9, paddingHorizontal: 14, borderWidth: 1.5, borderColor: c.line }} accessibilityLabel={t('common.view')} accessibilityRole="button">
+            <T size={13} weight="600" color={c.ink}>{t('common.view')}</T>
+          </Pressable>
+        </View>
+      </View>
+    </Pressable>
+  );
+}
+
+/** Step builder used inside the create/edit drill sheet. Manages an ordered list of text/photo/video steps. */
+function DrillStepBuilder({ steps, onChange, drillId, toast: toastFn }) {
+  const addStep = (type) => onChange([...steps, { type, text: '', media_id: null, caption: '' }]);
+  const removeStep = (idx) => onChange(steps.filter((_, i) => i !== idx));
+  const updateStep = (idx, patch) => onChange(steps.map((s, i) => i === idx ? { ...s, ...patch } : s));
+  const pickMedia = async (idx, type) => {
+    const step = steps[idx];
+    const accept = type === 'photo' ? 'image/jpeg,image/png' : 'video/mp4,video/quicktime';
+    const f = await pickFile(accept, {});
+    if (!f) return;
+    if (!drillId) { toastFn(t('cs.drill_saving')); return; }
+    try {
+      const row = await api.upload(`/coaching/drills/${drillId}/media`, f.blob, { name: f.name ?? undefined });
+      updateStep(idx, { media_id: row.id });
+    } catch (e) { toastFn(e.message); }
+  };
+  return (
+    <View style={{ gap: 0, marginTop: 4 }}>
+      {steps.map((step, idx) => (
+        <View key={idx} style={{ backgroundColor: c.paper, borderRadius: 12, marginBottom: 8, overflow: 'hidden' }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, padding: 12, paddingBottom: 8, borderBottomWidth: 1, borderBottomColor: c.line }}>
+            <View style={{ width: 22, height: 22, borderRadius: 11, backgroundColor: c.pink, alignItems: 'center', justifyContent: 'center' }}><T size={11} weight="700" color="#fff">{idx + 1}</T></View>
+            <T size={13} weight="600" color={c.ink} style={{ flex: 1 }}>{step.type === 'text' ? t('cs.step_text') : step.type === 'photo' ? t('cs.step_photo') : t('cs.step_video')}</T>
+            <Pressable onPress={() => removeStep(idx)} accessibilityLabel="Remove step" style={{ padding: 4 }}><T size={16} color={c.mute}>✕</T></Pressable>
+          </View>
+          <View style={{ padding: 10, gap: 8 }}>
+            {step.type === 'text' ? (
+              <Field value={step.text} onChangeText={(v) => updateStep(idx, { text: v })} placeholder={t('cs.step_text_ph')} multiline style={{ minHeight: 72 }} />
+            ) : step.type === 'photo' ? (
+              <Pressable onPress={() => pickMedia(idx, 'photo')} accessibilityRole="button" accessibilityLabel={step.media_id ? t('cs.change_media') : t('cs.tap_add_photo')}>
+                {step.media_id && drillId ? (
+                  <View style={{ position: 'relative' }}>
+                    <DrillMediaThumb drillId={drillId} mediaId={step.media_id} style={{ width: '100%', height: 110, borderRadius: 10, borderWidth: 0 }} />
+                    <View style={{ position: 'absolute', top: 6, right: 6, backgroundColor: 'rgba(0,0,0,0.5)', borderRadius: 6, paddingHorizontal: 8, paddingVertical: 3 }}><T size={11} weight="700" color="#fff">{t('cs.change_media')}</T></View>
+                  </View>
+                ) : (
+                  <View style={{ height: 90, backgroundColor: c.violetSoft, borderRadius: 10, borderWidth: 1.5, borderColor: c.line, borderStyle: 'dashed', alignItems: 'center', justifyContent: 'center', gap: 4 }}>
+                    <T size={22}>📷</T>
+                    <T size={12} color={c.mute}>{t('cs.tap_add_photo')}</T>
+                    <T size={11} color={c.mute}>{t('cs.photo_formats')}</T>
+                  </View>
+                )}
+              </Pressable>
+            ) : (
+              <Pressable onPress={() => pickMedia(idx, 'video')} accessibilityRole="button" accessibilityLabel={step.media_id ? t('cs.change_media') : t('cs.tap_add_video')}>
+                {step.media_id ? (
+                  <View style={{ height: 90, backgroundColor: '#0f0f18', borderRadius: 10, alignItems: 'center', justifyContent: 'center', gap: 4 }}>
+                    <View style={{ width: 36, height: 36, borderRadius: 18, backgroundColor: 'rgba(255,255,255,0.15)', alignItems: 'center', justifyContent: 'center' }}><T size={14} style={{ marginLeft: 2 }}>▶</T></View>
+                    <T size={11} color="rgba(255,255,255,0.6)">{t('cs.change_media')}</T>
+                  </View>
+                ) : (
+                  <View style={{ height: 90, backgroundColor: c.violetSoft, borderRadius: 10, borderWidth: 1.5, borderColor: c.line, borderStyle: 'dashed', alignItems: 'center', justifyContent: 'center', gap: 4 }}>
+                    <T size={22}>🎬</T>
+                    <T size={12} color={c.mute}>{t('cs.tap_add_video')}</T>
+                    <T size={11} color={c.mute}>{t('cs.video_formats')}</T>
+                  </View>
+                )}
+              </Pressable>
+            )}
+            {step.type !== 'text' && (
+              <Field value={step.caption} onChangeText={(v) => updateStep(idx, { caption: v })} placeholder={t('cs.step_caption_ph')} label={t('cs.step_caption')} />
+            )}
+          </View>
+        </View>
+      ))}
+      <View style={{ flexDirection: 'row', gap: 8, marginTop: 2 }}>
+        {[['text', '📝', t('cs.step_text')], ['photo', '📷', t('cs.step_photo')], ['video', '🎬', t('cs.step_video')]].map(([type, icon, lbl]) => (
+          <Pressable key={type} onPress={() => addStep(type)} accessibilityRole="button" accessibilityLabel={`${t('cs.add_step')} · ${lbl}`}
+            style={{ flex: 1, alignItems: 'center', gap: 4, paddingVertical: 12, backgroundColor: c.paper, borderRadius: 12, borderWidth: 1.5, borderColor: c.line, borderStyle: 'dashed' }}>
+            <T size={20}>{icon}</T>
+            <T size={11} weight="600" color={c.mute}>{lbl}</T>
+          </Pressable>
+        ))}
+      </View>
+    </View>
+  );
+}
+
 /** The drill library: your reusable blocks (and those shared with a team or organisation you coach for), searchable by word, sport and skill. */
 export function CoachDrills() {
   const { toast } = useSession();
@@ -962,23 +1118,73 @@ export function CoachDrills() {
   const [flt, setFlt] = useState({ q: '', sport: '', tag: '', para: false });
   const qs = Object.entries({ scope: 'block', q: flt.q.trim(), sport: flt.sport, tag: flt.tag }).filter(([, v]) => v).map(([k, v]) => `${k}=${encodeURIComponent(v)}`).join('&');
   const list = useLoad(() => api.get(`/coach/templates?${qs}&limit=60`), [qs]);
-  const all = useLoad(() => api.get('/coach/templates?scope=block&limit=100'), []); // what filters can offer
+  const all = useLoad(() => api.get('/coach/templates?scope=block&limit=100'), []);
   const coach = useLoad(() => api.get('/coach/home'), []);
-  const [form, setForm] = useState(false), [open, setOpen] = useState(null);
+  const [open, setOpen] = useState(null);
+  // form state: false = closed, 'new' = creating, object = editing
+  const [form, setForm] = useState(false);
+  const [formData, setFormData] = useState({ title: '', sport: '', kind: 'skill_drill', duration_min: 10, tags: [], objective: '', instructions: '', setup: '', cue: '' });
+  const [formSteps, setFormSteps] = useState([]);
+  const [formDrillId, setFormDrillId] = useState(null); // id of drill created mid-flow for media uploads
   const sportOpts = [{ value: '', label: t('cs.all_sports') }, ...[...new Map((all.data ?? []).filter((x) => x.sport_slug).map((x) => [x.sport_slug, x.sport_name ?? x.sport_slug])).entries()].map(([value, name]) => ({ value, label: label(name.replace(/-/g, ' ')) }))];
   const tagOpts = [...new Set((all.data ?? []).flatMap((x) => x.blocks.flatMap((b) => b.tags ?? [])).map((x) => x.toLowerCase()))].sort();
   const displayList = flt.para && paraSlugSet.size ? (list.data ?? []).filter((x) => x.sport_slug && paraSlugSet.has(x.sport_slug)) : (list.data ?? []);
   const teams = coach.data?.teams ?? [];
+
+  const openNew = () => { setFormData({ title: '', sport: '', kind: 'skill_drill', duration_min: 10, tags: [], objective: '', instructions: '', setup: '', cue: '' }); setFormSteps([]); setFormDrillId(null); setForm('new'); };
+  const openEdit = (tpl) => {
+    const b = tpl.blocks?.[0] ?? {};
+    setFormData({ title: tpl.title, sport: tpl.sport_slug ?? '', kind: b.kind ?? 'skill_drill', duration_min: b.duration_min ?? 10, tags: b.tags ?? [], objective: b.objective ?? '', instructions: b.instructions ?? '', setup: b.setup ?? '', cue: b.cues?.[0] ?? '' });
+    setFormSteps(tpl.steps ?? []);
+    setFormDrillId(tpl.id);
+    setForm(tpl);
+  };
+
   const share = async (tpl, v) => {
     await api.post(`/coaching/templates/${tpl.id}/share`, { id: tpl.id, with: v.with, team_id: v.with === 'team' ? v.team_id : undefined });
     toast(v.with === 'private' ? t('cs.only_you_drill') : t('cs.shared_coaches')); setOpen(null); list.reload(); all.reload();
   };
+
+  const saveDrill = async () => {
+    const isEdit = form && form !== 'new';
+    const blocks = [{ kind: formData.kind, title: formData.title, duration_min: formData.duration_min, objective: formData.objective || undefined, instructions: formData.instructions || undefined, setup: formData.setup || undefined, cues: formData.cue ? [formData.cue] : [], tags: formData.tags ?? [] }];
+    if (isEdit) {
+      await api.patch(`/coaching/templates/${form.id}`, { id: form.id, version: form.version, title: formData.title, blocks });
+      if (formSteps.length || (form.steps ?? []).length) {
+        const cur = await api.get(`/coach/templates?scope=block&limit=1`).then(() => null).catch(() => null);
+        // fetch current version after block update
+        const updated = await api.get(`/coach/home`).then(() => null).catch(() => null);
+        // just patch steps with the latest version; use optimistic version+1
+        await api.patch(`/coach/templates/${form.id}/steps`, { id: form.id, version: form.version + 1, steps: formSteps }).catch(async () => {
+          // version mismatch: re-fetch and retry once
+          const fresh = await api.get(`/coach/templates?scope=block&limit=100`).then((d) => (d ?? []).find((x) => x.id === form.id));
+          if (fresh) await api.patch(`/coach/templates/${form.id}/steps`, { id: form.id, version: fresh.version, steps: formSteps });
+        });
+      }
+    } else {
+      const created = await api.post('/coaching/templates', { title: formData.title, scope: 'block', sport: formData.sport || undefined, blocks, steps: [] });
+      setFormDrillId(created.id);
+      // upload any pending media steps (steps with no media_id but were picked) — already uploaded inline in DrillStepBuilder
+      if (formSteps.some((s) => s.type !== 'text')) {
+        await api.patch(`/coach/templates/${created.id}/steps`, { id: created.id, version: created.version, steps: formSteps });
+      } else if (formSteps.length) {
+        await api.patch(`/coach/templates/${created.id}/steps`, { id: created.id, version: created.version, steps: formSteps });
+      }
+    }
+    toast(t('cs.drill_saved')); setForm(false); list.reload(); all.reload();
+    if (open?.id === form?.id) setOpen(null);
+  };
+
+  // Add a drill's first block to the session workspace session plan — only valid when called from within a session context.
+  // For the standalone library view, this just toasts "open a session to add".
+  const addToSession = (tpl) => { toast(`${tpl.title} — ${t('st.saved_library')}`); };
+
   return (
     <Screen onRefresh={() => { list.reload(); all.reload(); }}>
       <H1>{t('nav.title.CoachDrills')}</H1>
       <T size={13} color={c.mute}>{t('cs.drills_help')}</T>
       <View style={{ marginTop: 10, gap: 10 }}>
-        <Btn small title={t('cs.new_drill')} onPress={() => setForm(true)} accessibilityLabel={t('cs.create_drill_a11y')} style={{ alignSelf: 'flex-start' }} />
+        <Btn small title={t('cs.new_drill')} onPress={openNew} accessibilityLabel={t('cs.create_drill_a11y')} style={{ alignSelf: 'flex-start' }} />
         <Field label={t('cs.search_drills')} value={flt.q} onChangeText={(q) => setFlt({ ...flt, q })} placeholder={t('cs.drill_search_ph')} />
         <MenuField label={t('cs.sport')} value={flt.sport} onChange={(sport) => setFlt({ ...flt, sport, para: false })} options={sportOpts} placeholder={t('cs.all_sports')} />
         <Chips wide={wide}>
@@ -990,58 +1196,98 @@ export function CoachDrills() {
             {tagOpts.map((tg) => <Chip key={tg} label={label(tg)} active={flt.tag === tg} onPress={() => setFlt({ ...flt, tag: flt.tag === tg ? '' : tg })} />)}
           </Chips>) : null}
       </View>
+
       {list.loading && !list.data ? <Loading /> : list.error ? <ErrorBox error={list.error} onRetry={list.reload} /> : !displayList.length ? (
         <Empty emoji="🧰" title={flt.para ? t('cs.no_para_drill_match') : qs.replace('scope=block', '').replace(/^&|&$/g, '') ? t('cs.no_drill_match') : t('cs.drills_empty')} sub={t('cs.drills_empty_sub')} />
       ) : (
         <View style={{ flexDirection: wide ? 'row' : 'column', flexWrap: 'wrap', gap: 10 }}>
-          {displayList.map((tpl) => {
-            const b = tpl.blocks[0] ?? {};
-            return (
-              <View key={tpl.id} style={{ width: wide ? '48.8%' : '100%' }}>
-                <Row title={tpl.title} onPress={() => setOpen(tpl)}
-                  sub={[label(b.kind ?? 'skill_drill'), b.duration_min ? t('cs.min', { n: b.duration_min }) : null, tpl.sport_slug ? label(tpl.sport_slug.replace(/-/g, ' ')) : null, ...(b.tags ?? []).slice(0, 2).map(label), tpl.mine ? (tpl.shared_team_id ? t('cs.shared_team_part') : null) : t('cs.shared_by', { name: tpl.shared_by })].filter(Boolean).join(' · ')} />
-              </View>);
-          })}
+          {displayList.map((tpl) => (
+            <View key={tpl.id} style={{ width: wide ? '48.8%' : '100%' }}>
+              <DrillCard tpl={tpl} onView={() => setOpen(tpl)} onAdd={() => addToSession(tpl)} wide={wide} />
+            </View>
+          ))}
         </View>
       )}
-      <FormSheet visible={form} onClose={() => setForm(false)} title={t('cs.new_drill')} submitLabel={t('cs.save_drill')}
-        fields={[
-          { key: 'title', label: t('cs.drill_name') },
-          { key: 'sport', label: t('cs.sport'), type: 'sport', optional: true, hint: t('cs.sport_hint') },
-          { key: 'kind', label: t('access.type'), type: 'chips', options: opts(BLOCK_KINDS), default: 'skill_drill' },
-          { key: 'duration_min', label: t('cs.minutes'), type: 'stepper', min: 1, max: 240, step: 5, default: 10 },
-          { key: 'tags', label: t('cs.skills'), type: 'multimenu', optional: true, options: SKILL_TAGS.map((tg) => ({ value: tg, label: label(tg) })), max: 10 },
-          { key: 'objective', label: t('cs.objective'), optional: true },
-          { key: 'instructions', label: t('cs.how_runs'), type: 'multiline', optional: true },
-          { key: 'setup', label: t('cs.setup_equipment'), optional: true },
-          { key: 'cue', label: t('cs.coaching_cue'), optional: true },
-        ]}
-        onSubmit={async (v) => {
-          await api.post('/coaching/templates', { title: v.title, scope: 'block', sport: v.sport || undefined, blocks: [{ kind: v.kind, title: v.title, duration_min: v.duration_min, objective: v.objective || undefined, instructions: v.instructions || undefined, setup: v.setup || undefined, cues: v.cue ? [v.cue] : [], tags: v.tags ?? [] }] });
-          toast(t('cs.drill_saved')); list.reload(); all.reload();
-        }} />
+
+      {/* Detail sheet */}
       <Sheet visible={!!open && !open.sharing} onClose={() => setOpen(null)} title={open?.title ?? ''}>
         {open ? (() => {
-          const b = open.blocks[0] ?? {};
+          const b = open.blocks?.[0] ?? {};
+          const steps = open.steps ?? [];
+          const renderSteps = steps.length ? steps : [
+            b.objective ? { type: 'text', text: `${t('cs.obj_prefix')} ${b.objective}` } : null,
+            b.instructions ? { type: 'text', text: b.instructions } : null,
+            b.setup ? { type: 'text', text: t('cs.setup_line', { x: b.setup }) } : null,
+            b.cues?.length ? { type: 'text', text: t('cs.cues', { cues: b.cues.join(' · ') }) } : null,
+          ].filter(Boolean);
           return (
-            <View style={{ gap: 8 }}>
-              <T size={12} color={c.mute}>{[label(b.kind ?? 'skill_drill'), b.duration_min ? t('cs.min', { n: b.duration_min }) : null, t('cs.version_lc', { n: open.version })].filter(Boolean).join(' · ')}</T>
-              {b.objective ? <T size={14}><T weight="700" size={14}>{t('cs.obj_prefix')} </T>{b.objective}</T> : null}
-              {b.instructions ? <T size={14}>{b.instructions}</T> : null}
-              {b.setup ? <T size={13} color={c.mute}>{t('cs.setup_line', { x: b.setup })}</T> : null}
-              {b.cues?.length ? <T size={13}>{t('cs.cues', { cues: b.cues.join(' · ') })}</T> : null}
-              {b.tags?.length ? <View style={{ flexDirection: 'row', gap: 6, flexWrap: 'wrap' }}>{b.tags.map((tg) => <Tag key={tg} label={label(tg)} color={c.violetSoft} />)}</View> : null}
+            <View style={{ gap: 0 }}>
+              <T size={12} color={c.mute} style={{ marginBottom: 12 }}>{[label(b.kind ?? 'skill_drill'), b.duration_min ? t('cs.min', { n: b.duration_min }) : null, t('cs.version_lc', { n: open.version })].filter(Boolean).join(' · ')}</T>
+              {renderSteps.map((step, idx) => (
+                <View key={idx} style={{ flexDirection: 'row', gap: 10, marginBottom: 14 }}>
+                  <View style={{ alignItems: 'center' }}>
+                    <View style={{ width: 24, height: 24, borderRadius: 12, backgroundColor: c.pink, alignItems: 'center', justifyContent: 'center' }}><T size={11} weight="700" color="#fff">{idx + 1}</T></View>
+                    {idx < renderSteps.length - 1 ? <View style={{ width: 2, flex: 1, backgroundColor: c.line, marginTop: 4 }} /> : null}
+                  </View>
+                  <View style={{ flex: 1, paddingBottom: 4 }}>
+                    {step.type === 'text' && <T size={14} color={c.ink} style={{ lineHeight: 22 }}>{step.text}</T>}
+                    {step.type === 'photo' && step.media_id && (
+                      <View>
+                        <DrillMediaThumb drillId={open.id} mediaId={step.media_id} style={{ width: '100%', height: 180 }} />
+                        {step.caption ? <T size={12} color={c.mute} style={{ marginTop: 4 }}>{step.caption}</T> : null}
+                      </View>
+                    )}
+                    {step.type === 'video' && step.media_id && (
+                      <View>
+                        <VideoPlayer video={{ file_url: `/api/v1/coaching/drills/${open.id}/media/${step.media_id}/file` }} />
+                        {step.caption ? <T size={12} color={c.mute} style={{ marginTop: 4 }}>{step.caption}</T> : null}
+                      </View>
+                    )}
+                  </View>
+                </View>
+              ))}
+              {(b.tags ?? []).length ? <View style={{ flexDirection: 'row', gap: 6, flexWrap: 'wrap', marginBottom: 8 }}>{b.tags.map((tg) => <Tag key={tg} label={label(tg)} color={c.violetSoft} />)}</View> : null}
               {open.mine ? (
                 <View style={{ flexDirection: 'row', gap: 8, flexWrap: 'wrap', marginTop: 6 }}>
+                  <Btn small title={t('cs.edit_drill')} color={c.paper} ink={c.ink} onPress={() => { setOpen(null); openEdit(open); }} />
                   {teams.length ? <Btn small title={open.shared_team_id ? t('cs.stop_sharing') : t('cs.share_team')} color={c.paper} ink={c.ink} onPress={() => (open.shared_team_id ? share(open, { with: 'private' }).catch((e) => toast(e.message)) : setOpen({ ...open, sharing: true }))} /> : null}
                   <Btn small title={t('access.archive')} color={c.paper} ink={c.ink} onPress={async () => { try { await api.del(`/coach/templates/${open.id}`); toast(t('cs.drill_archived')); setOpen(null); list.reload(); all.reload(); } catch (e) { toast(e.message); } }} />
                 </View>) : <T size={12} color={c.mute}>{t('cs.shared_with_you', { name: open.shared_by })}</T>}
             </View>);
         })() : null}
       </Sheet>
+
+      {/* Share sheet */}
       <FormSheet visible={!!open?.sharing} onClose={() => setOpen({ ...open, sharing: false })} title={t('cs.share_team')} submitLabel={t('cs.share')}
         fields={[{ key: 'team_id', label: t('cs.team_you_coach'), type: 'chips', options: teams.map((tm) => ({ value: tm.id, label: tm.name })) }]}
         onSubmit={async (v) => share(open, { with: 'team', team_id: v.team_id })} />
+
+      {/* Create / edit sheet */}
+      <Sheet visible={!!form} onClose={() => setForm(false)} title={form === 'new' ? t('cs.new_drill') : t('cs.edit_drill')}>
+        {form ? (
+          <View style={{ gap: 10 }}>
+            <Field label={t('cs.drill_name')} value={formData.title} onChangeText={(v) => setFormData({ ...formData, title: v })} />
+            <MenuField label={t('cs.sport')} value={formData.sport} onChange={(v) => setFormData({ ...formData, sport: v })} options={sportOpts} placeholder={t('cs.all_sports')} />
+            <View>
+              <T size={12} weight="700" color={c.mute} style={{ textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 6 }}>{t('access.type')}</T>
+              <Chips wide={wide}>{BLOCK_KINDS.map((k) => <Chip key={k} label={label(k)} active={formData.kind === k} onPress={() => setFormData({ ...formData, kind: k })} />)}</Chips>
+            </View>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 14 }}>
+              <Pressable onPress={() => setFormData({ ...formData, duration_min: Math.max(1, formData.duration_min - 5) })} style={{ width: 40, height: 40, borderRadius: 10, backgroundColor: c.paper, alignItems: 'center', justifyContent: 'center' }} accessibilityLabel="Decrease duration"><T size={20} color={c.mute}>−</T></Pressable>
+              <T size={18} weight="700" color={c.ink} style={{ flex: 1, textAlign: 'center' }}>{t('cs.min', { n: formData.duration_min })}</T>
+              <Pressable onPress={() => setFormData({ ...formData, duration_min: Math.min(240, formData.duration_min + 5) })} style={{ width: 40, height: 40, borderRadius: 10, backgroundColor: c.paper, alignItems: 'center', justifyContent: 'center' }} accessibilityLabel="Increase duration"><T size={20} color={c.mute}>+</T></Pressable>
+            </View>
+            <View style={{ borderTopWidth: 1, borderTopColor: c.line, paddingTop: 10 }}>
+              <T size={15} weight="700" color={c.ink} style={{ marginBottom: 2 }}>{t('cs.drill_steps')}</T>
+              <T size={12} color={c.mute} style={{ marginBottom: 8 }}>{t('cs.drill_steps_help')}</T>
+              <DrillStepBuilder steps={formSteps} onChange={setFormSteps} drillId={formDrillId} toast={toast} />
+            </View>
+            <MenuField label={t('cs.skills')} value={null} onChange={(v) => setFormData({ ...formData, tags: [...new Set([...formData.tags, v])] })} options={SKILL_TAGS.filter((tg) => !formData.tags.includes(tg)).map((tg) => ({ value: tg, label: label(tg) }))} placeholder={t('cs.skills')} />
+            {formData.tags.length ? <View style={{ flexDirection: 'row', gap: 6, flexWrap: 'wrap' }}>{formData.tags.map((tg) => <Chip key={tg} label={label(tg)} active onPress={() => setFormData({ ...formData, tags: formData.tags.filter((x) => x !== tg) })} />)}</View> : null}
+            <Btn title={t('cs.save_drill')} onPress={async () => { try { await saveDrill(); } catch (e) { toast(e.message); } }} style={{ marginTop: 6 }} />
+          </View>
+        ) : null}
+      </Sheet>
     </Screen>
   );
 }
