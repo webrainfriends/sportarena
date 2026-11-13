@@ -9,7 +9,7 @@ import { z } from 'zod';
 import { cap, id, page } from '../registry.js';
 import { many, one, tx, query } from '../db.js';
 import { badRequest, conflict, forbidden, notFound } from '../errors.js';
-import { encryptField, decryptField } from '../crypto.js';
+import { encrypt as encryptField, decrypt as decryptField } from '../crypto.js';
 import { notify } from '../notify.js';
 import { audit } from '../helpers.js';
 
