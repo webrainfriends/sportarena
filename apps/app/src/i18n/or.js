@@ -21038,7 +21038,7 @@ export default {
   'guide.talent_crm.step5': 'Create shortlist boards to compare multiple candidates side-by-side.',
   'guide.talent_crm.step6': 'Use analytics to track pipeline conversion, source quality and ageing.',
   'guide.talent_crm.step7': 'Hand off signed prospects to player contracts or the transfers workflow.',
-  'cdh.missing.today': 'No data today', 'cdh.missing.thisWeek': 'No data this week', 'cdh.missing.thisMonth': 'No data this month', 'cdh.missing.allPresent': 'All athletes have data'
+  'cdh.missing.today': 'No data today', 'cdh.missing.thisWeek': 'No data this week', 'cdh.missing.thisMonth': 'No data this month', 'cdh.missing.allPresent': 'All athletes have data',
   // Athlete profile panel (#310) — machine-translated, reviewed: false
   'ap.title': 'ଖେଳାଳିଙ୍କ ପ୍ରୋଫାଇଲ',
   'ap.save': 'ସଞ୍ଚୟ କରନ୍ତୁ',
