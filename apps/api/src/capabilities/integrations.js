@@ -337,3 +337,25 @@ cap({
   },
 });
 
+cap({
+  name: 'update_integration_provider', method: 'POST', path: '/integrations/:id/update-provider', tag: TAG,
+  summary: 'Migrate an installed integration to the latest provider version. Re-validates existing settings against the new schema; if validation fails you must update settings first via update_integration. Returns the updated install row.',
+  input: z.object({ id }),
+  async handler({ user }, i) {
+    const r = await installFor(user, i.id, { write: true });
+    const p = providerOf(r.provider_key);
+    if (!p) throw notFound('Provider');
+    if (p.version === r.provider_version) throw conflict('Already on the latest provider version');
+    const cfg = await loadConfig(r);
+    const parsed = p.fields.safeParse(cfg);
+    if (!parsed.success) throw badRequest(`Settings are incompatible with provider v${p.version}: ${parsed.error.issues.map((x) => x.path.join('.') || x.message).join(', ')}. Update your settings first.`);
+    const updated = await one(
+      "UPDATE integration_installs SET provider_version=$1, updated_at=now() WHERE id=$2 RETURNING *",
+      [p.version, r.id],
+    );
+    await audit(null, user.id, 'update_integration_provider', 'integration_installs', r.id);
+    await logEvent(r.id, 'update_provider', 'ok', `Migrated from v${r.provider_version} to v${p.version}`);
+    return shape(updated, p);
+  },
+});
+

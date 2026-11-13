@@ -215,6 +215,140 @@ Object.assign(PROVIDERS, {
   },
 });
 
+// ---- Video Analysis Providers (#597): professional video capture and analysis platforms.
+import * as hudlProv from './providers/hudl.js';
+import * as veoProv from './providers/veo.js';
+import * as dartfishProv from './providers/dartfish.js';
+Object.assign(PROVIDERS, {
+  video_hudl: {
+    category: 'video', name: 'Hudl', version: '1.0', auth: 'oauth', sandbox: true,
+    capabilities: ['video_library', 'tagging', 'analytics', 'live_stream'],
+    scopes: [{ key: 'video.read', label: 'Read video library', description: 'Reads playlists, clips and analytics from your Hudl account. No video is uploaded without you triggering it.' }, { key: 'tagging.write', label: 'Create and edit tags', description: 'Allows the platform to add tactical tags on your behalf.' }],
+    fields: hudlProv.fields, secrets: hudlProv.secrets, gated: false,
+    async test(cfg, ctx) { return hudlProv.test(cfg, ctx); },
+    async pull(cfg, ctx) { return hudlProv.pull(cfg, ctx); },
+  },
+  video_veo: {
+    category: 'video', name: 'Veo', version: '1.0', auth: 'oauth', sandbox: true,
+    capabilities: ['video_library', 'match_recording', 'ai_analysis'],
+    scopes: [{ key: 'video.read', label: 'Read recordings', description: 'Reads match recordings, highlights and AI analysis clips from your Veo account.' }],
+    fields: veoProv.fields, secrets: veoProv.secrets, gated: false,
+    async test(cfg, ctx) { return veoProv.test(cfg, ctx); },
+    async pull(cfg, ctx) { return veoProv.pull(cfg, ctx); },
+  },
+  video_dartfish: {
+    category: 'video', name: 'Dartfish', version: '1.0', auth: 'oauth', sandbox: true,
+    capabilities: ['video_library', 'tagging', 'drawing_tools', 'slow_motion'],
+    scopes: [{ key: 'video.read', label: 'Read video library', description: 'Reads videos and annotation projects from your Dartfish account.' }],
+    fields: dartfishProv.fields, secrets: dartfishProv.secrets, gated: true,
+    async test(cfg, ctx) { return dartfishProv.test(cfg, ctx); },
+    async pull(cfg, ctx) { return dartfishProv.pull(cfg, ctx); },
+  },
+});
+
+// ---- Federation Data Feeds (#597): governing-body live data feeds.
+import * as fedProv from './providers/federation-feed.js';
+Object.assign(PROVIDERS, {
+  federation_itf: {
+    category: 'federation_feed', name: 'ITF (International Tennis Federation)', version: '1.0', auth: 'api_key', sandbox: true,
+    capabilities: ['pull', 'fixtures', 'rankings', 'results'],
+    scopes: [{ key: 'federation.read', label: 'Read ITF data', description: 'Pulls tournament fixtures, draws, results and world rankings from the ITF data service.' }],
+    fields: fedProv.fields, secrets: fedProv.secrets, gated: true,
+    async test(cfg, ctx) { return fedProv.test(cfg, ctx); },
+    async pull(cfg, ctx) { return fedProv.pull(cfg, ctx); },
+  },
+  federation_fifa_grassroots: {
+    category: 'federation_feed', name: 'FIFA Grassroots Football', version: '1.0', auth: 'api_key', sandbox: true,
+    capabilities: ['pull', 'fixtures', 'registrations'],
+    scopes: [{ key: 'federation.read', label: 'Read FIFA grassroots data', description: 'Pulls grassroots competition fixtures and player registration records from FIFA.' }],
+    fields: fedProv.fields, secrets: fedProv.secrets, gated: true,
+    async test(cfg, ctx) { return fedProv.test(cfg, ctx); },
+    async pull(cfg, ctx) { return fedProv.pull(cfg, ctx); },
+  },
+  federation_world_athletics: {
+    category: 'federation_feed', name: 'World Athletics', version: '1.0', auth: 'api_key', sandbox: true,
+    capabilities: ['pull', 'fixtures', 'rankings', 'results', 'athlete_profiles'],
+    scopes: [{ key: 'federation.read', label: 'Read World Athletics data', description: 'Pulls competition calendars, athlete rankings and results from the World Athletics API.' }],
+    fields: fedProv.fields, secrets: fedProv.secrets, gated: true,
+    async test(cfg, ctx) { return fedProv.test(cfg, ctx); },
+    async pull(cfg, ctx) { return fedProv.pull(cfg, ctx); },
+  },
+  federation_generic_xml: {
+    category: 'federation_feed', name: 'Generic federation feed (XML / JSON)', version: '1.0', auth: 'api_key', sandbox: true,
+    capabilities: ['pull', 'fixtures', 'results'],
+    scopes: [{ key: 'federation.read', label: 'Read federation feed', description: 'Pulls fixtures and results from any federation that provides an authenticated XML or JSON data feed.' }],
+    fields: fedProv.fields, secrets: fedProv.secrets, gated: false,
+    async test(cfg, ctx) { return fedProv.test(cfg, ctx); },
+    async pull(cfg, ctx) { return fedProv.pull(cfg, ctx); },
+  },
+});
+
+// ---- Accounting Providers (#597): financial data for academies and clubs.
+import * as xeroProv from './providers/xero.js';
+import * as qbProv from './providers/quickbooks.js';
+import * as tallyProv from './providers/tally.js';
+Object.assign(PROVIDERS, {
+  accounting_xero: {
+    category: 'accounting', name: 'Xero', version: '1.0', auth: 'oauth', sandbox: true,
+    capabilities: ['invoices', 'contacts', 'payments', 'reports'],
+    scopes: [{ key: 'accounting.read', label: 'Read accounting data', description: 'Reads invoices, contacts and payments. Financial data stays in your Xero organisation.' }, { key: 'accounting.write', label: 'Create invoices', description: 'Creates invoices for session fees and membership subscriptions on your behalf.' }],
+    fields: xeroProv.fields, secrets: xeroProv.secrets, gated: false,
+    async test(cfg, ctx) { return xeroProv.test(cfg, ctx); },
+    async pull(cfg, ctx) { return xeroProv.pull(cfg, ctx); },
+  },
+  accounting_quickbooks: {
+    category: 'accounting', name: 'QuickBooks Online', version: '1.0', auth: 'oauth', sandbox: true,
+    capabilities: ['invoices', 'customers', 'payments', 'reports'],
+    scopes: [{ key: 'accounting.read', label: 'Read accounting data', description: 'Reads invoices, customers and payments from your QuickBooks company file.' }, { key: 'accounting.write', label: 'Create invoices', description: 'Creates invoices for session fees and membership subscriptions on your behalf.' }],
+    fields: qbProv.fields, secrets: qbProv.secrets, gated: false,
+    async test(cfg, ctx) { return qbProv.test(cfg, ctx); },
+    async pull(cfg, ctx) { return qbProv.pull(cfg, ctx); },
+  },
+  accounting_tally: {
+    category: 'accounting', name: 'Tally ERP', version: '1.0', auth: 'api_key', sandbox: true, country: 'IN',
+    capabilities: ['ledgers', 'vouchers', 'reports'],
+    scopes: [{ key: 'accounting.read', label: 'Read Tally data', description: 'Reads ledger balances and voucher transactions from your Tally ERP server.' }],
+    fields: tallyProv.fields, secrets: tallyProv.secrets, gated: false,
+    async test(cfg, ctx) { return tallyProv.test(cfg, ctx); },
+    async pull(cfg, ctx) { return tallyProv.pull(cfg, ctx); },
+  },
+});
+
+// ---- Sports Data Providers (#597): live and historical sports statistics.
+import * as sportradarProv from './providers/sportradar.js';
+import * as optaProv from './providers/opta.js';
+Object.assign(PROVIDERS, {
+  sports_data_sportradar: {
+    category: 'sports_data', name: 'Sportradar', version: '1.0', auth: 'api_key', sandbox: true,
+    capabilities: ['pull', 'fixtures', 'live_scores', 'statistics', 'rankings'],
+    scopes: [{ key: 'sports_data.read', label: 'Read Sportradar data', description: 'Pulls competition calendars, live scores, team statistics and player rankings for the licensed sport and territory.' }],
+    fields: sportradarProv.fields, secrets: sportradarProv.secrets, gated: true,
+    async test(cfg, ctx) { return sportradarProv.test(cfg, ctx); },
+    async pull(cfg, ctx) { return sportradarProv.pull(cfg, ctx); },
+  },
+  sports_data_opta: {
+    category: 'sports_data', name: 'Opta / Stats Perform', version: '1.0', auth: 'api_key', sandbox: true,
+    capabilities: ['pull', 'fixtures', 'live_data', 'player_stats', 'event_data'],
+    scopes: [{ key: 'sports_data.read', label: 'Read Opta data', description: 'Pulls match events, player performance metrics and analytics from your Opta Stats Perform feed licence.' }],
+    fields: optaProv.fields, secrets: optaProv.secrets, gated: true,
+    async test(cfg, ctx) { return optaProv.test(cfg, ctx); },
+    async pull(cfg, ctx) { return optaProv.pull(cfg, ctx); },
+  },
+});
+
+// ---- Calendar: Google Calendar OAuth (#597)
+import * as gcalProv from './providers/google-calendar.js';
+Object.assign(PROVIDERS, {
+  calendar_google: {
+    category: 'calendar', name: 'Google Calendar', version: '1.0', auth: 'oauth', sandbox: true,
+    capabilities: ['pull', 'events', 'busy_blocks', 'two_way_sync'],
+    scopes: [{ key: 'calendar.events.read', label: 'Read calendar events', description: 'Reads event titles, times and availability from the selected Google Calendar. Event guests and descriptions are not stored.' }, { key: 'calendar.events.write', label: 'Create calendar events', description: 'Creates training sessions and match events on the calendar on your behalf.' }],
+    fields: gcalProv.fields, secrets: gcalProv.secrets, gated: false,
+    async test(cfg, ctx) { return gcalProv.test(cfg, ctx); },
+    async pull(cfg, ctx) { return gcalProv.pull(cfg, ctx); },
+  },
+});
+
 // Integrations that already have their own console. Listed so one catalogue shows everything; install is refused with a pointer, not duplicated.
 export const MANAGED = [
   { key: 'payments_stripe_paypal', category: 'payments', name: 'Payments (Stripe, PayPal)', managed_in: 'PaymentsSetup' },

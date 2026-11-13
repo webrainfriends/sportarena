@@ -856,6 +856,21 @@ id: 'wellbeing', title: 'Support student wellbeing and development',
     modules: ['academy-conferences.js'],
     sources: ['apps/app/src/screens/academy-conferences.js', 'apps/app/src/screens/academy-families.js', 'apps/app/src/screens/family-dashboard.js'],
   },
+  {
+    id: 'integrations',
+    title: 'guide.integrations.title',
+    why: 'guide.integrations.why',
+    steps: [
+      'guide.integrations.step1',
+      'guide.integrations.step2',
+      'guide.integrations.step3',
+      'guide.integrations.step4',
+      'guide.integrations.step5',
+    ],
+    target: { screen: 'IntegrationHub' },
+    modules: ['integrations.js', 'integration-access.js'],
+    sources: ['apps/app/src/screens/integration-hub.js'],
+  },
 ];
 
 /** Org/academy API modules with no step of their own, and why. Anything not here and not in a step fails the guard test. */

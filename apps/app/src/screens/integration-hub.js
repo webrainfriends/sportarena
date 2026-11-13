@@ -2,7 +2,7 @@
 // logs, usage, webhooks and record mappings all come from the API (capabilities list_integration_catalogue … subscribe_integration_webhook);
 // this screen only calls it. Providers that already have their own console are listed with a link there rather than duplicated.
 import React, { useMemo, useState } from 'react';
-import { Platform, Share, View } from 'react-native';
+import { Platform, ScrollView, Share, View } from 'react-native';
 import { api } from '../api';
 import { useLoad } from '../hooks';
 import { useNav } from '../nav';
@@ -20,6 +20,129 @@ const nice = (s) => String(s).replace(/[._]/g, ' ').replace(/^./, (x) => x.toUpp
 const TONE = { connected: c.mint, paused: c.sun, error: c.red, disconnected: c.violetSoft };
 const SYNC_CHOICES = [{ value: 0, label: 'Manual' }, { value: 60, label: 'Hourly' }, { value: 360, label: 'Every 6 hours' }, { value: 1440, label: 'Daily' }];
 const say = (e) => e?.message ?? 'Something went wrong';
+
+const CAT_LABELS = {
+  payments: 'Payments', sso: 'SSO', calendar: 'Calendar', email_sms: 'Email / SMS',
+  wearables: 'Wearables', video: 'Video', federation_feed: 'Federation', accounting: 'Accounting',
+  ticket_scanner: 'Ticket', sports_data: 'Sports Data', travel: 'Travel',
+  venue_booking: 'Venue', event_source: 'Events',
+};
+
+function CategoryChips({ value, onChange, categories }) {
+  const all = ['', ...categories];
+  return (
+    <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 10 }} contentContainerStyle={{ gap: 6, paddingRight: 12 }}>
+      {all.map((cat) => {
+        const active = value === cat;
+        return (
+          <Btn key={cat || '__all'} small title={cat ? (CAT_LABELS[cat] ?? nice(cat)) : t('ih.filter_all')}
+            color={active ? c.pink : c.paper} ink={active ? '#fff' : c.ink}
+            onPress={() => onChange(cat)} />
+        );
+      })}
+    </ScrollView>
+  );
+}
+
+function UsageChart({ usage }) {
+  if (!usage?.length) return <T size={12} color={c.mute}>{t('empty.nothing')}</T>;
+  const max = Math.max(...usage.map((u) => (u.calls ?? 0) + (u.failures ?? 0) + (u.refused ?? 0)), 1);
+  const BAR_H = 48;
+  return (
+    <View style={{ gap: 4 }}>
+      <T size={11} color={c.mute} weight="700">{t('ih.usage_chart')} (14d)</T>
+      <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+        <View style={{ flexDirection: 'row', alignItems: 'flex-end', gap: 3 }}>
+          {usage.slice(-14).map((u) => {
+            const total = (u.calls ?? 0) + (u.failures ?? 0) + (u.refused ?? 0);
+            const h = Math.max(2, Math.round((total / max) * BAR_H));
+            const callH = Math.round(((u.calls ?? 0) / Math.max(total, 1)) * h);
+            const failH = Math.round(((u.failures ?? 0) / Math.max(total, 1)) * h);
+            const refH = h - callH - failH;
+            const day = String(u.day ?? '').slice(5, 10);
+            return (
+              <View key={u.day} style={{ alignItems: 'center', gap: 2 }}>
+                <View style={{ width: 16, height: BAR_H, justifyContent: 'flex-end' }}>
+                  {refH > 0 ? <View style={{ height: refH, backgroundColor: c.sun, borderRadius: 2 }} /> : null}
+                  {failH > 0 ? <View style={{ height: failH, backgroundColor: c.red, borderRadius: 2 }} /> : null}
+                  {callH > 0 ? <View style={{ height: callH, backgroundColor: c.mint, borderRadius: 2 }} /> : null}
+                </View>
+                <T size={9} color={c.mute}>{day}</T>
+              </View>
+            );
+          })}
+        </View>
+      </ScrollView>
+      <View style={{ flexDirection: 'row', gap: 10 }}>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 3 }}><View style={{ width: 8, height: 8, backgroundColor: c.mint, borderRadius: 2 }} /><T size={10} color={c.mute}>Calls</T></View>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 3 }}><View style={{ width: 8, height: 8, backgroundColor: c.red, borderRadius: 2 }} /><T size={10} color={c.mute}>Failed</T></View>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 3 }}><View style={{ width: 8, height: 8, backgroundColor: c.sun, borderRadius: 2 }} /><T size={10} color={c.mute}>Refused</T></View>
+      </View>
+    </View>
+  );
+}
+
+function CredentialHistory({ credentials }) {
+  if (!credentials?.length) return null;
+  return (
+    <View style={{ gap: 6 }}>
+      <T weight="800">{t('ih.cred_history')}</T>
+      {credentials.map((cr) => (
+        <Card key={cr.id} pad={10}>
+          <View style={{ flexDirection: 'row', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
+            <Tag label={cr.kind} color={c.violetSoft} />
+            {cr.revoked ? <Tag label="Revoked" color={c.red} /> : !cr.effective_to ? <Tag label="Active" color={c.mint} /> : null}
+          </View>
+          {cr.hint ? <T size={12} color={c.mute} style={{ fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace', marginTop: 4 }}>{cr.hint}</T> : null}
+          <T size={11} color={c.mute}>{String(cr.effective_from ?? '').slice(0, 10)}{cr.effective_to ? ` → ${String(cr.effective_to).slice(0, 10)}` : ''}</T>
+        </Card>
+      ))}
+    </View>
+  );
+}
+
+function MappingsSheet({ installId, onClose }) {
+  const { toast } = useSession();
+  const q = useLoad(() => api.get(`/integrations/${installId}/external-ids`, { limit: 100 }), [installId]);
+  const [adding, setAdding] = useState(false);
+  const ENTITY_TYPES = ['user', 'team', 'event', 'venue'];
+  return (
+    <Sheet visible onClose={onClose} title={t('ih.mappings_add')}>
+      {q.loading && !q.data ? <Loading /> : q.error ? <ErrorBox error={q.error} onRetry={q.reload} /> : (
+        <View style={{ gap: 8 }}>
+          {(q.data?.items ?? []).map((m) => (
+            <Card key={m.id} pad={10}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                <View style={{ flex: 1 }}>
+                  <T size={12} weight="700">{nice(m.entity_type)}</T>
+                  <T size={12} color={c.mute}>{t('ih.mappings_internal')}: <T size={12} style={{ fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace' }}>{m.internal_id}</T></T>
+                  <T size={12} color={c.mute}>{t('ih.mappings_external')}: <T size={12} style={{ fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace' }}>{m.external_id}</T></T>
+                </View>
+                <Btn small color={c.paper} ink={c.red} title={t('ih.mappings_remove')} onPress={async () => { try { await api.del(`/integrations/${installId}/external-ids/${m.id}`); await q.reload(); } catch (e) { toast(say(e)); } }} />
+              </View>
+            </Card>
+          ))}
+          {!(q.data?.items ?? []).length ? <T size={12} color={c.mute}>{t('empty.nothing')}</T> : null}
+          <Btn title={`+ ${t('ih.mappings_add')}`} onPress={() => setAdding(true)} />
+        </View>
+      )}
+      {adding ? (
+        <FormSheet visible onClose={() => setAdding(false)} title={t('ih.mappings_add')} submitLabel={t('ih.mappings_add')}
+          fields={[
+            { key: 'entity_type', label: t('ih.mappings_entity'), type: 'custom', render: ({ v, set }) => <MenuField label={t('ih.mappings_entity')} value={v.entity_type ?? 'user'} onChange={(x) => set('entity_type', x)} options={ENTITY_TYPES.map((e) => ({ value: e, label: nice(e) }))} /> },
+            { key: 'internal_id', label: t('ih.mappings_internal') },
+            { key: 'external_id', label: t('ih.mappings_external') },
+          ]}
+          onSubmit={async (v) => {
+            try {
+              await api.post(`/integrations/${installId}/external-ids`, { entity_type: v.entity_type ?? 'user', internal_id: v.internal_id, external_id: v.external_id });
+              await q.reload(); setAdding(false); return t('common.done');
+            } catch (e) { throw new Error(say(e)); }
+          }} />
+      ) : null}
+    </Sheet>
+  );
+}
 
 /** A secret that is shown once: copy it now. */
 function SecretSheet({ secret, onClose }) {
@@ -156,13 +279,16 @@ function AdapterPick({ value, onChange }) {
 }
 
 function Connect({ orgId, catalogue, onClose, onDone, onSecret, onRequest }) {
-  const live = catalogue.providers.filter((p) => !p.managed_in);
+  const allLive = catalogue.providers.filter((p) => !p.managed_in);
   const managed = catalogue.providers.filter((p) => p.managed_in);
   const { push } = useNav();
-  const [key, setKey] = useState(live[0]?.key);
-  const p = live.find((x) => x.key === key);
+  const categories = useMemo(() => [...new Set(allLive.map((p) => p.category))], [allLive]);
+  const [catFilter, setCatFilter] = useState('');
+  const live = catFilter ? allLive.filter((p) => p.category === catFilter) : allLive;
+  const [key, setKey] = useState(allLive[0]?.key);
+  const p = allLive.find((x) => x.key === key);
   const isCustom = key === '__custom';
-  const options = [{ value: '__custom', label: t('ih.form.custom'), sub: t('ih.request.cta') }, ...live.map((x) => ({ value: x.key, label: x.name, sub: x.gated && x.access !== 'enabled' ? `${nice(x.category)} · ${stageLabel(x.access)}` : nice(x.category) })), ...managed.map((x) => ({ value: x.key, label: x.name, sub: t('ih.managed') }))];
+  const options = [{ value: '__custom', label: t('ih.form.custom'), sub: t('ih.request.cta') }, ...live.map((x) => ({ value: x.key, label: x.name, sub: x.gated && x.access !== 'enabled' ? `${nice(x.category)} · ${stageLabel(x.access)}` : nice(x.category) })), ...(!catFilter ? managed.map((x) => ({ value: x.key, label: x.name, sub: t('ih.managed') })) : [])];
   const isManaged = managed.some((m) => m.key === key);
   const locked = isCustom || (!!p && p.gated && p.access !== 'enabled');
   const secretField = (f) => p.credential_fields.includes(f);
@@ -170,6 +296,7 @@ function Connect({ orgId, catalogue, onClose, onDone, onSecret, onRequest }) {
     <FormSheet visible onClose={onClose} title={t('ih.connect')} submitLabel={isManaged ? 'Open' : locked ? t('ih.request.cta') : t('ih.connect')}
       initial={{ mode: 'live', sync: 0 }}
       fields={[
+        { key: 'cat_filter', type: 'custom', render: () => <CategoryChips value={catFilter} onChange={setCatFilter} categories={categories} /> },
         { key: 'provider', type: 'custom', render: () => (
           <MenuField label={t('ih.provider')} value={key} onChange={setKey} options={options}
             hint={p ? `v${p.version} · ${p.capabilities.map(nice).join(', ')}` : undefined} />) },
@@ -178,6 +305,7 @@ function Connect({ orgId, catalogue, onClose, onDone, onSecret, onRequest }) {
         ...(p && !isManaged ? (locked ? [] : p.fields).map((f) => ({ key: `s_${f}`, label: nice(f), type: secretField(f) && f !== 'url' ? 'secret' : 'text', input: f.endsWith('url') ? 'url' : undefined, optional: f === 'sandbox_url' || f === 'device_label' })) : []),
         ...(p?.sandbox && !locked ? [{ key: 'mode', label: t('ih.sandbox'), type: 'chips', options: [{ value: 'live', label: 'Live' }, { value: 'sandbox', label: 'Sandbox' }] }] : []),
         ...(p?.sync && !locked ? [{ key: 'sync', label: 'Sync', type: 'chips', options: SYNC_CHOICES }] : []),
+        ...(p && !locked ? [{ key: 'rate_per_minute', label: t('ih.rate_limit'), type: 'number', optional: true, hint: t('ih.rate_limit') }] : []),
         ...(p && !locked ? [{ key: 'scopes_h', type: 'section', label: t('ih.permissions') }, { key: 'scopes', type: 'custom', render: () => (
           <View style={{ gap: 6 }}>{p.scopes.map((s) => <View key={s.key}><T weight="800" size={13}>{s.label}</T><T size={12} color={c.mute}>{s.description}</T></View>)}</View>) },
         { key: 'accept', label: t('ih.accept'), type: 'switch' }] : []),
@@ -189,7 +317,7 @@ function Connect({ orgId, catalogue, onClose, onDone, onSecret, onRequest }) {
         const settings = {};
         for (const f of p.fields) if (v[`s_${f}`]) settings[f] = v[`s_${f}`];
         try {
-          const r = await api.post(`/organisations/${orgId}/integrations`, { provider_key: key, label: v.label || p.name, mode: v.mode ?? 'live', settings, accept_scopes: p.scopes.map((s) => s.key), ...(v.sync ? { sync_every_minutes: v.sync } : {}) });
+          const r = await api.post(`/organisations/${orgId}/integrations`, { provider_key: key, label: v.label || p.name, mode: v.mode ?? 'live', settings, accept_scopes: p.scopes.map((s) => s.key), ...(v.sync ? { sync_every_minutes: v.sync } : {}), ...(v.rate_per_minute ? { rate_per_minute: Number(v.rate_per_minute) } : {}) });
           await onDone(); if (r.webhook_secret) onSecret(r); return t('ih.status.connected');
         } catch (e) { throw new Error(say(e)); }
       }} />
@@ -213,8 +341,15 @@ function Detail({ id, onClose, onChanged, onSecret }) {
             <Tag label={t(`ih.status.${x.status}`)} color={TONE[x.status]} />
             <Tag label={`${x.provider_name} v${x.provider_version}`} />
             {x.mode === 'sandbox' ? <Tag label="Sandbox" color={c.sun} /> : null}
-            {x.update_available ? <Tag label="Update available" color={c.cyan} /> : null}
+            {x.update_available ? <Tag label={t('ih.update_available')} color={c.cyan} /> : null}
           </View>
+          {x.update_available ? (
+            <Card pad={12}>
+              <T weight="800" size={13}>{t('ih.update_available')}</T>
+              <T size={12} color={c.mute}>A newer version of this provider is available.</T>
+              <Btn small title={t('ih.update_apply')} style={{ marginTop: 8, alignSelf: 'flex-start' }} disabled={busy} onPress={() => run(() => api.post(`/integrations/${id}/update-provider`, {}), t('common.done'))} />
+            </Card>
+          ) : null}
           <T size={13} color={c.mute}>{t('ih.last_success', { when: x.last_success_at ? new Date(x.last_success_at).toLocaleString() : t('ih.never') })}</T>
           {x.last_error ? <T size={13} color={c.red}>{x.last_error}</T> : null}
           {x.webhook_path ? <T size={12} color={c.mute} selectable>{x.webhook_path}</T> : null}
@@ -222,20 +357,23 @@ function Detail({ id, onClose, onChanged, onSecret }) {
           {x.requested_scopes.map((s) => <T key={s.key} size={12} color={c.mute}>• {s.label}: {s.description}</T>)}
           <View style={{ flexDirection: 'row', gap: 8, flexWrap: 'wrap' }}>
             <Btn small title={t('ih.test')} disabled={busy || x.status === 'disconnected'} onPress={() => run(() => api.post(`/integrations/${id}/test`), (r) => r.message)} />
-            {!x.webhook_path ? <Btn small title={t('ih.sync_now')} disabled={busy || x.status !== 'connected' && x.status !== 'error'} onPress={() => run(() => api.post(`/integrations/${id}/sync`), (r) => (r.ok ? t('common.done') : r.refused ? 'Rate limit reached' : r.error))} /> : null}
+            {!x.webhook_path ? <Btn small title={t('ih.sync_now')} disabled={busy || x.status !== 'connected' && x.status !== 'error'} onPress={() => run(() => api.post(`/integrations/${id}/sync`), (r) => (r.ok ? t('common.done') : r.refused ? t('ih.rate_limit') : r.error))} /> : null}
             <Btn small color={c.paper} title={x.status === 'paused' ? t('ih.resume') : t('ih.pause')} disabled={busy || x.status === 'disconnected'} onPress={() => run(() => api.patch(`/integrations/${id}`, { status: x.status === 'paused' ? 'connected' : 'paused' }), t('common.done'))} />
             <Btn small color={c.paper} title={t('ih.rotate')} disabled={busy || x.status === 'disconnected'} onPress={() => setSub('rotate')} />
             <Btn small color={c.paper} ink={c.red} title={t('ih.revoke')} disabled={busy || x.status === 'disconnected'} onPress={() => run(() => api.post(`/integrations/${id}/credentials/revoke`), t('ih.status.paused'))} />
             <Btn small color={c.paper} ink={c.red} title={t('ih.disconnect')} disabled={busy || x.status === 'disconnected'} onPress={() => run(() => api.del(`/integrations/${id}`), t('ih.status.disconnected'))} />
+            <Btn small color={c.paper} title={t('ih.mappings_add')} onPress={() => setSub('mappings')} />
           </View>
           <H2>{t('ih.usage')}</H2>
-          {x.usage.length ? x.usage.map((u) => <T key={u.day} size={12} color={c.mute}>{String(u.day).slice(0, 10)} · {u.calls} calls · {u.failures} failed · {u.refused} refused</T>) : <T size={12} color={c.mute}>{t('empty.nothing')}</T>}
+          <UsageChart usage={x.usage} />
+          <CredentialHistory credentials={x.credentials} />
           <H2>{t('ih.log')}</H2>
-          <Seg options={[{ value: undefined, label: 'All' }, { value: 'failed', label: 'Failed' }, { value: 'ok', label: 'OK' }]} value={status} onChange={setStatus} />
+          <Seg options={[{ value: undefined, label: t('ih.filter_all') }, { value: 'failed', label: 'Failed' }, { value: 'ok', label: 'OK' }]} value={status} onChange={setStatus} />
           {ev.loading && !ev.data ? <Loading /> : (ev.data?.items ?? []).length ? ev.data.items.map((e) => (
             <T key={e.id} size={12} color={e.status === 'failed' ? c.red : c.mute}>{new Date(e.created_at).toLocaleString()} · {nice(e.kind)} · {e.status}{e.message ? ` · ${e.message}` : ''}</T>)) : <T size={12} color={c.mute}>{t('empty.nothing')}</T>}
         </View>
       )}
+      {sub === 'mappings' ? <MappingsSheet installId={id} onClose={() => setSub(null)} /> : null}
       {sub === 'rotate' && x ? (
         <FormSheet visible onClose={() => setSub(null)} title={t('ih.rotate')} submitLabel={t('ih.rotate')}
           fields={x.webhook_path ? [{ key: 'n', type: 'section', label: 'A new webhook secret is generated. The old one stops working now.' }] : [{ key: 'api_key', label: 'New API key', type: 'secret', optional: true }, { key: 'url', label: 'New address', input: 'url', optional: true }]}
@@ -322,7 +460,8 @@ export function IntegrationHub({ organisation_id }) {
   const mine = useMemo(() => (orgs.data ?? []).filter((o) => o.my_status === 'active' && ['owner', 'admin'].includes(o.my_role) && o.status === 'active'), [orgs.data]);
   const [picked, setPicked] = useState(organisation_id ?? null);
   const org = mine.find((o) => o.id === (picked ?? mine[0]?.id));
-  const list = useLoad(() => (org ? api.get(`/organisations/${org.id}/integrations`, { limit: 100 }) : Promise.resolve(null)), [org?.id]);
+  const [showArchived, setShowArchived] = useState(false);
+  const list = useLoad(() => (org ? api.get(`/organisations/${org.id}/integrations`, { limit: 100, ...(showArchived ? { include_disconnected: true } : {}) }) : Promise.resolve(null)), [org?.id, showArchived]);
   const cat = useLoad(() => api.get('/integrations/catalogue', org ? { organisation_id: org.id } : {}), [org?.id]);
   const [adding, setAdding] = useState(false);
   const [requesting, setRequesting] = useState(null);
@@ -341,7 +480,10 @@ export function IntegrationHub({ organisation_id }) {
         <Btn small title={`+ ${t('ih.connect')}`} onPress={() => setAdding(true)} disabled={!cat.data} accessibilityLabel={t('ih.connect')} />
       </View>
       {mine.length > 1 ? <View style={{ marginTop: 12 }}><MenuField label={t('ih.org')} value={org.id} onChange={setPicked} options={mine.map((o) => ({ value: o.id, label: o.name }))} /></View> : null}
-      <View style={{ marginTop: 14, gap: 10 }}>
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 10 }}>
+        <Btn small color={showArchived ? c.pink : c.paper} ink={showArchived ? '#fff' : c.ink} title={showArchived ? t('ih.hide_archived') : t('ih.show_archived')} onPress={() => setShowArchived((v) => !v)} />
+      </View>
+      <View style={{ marginTop: 10, gap: 10 }}>
         {list.loading && !list.data ? <Loading /> : list.error ? <ErrorBox error={list.error} onRetry={list.reload} /> : !items.length ? <Empty emoji="🔌" title={t('ih.empty')} /> : items.map((i) => (
           <Card key={i.id} pad={14} onPress={() => setOpen(i.id)} accessibilityLabel={`${i.label}, ${t(`ih.status.${i.status}`)}`}>
             <View style={{ flexDirection: 'row', gap: 6, flexWrap: 'wrap', marginBottom: 6 }}>
