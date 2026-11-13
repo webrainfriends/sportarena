@@ -888,6 +888,7 @@ export const NOT_IN_GUIDE = {
   'official-rate-agreements.js': 'Covered by the officials_rates onboarding step (R35).',
   'officials-open-slots.js': 'Covered by the open_match_self_assign onboarding step (REF-R14).',
   'officials-education.js': 'Covered by the referee_education onboarding step (REF-R19).',
+  'official-credentials.js': 'Covered by the official_credentials onboarding step (REF-R02).',
 };
 
 /** The directories/files the guard test watches for org/academy/venue/coach/tax capability modules. */

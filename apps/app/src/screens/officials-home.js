@@ -18,6 +18,7 @@ import { explain, LoadError } from '../access';
 import { c, grad } from '../theme';
 import { Banner, Metric, money } from '../federation-ui';
 import { openPdf } from '../open-file';
+import { OfficialCredentialHub } from './official-credential-hub';
 import { t } from '../i18n';
 import { OfficialProfileWizard } from './official-profile-wizard';
 import { Cols } from '../federation-bits';
@@ -620,14 +621,7 @@ export function OfficialsHome({ tab: tab0 }) {
     : tab === 'permissions' ? <PermissionsTab fixtureId={h.next?.fixture_id} />
     : tab === 'safety' ? <OfficialSafeguardingDesk />
     : tab === 'reputation' ? <OfficialsReputation />
-    : <Section title="Credential" color={c.lime}>
-        <Card><View style={{ gap: 6 }}>
-          <Tag label={cred[0]} color={cred[1]} />
-          {h.credential.licence ? <T>🏅 {h.credential.licence.licence_type} · {h.credential.licence.body_name} · valid to {String(h.credential.licence.expires_on).slice(0, 10)}</T> : <T size={13} color={c.mute}>No federation licence on record for this sport. Licences are managed under Grade, assessments &amp; CPD.</T>}
-          <T size={12.5} color={c.mute}>A self-declared profile is not verification. Some competitions only accept verified or licensed officials; the server checks this whenever you are asked to officiate.</T>
-        </View></Card>
-        <VerificationSection />
-      </Section>;
+    : <OfficialCredentialHub mode="official" />;
   return (
     <Screen onRefresh={q.reload} refreshing={q.loading}>
       <GradCard colors={grad.hero}>
