@@ -314,7 +314,7 @@ export function FeedChallengeCreate({ route, navigation }) {
       <Text style={{ fontSize: 12, fontWeight: '600', color: c.mute, marginBottom: 6 }}>Type</Text>
       <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 14 }}>
         {kinds.map((k) => (
-          <Chip key={k} label={t(`cf.challenge_kind_${k}`)} active={form.kind === k} onPress={() => setForm((f) => ({ ...f, kind: k })} />
+          <Chip key={k} label={t('cf.challenge_kind_' + k)} active={form.kind === k} onPress={() => setForm((f) => ({ ...f, kind: k }))} />
         ))}
       </View>
 
