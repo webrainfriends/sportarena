@@ -20823,4 +20823,23 @@ export default {
   'orgOfficialAnalytics.export.exporting': 'Preparing export…',
   'orgOfficialAnalytics.empty': 'No officiating data for this organisation yet.',
   'orgOfficialAnalytics.error': 'Could not load officiating analytics.',
+  // Academy Process Guide — Data Hub step (#566) — machine-drafted, reviewed: false
+  'guide.data_hub.title': 'Set up the Athlete Data Hub', 'guide.data_hub.why': 'Bring wearables, GPS, lab tests and manual assessments into one canonical hub so coaches can track load, readiness and performance trends.',
+  'guide.data_hub.step1': 'Open the Athlete Data Hub from the athlete profile or the coaching workspace.',
+  'guide.data_hub.step2': 'Connect wearable providers via the Sources tab; each provider requires the athlete consent.',
+  'guide.data_hub.step3': 'Register assessment providers (ForceDecks, InBody, Brower/SmartSpeed) and import CSV exports to log test sessions.',
+  'guide.data_hub.step4': 'Open the Coach Data Hub from the organisation workspace to view squad readiness, ACWR zones, load trends and missing data.',
+  // Athlete Data Hub (#566) — machine-drafted, reviewed: false
+  'adhub.tab.overview': 'Overview', 'adhub.tab.metrics': 'Metrics', 'adhub.tab.assessments': 'Assessments', 'adhub.tab.sources': 'Sources',
+  'adhub.disclaimer': 'Descriptive readings only. Not a diagnosis, medical advice or clearance to train or play.',
+  'adhub.readiness': 'Readiness', 'adhub.acwr': 'ACWR', 'adhub.score': 'score', 'adhub.ratio': 'ratio',
+  'adhub.family.performance': 'Performance', 'adhub.family.jump': 'Jump & Force', 'adhub.family.load': 'Training Load', 'adhub.family.recovery': 'Recovery', 'adhub.family.body': 'Body Composition',
+  'adhub.assessmentHistory': 'Assessment History', 'adhub.tests': 'tests', 'adhub.latest': 'latest', 'adhub.last90days': 'Last 90 days', 'adhub.noData': 'No data yet',
+  'adhub.measurements': 'measurements', 'adhub.assessments.empty.title': 'No assessments yet', 'adhub.assessments.empty.body': 'Log a lab or field test to track jump height, sprint times, strength 1RMs and body composition.',
+  'adhub.addAssessment': 'Add Assessment', 'adhub.sources.wearables': 'Connected providers', 'adhub.sources.empty': 'No providers connected yet.', 'adhub.addSource': 'Add Provider', 'adhub.neverSynced': 'Never synced',
+  'cdh.tab.squad': 'Squad', 'cdh.tab.load': 'Load Trends', 'cdh.tab.session': 'Session Response', 'cdh.tab.missing': 'Missing Data',
+  'cdh.squadSize': 'Athletes', 'cdh.avgReadiness': 'Avg Readiness', 'cdh.acwrAlerts': 'ACWR Alerts', 'cdh.missingData': 'Missing Data',
+  'cdh.lastSync': 'Last sync', 'cdh.never': 'Never', 'cdh.loadTrends': 'Load Trends',
+  'cdh.session.selectPrompt': 'Select a training session', 'cdh.session.body': 'Pick a session to see how the squad readiness metrics changed in the 48 hours before and after.',
+  'cdh.missing.today': 'No data today', 'cdh.missing.thisWeek': 'No data this week', 'cdh.missing.thisMonth': 'No data this month', 'cdh.missing.allPresent': 'All athletes have data',
 };

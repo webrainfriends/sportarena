@@ -20822,4 +20822,23 @@ export default {
   'orgOfficialAnalytics.export.exporting': 'Preparing export…',
   'orgOfficialAnalytics.empty': 'No officiating data for this organisation yet.',
   'orgOfficialAnalytics.error': 'Could not load officiating analytics.',
+  // Academy Process Guide — Data Hub step (#566) — machine-drafted, reviewed: false
+  'guide.data_hub.title': 'Set up the Athlete Data Hub', 'guide.data_hub.why': 'Bring wearables, GPS, lab tests and manual assessments into one canonical hub so coaches can track load, readiness and performance trends.',
+  'guide.data_hub.step1': 'Open the Athlete Data Hub from the athlete profile or the coaching workspace.',
+  'guide.data_hub.step2': 'Connect wearable providers via the Sources tab; each provider requires the athlete consent.',
+  'guide.data_hub.step3': 'Register assessment providers (ForceDecks, InBody, Brower/SmartSpeed) and import CSV exports to log test sessions.',
+  'guide.data_hub.step4': 'Open the Coach Data Hub from the organisation workspace to view squad readiness, ACWR zones, load trends and missing data.',
+  // Athlete Data Hub (#566) — machine-drafted, reviewed: false
+  'adhub.tab.overview': 'மேலோட்டம்', 'adhub.tab.metrics': 'அளவீடுகள்', 'adhub.tab.assessments': 'மதிப்பீடுகள்', 'adhub.tab.sources': 'மூலங்கள்',
+  'adhub.disclaimer': 'விவரிப்பு மட்டும். நோய் கண்டறிதல் அல்ல.',
+  'adhub.readiness': 'தயார்நிலை', 'adhub.acwr': 'ACWR', 'adhub.score': 'மதிப்பெண்', 'adhub.ratio': 'விகிதம்',
+  'adhub.family.performance': 'செயல்திறன்', 'adhub.family.jump': 'தாண்டல் & விசை', 'adhub.family.load': 'பயிற்சி சுமை', 'adhub.family.recovery': 'மீட்சி', 'adhub.family.body': 'உடல் கட்டமைப்பு',
+  'adhub.assessmentHistory': 'மதிப்பீட்டு வரலாறு', 'adhub.tests': 'சோதனைகள்', 'adhub.latest': 'சமீபத்திய', 'adhub.last90days': 'கடைசி 90 நாட்கள்', 'adhub.noData': 'தரவு இல்லை',
+  'adhub.measurements': 'அளவீடுகள்', 'adhub.assessments.empty.title': 'மதிப்பீடுகள் இல்லை', 'adhub.assessments.empty.body': 'ஒரு சோதனை பதிவு செய்யவும்.',
+  'adhub.addAssessment': 'மதிப்பீடு சேர்க்கவும்', 'adhub.sources.wearables': 'இணைக்கப்பட்ட வழங்குநர்கள்', 'adhub.sources.empty': 'வழங்குநர்கள் இல்லை.', 'adhub.addSource': 'வழங்குநர் சேர்க்கவும்', 'adhub.neverSynced': 'ஒருபோதும் ஒத்திசைக்கவில்லை',
+  'cdh.tab.squad': 'அணி', 'cdh.tab.load': 'சுமை போக்குகள்', 'cdh.tab.session': 'அமர்வு பதில்', 'cdh.tab.missing': 'விடுபட்ட தரவு',
+  'cdh.squadSize': 'வீரர்கள்', 'cdh.avgReadiness': 'சராசரி தயார்நிலை', 'cdh.acwrAlerts': 'ACWR எச்சரிக்கைகள்', 'cdh.missingData': 'விடுபட்ட தரவு',
+  'cdh.lastSync': 'கடைசி ஒத்திசைவு', 'cdh.never': 'ஒருபோதும் இல்லை', 'cdh.loadTrends': 'சுமை போக்குகள்',
+  'cdh.session.selectPrompt': 'ஒரு அமர்வை தேர்ந்தெடுக்கவும்', 'cdh.session.body': 'அமர்வுக்கு 48 மணி நேரத்திற்கு முன்னும் பின்னும் அணியின் தயார்நிலை மாற்றத்தை காணவும்.',
+  'cdh.missing.today': 'இன்று தரவு இல்லை', 'cdh.missing.thisWeek': 'இந்த வாரம் தரவு இல்லை', 'cdh.missing.thisMonth': 'இந்த மாதம் தரவு இல்லை', 'cdh.missing.allPresent': 'அனைத்து வீரர்களும் தரவு உள்ளனர்',
 };

@@ -900,6 +900,20 @@ id: 'wellbeing', title: 'Support student wellbeing and development',
     modules: ['integrations.js', 'integration-access.js'],
     sources: ['apps/app/src/screens/integration-hub.js'],
   },
+  {
+    id: 'data_hub',
+    title: 'guide.data_hub.title',
+    why: 'guide.data_hub.why',
+    steps: [
+      'guide.data_hub.step1',
+      'guide.data_hub.step2',
+      'guide.data_hub.step3',
+      'guide.data_hub.step4',
+    ],
+    target: { screen: 'AthleteDataHub' },
+    modules: ['athlete-data-hub.js', 'wearables.js'],
+    sources: ['apps/app/src/screens/athlete-data-hub.js', 'apps/app/src/screens/coach-data-hub.js'],
+  },
 ];
 
 /** Org/academy API modules with no step of their own, and why. Anything not here and not in a step fails the guard test. */
