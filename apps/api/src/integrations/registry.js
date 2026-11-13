@@ -161,7 +161,7 @@ Object.assign(PROVIDERS, {
     url_pattern: /^https:\/\/(in\.)?bookmyshow\.com\//,
     scopes: [{ key: 'event_source.reference', label: 'Store a BookMyShow event reference', description: 'Saves the BookMyShow sports event link as an organiser-attested reference. No data is scraped; ticket sales, attendee lists and refund policy remain with BookMyShow.' }],
     fields: z.object({}).strict(), secrets: [],
-    disclaimer: 'BookMyShow is an independent platform. GotMyGame does not access BookMyShow's data APIs, participant records, or ticket inventory. The event organiser is responsible for ensuring they have authority over the event being linked.',
+    disclaimer: 'BookMyShow is an independent platform. GotMyGame does not access BookMyShow\'s data APIs, participant records, or ticket inventory. The event organiser is responsible for ensuring they have authority over the event being linked.',
     async test() { return { ok: true, message: 'BookMyShow reference ready — no outbound connection required.' }; },
   },
   event_source_ics_feed: {
