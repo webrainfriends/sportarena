@@ -17,6 +17,8 @@ import { c } from '../theme';
 import { BodyPicker, Banner, Metric, StatusTag, ApprovalAskSheet, codeOf, detailsOf, usableApproval, fmtDate, fmtRange, todayIso, LEVEL_LABEL, ROLE_LABEL, ROLE_HELP, POLICY_LABEL, statusLabel } from '../federation-ui';
 import { Cols, ListCard, Pager, Row2, SwitchRow } from '../federation-bits';
 
+import { t } from '../i18n';
+
 const lastDay = (ym) => { const [y, m] = ym.split('-').map(Number); return `${ym}-${String(new Date(y, m, 0).getDate()).padStart(2, '0')}`; };
 const monthName = (ym) => new Date(`${ym}-01T00:00:00`).toLocaleDateString(undefined, { month: 'long', year: 'numeric' });
 const DATE_KINDS = [['registration_window', 'Registration window'], ['transfer_window', 'Transfer window'], ['congress', 'Congress'], ['administrative', 'Administrative date'], ['official_development', 'Official development'], ['assessment', 'Assessment'], ['deadline', 'Deadline']].map(([value, label]) => ({ value, label }));
@@ -443,5 +445,159 @@ function ProposeSheet({ visible, onClose, id, onDone }) {
         <Btn title="Send" disabled={!other} loading={busy} onPress={go} />
       </View>
     </Sheet>
+  );
+}
+
+
+// ---------------------------------------------------------------- data exchange
+const DIR_COLOR = { inbound: c.mintSoft, outbound: c.cyanSoft };
+const STATUS_COLOR = { active: c.mint, suspended: c.sun, archived: c.mute };
+const RUN_COLOR = { success: c.mint, failed: c.red, partial: c.sun, running: c.cyan };
+const FREQ_LABEL = { on_demand: 'On demand', daily: 'Daily', weekly: 'Weekly', monthly: 'Monthly', annual: 'Annual', triggered: 'Triggered' };
+const REC_TYPE_LABEL = { national_body: 'National body', government: 'Government', anti_doping: 'Anti-doping', media: 'Media', research: 'Research', insurance: 'Insurance', other: 'Other' };
+
+function ExchangeRunRow({ run }) {
+  const dur = run.finished_at ? Math.round((new Date(run.finished_at) - new Date(run.started_at)) / 1000) : null;
+  return (
+    <Row2
+      left={<View style={{ gap: 2 }}>
+        <T weight="600" size={13}>{fmtDate(run.started_at)}</T>
+        {run.row_count != null ? <T size={12} color={c.mute}>{run.row_count} rows{dur != null ? ` · ${dur}s` : ''}</T> : null}
+        {run.error_summary ? <T size={12} color={c.red}>{run.error_summary}</T> : null}
+      </View>}
+      right={<Tag label={run.status.toUpperCase()} color={RUN_COLOR[run.status] ?? c.mute} />}
+    />
+  );
+}
+
+function ReconciliationCard({ rec }) {
+  if (!rec || (!rec.expected && !rec.matched)) return null;
+  const pct = rec.expected > 0 ? Math.round((rec.matched / rec.expected) * 100) : 0;
+  return (
+    <Card color={c.paper} style={{ gap: 8 }}>
+      <T weight="700" size={12} color={c.mute}>RECONCILIATION</T>
+      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10 }}>
+        <Metric value={rec.expected ?? 0}  label="Expected"  />
+        <Metric value={rec.matched ?? 0}   label="Matched"   tone={pct === 100 ? c.mint : undefined} />
+        <Metric value={rec.unmatched ?? 0} label="Unmatched" tone={(rec.unmatched ?? 0) > 0 ? c.sun : undefined} />
+        <Metric value={rec.new_rows ?? 0}  label="New rows"  />
+        <Metric value={`${pct}%`}          label="Match rate" tone={pct >= 95 ? c.mint : c.sun} />
+      </View>
+    </Card>
+  );
+}
+
+function ExchangeDetailSheet({ profileId, visible, onClose }) {
+  const data = useLoad(() => profileId ? api.get(`/federation/exchange-profiles/${profileId}`) : null, [profileId]);
+  const rec  = useLoad(() => profileId ? api.get(`/federation/exchange-profiles/${profileId}/reconciliation`) : null, [profileId]);
+  const p = data.data?.profile;
+  const runs = data.data?.runs ?? [];
+  const totals = rec.data?.totals;
+  if (!visible) return null;
+  return (
+    <Sheet visible={visible} onClose={onClose} title={p?.name ?? '…'}>
+      {data.loading ? <Loading /> : data.error ? <LoadError error={data.error} onRetry={data.reload} /> :
+        <View style={{ gap: 14 }}>
+          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+            <Tag label={p.direction === 'inbound' ? t('fed_exc.direction_in') : t('fed_exc.direction_out')} color={DIR_COLOR[p.direction]} />
+            <Tag label={p.status.toUpperCase()} color={STATUS_COLOR[p.status]} />
+            <Tag label={FREQ_LABEL[p.frequency] ?? p.frequency} color={c.paperDark} />
+            {p.includes_youth  ? <Tag label={t('fed_exc.youth_flag')}  color={c.pinkSoft} /> : null}
+            {p.includes_health ? <Tag label={t('fed_exc.health_flag')} color={c.orangeSoft} /> : null}
+          </View>
+          <Section title={t('fed_exc.recipient')}>
+            <T size={13}>{p.recipient_name}</T>
+            <T size={12} color={c.mute}>{REC_TYPE_LABEL[p.recipient_type] ?? p.recipient_type}</T>
+          </Section>
+          <Section title={t('fed_exc.lawful_purpose_label')}>
+            <T size={13}>{p.lawful_purpose}</T>
+          </Section>
+          {p.approval_ref ? <Section title={t('fed_exc.approval_ref_label')}>
+            <T size={13}>{p.approval_ref}</T>
+          </Section> : null}
+          {(p.field_scope?.affiliations?.length || p.field_scope?.licences?.length) ?
+            <Section title={t('fed_exc.field_scope_label')}>
+              {p.field_scope.affiliations?.length ? <T size={12} color={c.mute}>Affiliations: {p.field_scope.affiliations.join(', ')}</T> : null}
+              {p.field_scope.licences?.length     ? <T size={12} color={c.mute}>Licences: {p.field_scope.licences.join(', ')}</T>     : null}
+            </Section> : null}
+          {p.direction === 'outbound' && (p.field_scope?.affiliations?.some((f) => !['id','body_id','sport_id','status'].includes(f)) || p.field_scope?.licences?.some((f) => !['id','body_id','sport_id','status'].includes(f)))
+            ? <Banner>{t('fed_exc.four_eyes_note')}</Banner> : null}
+          {p.suspended_reason ? <Banner>{t('fed_exc.suspended_reason_label')}: {p.suspended_reason}</Banner> : null}
+          <ReconciliationCard rec={totals} />
+          <Section title={t('fed_exc.run_history')}>
+            {runs.length ? runs.map((r) => <ExchangeRunRow key={r.id} run={r} />) : <Empty emoji="▷" title={t('fed_exc.no_runs')} />}
+          </Section>
+        </View>}
+    </Sheet>
+  );
+}
+
+function CreateExchangeSheet({ bodyId, visible, onClose, onDone }) {
+  const { toast } = useSession();
+  const [busy, setBusy] = useState(false);
+  const [form, setForm] = useState({ direction: 'outbound', name: '', recipient_name: '', recipient_type: 'national_body', lawful_purpose: '', field_scope: {}, includes_youth: false, includes_health: false, frequency: 'on_demand', approval_ref: '', approved_by: '' });
+  const set = (k) => (v) => setForm((f) => ({ ...f, [k]: v }));
+  const valid = form.name.trim().length >= 2 && form.recipient_name.trim().length >= 2 && form.lawful_purpose.trim().length >= 10 && form.approved_by.trim().length >= 2;
+  const submit = async () => {
+    setBusy(true);
+    try {
+      await api.post(`/federation/bodies/${bodyId}/exchange-profiles`, form);
+      toast(t('fed_exc.created_toast'));
+      onDone();
+      onClose();
+      setForm({ direction: 'outbound', name: '', recipient_name: '', recipient_type: 'national_body', lawful_purpose: '', field_scope: {}, includes_youth: false, includes_health: false, frequency: 'on_demand', approval_ref: '', approved_by: '' });
+    } catch (e) { toast(explain(e)); } finally { setBusy(false); }
+  };
+  return (
+    <FormSheet visible={visible} onClose={onClose} title={t('fed_exc.create_title')}>
+      <View style={{ gap: 12 }}>
+        <Field label={t('fed_exc.name_label')} value={form.name} onChangeText={set('name')} maxLength={120} />
+        <Seg options={[{ value: 'outbound', label: t('fed_exc.direction_out') }, { value: 'inbound', label: t('fed_exc.direction_in') }]} value={form.direction} onChange={set('direction')} />
+        <Field label={t('fed_exc.recipient_name_label')} value={form.recipient_name} onChangeText={set('recipient_name')} maxLength={200} />
+        <Field label={t('fed_exc.recipient_type_label')} value={form.recipient_type} onChangeText={set('recipient_type')} hint="national_body / government / anti_doping / media / research / insurance / other" />
+        <Field label={t('fed_exc.lawful_purpose_label')} value={form.lawful_purpose} onChangeText={set('lawful_purpose')} multiline maxLength={500} />
+        <Field label={t('fed_exc.frequency_label')} value={form.frequency} onChangeText={set('frequency')} hint="on_demand / daily / weekly / monthly / annual / triggered" />
+        <Field label={t('fed_exc.approval_ref_label')} value={form.approval_ref} onChangeText={set('approval_ref')} maxLength={120} />
+        <Field label={t('fed_exc.approved_by_label')} value={form.approved_by} onChangeText={set('approved_by')} />
+        <SwitchRow label={t('fed_exc.includes_youth_label')} sub={t('fed_exc.includes_youth_sub')} value={form.includes_youth} onChange={set('includes_youth')} />
+        <SwitchRow label={t('fed_exc.includes_health_label')} sub={t('fed_exc.includes_health_sub')} value={form.includes_health} onChange={set('includes_health')} />
+        <Btn title={t('fed_exc.create_btn')} loading={busy} disabled={!valid} onPress={submit} />
+      </View>
+    </FormSheet>
+  );
+}
+
+export function DataExchangeTab({ id, me }) {
+  const [detail, setDetail] = useState(null);
+  const [creating, setCreating] = useState(false);
+  const [dirFilter, setDirFilter] = useState(null);
+  const list = useLoad(() => api.get(`/federation/bodies/${id}/exchange-profiles`, dirFilter ? { direction: dirFilter } : {}), [id, dirFilter]);
+  const profiles = list.data?.profiles ?? [];
+  const canAdmin = me?.can?.admin;
+  return (
+    <View style={{ gap: 14 }}>
+      <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8 }}>
+        <Seg options={[{ value: null, label: 'All' }, { value: 'inbound', label: t('fed_exc.direction_in') }, { value: 'outbound', label: t('fed_exc.direction_out') }]} value={dirFilter} onChange={setDirFilter} />
+        {canAdmin ? <Btn title={t('fed_exc.add_btn')} onPress={() => setCreating(true)} /> : null}
+      </View>
+      {list.loading ? <Loading /> : list.error ? <LoadError error={list.error} onRetry={list.reload} /> :
+        profiles.length === 0
+          ? <Empty emoji="🔄" title={t('fed_exc.empty_title')} sub={t('fed_exc.empty_sub')} />
+          : profiles.map((p) => (
+            <ListCard
+              key={p.id}
+              title={p.name}
+              sub={`${p.recipient_name} · ${REC_TYPE_LABEL[p.recipient_type] ?? p.recipient_type} · ${FREQ_LABEL[p.frequency] ?? p.frequency}`}
+              sub2={p.last_run ? `Last run: ${fmtDate(p.last_run.started_at)} — ${p.last_run.status}` : t('fed_exc.never_run')}
+              status={p.status === 'active' ? 'active' : p.status === 'suspended' ? 'pending' : 'ended'}
+              statusLabel={p.status.toUpperCase()}
+              left={<Tag label={p.direction === 'inbound' ? t('fed_exc.direction_in') : t('fed_exc.direction_out')} color={DIR_COLOR[p.direction]} size={11} />}
+              onPress={() => setDetail(p.id)}
+            />
+          ))
+      }
+      <ExchangeDetailSheet profileId={detail} visible={!!detail} onClose={() => setDetail(null)} />
+      <CreateExchangeSheet bodyId={id} visible={creating} onClose={() => setCreating(false)} onDone={list.reload} />
+    </View>
   );
 }
