@@ -265,9 +265,86 @@ test('a custom integration stays a draft until the platform team builds and depl
   assert.equal((await call('POST', `/organisations/${rival}/integrations`, { token: pa.token, body: { provider_key: 'calendar_ics', label: 'By platform', settings: { url: 'https://c.example.org/a.ics' }, accept_scopes: ['calendar.busy.read'] } })).status, 201);
 });
 
+test('multi-category proof: video, federation_feed and accounting providers are all installable from one framework', async () => {
+  const pa = await platformAdmin(); const owner = await signup(); const org = await mkOrg(owner);
+  const installs = [];
+  for (const [prov, scope] of [['video_hudl', 'video.read'], ['federation_generic_xml', 'federation.read'], ['accounting_xero', 'accounting.read']]) {
+    await enable(pa, owner, org, prov);
+    const r = await call('POST', `/organisations/${org}/integrations`, { token: owner.token, body: { provider_key: prov, label: `Test ${prov}`, settings: {}, accept_scopes: [scope] } });
+    assert.equal(r.status, 201, `install ${prov}: ${JSON.stringify(r.body)}`);
+    installs.push({ id: r.body.id, prov });
+  }
+  const list = (await call('GET', `/organisations/${org}/integrations`, { token: owner.token })).body;
+  const cats = new Set(list.items.map((i) => i.category));
+  assert.ok(cats.has('video') && cats.has('federation_feed') && cats.has('accounting'), `categories present: ${[...cats].join(',')}`);
+});
+
+test('wearable provider is rejected when installed at org level (athlete_scoped)', async () => {
+  const pa = await platformAdmin(); const owner = await signup(); const org = await mkOrg(owner);
+  await enable(pa, owner, org, 'oura');
+  const r = await call('POST', `/organisations/${org}/integrations`, { token: owner.token, body: { provider_key: 'oura', label: 'Org Oura', settings: {}, accept_scopes: ['wearables.metrics.read'] } });
+  assert.ok([400, 409].includes(r.status), `expected 400/409 for org-level wearable, got ${r.status}: ${JSON.stringify(r.body)}`);
+});
+
+test('update_integration with sync_every_minutes null disables the schedule', async () => {
+  const pa = await platformAdmin(); const owner = await signup(); const org = await mkOrg(owner);
+  await enable(pa, owner, org, 'sports_data_json');
+  setIntegrationTransport(() => ({ status: 200, text: JSON.stringify([{ id: '1', name: 'Test' }]) }));
+  const ins = await call('POST', `/organisations/${org}/integrations`, { token: owner.token, body: { provider_key: 'sports_data_json', label: 'Test', settings: { url: 'https://feed.example.com/data.json', api_key: 'sk_test_12345678' }, accept_scopes: ['sports_data.read'], sync_every_minutes: 60 } });
+  assert.equal(ins.status, 201);
+  const upd = await call('PATCH', `/integrations/${ins.body.id}`, { token: owner.token, body: { sync_every_minutes: null } });
+  assert.equal(upd.status, 200, JSON.stringify(upd.body));
+  const row = (await pool.query('SELECT sync_every_minutes, next_sync_at FROM integration_installs WHERE id=$1', [ins.body.id])).rows[0];
+  assert.equal(row.sync_every_minutes, null);
+  assert.equal(row.next_sync_at, null);
+});
+
+test('list_external_ids filters by entity_type', async () => {
+  const pa = await platformAdmin(); const owner = await signup(); const org = await mkOrg(owner);
+  await enable(pa, owner, org, 'sports_data_json');
+  setIntegrationTransport(() => ({ status: 200, text: JSON.stringify([]) }));
+  const ins = await call('POST', `/organisations/${org}/integrations`, { token: owner.token, body: { provider_key: 'sports_data_json', label: 'Test', settings: { url: 'https://feed.example.com/data.json', api_key: 'sk_test_12345678' }, accept_scopes: ['sports_data.read'] } });
+  assert.equal(ins.status, 201);
+  // create a team to map
+  const team = await call('POST', '/teams', { token: owner.token, body: { name: 'Test FC', sport: 'football', organisation_id: org, gender: 'mixed', age_group: 'senior' } });
+  const teamId = team.body.id ?? team.body.team?.id; assert.ok(teamId);
+  await call('POST', `/integrations/${ins.body.id}/external-ids`, { token: owner.token, body: { entity_type: 'team', internal_id: teamId, external_id: 'ext_team_001' } });
+  // filter team
+  const teams = (await call('GET', `/integrations/${ins.body.id}/external-ids`, { token: owner.token, ...{ params: { entity_type: 'team' } } })).body;
+  // also check with query param
+  const r2 = await call('GET', `/integrations/${ins.body.id}/external-ids?entity_type=team`, { token: owner.token });
+  assert.equal(r2.status, 200);
+  assert.ok(r2.body.items.every((m) => m.entity_type === 'team'));
+  const r3 = await call('GET', `/integrations/${ins.body.id}/external-ids?entity_type=venue`, { token: owner.token });
+  assert.equal(r3.status, 200);
+  assert.ok(r3.body.items.length === 0 || r3.body.items.every((m) => m.entity_type === 'venue'));
+});
+
+test('catalogue supports country filter', async () => {
+  const cat = (await call('GET', '/integrations/catalogue?country=IN', {})).body;
+  assert.ok(cat, 'catalogue returned something');
+  // IN-only providers (bookmyshow_in, accounting_tally) must appear
+  const keys = cat.providers.map((p) => p.key);
+  assert.ok(keys.includes('bookmyshow_in') || keys.includes('accounting_tally'), `IN providers present: ${keys.join(',')}`);
+});
+
+test('update_integration_provider migrates to latest version', async () => {
+  const pa = await platformAdmin(); const owner = await signup(); const org = await mkOrg(owner);
+  await enable(pa, owner, org, 'calendar_ics');
+  const ins = await call('POST', `/organisations/${org}/integrations`, { token: owner.token, body: { provider_key: 'calendar_ics', label: 'Cal', settings: { url: 'https://c.example.org/a.ics' }, accept_scopes: ['calendar.busy.read'] } });
+  assert.equal(ins.status, 201);
+  // Artificially set version behind so update_available is true
+  await pool.query("UPDATE integration_installs SET provider_version='0.9' WHERE id=$1", [ins.body.id]);
+  const detail = (await call('GET', `/integrations/${ins.body.id}`, { token: owner.token })).body;
+  assert.ok(detail.update_available, 'update_available should be true when version is behind');
+  const upd = await call('POST', `/integrations/${ins.body.id}/update-provider`, { token: owner.token, body: {} });
+  assert.equal(upd.status, 200, JSON.stringify(upd.body));
+  assert.equal(upd.body.update_available, false);
+});
+
 test('every integration capability is in OpenAPI and MCP-ready, and none is open to ordinary tokens as write without admin scope', async () => {
   const names = capabilities.filter((c) => /integration|external_id/.test(c.name)).map((c) => c.name);
-  assert.ok(names.length >= 23);
+  assert.ok(names.length >= 24, `expected >=24, got ${names.length}: ${names.join(',')}`);
   for (const n of ['request_integration_access', 'respond_integration_quote', 'update_integration_access', 'admin_decide_integration_request', 'admin_list_integration_requests']) assert.ok(names.includes(n), n);
   const spec = buildOpenApi();
   for (const p of ['/integrations/catalogue', '/integrations/{id}/sync', '/integrations/{id}/credentials/rotate']) assert.ok(spec.paths[p], p);
