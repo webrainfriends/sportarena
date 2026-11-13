@@ -71,7 +71,7 @@ CREATE TABLE IF NOT EXISTS fin_six_role_audit_runs (
   gaps_open       int NOT NULL DEFAULT 0,
   gaps_resolved   int NOT NULL DEFAULT 0,
   summary         jsonb NOT NULL DEFAULT '{}',
-  triggered_by    uuid REFERENCES people(id),
+  triggered_by    uuid REFERENCES users(id),
   source          text NOT NULL DEFAULT 'worker' CHECK (source IN ('worker','manual','api'))
 );
 CREATE INDEX IF NOT EXISTS fin_six_role_audit_runs_org_idx ON fin_six_role_audit_runs(organisation_id, ran_at DESC);
