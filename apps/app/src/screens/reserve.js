@@ -170,6 +170,17 @@ export function Invoice({ id }) {
         <View style={{ marginTop: 10 }}>
           {d.credits_cents > 0 && d.status === 'open' ? <Line k="Paid from wallet" v={`− ${money(d.credits_cents)}`} /> : null}
           {d.tax_rate_bp ? <Line k={`${d.tax_name} ${d.tax_rate_bp / 100}% ${d.tax_inclusive ? '(included)' : ''}`} v={money(d.tax_cents)} /> : null}
+          {d.gst_detail && d.gst_detail.supply_type === 'intra_state' ? (
+            <>
+              <Line k={t('invoice.cgst', { rate: d.gst_detail.rate_bp / 200 })} v={money(d.gst_detail.cgst_cents)} />
+              <Line k={t('invoice.sgst', { rate: d.gst_detail.rate_bp / 200 })} v={money(d.gst_detail.sgst_cents)} />
+            </>
+          ) : d.gst_detail ? (
+            <Line k={t('invoice.igst', { rate: d.gst_detail.rate_bp / 100 })} v={money(d.gst_detail.igst_cents)} />
+          ) : null}
+          {d.gst_detail?.hsn_sac_code ? <Line k={t('invoice.hsnSac')} v={d.gst_detail.hsn_sac_code} /> : null}
+          {d.gst_detail?.place_of_supply ? <Line k={t('invoice.placeOfSupply')} v={d.gst_detail.place_of_supply} /> : null}
+          {d.tds_detail ? <Line k={t('invoice.tdsWithheld', { section: d.tds_detail.section_ref })} v={`− ${money(d.tds_detail.withheld_cents)}`} /> : null}
           <Line k={credit ? 'Total credited' : d.status === 'paid' ? 'Total paid' : 'Total due'} v={`${credit ? '−' : ''}${money(d.total_cents)}`} strong />
         </View>
       </Card>
