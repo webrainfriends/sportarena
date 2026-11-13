@@ -764,6 +764,27 @@ id: 'wellbeing', title: 'Support student wellbeing and development',
     modules: ['scorer-pack.js', 'referee-offline.js'],
     sources: ['apps/app/src/screens/match-day-pack.js', 'apps/app/src/screens/referee-offline-sync.js', 'apps/app/src/screens/officials-home.js'],
   },
+  {
+    id: 'physio_practice', title: 'Set up your physio practice',
+    why: 'Provide a full rehabilitation workspace: patient intake, SOAP session notes, encrypted clinical messaging, recovery milestones, outcome measures, pain flare-up tracking, patient education, smart reminders and invoicing with GST — all in one place, without leaving the platform.',
+    steps: [
+      'Open your Organisation workspace, then the Physio tab (visible to users with the physio or doctor role).',
+      'Tap Services & prices to publish your assessment, follow-up, sports rehab and other service types with durations, delivery modes and tax-inclusive prices. Changing a price creates a new version; existing bookings keep the price they were booked at.',
+      'Packages and offers let you pre-sell bundles (e.g. 10-session rehab pack) and run limited-time promotions. Set per-user limits, redemption caps and expiry dates.',
+      'When a patient books, open their appointment and complete the Intake form before the first session: chief complaint, body-map pain locations, 0–10 pain scale, mechanism of injury, aggravating and relieving factors, previous treatment, current medications, red flags, functional goals and sport or training load.',
+      'After each session, open SOAP Notes and fill Subjective, Objective, Assessment and Plan fields. All clinical text is field-level encrypted and never stored in plain text. Record pain before and after, regions treated, techniques used, whether a home program was given, and the next follow-up interval.',
+      'Create a Treatment Plan for the patient, then add Recovery Milestones: title, type (functional, pain, return-to-sport stage, custom), target date and sort order. Mark each one achieved with optional evidence when reached. Track standardised outcome measures (e.g. NPRS, DASH, IKDC, PSFS) over time to chart progress objectively.',
+      'If the patient reports a flare-up between sessions, they can submit one from the app: pain scale, body region, description, triggers, action taken. You can assign yourself to the report, respond, and mark it resolved. Flare-ups surface on the clinician dashboard so urgent cases are never missed.',
+      'Build a patient education library: create items (title, body, category, tags, media links), assign them to individual patients, and track when they read and acknowledge each item.',
+      'Set reminders for exercises, medications, appointments or custom tasks — with recurrence if needed. Patients see reminders in their home feed and can dismiss each one.',
+      'Send encrypted clinical messages directly to patients through the in-app thread system. All message bodies are field-level encrypted; unread counts surface on the dashboard.',
+      'Generate invoices for each session or in bulk: add line items, apply the correct GST / tax rate (set from your own tax advice), and issue to the patient. Mark invoices as paid and record the payment method. Month-to-date revenue, outstanding balance and unpaid invoices appear on the practice dashboard.',
+      'The Practice Dashboard shows today\'s and this week\'s appointment counts, no-show rate, open flare-ups, home-program compliance rate, revenue this month and outstanding invoices — all in one glance.',
+    ],
+    target: { screen: 'PhysioPractice' },
+    modules: ['medical.js', 'provider-services.js', 'provider-offers.js', 'provider-packages.js', 'provider-tax.js', 'treatment-plans.js', 'physio-intake.js', 'physio-sessions.js', 'physio-milestones.js', 'physio-flareup.js', 'physio-education.js', 'physio-reminders.js', 'clinical-messaging.js', 'physio-invoices.js', 'physio-dashboard.js', 'physio-tracking.js', 'physio-reports.js', 'physio-insights.js'],
+    sources: ['apps/app/src/screens/physio-practice.js'],
+  },
 ];
 
 /** Org/academy API modules with no step of their own, and why. Anything not here and not in a step fails the guard test. */
