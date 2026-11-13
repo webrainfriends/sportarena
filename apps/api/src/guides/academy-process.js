@@ -203,6 +203,21 @@ export const ACADEMY_STEPS = [
     modules: ['academy-sessions.js', 'academy-attendance.js', 'academy-ops-board.js', 'academy-desk.js'], sources: ['apps/app/src/screens/academy-ops.js'],
   },
   {
+    id: 'athlete-profile', title: 'Build the athlete profile',
+    why: 'Give every athlete one verified, privacy-controlled card per sport: positions, dominant side, biometrics and playing preferences, shared only with the people they choose.',
+    steps: [
+      'Open your profile, then select a sport card, to see the Athlete profile panel.',
+      'Set your dominant side, positions and playing preferences. Each field defaults to private — tap Who can see it to share it with coaches, recruiters or everyone.',
+      'Tap + Add measurement to record a biometric (height, weight, wingspan, vertical jump, sprint, standing long jump, agility, etc.) with the date and who measured it. Values are encrypted at rest.',
+      'Your verified affiliations — active teams and credentials issued by organisations on the platform — appear automatically and can be shared from the same panel.',
+      'Coaches and verified recruiters who have been granted access see only the fields you have shared at their tier.',
+      'Archive a sport card at any time; your matches and history are preserved and you can restore the card later.',
+    ],
+    target: { screen: 'MySports' },
+    modules: ['player.js', 'athlete-profile.js'],
+    sources: ['apps/app/src/screens/athlete-profile.js', 'apps/app/src/screens/player.js'],
+  },
+  {
     id: 'wearable_integration', title: 'Connect performance devices',
     why: 'Elite academies like Nadal Academy, Real Madrid Academies and FC Barcelona track training load, HRV, sleep and GPS metrics daily. Connect your athletes\' wearables so coaches see readiness and load curves without paperwork, and each athlete controls exactly what is shared.',
     steps: [
@@ -966,7 +981,7 @@ export const NOT_IN_GUIDE = {
 };
 
 /** The directories/files the guard test watches for org/academy/venue/coach/tax capability modules. */
-export const WATCHED_MODULES = /^(academy-.*|org-.*|organisations|venue-coaches|gst|provider-tax|coach-classes|para-sport-funding|para-sport-sponsorship-outcomes|para-pathway|para-readiness|para-learn|para-staff-credentials|para-spectator-accessibility|para-ux-conformance|boarding-.*|wearables|wellness.*|integrations|official-rate-card|official-rate-agreements|official-scheduling-recommendations|officials-bulk|officiating-analytics|officiating-season-intelligence)\.js$/;
+export const WATCHED_MODULES = /^(academy-.*|org-.*|organisations|venue-coaches|gst|provider-tax|coach-classes|para-sport-funding|para-sport-sponsorship-outcomes|para-pathway|para-readiness|para-learn|para-staff-credentials|para-spectator-accessibility|para-ux-conformance|boarding-.*|wearables|wellness.*|integrations|official-rate-card|official-rate-agreements|official-scheduling-recommendations|officials-bulk|officiating-analytics|officiating-season-intelligence|player|athlete-profile)\.js$/;
 
 export const SHOT_SIZES = { phone: { width: 390, height: 1100 }, desktop: { width: 1280, height: 900 } };
 export const shotFile = (stepId, size) => `${String(ACADEMY_STEPS.findIndex((s) => s.id === stepId) + 1).padStart(2, '0')}-${stepId}-${size}.png`;
