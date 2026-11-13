@@ -239,6 +239,8 @@ import './player-funding.js';
 import './passport.js';
 import './passport-recruitment.js';
 import './video-library.js';
+import './video-intelligence.js';
+import './tactical-board.js';
 import './calendar-sync.js';
 import './athlete-blocks.js';
 import './career-timeline.js';

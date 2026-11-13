@@ -920,6 +920,8 @@ export const NOT_IN_GUIDE = {
   'official-credentials.js': 'Covered by the official_credentials onboarding step (REF-R02).',
   'officiating-analytics.js': 'Covered by the officiating_analytics onboarding step (REF-R27).',
   'officiating-season-intelligence.js': 'Covered by the officiating_analytics onboarding step (REF-R27).',
+  'video-intelligence.js': 'Video Intelligence (frame-level annotations, AI tags, athlete assignments, clip comparison, tactical board linkage) is an advanced coaching tool activated after the core coaching module. It is not an academy-onboarding step; it extends the coaching and video-library modules documented in docs/video-intelligence.md.',
+  'tactical-board.js': 'Tactical Board is an interactive coaching tool (pitch canvas, player tokens, arrows, zones, video linkage). It is used during session planning and match analysis after the academy is set up; it is not part of the initial onboarding sequence.',
 };
 
 /** The directories/files the guard test watches for org/academy/venue/coach/tax capability modules. */
