@@ -81,7 +81,7 @@ cap({
   auth: 'user',
   input: z.object({
     status: z.enum(['active', 'archived']).default('active'),
-    ...page(),
+    ...page,
   }),
   async handler(i, { user }) {
     const rows = await many(
@@ -296,7 +296,7 @@ cap({
   auth: 'user',
   input: z.object({
     id: sessionId,
-    ...page(),
+    ...page,
   }),
   async handler(i, { user }) {
     await requireSession(i.id, user.id);
