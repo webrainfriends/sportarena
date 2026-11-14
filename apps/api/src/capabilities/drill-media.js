@@ -18,12 +18,35 @@ import { AppError } from '../errors.js';
 import { authenticate } from '../auth.js';
 import { saveEncrypted, loadEncrypted } from '../doc-store.js';
 import { sniff } from '../media.js';
+import { sniffAudio } from '../team-chat-stream.js';
 import { config } from '../config.js';
 
 const TAG = 'Coach';
 const COACH = ['coach'];
 const FOLDER = 'drill-media';
-const LIMITS = { photo: 10 * 2 ** 20, video: 500 * 2 ** 20, perDrill: 30 };
+const LIMITS = { photo: 10 * 2 ** 20, video: 500 * 2 ** 20, audio: 100 * 2 ** 20, perDrill: 30 };
+
+/** Extract duration in whole seconds from raw audio/video bytes using ffprobe, if available. Returns null on any failure. */
+async function probeDuration(buf, ext) {
+  try {
+    const { execFile } = await import('node:child_process');
+    const { promisify } = await import('node:util');
+    const { writeFile, unlink } = await import('node:fs/promises');
+    const { tmpdir } = await import('node:os');
+    const { join: pjoin } = await import('node:path');
+    const exec = promisify(execFile);
+    const tmp = pjoin(tmpdir(), `probe-${Math.random().toString(36).slice(2)}.${ext}`);
+    await writeFile(tmp, buf);
+    try {
+      const { stdout } = await exec('ffprobe', ['-v', 'quiet', '-print_format', 'json', '-show_format', tmp], { timeout: 10_000 });
+      const info = JSON.parse(stdout);
+      const secs = parseFloat(info?.format?.duration);
+      return Number.isFinite(secs) && secs > 0 ? Math.round(secs) : null;
+    } finally {
+      await unlink(tmp).catch(() => {});
+    }
+  } catch { return null; }
+}
 const root = () => resolve(config.mediaDir);
 
 async function ownDrill(userId, templateId) {
@@ -73,7 +96,7 @@ export function drillMediaRouter() {
         await ownDrill(user.id, req.params.id);
 
         const declared = Number(req.headers['content-length'] ?? 0);
-        if (declared > LIMITS.video) throw new AppError(413, 'too_large', 'Files can be up to 500 MB');
+        if (declared > LIMITS.video) throw new AppError(413, 'too_large', 'Files can be up to 500 MB for video or 100 MB for audio');
 
         const { n } = await one('SELECT count(*)::int AS n FROM drill_media WHERE template_id=$1 AND removed_at IS NULL', [req.params.id]);
         if (n >= LIMITS.perDrill) throw new AppError(409, 'limit_reached', `A drill can have up to ${LIMITS.perDrill} media items`);
@@ -94,20 +117,24 @@ export function drillMediaRouter() {
         catch (e) { await rm(tmp, { force: true }); throw e; }
         if (!size) { await rm(tmp, { force: true }); throw badRequest('Empty upload'); }
 
-        const t = sniff(head);
-        if (!t || (t.kind !== 'photo' && t.kind !== 'video')) { await rm(tmp, { force: true }); throw badRequest('Upload JPEG, PNG or MP4 files only.'); }
-        const limit = t.kind === 'photo' ? LIMITS.photo : LIMITS.video;
-        if (size > limit) { await rm(tmp, { force: true }); throw new AppError(413, 'too_large', `${t.kind === 'photo' ? 'Photos' : 'Videos'} can be up to ${limit / 2 ** 20} MB`); }
+        const t = sniff(head) ?? (sniffAudio(head) ? { kind: 'audio', ...sniffAudio(head) } : null);
+        if (!t || !['photo', 'video', 'audio'].includes(t.kind)) {
+          await rm(tmp, { force: true });
+          throw badRequest('Upload JPEG, PNG, MP4, MP3, M4A, WAV or OGG files only.');
+        }
+        const limit = t.kind === 'photo' ? LIMITS.photo : t.kind === 'audio' ? LIMITS.audio : LIMITS.video;
+        if (size > limit) { await rm(tmp, { force: true }); throw new AppError(413, 'too_large', `${t.kind === 'photo' ? 'Photos' : t.kind === 'audio' ? 'Audio files' : 'Videos'} can be up to ${limit / 2 ** 20} MB`); }
 
         const { readFile } = await import('node:fs/promises');
         const raw = await readFile(tmp);
         await rm(tmp, { force: true });
         const { file } = await saveEncrypted(FOLDER, 'drill_media.file_name', raw);
 
+        const duration = (t.kind === 'audio' || t.kind === 'video') ? await probeDuration(raw, t.ext ?? (t.kind === 'video' ? 'mp4' : 'mp3')) : null;
         const original = typeof req.query.name === 'string' ? req.query.name.slice(0, 255) : null;
         const row = await one(
-          'INSERT INTO drill_media(template_id,uploaded_by,kind,content_type,file_name,size_bytes,sha256,original_name) VALUES($1,$2,$3,$4,$5,$6,$7,$8) RETURNING id,kind,content_type,size_bytes,original_name,created_at',
-          [req.params.id, user.id, t.kind, t.type, file, size, hash.digest('hex'), original]);
+          'INSERT INTO drill_media(template_id,uploaded_by,kind,content_type,file_name,size_bytes,sha256,original_name,duration_seconds) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING id,kind,content_type,size_bytes,original_name,duration_seconds,created_at',
+          [req.params.id, user.id, t.kind, t.type, file, size, hash.digest('hex'), original, duration]);
         res.status(201).json({ ...row, size_bytes: Number(row.size_bytes), file_url: `/api/v1/coaching/drills/${req.params.id}/media/${row.id}/file` });
       } catch (e) { fail(res, e); }
     },

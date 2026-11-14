@@ -154,6 +154,7 @@ import './player-development.js';
 import './player-goals.js';
 import './offline-sync.js';
 import './coaching-evidence.js';
+import './drill-step-responses.js';
 import './payments.js';
 import './payment-countries.js';
 import './payment-providers.js';

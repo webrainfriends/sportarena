@@ -21,6 +21,7 @@ import { AthleteBenchmarks } from './player-insights';
 import { SharedByPlayers } from './player-goals';
 import { t, tEnum } from '../i18n';
 import { VideoPlayer } from '../video-player';
+import { VoiceRecorderSheet, VoicePlayer } from '../voice-note';
 import { SessionGuidePanel, ParaAdaptationEditor, AccessibleMediaEditor, ParaTemplateToggle } from './coaching-para';
 import { useSports } from '../sportpicker';
 
@@ -966,9 +967,10 @@ function DrillCard({ tpl, onView, onAdd, wide }) {
   const steps = tpl.steps ?? [];
   const photoSteps = steps.filter((s) => s.type === 'photo' && s.media_id);
   const videoSteps = steps.filter((s) => s.type === 'video' && s.media_id);
+  const audioSteps = steps.filter((s) => s.type === 'audio' && s.media_id);
   const firstMedia = [...photoSteps, ...videoSteps][0];
   const textSteps = steps.filter((s) => s.type === 'text' && s.text);
-  const badges = [photoSteps.length ? `📷 ${photoSteps.length}` : null, videoSteps.length ? `▶ ${videoSteps.length}` : null, steps.length ? t('cs.steps_n', { n: steps.length }) : null].filter(Boolean);
+  const badges = [photoSteps.length ? `📷 ${photoSteps.length}` : null, videoSteps.length ? `▶ ${videoSteps.length}` : null, audioSteps.length ? `🎵 ${audioSteps.length}` : null, steps.length ? t('cs.steps_n', { n: steps.length }) : null].filter(Boolean);
   const kindKey = b.kind ?? 'skill_drill';
   const kindColor = c[DRILL_KIND_COLOR[kindKey] ?? 'cyan'];
   const sportLabel = tpl.sport_name ? label(tpl.sport_name.replace(/-/g, ' ')) : null;
@@ -1031,29 +1033,80 @@ function DrillCard({ tpl, onView, onAdd, wide }) {
   );
 }
 
-/** Step builder used inside the create/edit drill sheet. Manages an ordered list of text/photo/video steps. */
+/** Format duration seconds as "1 min 48 sec" or "45 sec". */
+function fmtDuration(secs) {
+  if (!secs) return null;
+  const m = Math.floor(secs / 60), s = secs % 60;
+  return m > 0 ? t('cs.step_duration_minutes', { m, s }) : t('cs.step_duration_seconds', { n: secs });
+}
+
+/** Inline audio player for a drill step's uploaded audio instruction. */
+function DrillAudioPlayer({ drillId, mediaId, durationSeconds }) {
+  const fileUrl = mediaUrl(`/api/v1/coaching/drills/${drillId}/media/${mediaId}/file`);
+  return (
+    <View style={{ backgroundColor: c.pinkSoft, borderRadius: 12, padding: 10 }}>
+      <VoicePlayer url={fileUrl} label={durationSeconds ? fmtDuration(durationSeconds) : t('cs.step_audio')} />
+    </View>
+  );
+}
+
+/** Step builder used inside the create/edit drill sheet. Manages an ordered list of text/photo/video/audio steps. */
 function DrillStepBuilder({ steps, onChange, drillId, toast: toastFn }) {
-  const addStep = (type) => onChange([...steps, { type, text: '', media_id: null, caption: '' }]);
+  const addStep = (type) => onChange([...steps, { type, text: '', media_id: null, caption: '', duration_seconds: null, transcript: '', show_transcript: true, allow_athlete_response: false }]);
   const removeStep = (idx) => onChange(steps.filter((_, i) => i !== idx));
   const updateStep = (idx, patch) => onChange(steps.map((s, i) => i === idx ? { ...s, ...patch } : s));
+  const [recording, setRecording] = useState(null); // idx of step currently recording
+  const [transcribing, setTranscribing] = useState(null); // idx transcribing
+
   const pickMedia = async (idx, type) => {
-    const step = steps[idx];
-    const accept = type === 'photo' ? 'image/jpeg,image/png' : 'video/mp4,video/quicktime';
+    const accept = type === 'photo' ? 'image/jpeg,image/png' : type === 'video' ? 'video/mp4,video/quicktime' : 'audio/mpeg,audio/mp4,audio/wav,audio/ogg,audio/webm';
     const f = await pickFile(accept, {});
     if (!f) return;
     if (!drillId) { toastFn(t('cs.drill_saving')); return; }
+    toastFn(t('cs.audio_uploading'));
     try {
       const row = await api.upload(`/coaching/drills/${drillId}/media`, f.blob, { name: f.name ?? undefined });
-      updateStep(idx, { media_id: row.id });
+      const patch = { media_id: row.id };
+      if (row.duration_seconds) patch.duration_seconds = row.duration_seconds;
+      updateStep(idx, patch);
     } catch (e) { toastFn(e.message); }
   };
+
+  const handleRecordDone = async (idx, { blob, seconds }) => {
+    if (!drillId) { toastFn(t('cs.drill_saving')); return; }
+    toastFn(t('cs.audio_uploading'));
+    try {
+      const row = await api.upload(`/coaching/drills/${drillId}/media`, blob, { name: 'voice-cue.webm' });
+      const patch = { media_id: row.id, duration_seconds: row.duration_seconds ?? seconds ?? null };
+      updateStep(idx, patch);
+    } catch (e) { toastFn(e.message); }
+  };
+
+  const transcribeStep = async (idx) => {
+    if (!drillId) return;
+    setTranscribing(idx);
+    try {
+      const res = await api.post(`/coaching/drills/${drillId}/steps/${idx}/transcribe`, { stepIndex: idx });
+      updateStep(idx, { transcript: res.transcript });
+    } catch (e) { toastFn(t('cs.transcribe_error')); }
+    finally { setTranscribing(null); }
+  };
+
   return (
     <View style={{ gap: 0, marginTop: 4 }}>
+      {recording !== null && (
+        <VoiceRecorderSheet
+          onClose={() => setRecording(null)}
+          onDone={(data) => { handleRecordDone(recording, data); setRecording(null); }}
+        />
+      )}
       {steps.map((step, idx) => (
         <View key={idx} style={{ backgroundColor: c.paper, borderRadius: 12, marginBottom: 8, overflow: 'hidden' }}>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, padding: 12, paddingBottom: 8, borderBottomWidth: 1, borderBottomColor: c.line }}>
             <View style={{ width: 22, height: 22, borderRadius: 11, backgroundColor: c.pink, alignItems: 'center', justifyContent: 'center' }}><T size={11} weight="700" color="#fff">{idx + 1}</T></View>
-            <T size={13} weight="600" color={c.ink} style={{ flex: 1 }}>{step.type === 'text' ? t('cs.step_text') : step.type === 'photo' ? t('cs.step_photo') : t('cs.step_video')}</T>
+            <T size={13} weight="600" color={c.ink} style={{ flex: 1 }}>
+              {step.type === 'text' ? t('cs.step_text') : step.type === 'photo' ? t('cs.step_photo') : step.type === 'video' ? t('cs.step_video') : t('cs.step_audio')}
+            </T>
             <Pressable onPress={() => removeStep(idx)} accessibilityLabel="Remove step" style={{ padding: 4 }}><T size={16} color={c.mute}>✕</T></Pressable>
           </View>
           <View style={{ padding: 10, gap: 8 }}>
@@ -1074,7 +1127,7 @@ function DrillStepBuilder({ steps, onChange, drillId, toast: toastFn }) {
                   </View>
                 )}
               </Pressable>
-            ) : (
+            ) : step.type === 'video' ? (
               <Pressable onPress={() => pickMedia(idx, 'video')} accessibilityRole="button" accessibilityLabel={step.media_id ? t('cs.change_media') : t('cs.tap_add_video')}>
                 {step.media_id ? (
                   <View style={{ height: 90, backgroundColor: '#0f0f18', borderRadius: 10, alignItems: 'center', justifyContent: 'center', gap: 4 }}>
@@ -1089,15 +1142,96 @@ function DrillStepBuilder({ steps, onChange, drillId, toast: toastFn }) {
                   </View>
                 )}
               </Pressable>
+            ) : /* audio */ (
+              <View style={{ gap: 8 }}>
+                {step.media_id && drillId ? (
+                  <DrillAudioPlayer drillId={drillId} mediaId={step.media_id} durationSeconds={step.duration_seconds} />
+                ) : null}
+
+                {/* Upload or record buttons */}
+                <View style={{ flexDirection: 'row', gap: 8 }}>
+                  <Pressable onPress={() => pickMedia(idx, 'audio')} accessibilityRole="button" accessibilityLabel={t('cs.tap_add_audio')}
+                    style={{ flex: 1, alignItems: 'center', gap: 4, paddingVertical: 10, backgroundColor: c.violetSoft, borderRadius: 10, borderWidth: 1.5, borderColor: step.media_id ? c.pink : c.line, borderStyle: step.media_id ? 'solid' : 'dashed' }}>
+                    <T size={18}>📂</T>
+                    <T size={11} weight="600" color={step.media_id ? c.pink : c.mute}>{step.media_id ? t('cs.change_media') : t('cs.tap_add_audio')}</T>
+                  </Pressable>
+                  <Pressable onPress={() => setRecording(idx)} accessibilityRole="button" accessibilityLabel={t('cs.tap_record_audio')}
+                    style={{ flex: 1, alignItems: 'center', gap: 4, paddingVertical: 10, backgroundColor: c.violetSoft, borderRadius: 10, borderWidth: 1.5, borderColor: c.line, borderStyle: 'dashed' }}>
+                    <T size={18}>🎙️</T>
+                    <T size={11} weight="600" color={c.mute}>{t('cs.tap_record_audio')}</T>
+                  </Pressable>
+                </View>
+                <T size={11} color={c.mute} style={{ textAlign: 'center' }}>{t('cs.audio_formats')}</T>
+
+                {/* Duration — auto from media */}
+                {step.duration_seconds ? (
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: c.cyanSoft, borderRadius: 10, padding: 10 }}>
+                    <T size={14}>⏱️</T>
+                    <View style={{ flex: 1 }}>
+                      <T size={11} weight="700" color={c.cyan}>{t('cs.audio_duration_auto')}</T>
+                      <T size={14} weight="800" color={c.ink}>{fmtDuration(step.duration_seconds)}</T>
+                    </View>
+                  </View>
+                ) : null}
+
+                {/* Transcription */}
+                {step.media_id && drillId ? (
+                  <View style={{ gap: 6 }}>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                      <T size={12} weight="700" color={c.mute} style={{ flex: 1 }}>{t('cs.audio_transcript_label')}</T>
+                      {transcribing === idx ? (
+                        <T size={11} color={c.sun}>{t('cs.audio_transcribing')}</T>
+                      ) : (
+                        <Pressable onPress={() => transcribeStep(idx)} accessibilityRole="button" accessibilityLabel={t('cs.transcribe_btn')}>
+                          <T size={12} weight="700" color={c.pink}>{t('cs.transcribe_btn')}</T>
+                        </Pressable>
+                      )}
+                    </View>
+                    <Field
+                      value={step.transcript ?? ''}
+                      onChangeText={(v) => updateStep(idx, { transcript: v })}
+                      placeholder={t('cs.audio_transcript_ph')}
+                      multiline
+                      style={{ minHeight: 60 }}
+                    />
+                  </View>
+                ) : null}
+
+                {/* Show transcript toggle */}
+                {step.media_id && (step.transcript ?? '').length > 0 ? (
+                  <Pressable onPress={() => updateStep(idx, { show_transcript: !(step.show_transcript ?? true) })} accessibilityRole="checkbox" accessibilityLabel={t('cs.audio_show_transcript')}
+                    style={{ flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: c.paper, borderRadius: 10, padding: 10, borderWidth: 1.5, borderColor: c.line }}>
+                    <View style={{ flex: 1 }}>
+                      <T size={13} weight="700" color={c.ink}>{t('cs.audio_show_transcript')}</T>
+                      <T size={11} color={c.mute}>{t('cs.audio_show_transcript_hint')}</T>
+                    </View>
+                    <View style={{ width: 44, height: 26, borderRadius: 13, backgroundColor: (step.show_transcript ?? true) ? c.pink : c.line }}>
+                      <View style={{ width: 20, height: 20, borderRadius: 10, backgroundColor: '#fff', position: 'absolute', top: 3, left: (step.show_transcript ?? true) ? 21 : 3 }} />
+                    </View>
+                  </Pressable>
+                ) : null}
+
+                {/* Allow athlete response toggle */}
+                <Pressable onPress={() => updateStep(idx, { allow_athlete_response: !step.allow_athlete_response })} accessibilityRole="checkbox" accessibilityLabel={t('cs.audio_allow_response')}
+                  style={{ flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: c.paper, borderRadius: 10, padding: 10, borderWidth: 1.5, borderColor: c.line }}>
+                  <View style={{ flex: 1 }}>
+                    <T size={13} weight="700" color={c.ink}>{t('cs.audio_allow_response')}</T>
+                    <T size={11} color={c.mute}>{t('cs.audio_allow_response_hint')}</T>
+                  </View>
+                  <View style={{ width: 44, height: 26, borderRadius: 13, backgroundColor: step.allow_athlete_response ? c.pink : c.line }}>
+                    <View style={{ width: 20, height: 20, borderRadius: 10, backgroundColor: '#fff', position: 'absolute', top: 3, left: step.allow_athlete_response ? 21 : 3 }} />
+                  </View>
+                </Pressable>
+              </View>
             )}
-            {step.type !== 'text' && (
+            {step.type !== 'text' && step.type !== 'audio' && (
               <Field value={step.caption} onChangeText={(v) => updateStep(idx, { caption: v })} placeholder={t('cs.step_caption_ph')} label={t('cs.step_caption')} />
             )}
           </View>
         </View>
       ))}
       <View style={{ flexDirection: 'row', gap: 8, marginTop: 2 }}>
-        {[['text', '📝', t('cs.step_text')], ['photo', '📷', t('cs.step_photo')], ['video', '🎬', t('cs.step_video')]].map(([type, icon, lbl]) => (
+        {[['text', '📝', t('cs.step_text')], ['photo', '📷', t('cs.step_photo')], ['video', '🎬', t('cs.step_video')], ['audio', '🎵', t('cs.step_audio')]].map(([type, icon, lbl]) => (
           <Pressable key={type} onPress={() => addStep(type)} accessibilityRole="button" accessibilityLabel={`${t('cs.add_step')} · ${lbl}`}
             style={{ flex: 1, alignItems: 'center', gap: 4, paddingVertical: 12, backgroundColor: c.paper, borderRadius: 12, borderWidth: 1.5, borderColor: c.line, borderStyle: 'dashed' }}>
             <T size={20}>{icon}</T>
@@ -1289,6 +1423,279 @@ export function CoachDrills() {
         ) : null}
       </Sheet>
     </Screen>
+  );
+}
+
+/**
+ * Athlete: plays a single drill step's audio instruction, shows the transcript if the coach enabled it,
+ * and lets the athlete record or type a response when allow_athlete_response is true.
+ *
+ * Props:
+ *   step           – step object from coach_templates.steps
+ *   stepIndex      – 0-based index
+ *   sessionId      – coaching_session_records.id
+ *   drillId        – coach_templates.id
+ *   existingResponse – previously submitted response (or null)
+ *   onResponse     – called with the submitted response row
+ */
+export function DrillStepView({ step, stepIndex, sessionId, drillId, existingResponse, onResponse }) {
+  const { toast } = useSession();
+  const [responseTab, setResponseTab] = useState('voice'); // 'voice' | 'text'
+  const [responseText, setResponseText] = useState('');
+  const [recording, setRecording] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const [submitted, setSubmitted] = useState(!!existingResponse);
+
+  if (!step) return null;
+  const hasAudio = step.type === 'audio' && step.media_id;
+  const hasTranscript = hasAudio && step.show_transcript !== false && (step.transcript ?? '').length > 0;
+  const canRespond = step.allow_athlete_response === true && sessionId && drillId && !submitted;
+
+  const submitTextResponse = async () => {
+    if (!responseText.trim()) return;
+    setSubmitting(true);
+    try {
+      const res = await api.post(`/coaching/sessions/${sessionId}/drills/${drillId}/steps/${stepIndex}/respond`, { text: responseText.trim() });
+      setSubmitted(true);
+      onResponse?.(res);
+    } catch (e) { toast(e.message); }
+    finally { setSubmitting(false); }
+  };
+
+  const handleVoiceDone = async ({ blob, seconds }) => {
+    setSubmitting(true);
+    try {
+      const mediaRow = await api.upload(`/coaching/sessions/${sessionId}/drills/${drillId}/steps/${stepIndex}/response-audio`, blob, { name: 'response.webm' });
+      const res = await api.post(`/coaching/sessions/${sessionId}/drills/${drillId}/steps/${stepIndex}/respond`, { audio_media_id: mediaRow.id });
+      setSubmitted(true);
+      onResponse?.(res);
+    } catch (e) { toast(e.message); }
+    finally { setSubmitting(false); setRecording(false); }
+  };
+
+  return (
+    <View style={{ gap: 12 }}>
+      {recording && (
+        <VoiceRecorderSheet onClose={() => setRecording(false)} onDone={handleVoiceDone} />
+      )}
+
+      {/* Audio instruction player */}
+      {hasAudio ? (
+        <View style={{ backgroundColor: c.pinkSoft, borderRadius: 14, padding: 12 }}>
+          <T size={11} weight="700" color={c.pink} style={{ textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 6 }}>{t('cs.audio_badge')}</T>
+          <VoicePlayer url={mediaUrl(`/api/v1/coaching/drills/${drillId}/media/${step.media_id}/file`)} label={step.duration_seconds ? fmtDuration(step.duration_seconds) : t('cs.step_audio')} />
+          {hasTranscript ? (
+            <View style={{ marginTop: 10, paddingTop: 10, borderTopWidth: 1, borderTopColor: 'rgba(132,88,179,0.2)' }}>
+              <T size={11} weight="700" color={c.pink} style={{ marginBottom: 4 }}>{t('cs.audio_transcript_label')}</T>
+              <T size={14} color={c.ink} style={{ lineHeight: 22 }}>{step.transcript}</T>
+            </View>
+          ) : null}
+        </View>
+      ) : null}
+
+      {/* Text-only step */}
+      {step.type === 'text' && step.text ? (
+        <T size={15} color={c.ink} style={{ lineHeight: 24 }}>{step.text}</T>
+      ) : null}
+
+      {/* Duration indicator */}
+      {step.duration_seconds ? (
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: c.cyanSoft, borderRadius: 10, padding: 10 }}>
+          <T size={14}>⏱️</T>
+          <T size={13} weight="700" color={c.cyan}>{fmtDuration(step.duration_seconds)}</T>
+        </View>
+      ) : null}
+
+      {/* Coach feedback on previous response */}
+      {existingResponse?.feedback_text || existingResponse?.feedback_audio_file_url ? (
+        <View style={{ backgroundColor: c.paper, borderRadius: 12, padding: 12, borderLeftWidth: 3, borderLeftColor: c.pink }}>
+          <T size={11} weight="700" color={c.pink} style={{ textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 6 }}>{t('cs.drill_feedback_label')}</T>
+          {existingResponse.feedback_audio_file_url ? (
+            <VoicePlayer url={existingResponse.feedback_audio_file_url} label={t('cs.step_audio')} />
+          ) : null}
+          {existingResponse.feedback_text ? (
+            <T size={14} color={c.ink} style={{ lineHeight: 22, marginTop: existingResponse.feedback_audio_file_url ? 8 : 0 }}>{existingResponse.feedback_text}</T>
+          ) : null}
+        </View>
+      ) : null}
+
+      {/* Response area */}
+      {canRespond ? (
+        <View style={{ backgroundColor: c.paper, borderRadius: 14, padding: 12, borderWidth: 1.5, borderColor: c.line }}>
+          <T size={13} weight="700" color={c.ink} style={{ marginBottom: 10 }}>{t('cs.drill_response_your')}</T>
+          <View style={{ flexDirection: 'row', gap: 6, marginBottom: 12 }}>
+            {['voice', 'text'].map((tab) => (
+              <Pressable key={tab} onPress={() => setResponseTab(tab)} accessibilityRole="tab"
+                style={{ flex: 1, padding: 8, borderRadius: 10, alignItems: 'center', backgroundColor: responseTab === tab ? c.pinkSoft : c.bg, borderWidth: 1.5, borderColor: responseTab === tab ? c.pink : c.line }}>
+                <T size={12} weight="700" color={responseTab === tab ? c.pink : c.mute}>
+                  {tab === 'voice' ? `🎙️ ${t('cs.drill_response_voice')}` : `📝 ${t('cs.drill_response_text')}`}
+                </T>
+              </Pressable>
+            ))}
+          </View>
+          {responseTab === 'voice' ? (
+            <Btn title={`🎙️ ${t('cs.drill_response_recording').replace('…', '')}`} onPress={() => setRecording(true)} accessibilityLabel={t('cs.drill_response_recording')} />
+          ) : (
+            <View style={{ gap: 8 }}>
+              <Field value={responseText} onChangeText={setResponseText} placeholder={t('cs.drill_feedback_placeholder')} multiline style={{ minHeight: 72 }} />
+              <Btn title={t('cs.drill_response_send')} onPress={submitTextResponse} loading={submitting} disabled={!responseText.trim()} />
+            </View>
+          )}
+        </View>
+      ) : submitted ? (
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: c.limeSoft, borderRadius: 10, padding: 10 }}>
+          <T size={16}>✅</T>
+          <T size={13} weight="700" color={c.lime}>{t('cs.drill_response_submit')}</T>
+        </View>
+      ) : null}
+    </View>
+  );
+}
+
+/**
+ * Coach: review a single athlete's drill step response and send feedback (voice, text, or rating).
+ * Shown as a bottom sheet from the drill responses list.
+ */
+export function DrillStepFeedbackSheet({ sessionId, drillId, stepIndex, response, onClose, onSent }) {
+  const { toast } = useSession();
+  const [feedbackTab, setFeedbackTab] = useState('text');
+  const [feedbackText, setFeedbackText] = useState('');
+  const [rating, setRating] = useState(null);
+  const [recording, setRecording] = useState(false);
+  const [sending, setSending] = useState(false);
+
+  const send = async (audioMediaId) => {
+    if (!feedbackText.trim() && !audioMediaId && !rating) { toast('Add feedback text, audio, or a rating'); return; }
+    setSending(true);
+    try {
+      const res = await api.post(
+        `/coaching/sessions/${sessionId}/drills/${drillId}/steps/${stepIndex}/athletes/${response.athlete_id}/feedback`,
+        { text: feedbackText.trim() || undefined, audio_media_id: audioMediaId, rating: rating ?? undefined },
+      );
+      onSent?.(res);
+      onClose();
+    } catch (e) { toast(e.message); }
+    finally { setSending(false); }
+  };
+
+  const handleVoiceDone = async ({ blob }) => {
+    setSending(true);
+    try {
+      const mediaRow = await api.upload(`/coaching/drills/${drillId}/media`, blob, { name: 'feedback-audio.webm' });
+      await send(mediaRow.id);
+    } catch (e) { toast(e.message); setSending(false); }
+    setRecording(false);
+  };
+
+  const RATINGS = [
+    ['excellent', '⚡', t('cs.drill_feedback_rating_excellent'), c.lime, c.limeSoft],
+    ['good', '✅', t('cs.drill_feedback_rating_good'), c.cyan, c.cyanSoft],
+    ['redo', '🔄', t('cs.drill_feedback_rating_redo'), c.sun, c.sunSoft],
+    ['issue', '⚠️', t('cs.drill_feedback_rating_issue'), c.red, c.redSoft],
+  ];
+
+  return (
+    <Sheet visible onClose={onClose} title={response.athlete_name ?? t('cs.drill_feedback_label')}>
+      {recording && <VoiceRecorderSheet onClose={() => setRecording(false)} onDone={handleVoiceDone} />}
+
+      {/* Athlete's response */}
+      {response.audio_file_url ? (
+        <View style={{ backgroundColor: c.violetSoft, borderRadius: 12, padding: 10, marginBottom: 12 }}>
+          <T size={11} weight="700" color={c.mute} style={{ marginBottom: 6 }}>{t('cs.drill_response_your')}</T>
+          <VoicePlayer url={response.audio_file_url} label={t('cs.step_audio')} />
+          {response.response_text ? <T size={13} color={c.mute} style={{ marginTop: 6, fontStyle: 'italic' }}>"{response.response_text}"</T> : null}
+        </View>
+      ) : response.response_text ? (
+        <View style={{ backgroundColor: c.violetSoft, borderRadius: 12, padding: 10, marginBottom: 12 }}>
+          <T size={13} color={c.ink} style={{ fontStyle: 'italic' }}>"{response.response_text}"</T>
+        </View>
+      ) : null}
+
+      {/* Feedback tabs */}
+      <View style={{ flexDirection: 'row', gap: 6, marginBottom: 12 }}>
+        {['text', 'voice'].map((tab) => (
+          <Pressable key={tab} onPress={() => setFeedbackTab(tab)} accessibilityRole="tab"
+            style={{ flex: 1, padding: 8, borderRadius: 10, alignItems: 'center', backgroundColor: feedbackTab === tab ? c.pinkSoft : c.bg, borderWidth: 1.5, borderColor: feedbackTab === tab ? c.pink : c.line }}>
+            <T size={12} weight="700" color={feedbackTab === tab ? c.pink : c.mute}>
+              {tab === 'voice' ? `🎙️ ${t('cs.drill_response_voice')}` : `📝 ${t('cs.drill_response_text')}`}
+            </T>
+          </Pressable>
+        ))}
+      </View>
+
+      {feedbackTab === 'text' ? (
+        <Field value={feedbackText} onChangeText={setFeedbackText} placeholder={t('cs.drill_feedback_placeholder')} multiline style={{ minHeight: 72, marginBottom: 12 }} />
+      ) : (
+        <Btn title={`🎙️ ${t('cs.tap_record_audio')}`} onPress={() => setRecording(true)} style={{ marginBottom: 12 }} />
+      )}
+
+      {/* Rating */}
+      <T size={12} weight="700" color={c.mute} style={{ marginBottom: 8 }}>Rating (optional)</T>
+      <View style={{ flexDirection: 'row', gap: 6, marginBottom: 16 }}>
+        {RATINGS.map(([val, icon, lbl, col, soft]) => (
+          <Pressable key={val} onPress={() => setRating(rating === val ? null : val)} accessibilityRole="checkbox" accessibilityLabel={lbl}
+            style={{ flex: 1, padding: 8, borderRadius: 10, alignItems: 'center', gap: 4, backgroundColor: rating === val ? soft : c.bg, borderWidth: 2, borderColor: rating === val ? col : c.line }}>
+            <T size={18}>{icon}</T>
+            <T size={10} weight="700" color={rating === val ? col : c.mute}>{lbl}</T>
+          </Pressable>
+        ))}
+      </View>
+
+      <Btn title={t('cs.drill_feedback_send')} onPress={() => send(undefined)} loading={sending} />
+    </Sheet>
+  );
+}
+
+/**
+ * Coach: list all athlete responses for a specific drill step in a session, with ability to open the feedback sheet.
+ */
+export function DrillStepResponsesList({ sessionId, drillId, stepIndex }) {
+  const { toast } = useSession();
+  const [feedbackFor, setFeedbackFor] = useState(null);
+  const list = useLoad(
+    () => api.get(`/coaching/sessions/${sessionId}/drills/${drillId}/steps/${stepIndex}/responses`),
+    [sessionId, drillId, stepIndex],
+  );
+
+  if (list.loading) return <Loading />;
+  if (list.error) return <ErrorBox error={list.error} />;
+  const responses = list.data ?? [];
+
+  return (
+    <View>
+      {feedbackFor ? (
+        <DrillStepFeedbackSheet
+          sessionId={sessionId}
+          drillId={drillId}
+          stepIndex={stepIndex}
+          response={feedbackFor}
+          onClose={() => setFeedbackFor(null)}
+          onSent={() => { list.reload(); setFeedbackFor(null); }}
+        />
+      ) : null}
+
+      <T size={13} weight="700" color={c.mute} style={{ marginBottom: 8 }}>{t('cs.drill_responses_heading')}</T>
+      {responses.length === 0 ? (
+        <Empty title={t('cs.drill_response_no_responses')} />
+      ) : responses.map((r) => (
+        <Pressable key={r.id} onPress={() => setFeedbackFor(r)} accessibilityRole="button"
+          style={{ backgroundColor: c.paper, borderRadius: 12, padding: 12, marginBottom: 8, flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+          <View style={{ width: 36, height: 36, borderRadius: 18, backgroundColor: c.pinkSoft, alignItems: 'center', justifyContent: 'center' }}>
+            <T size={13} weight="700" color={c.pink}>{(r.athlete_name ?? '?')[0].toUpperCase()}</T>
+          </View>
+          <View style={{ flex: 1 }}>
+            <T size={13} weight="700" color={c.ink}>{r.athlete_name}</T>
+            <View style={{ flexDirection: 'row', gap: 4, flexWrap: 'wrap', marginTop: 2 }}>
+              {r.audio_file_url ? <Tag label={`🎙️ ${t('cs.drill_response_voice')}`} color={c.pinkSoft} /> : null}
+              {r.response_text ? <Tag label={`📝 ${t('cs.drill_response_text')}`} color={c.violetSoft} /> : null}
+              {r.feedback_rating ? <Tag label={r.feedback_rating} color={c.limeSoft} /> : null}
+              {r.feedback_at ? <Tag label="✓" color={c.limeSoft} /> : null}
+            </View>
+          </View>
+          <T size={18} color={c.mute}>›</T>
+        </Pressable>
+      ))}
+    </View>
   );
 }
 
