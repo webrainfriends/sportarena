@@ -21695,7 +21695,6 @@ export default {
   'cf.entity_kind_event': 'Event',
   'cf.entity_kind_coach': 'Coach',
   'cf.entity_kind_organisation': 'Organisation',
-};
   // Accounting Integrations (#513)
   'acct.title': { text: 'Accounting Integrations', reviewed: false },
   'nav.title.AccountingIntegration': { text: 'Accounting', reviewed: false },
@@ -21878,3 +21877,4 @@ export default {
   'guide.tax.s6': { text: 'Map your income categories and tax components (CGST/SGST/IGST) to your Chart of Accounts.', reviewed: false },
   'guide.tax.s7': { text: 'Queue and push documents from the Exports tab; Tally exports as TDL, Zoho uses API with idempotent reference IDs.', reviewed: false },
   'guide.tax.s8': { text: 'Reconcile failed exports from the Reconciliation tab — mark matched or write off with reason.', reviewed: false },
+};
