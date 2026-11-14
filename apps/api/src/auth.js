@@ -15,6 +15,30 @@ export async function authenticate(authorization) {
   const m = /^Bearer\s+(.+)$/i.exec(authorization ?? '');
   if (!m) return null;
   const tok = m[1].trim();
+  // OAuth tokens minted for developer apps (sk_live_ / sk_test_ prefixes)
+  if (tok.startsWith('sk_live_') || tok.startsWith('sk_test_')) {
+    const row = await one(
+      `UPDATE oauth_tokens t SET last_used_at = now()
+         FROM developer_apps a
+        WHERE t.token_hash = $1
+          AND t.revoked_at IS NULL
+          AND (t.expires_at IS NULL OR t.expires_at > now())
+          AND a.id = t.developer_app_id
+          AND a.status = 'active'
+        RETURNING a.id AS _app_id, a.owner_user_id AS _owner_id, a.sandbox_mode AS _app_sandbox,
+                  t.user_id AS _uid, t.scopes AS _scopes, t.id AS _tid, t.sandbox_mode AS _tok_sandbox`,
+      [sha256(tok)],
+    );
+    if (!row) return null;
+    const uid = row._uid ?? row._owner_id;
+    const user = await one(`SELECT ${COLS} FROM users WHERE id = $1`, [uid]);
+    if (!user) return null;
+    Object.defineProperty(user, 'credential', {
+      value: { type: 'oauth_token', id: row._tid, developer_app_id: row._app_id, scopes: row._scopes, sandbox_mode: row._tok_sandbox },
+      enumerable: false,
+    });
+    return user;
+  }
   if (tok.startsWith('sa_')) {
     // Revoked or expired tokens match no row, so they fail on the very next request.
     const row = await one(
