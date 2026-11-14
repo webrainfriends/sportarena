@@ -176,8 +176,8 @@ export async function evaluateSession(c, s) {
 }
 
 /** Published/completed sessions in a window whose staffing breaks a configured rule (ratio, minimum coaches, lead, lead credential). Capped; `capped` says so. */
-export async function staffingExceptions(c, orgId, from, to, { limit = 400 } = {}) {
-  const sessions = (await c.query("SELECT s.* FROM academy_sessions s WHERE s.organisation_id=$1 AND s.status IN ('published','completed') AND s.starts_at >= $2::date AND s.starts_at < $3::date + 1 ORDER BY s.starts_at, s.id LIMIT $4", [orgId, from, to, limit + 1])).rows;
+export async function staffingExceptions(c, orgId, from, to, { limit = 400, branchId = null } = {}) {
+  const sessions = (await c.query("SELECT s.* FROM academy_sessions s WHERE s.organisation_id=$1 AND s.status IN ('published','completed') AND s.starts_at >= $2::date AND s.starts_at < $3::date + 1 AND ($4::uuid IS NULL OR EXISTS (SELECT 1 FROM academy_programmes ap WHERE ap.id=s.programme_id AND ap.branch_id=$4)) ORDER BY s.starts_at, s.id LIMIT $5", [orgId, from, to, branchId, limit + 1])).rows;
   const out = [];
   for (const s of sessions.slice(0, limit)) {
     const e = await evaluateSession(c, s);

@@ -65,12 +65,14 @@ export function checkCriteria(level, evidence) {
 
 export const levelOf = (versionRow, key) => (versionRow?.levels ?? []).find((l) => l.key === key) ?? null;
 
-/** Who needs a pathway look and why. `coachId` limits it to that coach's own groups. */
-export async function reviewQueue(orgId, { coachId = null } = {}) {
+/** Who needs a pathway look and why. `coachId` limits it to that coach's own groups. `branchId` limits to athletes enrolled in programmes of that branch. */
+export async function reviewQueue(orgId, { coachId = null, branchId = null } = {}) {
   const pathways = await many("SELECT * FROM academy_pathways WHERE organisation_id=$1 AND status='active'", [orgId]);
   const people = await many(
     `SELECT DISTINCT u.id AS athlete_id, u.display_name FROM org_enrolments e JOIN org_cohorts k ON k.id=e.cohort_id JOIN users u ON u.id=e.user_id
-      WHERE k.organisation_id=$1 AND e.status IN ('enrolled','paused') AND ($2::uuid IS NULL OR k.coach_id=$2) ORDER BY u.display_name, u.id`, [orgId, coachId]);
+      WHERE k.organisation_id=$1 AND e.status IN ('enrolled','paused') AND ($2::uuid IS NULL OR k.coach_id=$2)
+        AND ($3::uuid IS NULL OR EXISTS (SELECT 1 FROM academy_programmes ap WHERE ap.id=e.programme_id AND ap.branch_id=$3))
+      ORDER BY u.display_name, u.id`, [orgId, coachId, branchId]);
   const out = [];
   for (const p of pathways) for (const a of people) {
     const last = await one('SELECT decision, to_level, from_level, created_at FROM academy_progression_decisions WHERE pathway_id=$1 AND athlete_id=$2 ORDER BY created_at DESC, id DESC LIMIT 1', [p.id, a.athlete_id]);
