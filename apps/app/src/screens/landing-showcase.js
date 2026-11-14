@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { View, ScrollView, TouchableOpacity, Dimensions, Animated, Platform, AccessibilityInfo } from 'react-native';
+import { View, ScrollView, TouchableOpacity, Dimensions, Animated, Platform, AccessibilityInfo, Text } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
+import { BlurView } from 'expo-blur';
 import { T } from '../ui';
 import { palette } from '../theme';
 import { ShowcaseNews } from './showcase-news';
@@ -26,6 +27,19 @@ const CHAPTERS = [
   { key: 'suppliers', emoji: '📦', label: 'Suppliers', Component: ShowcaseSuppliers },
   { key: 'learn',     emoji: '📚', label: 'Learn',     Component: ShowcaseLearn },
 ];
+
+const CHAPTER_AURORA = {
+  news:      ['#A0D2EB', '#8458B3', '#0EA5E9'],
+  athletes:  ['#8458B3', '#C026D3', '#7C3AED'],
+  venues:    ['#0EA5E9', '#06B6D4', '#8458B3'],
+  academies: ['#6366F1', '#8B5CF6', '#A0D2EB'],
+  matches:   ['#EF4444', '#F97316', '#8458B3'],
+  coaches:   ['#22C55E', '#16A34A', '#A0D2EB'],
+  physios:   ['#EC4899', '#BE185D', '#8458B3'],
+  sponsors:  ['#EAB308', '#D97706', '#8458B3'],
+  suppliers: ['#F97316', '#EA580C', '#D0BDF4'],
+  learn:     ['#8B5CF6', '#7C3AED', '#A0D2EB'],
+};
 
 const CHAPTER_BG = {
   news:      ['#0d1117', '#1a1c27'],
@@ -82,6 +96,37 @@ function StarField({ reduceMotion }) {
           }}
         />
       ))}
+    </View>
+  );
+}
+
+function AuroraBlobs({ chapter, reduceMotion }) {
+  const cols = CHAPTER_AURORA[chapter] || CHAPTER_AURORA.news;
+  const a0 = useRef(new Animated.Value(0.08)).current;
+  const a1 = useRef(new Animated.Value(0.08)).current;
+  const a2 = useRef(new Animated.Value(0.08)).current;
+  useEffect(() => {
+    if (reduceMotion) return;
+    const loop = (a, delay) => Animated.loop(Animated.sequence([
+      Animated.delay(delay),
+      Animated.timing(a, { toValue: 0.28, duration: 4000, useNativeDriver: true }),
+      Animated.timing(a, { toValue: 0.08, duration: 4000, useNativeDriver: true }),
+    ])).start();
+    loop(a0, 0); loop(a1, 1400); loop(a2, 2600);
+  }, [chapter, reduceMotion]);
+
+  if (Platform.OS === 'web') {
+    return React.createElement('div', { style: { position: 'absolute', inset: 0, overflow: 'hidden', pointerEvents: 'none', zIndex: 0 } },
+      React.createElement('div', { style: { position: 'absolute', width: 320, height: 320, borderRadius: '50%', backgroundColor: cols[0], filter: 'blur(90px)', opacity: 0.3, left: '-5%', top: '-20%' } }),
+      React.createElement('div', { style: { position: 'absolute', width: 260, height: 260, borderRadius: '50%', backgroundColor: cols[1], filter: 'blur(80px)', opacity: 0.25, right: '5%', top: '15%' } }),
+      React.createElement('div', { style: { position: 'absolute', width: 220, height: 220, borderRadius: '50%', backgroundColor: cols[2], filter: 'blur(70px)', opacity: 0.2, left: '35%', bottom: '-10%' } }),
+    );
+  }
+  return (
+    <View style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, overflow: 'hidden' }} pointerEvents="none">
+      <Animated.View style={{ position: 'absolute', width: 280, height: 280, borderRadius: 140, backgroundColor: cols[0], left: '-5%', top: '-20%', opacity: a0 }} />
+      <Animated.View style={{ position: 'absolute', width: 220, height: 220, borderRadius: 110, backgroundColor: cols[1], right: '5%', top: '15%', opacity: a1 }} />
+      <Animated.View style={{ position: 'absolute', width: 180, height: 180, borderRadius: 90, backgroundColor: cols[2], left: '35%', bottom: '-10%', opacity: a2 }} />
     </View>
   );
 }
@@ -166,8 +211,12 @@ export function ShowcaseLanding({ manifest, onNavigate }) {
   const bgA = bgColsRef.current.a;
   const bgB = bgColsRef.current.b;
 
+  const GlassNav = ({ children }) => Platform.OS === 'web'
+    ? React.createElement('div', { style: { backdropFilter: 'blur(14px)', WebkitBackdropFilter: 'blur(14px)', background: 'rgba(10,10,20,0.55)', borderBottom: '1px solid rgba(255,255,255,0.08)' } }, children)
+    : <BlurView intensity={14} tint="dark" style={{ borderBottomWidth: 1, borderBottomColor: 'rgba(255,255,255,0.08)', overflow: 'hidden' }}>{children}</BlurView>;
+
   return (
-    <View style={{ borderRadius: 20, overflow: 'hidden', marginVertical: 16 }}>
+    <View style={{ overflow: 'hidden', marginVertical: 16, marginHorizontal: -16, borderRadius: 0 }}>
       <LinearGradient colors={[palette.p0, '#1a1c27']} style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }} />
       <Animated.View style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, opacity: bgOpacA }}>
         <LinearGradient colors={bgA} style={{ flex: 1 }} />
@@ -176,69 +225,66 @@ export function ShowcaseLanding({ manifest, onNavigate }) {
         <LinearGradient colors={bgB} style={{ flex: 1 }} />
       </Animated.View>
 
-      <View style={{ flexDirection: WIDE ? 'row' : 'column', minHeight: WIDE ? 520 : undefined }}>
+      <View style={{ flexDirection: WIDE ? 'row' : 'column', minHeight: WIDE ? 520 : 440 }}>
         {WIDE ? (
-          <View style={{ width: 160, backgroundColor: 'rgba(0,0,0,0.3)', paddingVertical: 12, paddingHorizontal: 8 }}>
-            <T style={{ color: 'rgba(255,255,255,0.4)', fontSize: 10, fontWeight: '700', letterSpacing: 1.5, marginBottom: 10, marginStart: 4 }}>EXPLORE</T>
-            {CHAPTERS.map((ch, idx) => {
-              const sel = ch.key === active;
-              return (
-                <TouchableOpacity
-                  key={ch.key}
-                  onPress={() => switchChapter(ch.key)}
-                  accessibilityRole="tab"
-                  accessibilityState={{ selected: sel }}
-                  style={{ flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 10, paddingHorizontal: 10, borderRadius: 10, marginBottom: 2, overflow: 'hidden' }}>
-                  {sel && (
-                    <Animated.View style={{
-                      position: 'absolute', top: 0, left: 0, right: 0, bottom: 0,
-                      borderRadius: 10, backgroundColor: palette.p2,
-                      opacity: tabGlows[idx].interpolate({ inputRange: [0, 0.7], outputRange: [0.6, 1.0] }),
-                    }} />
-                  )}
-                  {sel && (
-                    <Animated.View style={{
-                      position: 'absolute', top: -4, left: -4, right: -4, bottom: -4,
-                      borderRadius: 14, backgroundColor: palette.p2,
-                      opacity: tabGlows[idx],
-                    }} />
-                  )}
-                  <T style={{ fontSize: 16 }}>{ch.emoji}</T>
-                  <T style={{ color: sel ? '#fff' : 'rgba(255,255,255,0.6)', fontSize: 13, fontWeight: sel ? '700' : '500' }}>{ch.label}</T>
-                </TouchableOpacity>
-              );
-            })}
-          </View>
-        ) : (
-          <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            style={{ backgroundColor: 'rgba(0,0,0,0.3)', paddingVertical: 10 }}
-            contentContainerStyle={{ paddingHorizontal: 12, gap: 6, flexDirection: 'row' }}>
-            {CHAPTERS.map((ch, idx) => {
-              const sel = ch.key === active;
-              return (
-                <Animated.View key={ch.key} style={{ transform: [{ scale: chipScales[idx] }] }}>
+          <GlassNav>
+            <View style={{ width: 170, paddingVertical: 16, paddingHorizontal: 10 }}>
+              <T style={{ color: 'rgba(255,255,255,0.35)', fontSize: 9, fontWeight: '800', letterSpacing: 2, marginBottom: 12, marginStart: 6, textTransform: 'uppercase' }}>Explore</T>
+              {CHAPTERS.map((ch, idx) => {
+                const sel = ch.key === active;
+                return (
                   <TouchableOpacity
-                    onPress={() => { bounceChip(idx); switchChapter(ch.key); }}
+                    key={ch.key}
+                    onPress={() => switchChapter(ch.key)}
                     accessibilityRole="tab"
                     accessibilityState={{ selected: sel }}
                     style={{
-                      flexDirection: 'row', alignItems: 'center', gap: 5,
-                      paddingVertical: 7, paddingHorizontal: 12, borderRadius: 20,
-                      backgroundColor: sel ? palette.p2 : 'rgba(255,255,255,0.10)',
-                      borderWidth: sel ? 0 : 1, borderColor: 'rgba(255,255,255,0.18)',
+                      flexDirection: 'row', alignItems: 'center', gap: 9,
+                      paddingVertical: 10, paddingHorizontal: 10, borderRadius: 12, marginBottom: 3,
+                      backgroundColor: sel ? 'rgba(132,88,179,0.5)' : 'rgba(255,255,255,0.06)',
+                      borderWidth: 1, borderColor: sel ? 'rgba(208,189,244,0.5)' : 'rgba(255,255,255,0.1)',
                     }}>
-                    <T style={{ fontSize: 14 }}>{ch.emoji}</T>
-                    <T style={{ color: '#fff', fontSize: 12, fontWeight: sel ? '700' : '500' }}>{ch.label}</T>
+                    <Animated.View style={{ position: 'absolute', top: -4, left: -4, right: -4, bottom: -4, borderRadius: 16, backgroundColor: palette.p2, opacity: sel ? tabGlows[idx] : 0 }} />
+                    <T style={{ fontSize: 16 }}>{ch.emoji}</T>
+                    <T style={{ color: sel ? '#fff' : 'rgba(255,255,255,0.65)', fontSize: 13, fontWeight: sel ? '700' : '500' }}>{ch.label}</T>
                   </TouchableOpacity>
-                </Animated.View>
-              );
-            })}
-          </ScrollView>
+                );
+              })}
+            </View>
+          </GlassNav>
+        ) : (
+          <GlassNav>
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              style={{ paddingVertical: 10 }}
+              contentContainerStyle={{ paddingHorizontal: 12, gap: 7, flexDirection: 'row' }}>
+              {CHAPTERS.map((ch, idx) => {
+                const sel = ch.key === active;
+                return (
+                  <Animated.View key={ch.key} style={{ transform: [{ scale: chipScales[idx] }] }}>
+                    <TouchableOpacity
+                      onPress={() => { bounceChip(idx); switchChapter(ch.key); }}
+                      accessibilityRole="tab"
+                      accessibilityState={{ selected: sel }}
+                      style={{
+                        flexDirection: 'row', alignItems: 'center', gap: 5,
+                        paddingVertical: 8, paddingHorizontal: 14, borderRadius: 24,
+                        backgroundColor: sel ? 'rgba(132,88,179,0.5)' : 'rgba(255,255,255,0.06)',
+                        borderWidth: 1, borderColor: sel ? 'rgba(208,189,244,0.5)' : 'rgba(255,255,255,0.14)',
+                      }}>
+                      <T style={{ fontSize: 14 }}>{ch.emoji}</T>
+                      <T style={{ color: '#fff', fontSize: 12, fontWeight: sel ? '700' : '500' }}>{ch.label}</T>
+                    </TouchableOpacity>
+                  </Animated.View>
+                );
+              })}
+            </ScrollView>
+          </GlassNav>
         )}
 
         <Animated.View style={{ flex: 1, opacity: fadeAnim, position: 'relative' }}>
+          <AuroraBlobs chapter={active} reduceMotion={reduceMotion} />
           <StarField reduceMotion={reduceMotion} />
           <Component manifest={manifest} block={chapterBlock} onNavigate={onNavigate} />
         </Animated.View>
