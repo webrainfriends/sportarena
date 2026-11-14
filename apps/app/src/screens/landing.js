@@ -145,9 +145,9 @@ function Featured({ items, gate, user }) {
 }
 
 const Step = ({ n, icon, title, text }) => (
-  <View style={{ flex: 1, minWidth: 240, backgroundColor: c.paper, borderRadius: 22, padding: 22, borderWidth: 1, borderColor: c.line, gap: 8 }}>
-    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}><View style={{ width: 44, height: 44, borderRadius: 14, backgroundColor: c.pinkSoft, alignItems: 'center', justifyContent: 'center' }}><T size={22}>{icon}</T></View><T color={c.mute} weight="800" size={12}>STEP {n}</T></View>
-    <T weight="800" size={19}>{title}</T><T color={c.mute} size={14} style={{ lineHeight: 21 }}>{text}</T>
+  <View style={{ flex: 1, minWidth: 240, backgroundColor: '#1e2030', borderRadius: 22, padding: 22, borderWidth: 1, borderColor: 'rgba(255,255,255,0.08)', gap: 8 }}>
+    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}><View style={{ width: 44, height: 44, borderRadius: 14, backgroundColor: 'rgba(132,88,179,0.25)', alignItems: 'center', justifyContent: 'center' }}><T size={22}>{icon}</T></View><T color="#8458B3" weight="800" size={12}>STEP {n}</T></View>
+    <T color="#E5EAF5" weight="800" size={19}>{title}</T><T color="#94A3B8" size={14} style={{ lineHeight: 21 }}>{text}</T>
   </View>
 );
 
@@ -215,7 +215,7 @@ export default function Landing() {
   const d = hl.data;
   const wrap = { width: '100%', maxWidth: 1240, alignSelf: 'center', paddingHorizontal: 20 };
   return (
-    <View style={{ flex: 1, backgroundColor: c.bg }}>
+    <View style={{ flex: 1, backgroundColor: '#13141c' }}>
       {/* sticky nav */}
       <View style={{ backgroundColor: 'rgba(11,16,32,0.96)', borderBottomWidth: 1, borderColor: 'rgba(255,255,255,0.08)', zIndex: 5 }}>
         <View style={[wrap, { height: 64, flexDirection: 'row', alignItems: 'center', gap: 14 }]}>
@@ -238,8 +238,8 @@ export default function Landing() {
 
           <View style={{ gap: 16 }}>
             <View>
-              <T weight="800" size={wide ? 36 : 28} style={{ letterSpacing: -1.2 }}>Book a venue</T>
-              <T color={c.mute} size={15} style={{ marginTop: 4 }}>See open slots and prices for courts and grounds near you. Pick a time, then log in or create an account to confirm.</T>
+              <T color="#E5EAF5" weight="800" size={wide ? 36 : 28} style={{ letterSpacing: -1.2 }}>Book a venue</T>
+              <T color="#94A3B8" size={15} style={{ marginTop: 4 }}>See open slots and prices for courts and grounds near you. Pick a time, then log in or create an account to confirm.</T>
             </View>
             <VenueBooking wide={wide} sport={sport} onBook={(b) => { const i = { action: 'book', title: b.venueName, ...b }; setIntent(i); openAuth(i, 'register'); }} />
           </View>
@@ -250,48 +250,48 @@ export default function Landing() {
 
           <View style={{ gap: 16 }}>
             <View>
-              <T weight="800" size={wide ? 36 : 28} style={{ letterSpacing: -1.2 }}>Work at a tournament</T>
-              <T color={c.mute} size={15} style={{ marginTop: 4 }}>Referees, scorers, medics, volunteers, security, stalls and caterers wanted by organisers. Browse freely — log in to apply, share documents and sign your contract.</T>
+              <T color="#E5EAF5" weight="800" size={wide ? 36 : 28} style={{ letterSpacing: -1.2 }}>Work at a tournament</T>
+              <T color="#94A3B8" size={15} style={{ marginTop: 4 }}>Referees, scorers, medics, volunteers, security, stalls and caterers wanted by organisers. Browse freely — log in to apply, share documents and sign your contract.</T>
             </View>
             <OpenPositions openAuth={(i) => openAuth(i)} limit={9} columns={wide ? 3 : 1} />
           </View>
 
           <View ref={feedRef} style={{ gap: 16, scrollMarginTop: 80 }}>
             <View>
-              <T weight="800" size={wide ? 36 : 28} style={{ letterSpacing: -1.2 }}>What's happening in the arena</T>
-              <T color={c.mute} size={15} style={{ marginTop: 4 }}>Opportunities, matches, schedules and kit — posted by the community. Sign in to apply, contact or follow anyone.</T>
+              <T color="#E5EAF5" weight="800" size={wide ? 36 : 28} style={{ letterSpacing: -1.2 }}>What's happening in the arena</T>
+              <T color="#94A3B8" size={15} style={{ marginTop: 4 }}>Opportunities, matches, schedules and kit — posted by the community. Sign in to apply, contact or follow anyone.</T>
             </View>
             <HScroll>
               {[[null, '✨ All'], ...Object.entries(KINDS).map(([k, v]) => [k, `${v.emoji} ${v.label}`])].map(([k, l]) => (
-                <Pressable key={l} onPress={() => setKind(k)} style={{ paddingVertical: 10, paddingHorizontal: 18, borderRadius: 999, backgroundColor: kind === k ? c.ink : c.paper, borderWidth: 1, borderColor: kind === k ? c.ink : c.line }}><T weight="700" size={14} color={kind === k ? c.inkOn : c.mute}>{l}</T></Pressable>
+                <Pressable key={l} onPress={() => setKind(k)} style={{ paddingVertical: 10, paddingHorizontal: 18, borderRadius: 999, backgroundColor: kind === k ? '#8458B3' : '#1e2030', borderWidth: 1, borderColor: kind === k ? '#8458B3' : 'rgba(255,255,255,0.1)' }}><T weight="700" size={14} color={kind === k ? '#fff' : '#94A3B8'}>{l}</T></Pressable>
               ))}
             </HScroll>
             <View style={{ flexDirection: wide ? 'row' : 'column', gap: 10 }}>
-              <TextInput value={q} onChangeText={setQ} placeholder="Search wanted ads, matches, kit…" placeholderTextColor="#94A3B8" style={[fam, { flex: wide ? 0 : undefined, width: wide ? 300 : undefined, backgroundColor: c.paper, borderRadius: 14, borderWidth: 1, borderColor: c.line, paddingHorizontal: 16, paddingVertical: 12, fontSize: 15 }, isWeb && { outlineStyle: 'none' }]} />
+              <TextInput value={q} onChangeText={setQ} placeholder="Search wanted ads, matches, kit…" placeholderTextColor="#64748B" style={[fam, { flex: wide ? 0 : undefined, width: wide ? 300 : undefined, backgroundColor: '#1e2030', borderRadius: 14, borderWidth: 1, borderColor: 'rgba(255,255,255,0.1)', paddingHorizontal: 16, paddingVertical: 12, fontSize: 15, color: '#E5EAF5' }, isWeb && { outlineStyle: 'none' }]} />
               <HScroll gap={6} style={wide ? { flex: 1 } : undefined}>
-                <Pressable onPress={() => setSport(null)} style={{ paddingVertical: 8, paddingHorizontal: 14, borderRadius: 999, backgroundColor: sport ? c.paper : c.pinkSoft }}><T size={13} weight="700" color={c.pink}>All sports</T></Pressable>
-                {(sports.data ?? []).map((s) => <Pressable key={s.slug} onPress={() => setSport(s.slug === sport ? null : s.slug)} style={{ paddingVertical: 8, paddingHorizontal: 14, borderRadius: 999, backgroundColor: sport === s.slug ? c.pinkSoft : c.paper, borderWidth: 1, borderColor: sport === s.slug ? c.pink : c.line }}><T size={13} weight="700" color={sport === s.slug ? c.pink : '#334155'}>{s.emoji} {s.name}</T></Pressable>)}
+                <Pressable onPress={() => setSport(null)} style={{ paddingVertical: 8, paddingHorizontal: 14, borderRadius: 999, backgroundColor: sport ? '#1e2030' : 'rgba(132,88,179,0.3)' }}><T size={13} weight="700" color="#D0BDF4">All sports</T></Pressable>
+                {(sports.data ?? []).map((s) => <Pressable key={s.slug} onPress={() => setSport(s.slug === sport ? null : s.slug)} style={{ paddingVertical: 8, paddingHorizontal: 14, borderRadius: 999, backgroundColor: sport === s.slug ? 'rgba(132,88,179,0.3)' : '#1e2030', borderWidth: 1, borderColor: sport === s.slug ? '#8458B3' : 'rgba(255,255,255,0.1)' }}><T size={13} weight="700" color={sport === s.slug ? '#D0BDF4' : '#94A3B8'}>{s.emoji} {s.name}</T></Pressable>)}
               </HScroll>
             </View>
 
-            {err ? <T color={c.red} weight="600">{err}</T> : null}
+            {err ? <T color="#FB7185" weight="600">{err}</T> : null}
             {!rows.length && !busy && !err ? (
-              <View style={{ alignItems: 'center', gap: 10, padding: 48, backgroundColor: c.paper, borderRadius: 24, borderWidth: 1, borderColor: c.line }}>
-                <T size={54}>🏟️</T><T weight="800" size={22}>The arena is waiting for its first post</T>
-                <T color={c.mute} style={{ textAlign: 'center', maxWidth: 440 }}>{kind || sport || q ? 'Nothing matches those filters yet. Try clearing them, or post what you are looking for.' : 'Need athletes? Hosting a match? Selling kit? Be the first to put it in front of the community.'}</T>
-                <Pressable onPress={() => start('post')} style={{ backgroundColor: c.pink, borderRadius: 999, paddingVertical: 13, paddingHorizontal: 26, marginTop: 6 }}><T color={c.onAccent} weight="800">Create the first post</T></Pressable>
+              <View style={{ alignItems: 'center', gap: 10, padding: 48, backgroundColor: '#1e2030', borderRadius: 24, borderWidth: 1, borderColor: 'rgba(255,255,255,0.08)' }}>
+                <T size={54}>🏟️</T><T color="#E5EAF5" weight="800" size={22}>The arena is waiting for its first post</T>
+                <T color="#94A3B8" style={{ textAlign: 'center', maxWidth: 440 }}>{kind || sport || q ? 'Nothing matches those filters yet. Try clearing them, or post what you are looking for.' : 'Need athletes? Hosting a match? Selling kit? Be the first to put it in front of the community.'}</T>
+                <Pressable onPress={() => start('post')} style={{ backgroundColor: '#8458B3', borderRadius: 999, paddingVertical: 13, paddingHorizontal: 26, marginTop: 6 }}><T color="#fff" weight="800">Create the first post</T></Pressable>
               </View>
             ) : (
               <View style={{ flexDirection: 'row', gap: 18, alignItems: 'flex-start' }}>
                 {columns.map((col, i) => <View key={i} style={{ flex: 1, gap: 18 }}>{col.map((p) => <MarketCard key={p.id} p={p} user={null} gate={gate} />)}</View>)}
               </View>
             )}
-            {busy ? <T color={c.mute} style={{ textAlign: 'center' }}>Loading…</T> : more ? <Pressable onPress={() => load(rows.length)} style={{ alignSelf: 'center', borderRadius: 999, borderWidth: 1.5, borderColor: c.ink, paddingVertical: 12, paddingHorizontal: 28 }}><T weight="800">Show more</T></Pressable> : null}
-            {rows.length ? <View style={{ alignItems: 'center', padding: 22, backgroundColor: c.pinkSoft, borderRadius: 20, gap: 8 }}><T weight="800" size={17}>Want to apply, contact someone or see full profiles?</T><Pressable onPress={() => start('join')}><T color={c.pink} weight="800">Create a free account →</T></Pressable></View> : null}
+            {busy ? <T color="#94A3B8" style={{ textAlign: 'center' }}>Loading…</T> : more ? <Pressable onPress={() => load(rows.length)} style={{ alignSelf: 'center', borderRadius: 999, borderWidth: 1.5, borderColor: 'rgba(255,255,255,0.3)', paddingVertical: 12, paddingHorizontal: 28 }}><T color="#E5EAF5" weight="800">Show more</T></Pressable> : null}
+            {rows.length ? <View style={{ alignItems: 'center', padding: 22, backgroundColor: 'rgba(132,88,179,0.15)', borderRadius: 20, borderWidth: 1, borderColor: 'rgba(132,88,179,0.3)', gap: 8 }}><T color="#E5EAF5" weight="800" size={17}>Want to apply, contact someone or see full profiles?</T><Pressable onPress={() => start('join')}><T color="#D0BDF4" weight="800">Create a free account →</T></Pressable></View> : null}
           </View>
 
           <View style={{ gap: 16 }}>
-            <T weight="800" size={wide ? 36 : 28} style={{ letterSpacing: -1.2 }}>How it works</T>
+            <T color="#E5EAF5" weight="800" size={wide ? 36 : 28} style={{ letterSpacing: -1.2 }}>How it works</T>
             <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 16 }}>
               <Step n={1} icon="👀" title="Browse freely" text="Every public post is open to see — wanted athletes, matches, schedules, kit for sale and campaigns." />
               <Step n={2} icon="🔐" title="Sign in when you're ready" text="Tap Apply or Contact and we guide you through a quick sign-up, then bring you back to exactly where you were." />
@@ -300,7 +300,7 @@ export default function Landing() {
           </View>
 
           <View style={{ gap: 16 }}>
-            <T weight="800" size={wide ? 36 : 28} style={{ letterSpacing: -1.2 }}>Built for everyone in the game</T>
+            <T color="#E5EAF5" weight="800" size={wide ? 36 : 28} style={{ letterSpacing: -1.2 }}>Built for everyone in the game</T>
             <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 16 }}>
               {WHO.map(([e, t, s, col]) => (
                 <Pressable key={t} onPress={() => start('join')} style={{ flex: 1, minWidth: 240 }}>
