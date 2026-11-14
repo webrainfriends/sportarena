@@ -287,6 +287,7 @@ Object.assign(PROVIDERS, {
 import * as xeroProv from './providers/xero.js';
 import * as qbProv from './providers/quickbooks.js';
 import * as tallyProv from './providers/tally.js';
+import * as zohoBooksProv from './providers/zoho-books.js';
 Object.assign(PROVIDERS, {
   accounting_xero: {
     category: 'accounting', name: 'Xero', version: '1.0', auth: 'oauth', sandbox: true,
@@ -305,12 +306,26 @@ Object.assign(PROVIDERS, {
     async pull(cfg, ctx) { return qbProv.pull(cfg, ctx); },
   },
   accounting_tally: {
-    category: 'accounting', name: 'Tally ERP', version: '1.0', auth: 'api_key', sandbox: true, country: 'IN',
-    capabilities: ['ledgers', 'vouchers', 'reports'],
-    scopes: [{ key: 'accounting.read', label: 'Read Tally data', description: 'Reads ledger balances and voucher transactions from your Tally ERP server.' }],
+    category: 'accounting', name: 'Tally ERP', version: '1.1', auth: 'none', sandbox: true, country: 'IN',
+    capabilities: ['ledgers', 'vouchers', 'reports', 'tdl_export', 'xml_vouchers', 'gst_split', 'idempotent_push'],
+    scopes: [
+      { key: 'accounting.read', label: 'Read Tally data', description: 'Reads ledger balances and voucher transactions from your Tally ERP gateway.' },
+      { key: 'accounting.write', label: 'Export to Tally', description: 'Generates TDL/XML voucher files and, if a gateway URL is configured, pushes them to Tally ERP on your behalf. Each document export is idempotent — retrying never creates a duplicate.' },
+    ],
     fields: tallyProv.fields, secrets: tallyProv.secrets, gated: false,
     async test(cfg, ctx) { return tallyProv.test(cfg, ctx); },
     async pull(cfg, ctx) { return tallyProv.pull(cfg, ctx); },
+  },
+  accounting_zoho_books: {
+    category: 'accounting', name: 'Zoho Books', version: '1.0', auth: 'oauth', sandbox: true, country: 'IN',
+    capabilities: ['invoices', 'credit_notes', 'payments', 'journals', 'contacts', 'gst_support', 'idempotent_push'],
+    scopes: [
+      { key: 'accounting.read', label: 'Read accounting data', description: 'Reads invoices and payments from your Zoho Books organisation.' },
+      { key: 'accounting.write', label: 'Create and update records', description: 'Creates invoices, credit notes and payments in Zoho Books on your behalf. Uses Zoho\'s reference_id to prevent duplicates — retrying an export never creates a second record.' },
+    ],
+    fields: zohoBooksProv.fields, secrets: zohoBooksProv.secrets, gated: false,
+    async test(cfg, ctx) { return zohoBooksProv.test(cfg, ctx); },
+    async pull(cfg, ctx) { return zohoBooksProv.pull(cfg, ctx); },
   },
 });
 
