@@ -9,6 +9,7 @@ import { Btn, Card, Empty, ErrorBox, H1, Loading, Row, Screen, Section, Seg, Sta
 import { FormSheet } from '../FormSheet';
 import { AdCard } from '../ads';
 import { StatusTag } from './ad-ui';
+import { StudioHub } from './studio-hub';
 import { c } from '../theme';
 import { moneyIn } from '../vtime';
 
@@ -99,7 +100,7 @@ function PolicyTab() {
 }
 
 export function AdminAds({ tab, onOpen }) {
-  return tab === 'review' ? <Queue onOpen={onOpen} /> : tab === 'reports' ? <Reports onOpen={onOpen} /> : <PolicyTab />;
+  return tab === 'studio' ? <StudioHub /> : tab === 'review' ? <Queue onOpen={onOpen} /> : tab === 'reports' ? <Reports onOpen={onOpen} /> : <PolicyTab />;
 }
 
 /** One campaign as the reviewer sees it, with the decisions only the platform admin can make. */

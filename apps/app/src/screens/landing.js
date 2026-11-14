@@ -17,6 +17,8 @@ import { HScroll, VenueBooking } from './landing-venues';
 import { OpenPositions } from './openings';
 import { Discover } from './landing-discover';
 import { PromoCard } from '../promo';
+import { ShowcaseLanding } from './landing-showcase';
+import { useManifest } from './landing-showcase-manifest';
 
 const isWeb = Platform.OS === 'web';
 const h = React.createElement;
@@ -151,6 +153,7 @@ export default function Landing() {
   const wide = width >= 900;
   // { mode, intent } while the sign-in flow is open. A page opened from Apple sign-in or a security email carries one of these query values:
   // the sign-in screen reads it, so it has to be open already.
+  const manifest = useManifest();
   const [auth, setAuth] = useState(() => (isWeb && typeof location !== 'undefined' && ['apple_role', 'apple_error', 'apple_mfa', 'reset_password', 'verify_email'].some((k) => new URLSearchParams(location.search).has(k)) ? { mode: 'login', intent: null } : null));
   const [kind, setKind] = useState(null);
   const [sport, setSport] = useState(null);
@@ -217,6 +220,7 @@ export default function Landing() {
       <ScrollView ref={scroller} showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 0 }}>
         <Hero counts={d?.counts} wide={wide} onJoin={() => start('join')} onBrowse={browse} onFind={() => find('sponsors')} onAdvertise={() => start('advertise')} />
         <Ticker games={d?.games ?? []} events={d?.events ?? []} />
+        {manifest ? <ShowcaseLanding manifest={manifest} onNavigate={(key) => { if (key === 'venue-discovery') browse(); else if (key === 'news-discovery') find('study'); else start('join'); }} /> : null}
 
         <View style={[wrap, { paddingTop: 44, gap: 44 }]}>
           <Featured items={d?.featured ?? []} gate={gate} user={null} />
