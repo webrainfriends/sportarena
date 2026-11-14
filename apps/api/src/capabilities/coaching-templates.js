@@ -32,7 +32,7 @@ async function readable(user, templateId) {
 cap({
   name: 'save_coaching_template', method: 'POST', path: '/coaching/templates', tag: TAG, auth: COACH, status: 201,
   summary: 'Save a whole session plan, or one block of it, as a private template. Only the generic parts are kept - no athletes, groups or coach-only notes. Send session_record_id (and block_id for a single block), or the blocks directly.',
-  input: z.object({ title: text(120).min(2), scope: z.enum(['block', 'session']).default('session'), session_record_id: id.optional(), block_id: z.string().max(60).optional(), blocks: z.array(block).max(30).optional(), sport: z.string().max(80).optional().describe('sport slug or id, so the drill can be found by sport; a session\'s own sport is used when you save from a session'), steps: z.array(z.object({ type: z.enum(['text', 'photo', 'video']), text: z.string().trim().max(2000).optional(), media_id: z.string().uuid().optional(), caption: z.string().trim().max(500).optional() })).max(30).optional() }),
+  input: z.object({ title: text(120).min(2), scope: z.enum(['block', 'session']).default('session'), session_record_id: id.optional(), block_id: z.string().max(60).optional(), blocks: z.array(block).max(30).optional(), sport: z.string().max(80).optional().describe('sport slug or id, so the drill can be found by sport; a session\'s own sport is used when you save from a session'), steps: z.array(z.object({ type: z.enum(['text', 'photo', 'video', 'audio']), text: z.string().trim().max(2000).optional(), media_id: z.string().uuid().optional(), caption: z.string().trim().max(500).optional(), duration_seconds: z.number().int().min(1).max(7200).optional().describe('Step duration in seconds; for audio/video steps this is set automatically from the media length and overrides any manual value'), transcript: z.string().trim().max(5000).optional().describe('Auto-transcribed or manually typed text shown alongside audio/video; encrypted at rest'), show_transcript: z.boolean().optional().describe('Whether to display the transcript to the athlete while the audio plays'), allow_athlete_response: z.boolean().optional().describe('Whether athletes may submit a voice or text reply to this step') })).max(30).optional() }),
   async handler({ user }, i) {
     let blocks = i.blocks, sportId = null;
     if (i.sport) {
@@ -58,14 +58,28 @@ cap({
 
 cap({
   name: 'update_coaching_template', method: 'PATCH', path: '/coaching/templates/:id', tag: TAG, auth: COACH,
-  summary: 'Edit your own template (title or blocks). Its version goes up; sessions that already used it keep the blocks they were given. Needs the version you loaded.',
-  input: z.object({ id, version: z.number().int().min(1), title: text(120).min(2).optional(), blocks: z.array(block).min(1).max(30).optional() }),
+  summary: 'Edit your own template (title, blocks or steps). Its version goes up; sessions that already used it keep the blocks they were given. Needs the version you loaded.',
+  input: z.object({
+    id, version: z.number().int().min(1),
+    title: text(120).min(2).optional(),
+    blocks: z.array(block).min(1).max(30).optional(),
+    steps: z.array(z.object({
+      type: z.enum(['text', 'photo', 'video', 'audio']),
+      text: z.string().trim().max(2000).optional(),
+      media_id: z.string().uuid().optional(),
+      caption: z.string().trim().max(500).optional(),
+      duration_seconds: z.number().int().min(1).max(7200).optional(),
+      transcript: z.string().trim().max(5000).optional(),
+      show_transcript: z.boolean().optional(),
+      allow_athlete_response: z.boolean().optional(),
+    })).max(30).optional(),
+  }),
   async handler({ user }, i) {
     const t = await one('SELECT * FROM coach_templates WHERE id=$1 AND coach_id=$2 AND archived_at IS NULL', [i.id, user.id]);
     if (!t) throw notFound('Template');
     const r = await one(
-      'UPDATE coach_templates SET title=coalesce($3,title), blocks=coalesce($4,blocks), version=version+1, updated_at=now() WHERE id=$1 AND version=$2 RETURNING id, title, scope, blocks, version, updated_at',
-      [t.id, i.version, i.title ?? null, i.blocks ? JSON.stringify(clean(i.blocks)) : null]);
+      'UPDATE coach_templates SET title=coalesce($3,title), blocks=coalesce($4,blocks), steps=coalesce($5,steps), version=version+1, updated_at=now() WHERE id=$1 AND version=$2 RETURNING id, title, scope, blocks, steps, version, updated_at',
+      [t.id, i.version, i.title ?? null, i.blocks ? JSON.stringify(clean(i.blocks)) : null, i.steps != null ? JSON.stringify(i.steps) : null]);
     if (!r) throw conflict('This template was changed elsewhere - reload it first');
     return r;
   },
