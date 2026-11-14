@@ -1,6 +1,6 @@
 import React, { useState, useRef } from 'react'
 import { View, ScrollView, TouchableOpacity, TextInput } from 'react-native'
-import { useLoad } from '../load'
+import { useLoad } from '../hooks'
 import { useSession } from '../session'
 import { useNav } from '../nav'
 import { useTheme } from '../theme'
