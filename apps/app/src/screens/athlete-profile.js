@@ -3,10 +3,13 @@ import { Pressable, View } from 'react-native';
 import { api } from '../api';
 import { useLoad } from '../hooks';
 import { useSession } from '../session';
+import { useNav } from '../nav';
 import { t } from '../i18n';
 import { Btn, Card, Chip, ErrorBox, H2, Loading, Tag, T, Wrap } from '../ui';
 import { FormSheet } from '../FormSheet';
 import { c, day } from '../theme';
+import { AthleteRating360Panel } from './athlete-rating-360';
+import { PerformancePublishSheet, PerformanceFeedSection } from './performance-publish';
 
 const scopes = () => [
   { value: 'private', label: t('ap.scope_private') },
@@ -143,6 +146,23 @@ export function AthleteProfilePanel({ p, onChanged }) {
           ]}
           onSubmit={async (v) => { await api.post(`/me/sport-profiles/${p.id}/measurements`, { ...v, value: Number(v.value) }); await reload(); return t('ap.meas_saved'); }} />
       ) : null}
+    </View>
+  );
+}
+
+/** 360 panel + performance feed for a sport profile — shows on both own and other athlete profiles. */
+export function AthleteProfileRating360Section({ userId, sportSlug, isOwn, selfLevel }) {
+  const [posting, setPosting] = useState(false);
+  return (
+    <View style={{ marginTop: 24, gap: 14 }}>
+      {isOwn ? (
+        <View style={{ alignItems: 'flex-start' }}>
+          <Btn small title={`🏅 ${t('pp.post_cta')}`} onPress={() => setPosting(true)} />
+        </View>
+      ) : null}
+      <AthleteRating360Panel userId={userId} sport={sportSlug} isOwn={isOwn} profile={{ self_level: selfLevel }} />
+      <PerformanceFeedSection userId={userId} sport={sportSlug} isOwn={isOwn} />
+      {posting ? <PerformancePublishSheet visible onClose={() => setPosting(false)} sportSlug={sportSlug} /> : null}
     </View>
   );
 }
