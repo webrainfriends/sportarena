@@ -324,6 +324,12 @@ cap({
     if (await one('SELECT 1 FROM coach_reviews WHERE hire_id=$1', [h.id])) throw conflict('You already reviewed this session');
     const r = await one('INSERT INTO coach_reviews(hire_id, reviewer_id, coach_id, rating, body) VALUES ($1,$2,$3,$4,$5) RETURNING *', [h.id, user.id, h.coach_id, i.rating, i.body?.trim() || null]);
     await notify(null, h.coach_id, { kind: 'coach_review', title: `${user.display_name} rated your session ${i.rating}★`, body: i.body?.slice(0, 140) ?? '', data: { review_id: r.id } });
+    // bridge: mirror to unified testimonials so coach ratings appear in canonical aggregates
+    const t = await one(
+      "INSERT INTO testimonials(author_id,subject_type,subject_id,rating,body,verification,context_type,context_id,author_role) VALUES ($1,'user',$2,$3,$4,'verified_interaction','hire',$5,'athlete') ON CONFLICT (author_id,subject_type,subject_id) DO UPDATE SET rating=$3,body=$4,updated_at=now() RETURNING id",
+      [user.id, h.coach_id, i.rating, i.body?.trim() ?? '', h.id]
+    );
+    if (t) await one('UPDATE coach_reviews SET testimonial_id=$2 WHERE id=$1', [r.id, t.id]);
     return r;
   },
 });

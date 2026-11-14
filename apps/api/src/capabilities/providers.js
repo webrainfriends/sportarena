@@ -10,6 +10,7 @@ import { withBadges } from '../verification.js';
 import { addDays, fmtMin, hhmm, toLocal, validTimezone } from '../booking/time.js';
 import { MAX_RANGE_DAYS, loadSchedule, openSlots } from '../health/slots.js';
 import { ADAPTER_IDS, adapterFor } from '../health/external-booking.js';
+import { published as publishedFilter } from '../feedback.js';
 
 const TAG = 'Health';
 const TYPES = ['physio', 'doctor'];
@@ -91,6 +92,7 @@ cap({
     q: z.string().max(80).optional(), type: z.enum(TYPES).optional(), sport: z.string().max(60).optional().describe('sport slug'), specialty: z.string().max(60).optional(), language: z.string().max(40).optional(),
     city: z.string().max(80).optional(), remote: z.coerce.boolean().optional().describe('true = offers remote consultations'), accepting: z.coerce.boolean().optional(),
     min_fee_cents: z.coerce.number().int().min(0).optional(), max_fee_cents: z.coerce.number().int().min(0).optional(), min_rating: z.coerce.number().min(1).max(5).optional(), verified: z.coerce.boolean().optional().describe('only providers with a current verified credential'),
+    verified_only_reviews: z.coerce.boolean().optional().describe('only count verified-interaction reviews in rating aggregates'),
     available_from: z.string().datetime({ offset: true }).optional(), available_to: z.string().datetime({ offset: true }).optional(),
     sort: z.enum(['rating', 'fee', 'name', 'soonest']).default('rating'), ...page,
   }),
@@ -105,8 +107,8 @@ cap({
         SELECT ${PUBLIC_USER}, t.provider_type, ${PROFILE_COLS}, coalesce(pp.currency, $1) AS currency,
                coalesce(pp.consult_fee_cents, (SELECT min(x.hourly_rate_cents) FROM active_sport_profiles x WHERE x.user_id=u.id AND x.role IN ('physio','doctor') AND x.hourly_rate_cents > 0)) AS fee_cents,
                coalesce((SELECT array_agg(DISTINCT s.slug ORDER BY s.slug) FROM active_sport_profiles x JOIN sports s ON s.id=x.sport_id WHERE x.user_id=u.id AND x.role IN ('physio','doctor')), '{}') AS sports,
-               (SELECT round(avg(r.rating)::numeric, 2) FROM testimonials r WHERE r.subject_type='user' AND r.subject_id=u.id AND r.status='published' AND r.visibility='public') AS rating,
-               (SELECT count(*)::int FROM testimonials r WHERE r.subject_type='user' AND r.subject_id=u.id AND r.status='published' AND r.visibility='public') AS rating_count,
+               (SELECT round(avg(r.rating)::numeric, 2) FROM testimonials r WHERE r.subject_type='user' AND r.subject_id=u.id AND r.status='published' AND r.visibility='public' AND (NOT $15 OR r.verification='verified_interaction')) AS rating,
+               (SELECT count(*)::int FROM testimonials r WHERE r.subject_type='user' AND r.subject_id=u.id AND r.status='published' AND r.visibility='public' AND (NOT $15 OR r.verification='verified_interaction')) AS rating_count,
                EXISTS (SELECT 1 FROM verification_cases v WHERE v.subject_type='user' AND v.subject_id=u.id AND v.type=t.provider_type AND v.status='approved' AND v.expires_at > now()) AS credential_verified,
                (SELECT count(*) FROM provider_availability a WHERE a.provider_id=u.id AND a.removed_at IS NULL) > 0 AS has_hours
           FROM users u LEFT JOIN provider_profiles pp ON pp.user_id=u.id
@@ -123,7 +125,7 @@ cap({
       WHERE ($10::bigint IS NULL OR q.fee_cents >= $10) AND ($11::bigint IS NULL OR q.fee_cents <= $11) AND ($12::numeric IS NULL OR q.rating >= $12)
         AND (NOT $13 OR q.credential_verified) AND (NOT $14 OR q.has_hours)
       ORDER BY ${order}`;
-    const params = [config.payments.currency, i.type ?? null, esc(i.q), i.sport ?? null, esc(i.specialty), esc(i.language), esc(i.city), i.remote ?? null, i.accepting ?? null, i.min_fee_cents ?? null, i.max_fee_cents ?? null, i.min_rating ?? null, !!i.verified, !!windowed];
+    const params = [config.payments.currency, i.type ?? null, esc(i.q), i.sport ?? null, esc(i.specialty), esc(i.language), esc(i.city), i.remote ?? null, i.accepting ?? null, i.min_fee_cents ?? null, i.max_fee_cents ?? null, i.min_rating ?? null, !!i.verified, !!windowed, !!i.verified_only_reviews];
     let rows;
     if (windowed) {
       // availability is computed from each provider's hours, so filter and page after that (bounded candidate set)
@@ -135,7 +137,7 @@ cap({
       }
       if (i.sort === 'soonest') withSlots.sort((a, b) => a.next_available_at.localeCompare(b.next_available_at));
       rows = withSlots.slice(i.offset, i.offset + i.limit);
-    } else rows = await many(`${sql} LIMIT $15 OFFSET $16`, [...params, i.limit, i.offset]);
+    } else rows = await many(`${sql} LIMIT $16 OFFSET $17`, [...params, i.limit, i.offset]);
     const out = await withBadges('user', rows);
     return out.map(({ has_hours, ...r0 }) => external(r0)).map((r) => ({ ...r, book: { capability: 'book_appointment', provider_id: r.id }, consent: { capability: 'grant_medical_access', provider_id: r.id } }));
   },
