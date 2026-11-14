@@ -4032,6 +4032,53 @@ export default {
   'setup.step.team.w': 'നിങ്ങളുടെ റോസ്റ്റർ, ലഭ്യത, ഷെഡ്യൂൾ ഇവിടെയാണ്.',
   'setup.step.first_transaction_coach.t': 'നിങ്ങളുടെ കളിക്കാരെ ക്ഷണിക്കുക',
   'setup.step.first_transaction_coach.w': 'നിങ്ങൾക്ക് അറിയാവുന്നവരെ ക്ഷണിക്കുക, അല്ലെങ്കിൽ ഒരു സ്ഥാപന വർക്ക്‌സ്‌പേസിൽ നിന്ന് മുഴുവൻ റോസ്റ്ററും കൊണ്ടുവരിക.',
+
+  // Coach onboard wizard (cow.*) — machine-drafted, reviewed: false
+  'cow.title': 'COACH SETUP',
+  'cow.setup_steps': 'Your coach journey',
+  'cow.n_of': '{done} of {total} steps done',
+  'cow.done': 'Go to Coach Home',
+  'cow.open_step': 'Open step: {title}',
+  'cow.open_step_active': 'Start this step →',
+  'cow.edit_step': 'Edit',
+  'cow.tip_label': 'PRO TIP',
+  'cow.all_done_toast': "You're live! 🎉",
+
+  'cow.step.profile.label': 'Set up your profile',
+  'cow.step.profile.title': 'Create your coach profile',
+  'cow.step.profile.why': 'Your headline, photo and bio are the first thing athletes and clubs see.',
+  'cow.step.profile.tip': 'A professional headshot and a compelling bio get 3× more booking enquiries.',
+
+  'cow.step.sports.label': 'Add sports & skills',
+  'cow.step.sports.title': 'Your sports and expertise',
+  'cow.step.sports.why': 'Tell athletes exactly what disciplines you coach and at what level.',
+  'cow.step.sports.tip': 'Listing your highest qualification for each sport boosts search ranking.',
+
+  'cow.step.drills.label': 'Build your drill library',
+  'cow.step.drills.title': 'Build your drill library',
+  'cow.step.drills.why': 'Save the drills and sessions you use most so you can assign them in seconds.',
+  'cow.step.drills.tip': 'Start with 5–10 core drills. You can add progressions and variations later.',
+
+  'cow.step.classes.label': 'Set your availability',
+  'cow.step.classes.title': 'Classes & availability',
+  'cow.step.classes.why': 'Publish time slots and group classes so athletes can book directly — no back-and-forth.',
+  'cow.step.classes.tip': 'Open slots at the same times each week build a predictable coaching income.',
+
+  'cow.step.rates.label': 'Set your rate cards',
+  'cow.step.rates.title': 'Pricing & packages',
+  'cow.step.rates.why': 'Define your intro session, hourly rate and any multi-session packages.',
+  'cow.step.rates.tip': 'An intro offer at a lower rate is the fastest way to convert your first booking.',
+
+  'cow.step.payout.label': 'Set up payout',
+  'cow.step.payout.title': 'Connect your bank account',
+  'cow.step.payout.why': 'Link a bank account so payments from bookings land directly with you.',
+  'cow.step.payout.tip': 'Payouts are processed within 2 business days of a completed session.',
+
+  'cow.step.publish.label': 'Review & go live',
+  'cow.step.publish.title': 'Preview and publish',
+  'cow.step.publish.why': 'Review your public profile one last time, then publish to start receiving bookings.',
+  'cow.step.publish.tip': 'Share your profile link on social media right after publishing for your first enquiries.',
+
   "paycountry.title": "രാജ്യം തിരിച്ചുള്ള പേയ്‌മെന്റ് രീതികൾ",
   "paycountry.intro": "പേയ്‌മെന്റ് രീതി ഓണോ ഓഫോ ആക്കാൻ പ്ലാറ്റ്‌ഫോം അഡ്മിന് മാത്രമേ കഴിയൂ. സ്വിച്ച് ഇല്ലാത്ത രാജ്യത്ത് എല്ലാ രീതികളും ഓഫ് ആയിരിക്കും. ഓരോ ബുക്കിംഗ്, ക്ലാസ്, ടിക്കറ്റ്, രജിസ്ട്രേഷൻ, ഷോപ്പ് ചെക്ക്ഔട്ട് എന്നിവയിലും ആ രാജ്യത്ത് ഓൺ ആയവ മാത്രം കാണിക്കും.",
   "paycountry.choose": "രാജ്യം തിരഞ്ഞെടുക്കുക",

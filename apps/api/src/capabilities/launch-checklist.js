@@ -82,15 +82,22 @@ async function userSteps(persona, user) {
       step('first_transaction', 'Schedule your first games', 'The schedule checks referee and team clashes for you.', fixtures > 0, tab('Explore')),
     ];
   }
-  const [profile, teams, people] = await Promise.all([
+  const [profile, drills, classes, rates, payout] = await Promise.all([
     n('SELECT count(*)::int AS n FROM coach_profiles WHERE user_id=$1', [user.id]),
-    n('SELECT count(*)::int AS n FROM teams WHERE owner_id=$1 AND archived_at IS NULL', [user.id]),
-    n("SELECT count(*)::int AS n FROM team_members m JOIN teams t ON t.id=m.team_id WHERE t.owner_id=$1 AND m.user_id<>$1 AND m.status IN ('active','invited')", [user.id]),
+    n('SELECT count(*)::int AS n FROM coach_templates WHERE coach_id=$1 AND archived_at IS NULL', [user.id]),
+    n("SELECT count(*)::int AS n FROM coach_classes WHERE coach_id=$1 AND status IN ('draft','open','completed')", [user.id]),
+    n('SELECT count(*)::int AS n FROM coach_rate_cards WHERE coach_id=$1 AND archived_at IS NULL AND active', [user.id]),
+    n("SELECT count(*)::int AS n FROM coach_profiles WHERE user_id=$1 AND payout_method IS NOT NULL", [user.id]),
   ]);
+  const profilePublished = await n("SELECT count(*)::int AS n FROM coach_profiles WHERE user_id=$1 AND status='published'", [user.id]);
   return [
-    step('profile', 'Set up your coach profile', 'Your headline, specialities and hours, so people can find and book you.', profile > 0, go('CoachSetup')),
-    step('team', 'Create your team', 'Your roster, availability and schedule live here.', teams > 0, tab('Explore')),
-    step('first_transaction', 'Invite your players', 'Invite people you already know, or bring a whole roster across from an organisation workspace.', people > 0, tab('Explore')),
+    step('profile', 'Set up your coach profile', 'Your headline, photo, sports and experience — first impressions matter.', profile > 0, go('CoachOnboardWizard', { step: 'identity' })),
+    step('sports', 'Add your sports and skills', 'Tell coaches and clubs exactly what you can teach and at what level.', profile > 0, go('CoachOnboardWizard', { step: 'sports' })),
+    step('drills', 'Build your drill library', 'Create the drills and sessions you use most so you can assign them quickly.', drills > 0, go('CoachOnboardWizard', { step: 'drills' })),
+    step('classes', 'Set your availability', 'Publish classes and time slots so athletes can book directly.', classes > 0, go('CoachOnboardWizard', { step: 'classes' })),
+    step('rates', 'Add your rate cards', 'Set your pricing for intro sessions, coaching packages and group classes.', rates > 0, go('CoachOnboardWizard', { step: 'rates' })),
+    step('payout', 'Set up payout', 'Connect a bank account so you can receive payments from bookings.', payout > 0, go('CoachOnboardWizard', { step: 'payout' })),
+    step('publish', 'Review and go live', 'Preview your public profile and publish it to start receiving bookings.', profilePublished > 0, go('CoachOnboardWizard', { step: 'publish' })),
   ];
 }
 
@@ -106,7 +113,7 @@ cap({
     const fits = (p) => orgs.filter((o) => PERSONAS.find((x) => x.key === p)?.kinds.includes(o.kind));
     // a sensible first persona from what the person already runs and the roles they hold
     const suggested = orgs.length ? PERSONAS.find((p) => fits(p.key).length)?.key ?? 'club'
-      : user.roles?.includes('venue_manager') ? 'venue' : user.roles?.includes('organizer') ? 'organiser' : user.roles?.includes('coach') ? 'coach' : null;
+      : user.roles?.includes('coach') ? 'coach' : user.roles?.includes('venue_manager') ? 'venue' : user.roles?.includes('organizer') ? 'organiser' : null;
     const persona = i.persona ?? pref?.persona ?? suggested;
     const base = { personas: PERSONAS.map(({ key, label, emoji, blurb, scope }) => ({ key, label, emoji, blurb, scope })), persona, suggested, dismissed: !!pref?.dismissed_at, organisations: orgs };
     const meta = PERSONAS.find((p) => p.key === persona);
