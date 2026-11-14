@@ -22344,4 +22344,3 @@ export default {
   'fin.rec.method.upi': { text: 'UPI', reviewed: false },
   'fin.rec.method.other': { text: 'Other', reviewed: false },
 };
-};

@@ -22798,3 +22798,4 @@ export default {
   'fin.rec.method.cheque': 'Cheque',
   'fin.rec.method.upi': 'UPI',
   'fin.rec.method.other': 'Other',};
+};
