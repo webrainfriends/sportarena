@@ -1052,6 +1052,45 @@ id: 'wellbeing', title: 'Support student wellbeing and development',
     modules: ['feed-graph.js', 'feed-cards.js', 'feed-challenges.js', 'feed-moderation.js'],
     sources: ['apps/app/src/screens/entity-feed.js', 'apps/app/src/screens/feed-challenges.js'],
   },
+  {
+    id: 'perf_publishing', title: 'Athlete Performance Publishing & Peer Skill Ratings',
+    why: 'Elite academies like Nadal Academy and Real Madrid CF need a verified, tamper-proof record of every athlete's competitive output — not just results in platform games, but external tournaments, friendlies, and independent sessions. Publishing a performance post gives coaches, scouts and recruiters a richer athlete story than a Glicko rating alone. Peer skill ratings let co-players and confirmed coaches give a sport-specific breakdown (Technique, Tactical IQ, Consistency, Physical, Mental Strength, Fair Play) that is kept entirely separate from verified Glicko ratings, ensuring matchmaking is never corrupted by self-interest.',
+    steps: [
+      'From a completed game card, tap Post My Performance, or open My Sports → sport card → Add Performance. For an external event, choose External event as the source and fill in the event name, date, organiser, official URL and format.',
+      'Step 2 — Enter sport-specific metrics: set scores (e.g. 6–4, 7–5 for tennis), stat grid (Aces, DFs, 1st Serve%, Break Points, Winners, Unforced Errors), RPE on the 1–10 gradient slider (green→amber→red), and match duration.',
+      'Step 3 — Attach media: upload photos or video, confirm source rights, and strip EXIF metadata automatically.',
+      'Step 4 — Set audience: choose Private, My followers, My club & team, Coaches & recruiters, or Public. Youth athletes default to Private.',
+      'Step 5 — Preview: review the AI-suggested caption (tap Use this or Edit), check the scrollable metric strip, and optionally enable the peer feedback toggle — eligible co-players from recent shared games will be notified and may rate your skill dimensions.',
+      'Once published, a performance post shows an evidence badge (Officially Verified / Organiser-attested / Self-reported) and appears on your Athlete 360 profile performance section.',
+      'To invite peer skill feedback for a sport, open the Peer Skill Assessment panel on your profile and tap Invite Feedback. The platform auto-identifies eligible raters (co-players from recent games, confirmed coaches, authorized officials) and sends them a time-windowed invite (default 7 days after the event).',
+      'Raters open the Submit Assessment sheet: select overall bucket (Beginner → Professional), rate each of the 6 skill dimensions, optionally add encrypted constructive feedback and their observed session reference, then submit. Assessments can be edited within 3 hours of submission.',
+      'Your Peer Skill Distribution chart remains suppressed (progress ring shown instead) until at least 5 raters have submitted. Once the threshold is met, the full hexagonal radar chart appears on your public profile showing peer consensus (purple filled polygon) alongside your self-assessed outline. A cohort percentile strip shows e.g. "Top 23% of Advanced players assessed · 847 players".',
+      'Manage requests from the Peer Skill Assessment panel: see pending invitations, revoke any outstanding request, and view the who-can-rate table (Co-players ✓, Coaches ✓, Officials ✓, Casual visitors ✗).',
+      'Coaches and academy directors can view their athletes' peer skill distributions and performance posts from the athlete\'s 360 profile, and export a Recruiter View PDF showing all three surfaces: Verified Level, Peer-Assessed Skills, and Self-Assessed Level.',
+    ],
+    target: { screen: 'PerformancePublish' },
+    modules: ['performance-publishing.js', 'peer-skill-graph.js', 'appearances.js', 'athlete-performance.js', 'feed-cards.js'],
+    sources: ['apps/app/src/screens/performance-publish.js', 'apps/app/src/screens/peer-skill-graph.js', 'apps/app/src/screens/athlete-rating-360.js'],
+  },
+  {
+    id: 'event_reviews', title: 'Event Review Collection',
+    why: 'Premium academies and event organisers need verifiable quality signals — not anonymous noise, but role-verified reviews from people who were actually there. Verified reviews help academies benchmark their events, surface priority action areas, track NPS trends across editions, and demonstrate quality to partners and sponsors. Athletes, parents and coaches trust a platform where reviews are gated by real attendance.',
+    steps: [
+      'After an event completes, eligible attendees (registered participants, assigned officials, coaches with attendance records, and ticketed spectators) receive an in-app invite to rate the event. The eligibility banner in the Rate This Event screen confirms "Your attendance is verified."',
+      'Select your role (Participant, Official, Coach, or Ticketed Spectator) — the dimension set adapts by role.',
+      'Rate each of the 6 dimensions from 1–5 stars: Organization, Scheduling, Officiating, Venue Readiness, Safety & Welfare, and Communication. Any dimension rated 3 or below automatically reveals an inline "What could be improved?" prompt.',
+      'Give an overall 1–5 star rating, then answer the NPS question (0–10, would you recommend this event). Optionally attach a photo for context.',
+      'Reviews are published anonymously by role. The organiser sees all reviews but the platform never reveals identities to other reviewers.',
+      'Reviews are suppressed on the public listing until at least 3 are collected, preventing unrepresentative early noise.',
+      'Organisers open the Review Analytics dashboard (Events → your event → Reviews → Analytics) to see: overall average, review count, response rate, NPS score (with trend vs last edition), and a benchmarking strip (e.g. "Top 15% regionally · 4.3 vs 3.9 category average"). The Priority Action card highlights the lowest-scoring dimension with concrete improvement suggestions.',
+      'Respond to individual reviews from the dashboard. Your response appears inline below the review for all future readers.',
+      'Invite additional confirmed attendees to review from the Invite tab — the system enforces that you must invite the whole cohort, not cherry-pick positive reviewers.',
+      'Export the full analytics pack (dimension averages, distribution, role breakdown, trend data) for board reports and sponsor decks.',
+    ],
+    target: { screen: 'EventReview' },
+    modules: ['event-reviews.js', 'community.js', 'events.js', 'registration-engine.js'],
+    sources: ['apps/app/src/screens/event-review.js', 'apps/app/src/screens/event-public.js'],
+  },
 ];
 
 /** Org/academy API modules with no step of their own, and why. Anything not here and not in a step fails the guard test. */
@@ -1077,7 +1116,7 @@ export const NOT_IN_GUIDE = {
 };
 
 /** The directories/files the guard test watches for org/academy/venue/coach/tax capability modules. */
-export const WATCHED_MODULES = /^(academy-.*|org-.*|organisations|venue-coaches|gst|provider-tax|coach-classes|para-sport-funding|para-sport-sponsorship-outcomes|para-pathway|para-readiness|para-learn|para-staff-credentials|para-spectator-accessibility|para-ux-conformance|boarding-.*|wearables|wellness.*|integrations|official-rate-card|official-rate-agreements|official-scheduling-recommendations|officials-bulk|officiating-analytics|officiating-season-intelligence|accounting-integrations|player|athlete-profile)\.js$/;
+export const WATCHED_MODULES = /^(academy-.*|org-.*|organisations|venue-coaches|gst|provider-tax|coach-classes|para-sport-funding|para-sport-sponsorship-outcomes|para-pathway|para-readiness|para-learn|para-staff-credentials|para-spectator-accessibility|para-ux-conformance|boarding-.*|wearables|wellness.*|integrations|official-rate-card|official-rate-agreements|official-scheduling-recommendations|officials-bulk|officiating-analytics|officiating-season-intelligence|accounting-integrations|player|athlete-profile|performance-publishing|peer-skill-graph|event-reviews)\.js$/;
 
 export const SHOT_SIZES = { phone: { width: 390, height: 1100 }, desktop: { width: 1280, height: 900 } };
 export const shotFile = (stepId, size) => `${String(ACADEMY_STEPS.findIndex((s) => s.id === stepId) + 1).padStart(2, '0')}-${stepId}-${size}.png`;
