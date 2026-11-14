@@ -159,6 +159,11 @@ export async function budgetSteps(c, p, amount) {
   return convert(amount, p.currency, b.currency, (await rateFor(c, b, p.currency)).rate) > n(b.approval_over_cents) ? ['approver'] : [];
 }
 
+/** Throws 409 if the budget period is locked (prevents new reservations and commitments while a period is under audit). */
+export function assertBudgetUnlocked(b) {
+  if (b.locked_at) throw conflict(`Budget period is locked${b.lock_reason ? ': ' + b.lock_reason : ''}`);
+}
+
 /** Budgets that may carry a direct (non-program) agreement, and the rules that tie them to it. */
 export function assertDealFitsBudget(b, { departmentId, targetType, targetId }) {
   if (b.status !== 'active') throw conflict(`The budget "${b.name}" is archived`);

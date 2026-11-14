@@ -17,7 +17,7 @@ import { Tax } from './finance-tax';
 import { Detail, TxRow, atLeast, catLabel, kindLabel, modLabel, money } from './finance-parts';
 
 const FINANCE_ROLES = ['owner', 'admin', 'finance'];
-const TABS = ['overview', 'transactions', 'receivables', 'payables', 'settlements', 'reconciliation', 'tax', 'access', 'six_role'];
+const TABS = ['overview', 'transactions', 'receivables', 'payables', 'settlements', 'reconciliation', 'tax', 'budget_health', 'access', 'six_role'];
 const RECON_KINDS = ['payment_unrecorded', 'refund_drift', 'amount_drift', 'paid_without_ledger', 'amount_mismatch', 'refund_unrecorded', 'provider_dispute', 'payout_failed', 'ledger_drift', 'share_mismatch'];
 const iso = (d) => (d ? String(d).slice(0, 10) : undefined);
 const join = (v) => (v?.length ? v.join(',') : undefined);
@@ -101,6 +101,7 @@ export function Finance({ id: routeOrg }) {
           {tab === 'settlements' ? <Settlements q={q} scope={scope} /> : null}
           {tab === 'reconciliation' ? <Reconciliation scope={scope} whole={whole} platform={platform} level={level} onChanged={() => { sum.reload(); everyCurrency.reload(); }} toast={toast} /> : null}
           {tab === 'tax' && atLeast(level, 'accountant') ? <Tax scope={scope} whole={whole} level={level} q={q} toast={toast} /> : null}
+          {tab === 'budget_health' ? <BudgetHealth scope={scope} toast={toast} /> : null}
           {tab === 'access' ? <AccessAudit scope={scope} whole={whole} level={level} toast={toast} onChanged={sum.reload} /> : null}
           {tab === 'six_role' && whole ? <SixRoleAudit scope={scope} whole={whole} toast={toast} /> : null}
         </>
@@ -216,6 +217,168 @@ function Reconciliation({ scope, whole, platform, level, onChanged, toast }) {
         <Field label={t('fin.recon.reason')} value={reason} onChangeText={setReason} multiline placeholder={t('fin.recon.reason_ph')} hint={t('fin.recon.reason_hint')} />
         <Btn title={t('fin.recon.close_title')} disabled={reason.trim().length < 5} onPress={resolve} />
       </Sheet>
+    </View>
+  );
+}
+
+const BAND_COLOR = { healthy: '#2F8F5F', warning: '#D97706', critical: '#EA580C', over: '#E11D48' };
+const BAND_SOFT = { healthy: '#D9F0E1', warning: '#FEF3C7', critical: '#FFEDD5', over: '#FFE4E6' };
+
+function BudgetHealth({ scope }) {
+  const brands = useLoad(() => (scope.organisation_id ? api.get('/sponsors', { organisation_id: scope.organisation_id, status: 'active', limit: 50 }) : Promise.resolve([])), [scope.organisation_id]);
+  const [sponsorId, setSponsorId] = useState(null);
+  useEffect(() => { if (!sponsorId && brands.data?.length) setSponsorId(brands.data[0].id); }, [brands.data]); // eslint-disable-line react-hooks/exhaustive-deps
+  const health = useLoad(() => (sponsorId ? api.get('/budget-health', { sponsor_id: sponsorId }).catch(() => null) : Promise.resolve(null)), [sponsorId]);
+  const h = health.data;
+
+  if (!scope.organisation_id) return <Card><T color={c.mute}>{t('budget.health.no_brands')}</T></Card>;
+  if (brands.loading) return <Loading />;
+  if (!(brands.data ?? []).length) return <Card><T color={c.mute}>{t('budget.health.no_brands')}</T></Card>;
+
+  return (
+    <View style={{ gap: 14 }}>
+      {brands.data?.length > 1 ? (
+        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
+          {brands.data.map((b) => <Chip key={b.id} label={b.name} active={b.id === sponsorId} onPress={() => setSponsorId(b.id)} />)}
+        </View>
+      ) : null}
+      {health.loading && !h ? <Loading /> : !h ? <Card><T color={c.mute}>{t('budget.health.empty')}</T></Card> : (
+        <>
+          {/* KPI strip */}
+          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10 }}>
+            <Kpi label={t('budget.health.total_authorized')} value={money(h.kpi.total_authorized_cents, 'USD')} sub={`${h.budgets.length} budgets`} />
+            <Kpi label={t('budget.health.committed_pct')} value={`${h.kpi.committed_pct}%`} sub={t('budget.health.committed_pct')} />
+            <Kpi label={t('budget.health.reserved_pct')} value={`${h.kpi.reserved_pct}%`} sub={t('budget.health.reserved_pct')} />
+            <Kpi label={t('budget.health.at_risk')} value={String(h.kpi.at_risk_count)} sub="≥ 90% utilised" />
+            <Kpi label={t('budget.health.locked')} value={String(h.kpi.locked_count)} sub="period-locked" />
+          </View>
+          {/* At-risk panel */}
+          {h.at_risk.length ? (
+            <Section title={t('budget.health.at_risk_title')} color={c.red}>
+              {h.at_risk.map((r) => (
+                <View key={r.id} style={{ gap: 4 }}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                    <T weight="700" size={13} style={{ flex: 1 }} numberOfLines={1}>{r.name}</T>
+                    <Tag label={`${r.utilisation_pct}%`} color={BAND_SOFT[r.health_band] ?? c.redSoft} />
+                    {r.locked ? <T accessibilityLabel="Locked">🔒</T> : null}
+                  </View>
+                  <View style={{ height: 7, borderRadius: 3.5, backgroundColor: c.line, overflow: 'hidden' }}>
+                    <View style={{ width: `${Math.min(100, r.utilisation_pct)}%`, height: 7, backgroundColor: BAND_COLOR[r.health_band] ?? c.red }} />
+                  </View>
+                  <T size={11} color={c.mute}>{r.kind} · {r.currency}{r.cost_centre ? ` · ${r.cost_centre}` : ''}</T>
+                </View>
+              ))}
+            </Section>
+          ) : null}
+          {/* Budget grid */}
+          <Section title={t('budget.health.title')}>
+            {h.budgets.length ? h.budgets.map((r) => (
+              <View key={r.id} style={{ gap: 3, paddingVertical: 6, borderBottomWidth: 1, borderColor: c.line }}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                  <T weight="700" size={13} style={{ flex: 1 }} numberOfLines={1}>{r.name}</T>
+                  <Tag label={t(`budget.health.${r.health_band}`)} color={BAND_SOFT[r.health_band] ?? c.line} />
+                  {r.locked ? <T accessibilityLabel="Locked" size={13}>🔒</T> : null}
+                  {r.pending_alerts > 0 ? <Tag label={`🔔 ${r.pending_alerts}`} color={c.sunSoft} /> : null}
+                  {r.grant_restricted ? <Tag label="Grant" color={c.limeSoft} /> : null}
+                </View>
+                <View style={{ height: 5, borderRadius: 2.5, backgroundColor: c.line, overflow: 'hidden' }}>
+                  <View style={{ width: `${Math.min(100, r.utilisation_pct)}%`, height: 5, backgroundColor: BAND_COLOR[r.health_band] ?? c.red }} />
+                </View>
+                <T size={11} color={c.mute}>{r.utilisation_pct}% utilised · {r.currency}{r.fiscal_year ? ` · FY${r.fiscal_year}` : ''}{r.cost_centre ? ` · ${r.cost_centre}` : ''}</T>
+              </View>
+            )) : <T color={c.mute} size={13}>{t('budget.health.empty')}</T>}
+          </Section>
+        </>
+      )}
+    </View>
+  );
+}
+
+/** Budget Health tab: cross-brand executive view of all sponsorship budget utilisation. */
+function BudgetHealth({ scope, toast }) {
+  const h = useLoad(() => api.get('/budget-health', scope?.organisation_id ? { organisation_id: scope.organisation_id } : {}), [scope?.organisation_id]);
+  const d = h.data;
+  const act = async (fn, m) => { try { await fn(); if (m) toast(m); h.reload(); } catch (e) { toast(e.message); } };
+  if (h.loading && !d) return <Loading />;
+  if (h.error) return <ErrorBox error={h.error} onRetry={h.reload} />;
+  if (!d) return <Empty emoji="📊" title="No budget data" sub="Authorize sponsorship budgets to see health metrics here." />;
+  const utilPct = (n, x) => (x > 0 ? Math.round((n / x) * 100) : 0);
+  const tone = (pct) => pct >= 110 ? c.red : pct >= 90 ? c.sun : pct >= 70 ? c.violet : c.lime;
+  return (
+    <View style={{ gap: 14 }}>
+      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+        <Kpi label="Total authorized" value={money(d.total_authorized_cents, d.currency ?? 'USD')} />
+        <Kpi label="Committed" value={`${d.committed_pct ?? 0}%`} note="of authorized" />
+        <Kpi label="Reserved" value={`${d.reserved_pct ?? 0}%`} note="held, not committed" />
+        <Kpi label="At risk (>90%)" value={d.at_risk_count ?? 0} note="budgets near limit" accent={d.at_risk_count > 0 ? c.red : undefined} />
+        <Kpi label="Locked" value={d.locked_count ?? 0} note="period-locked budgets" />
+        <Kpi label="Alerts pending" value={d.pending_alerts ?? 0} note="undismissed threshold breaches" accent={d.pending_alerts > 0 ? c.sun : undefined} />
+      </View>
+
+      {(d.at_risk ?? []).length ? (
+        <Section title="At risk" color={c.red}>
+          <T size={12} color={c.mute}>Budgets above 90% utilisation — these need attention before new commitments can be made.</T>
+          {d.at_risk.map((b) => {
+            const pct = utilPct(b.committed_cents + b.reserved_cents, b.authorized_cents);
+            return (
+              <Card key={b.id} pad={12}>
+                <View style={{ flexDirection: 'row', gap: 8, alignItems: 'center' }}>
+                  <T weight="900" style={{ flex: 1 }}>{b.name}</T>
+                  <Tag label={`${pct}%`} color={pct >= 110 ? c.redSoft : c.sunSoft} />
+                  {b.locked_at ? <T>🔒</T> : null}
+                </View>
+                <T size={12} color={c.mute}>{b.sponsor_name} · {b.kind}{b.fiscal_year ? ` ${b.fiscal_year}` : ''}</T>
+                <View style={{ height: 8, borderRadius: 4, backgroundColor: c.bg, overflow: 'hidden', marginTop: 4 }}>
+                  <View style={{ width: `${Math.min(100, pct)}%`, height: 8, backgroundColor: tone(pct) }} />
+                </View>
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginTop: 4 }}>
+                  <T size={12} weight="800">{money(b.available_cents, b.currency)} left</T>
+                  <T size={12} color={c.mute}>of {money(b.authorized_cents, b.currency)}</T>
+                </View>
+              </Card>
+            );
+          })}
+        </Section>
+      ) : null}
+
+      {(d.pending_alert_events ?? []).length ? (
+        <Section title="Pending alerts" color={c.sun}>
+          {d.pending_alert_events.map((a) => (
+            <Card key={a.id} pad={12}>
+              <View style={{ flexDirection: 'row', gap: 8, alignItems: 'center' }}>
+                <T size={18}>🔔</T>
+                <View style={{ flex: 1 }}>
+                  <T weight="800">{a.budget_name} — {a.threshold_pct}%</T>
+                  <T size={12} color={c.mute}>{a.sponsor_name} · actual {a.utilisation_pct}% · {day(a.triggered_at)}</T>
+                </View>
+                <Btn small title="Dismiss" color={c.paper} ink={c.ink} onPress={() => act(() => api.post(`/sponsorship-budgets/${a.budget_id}/alerts/${a.id}/dismiss`), 'Alert dismissed')} accessibilityLabel="Dismiss alert" />
+              </View>
+            </Card>
+          ))}
+        </Section>
+      ) : null}
+
+      {(d.all ?? []).length ? (
+        <Section title="All budgets" color={c.violet}>
+          {d.all.map((b) => {
+            const pct = utilPct(b.committed_cents + b.reserved_cents, b.authorized_cents);
+            return (
+              <Card key={b.id} pad={10}>
+                <View style={{ flexDirection: 'row', gap: 8, alignItems: 'center' }}>
+                  <T weight="800" style={{ flex: 1 }} size={13}>{b.name}</T>
+                  <Tag label={`${pct}%`} color={pct >= 100 ? c.redSoft : pct >= 90 ? c.sunSoft : pct >= 70 ? c.violetSoft : c.limeSoft} />
+                  {b.locked_at ? <T size={12}>🔒</T> : null}
+                  {b.pending_alerts > 0 ? <T size={12}>🔔</T> : null}
+                </View>
+                <View style={{ height: 5, borderRadius: 3, backgroundColor: c.bg, overflow: 'hidden' }}>
+                  <View style={{ width: `${Math.min(100, pct)}%`, height: 5, backgroundColor: tone(pct) }} />
+                </View>
+                <T size={11} color={c.mute}>{b.sponsor_name} · {money(b.available_cents, b.currency)} available</T>
+              </Card>
+            );
+          })}
+        </Section>
+      ) : null}
     </View>
   );
 }
