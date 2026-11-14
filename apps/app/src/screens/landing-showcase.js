@@ -1,7 +1,8 @@
-import React, { useState } from 'react';
-import { Platform, Pressable, ScrollView, View, useWindowDimensions } from 'react-native';
-import { c, r } from '../theme';
+import React, { useState, useRef } from 'react';
+import { View, ScrollView, TouchableOpacity, Dimensions, Animated } from 'react-native';
+import { LinearGradient } from 'expo-linear-gradient';
 import { T } from '../ui';
+import { palette } from '../theme';
 import { ShowcaseNews } from './showcase-news';
 import { ShowcaseAthletes } from './showcase-athletes';
 import { ShowcaseVenues } from './showcase-venues';
@@ -14,92 +15,94 @@ import { ShowcaseSuppliers } from './showcase-suppliers';
 import { ShowcaseLearn } from './showcase-learn';
 
 const CHAPTERS = [
-  { key: 'news',      label: '📰 News',        Component: ShowcaseNews },
-  { key: 'athletes',  label: '🏃 Athletes',     Component: ShowcaseAthletes },
-  { key: 'venues',    label: '🏟️ Venues',        Component: ShowcaseVenues },
-  { key: 'academies', label: '🏫 Academies',     Component: ShowcaseAcademies },
-  { key: 'matches',   label: '🏆 Matches',       Component: ShowcaseMatches },
-  { key: 'coaches',   label: '🧑‍🏫 Coaches',      Component: ShowcaseCoaches },
-  { key: 'physios',   label: '🩺 Physios',       Component: ShowcasePhysios },
-  { key: 'sponsors',  label: '🤝 Sponsors',      Component: ShowcaseSponsors },
-  { key: 'suppliers', label: '🔧 Suppliers',     Component: ShowcaseSuppliers },
-  { key: 'learn',     label: '📚 Learn',         Component: ShowcaseLearn },
+  { key: 'news',      emoji: '📰', label: 'News',      Component: ShowcaseNews },
+  { key: 'athletes',  emoji: '🏃', label: 'Athletes',  Component: ShowcaseAthletes },
+  { key: 'venues',    emoji: '🏟', label: 'Venues',    Component: ShowcaseVenues },
+  { key: 'academies', emoji: '🎓', label: 'Academies', Component: ShowcaseAcademies },
+  { key: 'matches',   emoji: '🏆', label: 'Matches',   Component: ShowcaseMatches },
+  { key: 'coaches',   emoji: '👨‍🏫', label: 'Coaches',  Component: ShowcaseCoaches },
+  { key: 'physios',   emoji: '⚕️', label: 'Physios',   Component: ShowcasePhysios },
+  { key: 'sponsors',  emoji: '🤝', label: 'Sponsors',  Component: ShowcaseSponsors },
+  { key: 'suppliers', emoji: '📦', label: 'Suppliers', Component: ShowcaseSuppliers },
+  { key: 'learn',     emoji: '📚', label: 'Learn',     Component: ShowcaseLearn },
 ];
 
-function ChipNav({ active, onSelect }) {
+const W = Dimensions.get('window').width;
+const WIDE = W >= 768;
+
+export function ShowcaseLanding({ manifest, onNavigate }) {
+  const [active, setActive] = useState('news');
+  const fadeAnim = useRef(new Animated.Value(1)).current;
+
+  const switchChapter = (key) => {
+    if (key === active) return;
+    Animated.sequence([
+      Animated.timing(fadeAnim, { toValue: 0, duration: 100, useNativeDriver: true }),
+      Animated.timing(fadeAnim, { toValue: 1, duration: 200, useNativeDriver: true }),
+    ]).start();
+    setActive(key);
+  };
+
+  const { Component } = CHAPTERS.find((ch) => ch.key === active);
+  const chapterBlock = manifest?.blocks?.find((b) => b.config?.chapter === active);
+
   return (
-    <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8, paddingHorizontal: 16, paddingVertical: 12 }}>
-      {CHAPTERS.map(({ key, label }) => {
-        const sel = active === key;
-        return (
-          <Pressable key={key} onPress={() => onSelect(key)} accessibilityRole="tab" accessibilityLabel={label} accessibilityState={{ selected: sel }}
-            style={({ pressed }) => ({ opacity: pressed ? 0.8 : 1 })}>
-            <View style={{ paddingVertical: 10, paddingHorizontal: 16, borderRadius: r.pill, backgroundColor: sel ? c.pink : c.paper, borderWidth: 1.5, borderColor: sel ? c.pink : c.line, minHeight: 44, justifyContent: 'center' }}>
-              <T weight="700" size={13} color={sel ? '#fff' : c.ink}>{label}</T>
-            </View>
-          </Pressable>
-        );
-      })}
-    </ScrollView>
-  );
-}
+    <LinearGradient colors={[palette.p0, palette.p1, '#1a1c27']} style={{ borderRadius: 20, overflow: 'hidden', marginVertical: 16 }}>
+      <View style={{ flexDirection: WIDE ? 'row' : 'column', minHeight: WIDE ? 520 : undefined }}>
+        {WIDE ? (
+          <View style={{ width: 160, backgroundColor: palette.p0, paddingVertical: 12, paddingHorizontal: 8 }}>
+            <T style={{ color: 'rgba(255,255,255,0.4)', fontSize: 10, fontWeight: '700', letterSpacing: 1.5, marginBottom: 10, marginStart: 4 }}>EXPLORE</T>
+            {CHAPTERS.map((ch) => {
+              const sel = ch.key === active;
+              return (
+                <TouchableOpacity
+                  key={ch.key}
+                  onPress={() => switchChapter(ch.key)}
+                  accessibilityRole="tab"
+                  accessibilityState={{ selected: sel }}
+                  style={{
+                    flexDirection: 'row', alignItems: 'center', gap: 8,
+                    paddingVertical: 10, paddingHorizontal: 10, borderRadius: 10, marginBottom: 2,
+                    backgroundColor: sel ? palette.p2 : 'transparent',
+                  }}>
+                  <T style={{ fontSize: 16 }}>{ch.emoji}</T>
+                  <T style={{ color: sel ? '#fff' : 'rgba(255,255,255,0.6)', fontSize: 13, fontWeight: sel ? '700' : '500' }}>{ch.label}</T>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+        ) : (
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            style={{ backgroundColor: palette.p0, paddingVertical: 10 }}
+            contentContainerStyle={{ paddingHorizontal: 12, gap: 6, flexDirection: 'row' }}>
+            {CHAPTERS.map((ch) => {
+              const sel = ch.key === active;
+              return (
+                <TouchableOpacity
+                  key={ch.key}
+                  onPress={() => switchChapter(ch.key)}
+                  accessibilityRole="tab"
+                  accessibilityState={{ selected: sel }}
+                  style={{
+                    flexDirection: 'row', alignItems: 'center', gap: 5,
+                    paddingVertical: 7, paddingHorizontal: 12, borderRadius: 20,
+                    backgroundColor: sel ? palette.p2 : 'rgba(255,255,255,0.10)',
+                    borderWidth: sel ? 0 : 1, borderColor: 'rgba(255,255,255,0.18)',
+                  }}>
+                  <T style={{ fontSize: 14 }}>{ch.emoji}</T>
+                  <T style={{ color: '#fff', fontSize: 12, fontWeight: sel ? '700' : '500' }}>{ch.label}</T>
+                </TouchableOpacity>
+              );
+            })}
+          </ScrollView>
+        )}
 
-function SideNav({ active, onSelect }) {
-  return (
-    <View style={{ width: 200, gap: 4, paddingTop: 8 }}>
-      {CHAPTERS.map(({ key, label }) => {
-        const sel = active === key;
-        return (
-          <Pressable key={key} onPress={() => onSelect(key)} accessibilityRole="tab" accessibilityLabel={label} accessibilityState={{ selected: sel }}
-            style={{ paddingVertical: 12, paddingHorizontal: 16, borderRadius: r.card, backgroundColor: sel ? c.pinkSoft : 'transparent', minHeight: 44 }}>
-            <T weight={sel ? '700' : '500'} size={14} color={sel ? c.pink : c.ink}>{label}</T>
-          </Pressable>
-        );
-      })}
-    </View>
-  );
-}
-
-export function ShowcaseLanding({ manifest, onNavigate, previewMode }) {
-  const { width } = useWindowDimensions();
-  const [activeKey, setActiveKey] = useState('news');
-  if (!manifest) return null;
-
-  const wide = width >= 768;
-  const chapter = CHAPTERS.find((c) => c.key === activeKey) ?? CHAPTERS[0];
-  const { Component } = chapter;
-  const block = manifest.blocks?.find((b) => b.config?.chapter === activeKey) ?? null;
-  const onCta = previewMode ? () => {} : (routeKey) => onNavigate?.(routeKey);
-
-  if (wide) {
-    return (
-      <View style={{ flexDirection: 'row', backgroundColor: c.bg, minHeight: 480, borderRadius: r.card, overflow: 'hidden', marginVertical: 16 }}>
-        <View style={{ borderEndWidth: 1, borderEndColor: c.line }}>
-          <SideNav active={activeKey} onSelect={setActiveKey} />
-        </View>
-        <View style={{ flex: 1, padding: 24 }}>
-          {previewMode && (
-            <View style={{ backgroundColor: c.sun, paddingVertical: 8, paddingHorizontal: 16, borderRadius: r.card, marginBottom: 16 }}>
-              <T weight="700" size={12} color="#fff">PREVIEW MODE — CTAs disabled</T>
-            </View>
-          )}
-          <Component block={block} manifest={manifest} onCta={onCta} />
-        </View>
+        <Animated.View style={{ flex: 1, opacity: fadeAnim }}>
+          <Component manifest={manifest} block={chapterBlock} onNavigate={onNavigate} />
+        </Animated.View>
       </View>
-    );
-  }
-
-  return (
-    <View style={{ backgroundColor: c.bg }}>
-      <ChipNav active={activeKey} onSelect={setActiveKey} />
-      {previewMode && (
-        <View style={{ backgroundColor: c.sun, paddingVertical: 8, paddingHorizontal: 16, marginHorizontal: 16, borderRadius: r.card, marginBottom: 8 }}>
-          <T weight="700" size={12} color="#fff">PREVIEW MODE — CTAs disabled</T>
-        </View>
-      )}
-      <View style={{ padding: 16 }}>
-        <Component block={block} manifest={manifest} onCta={onCta} />
-      </View>
-    </View>
+    </LinearGradient>
   );
 }

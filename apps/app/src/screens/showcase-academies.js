@@ -1,103 +1,64 @@
 import React, { useState } from 'react';
-import { Pressable, ScrollView, View } from 'react-native';
-import { c, r } from '../theme';
-import { Btn, Card, T } from '../ui';
+import { View, TouchableOpacity } from 'react-native';
+import { T } from '../ui';
+import { palette } from '../theme';
 
-const PERSONAS = ['Academy Director', 'Parent', 'Coach'];
-const STEPS = ['Enroll', 'Consent', 'Assign Coach', 'Calendar', 'Finance'];
-
-const PERSONA_DETAILS = {
-  'Academy Director': [
-    'Set up programmes, age groups and fees',
-    'Configure guardian consent workflows',
-    'Assign coaches and manage staff rosters',
-    'Publish term calendars and session schedules',
-    'Oversee billing, payroll and revenue reports',
-  ],
-  Parent: [
-    'Browse programmes and submit enrollment',
-    'Sign digital guardian consent securely',
-    'Review assigned coach profile and credentials',
-    'View term schedule and session attendance',
-    'Track invoice history and upcoming payments',
-  ],
-  Coach: [
-    'Accept athlete roster assignment',
-    'Confirm consent and safeguarding acknowledgements',
-    'Review athlete profiles and development plans',
-    'Manage personal session schedule',
-    'Log attendance and submit session notes',
-  ],
-};
-
-const CAMPUSES = [
-  { name: 'Main Campus', sport: 'Football', athletes: 240 },
-  { name: 'East Campus', sport: 'Cricket', athletes: 118 },
-  { name: 'West Campus', sport: 'Multi-Sport', athletes: 95 },
+const PERSONAS = [
+  { key: 'director', label: 'Director', emoji: '🏫', desc: 'Manage every campus, programme, coach and revenue stream from one console. Real-time dashboards, board-ready reports, payroll.' },
+  { key: 'parent',   label: 'Parent',   emoji: '👨‍👩‍👧', desc: "Track your child's attendance, progress and upcoming fixtures. Digital consent, secure messaging with coaches, invoice history." },
+  { key: 'coach',    label: 'Coach',    emoji: '🏋️', desc: 'Session plans, athlete load monitoring, drills library, attendance, parent communications and CPD portfolio — all in one app.' },
+];
+const STEPS = [
+  { label: 'Enrol',    desc: 'Fill the online form. Guardian consent captured digitally with biometric signature.' },
+  { label: 'Consent',  desc: 'Smart consent covers data, media, medical sharing and travel — jurisdiction-aware.' },
+  { label: 'Coaches',  desc: 'Assign athlete to group and 1-to-1 coaches based on sport, age and objective.' },
+  { label: 'Calendar', desc: 'Term dates, competition fixtures, camps and trials synced to phone calendar.' },
+  { label: 'Finance',  desc: 'Fee schedule, sibling discount, payment plan and tax receipt — zero admin.' },
 ];
 
-export function ShowcaseAcademies({ block, manifest, onCta }) {
-  const [persona, setPersona] = useState('Academy Director');
-  const [step, setStep] = useState(0);
-  const details = PERSONA_DETAILS[persona];
+export function ShowcaseAcademies({ manifest, block, onNavigate }) {
+  const [persona, setPersona] = useState('director');
+  const [step, setStep]       = useState(0);
+  const p = PERSONAS.find((x) => x.key === persona);
 
   return (
-    <View style={{ gap: 20 }}>
-      <T weight="800" size={22} style={{ letterSpacing: -0.5 }}>Academies & Organisations</T>
+    <View style={{ padding: 16, flex: 1 }}>
+      <T style={{ color: '#fff', fontSize: 20, fontWeight: '800', marginBottom: 4 }}>Academies & Organisations</T>
+      <T style={{ color: 'rgba(255,255,255,0.6)', fontSize: 13, marginBottom: 12 }}>Every campus, coach and student — one console</T>
 
-      {/* Persona toggle */}
-      <View style={{ flexDirection: 'row', backgroundColor: c.line, borderRadius: r.pill, padding: 3, gap: 2 }}>
-        {PERSONAS.map((p) => {
-          const sel = persona === p;
-          return (
-            <Pressable key={p} onPress={() => { setPersona(p); setStep(0); }} accessibilityRole="button" accessibilityLabel={p} accessibilityState={{ selected: sel }} style={{ flex: 1 }}>
-              <View style={{ paddingVertical: 10, paddingHorizontal: 8, borderRadius: r.pill, backgroundColor: sel ? c.paper : 'transparent', alignItems: 'center', minHeight: 44, justifyContent: 'center' }}>
-                <T size={12} weight="700" color={sel ? c.pink : c.mute} numberOfLines={1}>{p}</T>
-              </View>
-            </Pressable>
-          );
-        })}
+      <View style={{ flexDirection: 'row', gap: 6, marginBottom: 12 }}>
+        {PERSONAS.map((x) => (
+          <TouchableOpacity key={x.key} onPress={() => { setPersona(x.key); setStep(0); }} style={{ flex: 1, alignItems: 'center', paddingVertical: 9, borderRadius: 12, backgroundColor: x.key === persona ? palette.p2 : 'rgba(255,255,255,0.08)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.15)' }}>
+            <T style={{ fontSize: 18, marginBottom: 2 }}>{x.emoji}</T>
+            <T style={{ color: x.key === persona ? '#fff' : 'rgba(255,255,255,0.65)', fontSize: 11, fontWeight: '600' }}>{x.label}</T>
+          </TouchableOpacity>
+        ))}
       </View>
 
-      {/* Campus tiles */}
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 12 }}>
-        {CAMPUSES.map((campus) => (
-          <View key={campus.name} style={{ width: 170, backgroundColor: c.pinkSoft, borderRadius: r.card, padding: 16, gap: 6 }}>
-            <T weight="800" size={14}>{campus.name}</T>
-            <T size={12} color={c.mute}>{campus.sport}</T>
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 4 }}>
-              <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: c.pink }} />
-              <T size={12} weight="600" color={c.pink}>{campus.athletes} athletes</T>
+      <View style={{ padding: 12, borderRadius: 12, backgroundColor: 'rgba(255,255,255,0.06)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.12)', marginBottom: 12 }}>
+        <T style={{ color: 'rgba(255,255,255,0.75)', fontSize: 12, lineHeight: 18 }}>{p.desc}</T>
+      </View>
+
+      <T style={{ color: 'rgba(255,255,255,0.45)', fontSize: 10, fontWeight: '700', letterSpacing: 1.2, marginBottom: 8 }}>ENROLMENT JOURNEY</T>
+      <View style={{ flexDirection: 'row', gap: 4, marginBottom: 10 }}>
+        {STEPS.map((s, i) => (
+          <TouchableOpacity key={s.label} onPress={() => setStep(i)} style={{ flex: 1, alignItems: 'center' }}>
+            <View style={{ width: 28, height: 28, borderRadius: 14, backgroundColor: i === step ? palette.p2 : i < step ? palette.p3 + '55' : 'rgba(255,255,255,0.12)', alignItems: 'center', justifyContent: 'center', marginBottom: 4 }}>
+              <T style={{ color: '#fff', fontSize: 11, fontWeight: '700' }}>{i + 1}</T>
             </View>
-          </View>
+            <T style={{ color: i === step ? palette.p3 : 'rgba(255,255,255,0.35)', fontSize: 9, textAlign: 'center' }}>{s.label}</T>
+          </TouchableOpacity>
         ))}
-      </ScrollView>
+      </View>
 
-      {/* Enrollment flow stepper */}
-      <Card>
-        <T weight="700" size={15} style={{ marginBottom: 12 }}>Enrollment flow</T>
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 0, alignItems: 'center' }}>
-          {STEPS.map((s, i) => (
-            <React.Fragment key={s}>
-              <Pressable onPress={() => setStep(i)} accessibilityRole="button" accessibilityLabel={`Step ${i + 1}: ${s}`} accessibilityState={{ selected: i === step }}>
-                <View style={{ alignItems: 'center', gap: 4, paddingHorizontal: 4 }}>
-                  <View style={{ width: 36, height: 36, borderRadius: 18, backgroundColor: i <= step ? c.pink : c.line, alignItems: 'center', justifyContent: 'center' }}>
-                    <T size={12} weight="800" color={i <= step ? '#fff' : c.mute}>{i + 1}</T>
-                  </View>
-                  <T size={10} weight="600" color={i === step ? c.pink : c.mute}>{s}</T>
-                </View>
-              </Pressable>
-              {i < STEPS.length - 1 && <View style={{ width: 20, height: 2, backgroundColor: i < step ? c.pink : c.line, marginBottom: 16 }} />}
-            </React.Fragment>
-          ))}
-        </ScrollView>
-        <View style={{ backgroundColor: c.violetSoft, borderRadius: r.card, padding: 14, marginTop: 12 }}>
-          <T size={13} weight="700" color={c.pink} style={{ marginBottom: 4 }}>As {persona} · Step {step + 1}: {STEPS[step]}</T>
-          <T size={13} color={c.mute}>{details[step]}</T>
-        </View>
-      </Card>
+      <View style={{ padding: 12, borderRadius: 12, backgroundColor: 'rgba(132,88,179,0.18)', borderWidth: 1, borderColor: 'rgba(208,189,244,0.25)', marginBottom: 12 }}>
+        <T style={{ color: palette.p3, fontWeight: '700', fontSize: 13, marginBottom: 4 }}>{STEPS[step].label}</T>
+        <T style={{ color: 'rgba(255,255,255,0.8)', fontSize: 12, lineHeight: 18 }}>{STEPS[step].desc}</T>
+      </View>
 
-      <Btn title="Browse academies →" onPress={() => onCta('academy-discovery')} />
+      <TouchableOpacity onPress={() => onNavigate?.('join')} style={{ paddingVertical: 12, borderRadius: 12, backgroundColor: palette.p2, alignItems: 'center' }}>
+        <T style={{ color: '#fff', fontWeight: '700', fontSize: 14 }}>Explore academies →</T>
+      </TouchableOpacity>
     </View>
   );
 }

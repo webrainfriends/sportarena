@@ -1,126 +1,100 @@
 import React, { useState } from 'react';
-import { Platform, Pressable, ScrollView, View } from 'react-native';
-import { c, r } from '../theme';
-import { Btn, Card, T } from '../ui';
+import { View, TouchableOpacity, ScrollView } from 'react-native';
+import { Svg, Rect, Line, Circle, Text as SvgText } from 'react-native-svg';
+import { T } from '../ui';
+import { palette } from '../theme';
 
-const SPORTS = ['Football', 'Tennis', 'Cricket', 'Basketball', 'Badminton'];
-const OBJECTIVES = ['Technique', 'Fitness', 'Tactics', 'Mental Strength'];
-const BADGES = ['✓ Verified', '🛡 DBS Checked', '🏅 Level 2 Licensed'];
-const isWeb = Platform.OS === 'web';
+const SPORTS = ['Tennis', 'Football', 'Cricket', 'Basketball', 'Swimming'];
+const CREDS = ['Level 4 Head Coach', 'ITF Licensed', 'Sports Science MSc', 'First Aid & Safeguarding'];
+const DEMO_SESSION = [
+  { phase: 'Warm-up',   duration: '15 min', desc: 'Dynamic mobility, sport-specific movement patterns, reaction drills.' },
+  { phase: 'Technical', duration: '30 min', desc: 'Forehand mechanics: open-stance baseline to cross-court winner — video feedback loop.' },
+  { phase: 'Tactical',  duration: '25 min', desc: 'Point construction from deuce court — building to pattern 3 finish.' },
+  { phase: 'Cool-down', duration: '10 min', desc: 'Static stretch, breathing protocol, session debrief & metrics review.' },
+];
 
-function TacticalBoard({ sport }) {
-  const color = c.pink;
-  const bg = c.violetSoft;
-  const isTennis = sport === 'Tennis';
-
-  if (isWeb) {
-    return (
-      <View accessibilityLabel={`${sport} tactical board`} style={{ marginVertical: 8 }}>
-        {/* eslint-disable-next-line react-native/no-inline-styles */}
-        <div dangerouslySetInnerHTML={{ __html: isTennis
-          ? `<svg viewBox="0 0 200 100" width="100%" height="110" xmlns="http://www.w3.org/2000/svg">
-              <rect x="2" y="2" width="196" height="96" rx="4" fill="${bg}" stroke="${color}" stroke-width="2"/>
-              <line x1="100" y1="2" x2="100" y2="98" stroke="${color}" stroke-width="1.5"/>
-              <line x1="2" y1="50" x2="198" y2="50" stroke="${color}" stroke-width="1.5"/>
-              <circle cx="40" cy="30" r="6" fill="${color}" opacity="0.9"/>
-              <circle cx="160" cy="30" r="6" fill="${color}" opacity="0.9"/>
-              <circle cx="100" cy="70" r="6" fill="${color}" opacity="0.9"/>
-            </svg>`
-          : `<svg viewBox="0 0 200 130" width="100%" height="130" xmlns="http://www.w3.org/2000/svg">
-              <rect x="2" y="2" width="196" height="126" rx="4" fill="${bg}" stroke="${color}" stroke-width="2"/>
-              <line x1="100" y1="2" x2="100" y2="128" stroke="${color}" stroke-width="1.5"/>
-              <circle cx="100" cy="65" r="20" fill="none" stroke="${color}" stroke-width="1.5"/>
-              <rect x="2" y="38" width="30" height="54" rx="2" fill="none" stroke="${color}" stroke-width="1.5"/>
-              <rect x="168" y="38" width="30" height="54" rx="2" fill="none" stroke="${color}" stroke-width="1.5"/>
-              <circle cx="40" cy="40" r="7" fill="${color}" opacity="0.85"/>
-              <circle cx="100" cy="30" r="7" fill="${color}" opacity="0.85"/>
-              <circle cx="160" cy="40" r="7" fill="${color}" opacity="0.85"/>
-              <circle cx="70" cy="90" r="7" fill="#fff" stroke="${color}" stroke-width="2" opacity="0.9"/>
-            </svg>`
-        }} />
-      </View>
-    );
-  }
-
-  // Native fallback
+function PitchSvg({ sport }) {
+  if (sport === 'Football') return (
+    <Svg width="100%" height={90} viewBox="0 0 300 120">
+      <Rect x="5" y="5" width="290" height="110" rx="4" fill="rgba(47,143,95,0.12)" stroke={palette.p3} strokeWidth="1.5" />
+      <Line x1="150" y1="5" x2="150" y2="115" stroke={palette.p3} strokeWidth="1" />
+      <Circle cx="150" cy="60" r="22" fill="none" stroke={palette.p3} strokeWidth="1" />
+      <Rect x="5" y="38" width="40" height="44" fill="none" stroke="rgba(208,189,244,0.4)" strokeWidth="1" />
+      <Rect x="255" y="38" width="40" height="44" fill="none" stroke="rgba(208,189,244,0.4)" strokeWidth="1" />
+      <SvgText x="150" y="4" textAnchor="middle" fill="rgba(255,255,255,0.4)" fontSize="8">TACTICAL VIEW</SvgText>
+    </Svg>
+  );
   return (
-    <View accessibilityLabel={`${sport} tactical board`} style={{ height: 100, backgroundColor: bg, borderRadius: r.card, borderWidth: 2, borderColor: color, margin: 8, alignItems: 'center', justifyContent: 'center', gap: 8 }}>
-      <T size={12} color={color} weight="700">{sport} Tactical Board</T>
-      <View style={{ flexDirection: 'row', gap: 24 }}>
-        {[0, 1, 2].map((i) => <View key={i} style={{ width: 14, height: 14, borderRadius: 7, backgroundColor: color }} />)}
-      </View>
-    </View>
+    <Svg width="100%" height={90} viewBox="0 0 300 120">
+      <Rect x="5" y="5" width="290" height="110" rx="4" fill="rgba(132,88,179,0.12)" stroke={palette.p3} strokeWidth="1.5" />
+      <Line x1="5" y1="60" x2="295" y2="60" stroke={palette.p3} strokeWidth="1" />
+      <Line x1="150" y1="5" x2="150" y2="115" stroke={palette.p3} strokeWidth="1" />
+      <SvgText x="150" y="4" textAnchor="middle" fill="rgba(255,255,255,0.4)" fontSize="8">TACTICAL VIEW — {sport.toUpperCase()}</SvgText>
+    </Svg>
   );
 }
 
-export function ShowcaseCoaches({ block, manifest, onCta }) {
-  const [sport, setSport] = useState('Football');
-  const [objective, setObjective] = useState('Technique');
+export function ShowcaseCoaches({ manifest, block, onNavigate }) {
+  const [sport, setSport] = useState('Tennis');
+  const [tab, setTab]     = useState('plan');
 
   return (
-    <View style={{ gap: 20 }}>
-      <T weight="800" size={22} style={{ letterSpacing: -0.5 }}>Coaches</T>
+    <View style={{ padding: 16, flex: 1 }}>
+      <T style={{ color: '#fff', fontSize: 20, fontWeight: '800', marginBottom: 4 }}>Coaching</T>
+      <T style={{ color: 'rgba(255,255,255,0.6)', fontSize: 13, marginBottom: 12 }}>Expert coaches, real session plans, certified credentials</T>
 
-      <View style={{ gap: 10 }}>
-        <T size={12} weight="600" color={c.mute}>SPORT</T>
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8 }}>
-          {SPORTS.map((s) => {
-            const sel = sport === s;
-            return (
-              <Pressable key={s} onPress={() => setSport(s)} accessibilityRole="button" accessibilityLabel={s} accessibilityState={{ selected: sel }}>
-                <View style={{ paddingVertical: 8, paddingHorizontal: 14, borderRadius: r.pill, backgroundColor: sel ? c.pink : c.paper, borderWidth: 1, borderColor: sel ? c.pink : c.line, minHeight: 44, justifyContent: 'center' }}>
-                  <T size={13} weight="600" color={sel ? '#fff' : c.mute}>{s}</T>
-                </View>
-              </Pressable>
-            );
-          })}
-        </ScrollView>
+      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 10 }} contentContainerStyle={{ gap: 6, flexDirection: 'row' }}>
+        {SPORTS.map((s) => (
+          <TouchableOpacity key={s} onPress={() => setSport(s)} style={{ paddingHorizontal: 12, paddingVertical: 5, borderRadius: 20, backgroundColor: s === sport ? palette.p2 : 'rgba(255,255,255,0.08)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.15)' }}>
+            <T style={{ color: s === sport ? '#fff' : 'rgba(255,255,255,0.7)', fontSize: 11, fontWeight: '600' }}>{s}</T>
+          </TouchableOpacity>
+        ))}
+      </ScrollView>
 
-        <T size={12} weight="600" color={c.mute}>OBJECTIVE</T>
-        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
-          {OBJECTIVES.map((o) => {
-            const sel = objective === o;
-            return (
-              <Pressable key={o} onPress={() => setObjective(o)} accessibilityRole="button" accessibilityLabel={o} accessibilityState={{ selected: sel }}>
-                <View style={{ paddingVertical: 8, paddingHorizontal: 14, borderRadius: r.pill, backgroundColor: sel ? c.violet : c.paper, borderWidth: 1, borderColor: sel ? c.violet : c.line, minHeight: 44, justifyContent: 'center' }}>
-                  <T size={13} weight="600" color={sel ? '#fff' : c.mute}>{o}</T>
-                </View>
-              </Pressable>
-            );
-          })}
-        </View>
-      </View>
-
-      <Card pad={0} style={{ overflow: 'hidden' }}>
-        <TacticalBoard sport={sport} />
-        <View style={{ padding: 12 }}>
-          <T weight="700" size={14}>{sport} · {objective}</T>
-          <T size={12} color={c.mute}>Tactical board — illustrative positions</T>
-        </View>
-      </Card>
-
-      {/* Session template */}
-      <Card>
-        <T weight="700" size={14} style={{ marginBottom: 8 }}>Sample session</T>
-        <View style={{ backgroundColor: c.pinkSoft, borderRadius: r.card, padding: 14, flexDirection: 'row', flexWrap: 'wrap', gap: 10 }}>
-          {['60 min', objective, '1:1', 'Intermediate'].map((tag) => (
-            <View key={tag} style={{ backgroundColor: c.paper, borderRadius: r.pill, paddingVertical: 4, paddingHorizontal: 12 }}>
-              <T size={12} weight="600" color={c.pink}>{tag}</T>
-            </View>
-          ))}
-        </View>
-      </Card>
-
-      {/* Credential badges */}
-      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
-        {BADGES.map((b) => (
-          <View key={b} style={{ backgroundColor: c.pinkSoft, borderRadius: r.pill, paddingVertical: 8, paddingHorizontal: 14 }}>
-            <T size={13} weight="700" color={c.pink}>{b}</T>
-          </View>
+      <View style={{ flexDirection: 'row', gap: 6, marginBottom: 12 }}>
+        {[['plan', 'Session plan'], ['pitch', 'Tactical'], ['creds', 'Credentials']].map(([t, lbl]) => (
+          <TouchableOpacity key={t} onPress={() => setTab(t)} style={{ flex: 1, paddingVertical: 7, borderRadius: 10, backgroundColor: t === tab ? palette.p2 : 'rgba(255,255,255,0.08)', alignItems: 'center' }}>
+            <T style={{ color: t === tab ? '#fff' : 'rgba(255,255,255,0.65)', fontSize: 11, fontWeight: '700' }}>{lbl}</T>
+          </TouchableOpacity>
         ))}
       </View>
 
-      <Btn title="Find coaches →" onPress={() => onCta('coach-discovery')} />
+      {tab === 'plan' && (
+        <ScrollView style={{ maxHeight: 220 }} showsVerticalScrollIndicator={false}>
+          {DEMO_SESSION.map((ph) => (
+            <View key={ph.phase} style={{ flexDirection: 'row', gap: 10, marginBottom: 8 }}>
+              <View style={{ width: 60, alignItems: 'center', paddingTop: 2 }}>
+                <T style={{ color: palette.p3, fontSize: 10, fontWeight: '700' }}>{ph.duration}</T>
+              </View>
+              <View style={{ flex: 1, padding: 8, borderRadius: 8, backgroundColor: 'rgba(255,255,255,0.06)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.10)' }}>
+                <T style={{ color: '#fff', fontSize: 12, fontWeight: '700', marginBottom: 2 }}>{ph.phase}</T>
+                <T style={{ color: 'rgba(255,255,255,0.65)', fontSize: 11, lineHeight: 16 }}>{ph.desc}</T>
+              </View>
+            </View>
+          ))}
+        </ScrollView>
+      )}
+
+      {tab === 'pitch' && (
+        <View style={{ padding: 10, borderRadius: 12, backgroundColor: 'rgba(255,255,255,0.05)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.12)' }}>
+          <PitchSvg sport={sport} />
+        </View>
+      )}
+
+      {tab === 'creds' && (
+        <View style={{ gap: 6 }}>
+          {CREDS.map((cr) => (
+            <View key={cr} style={{ flexDirection: 'row', gap: 8, alignItems: 'center', padding: 9, borderRadius: 10, backgroundColor: 'rgba(255,255,255,0.06)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.12)' }}>
+              <T style={{ color: palette.p3, fontSize: 16 }}>✓</T>
+              <T style={{ color: 'rgba(255,255,255,0.85)', fontSize: 12, fontWeight: '600' }}>{cr}</T>
+            </View>
+          ))}
+        </View>
+      )}
+
+      <TouchableOpacity onPress={() => onNavigate?.('join')} style={{ marginTop: 12, paddingVertical: 12, borderRadius: 12, backgroundColor: palette.p2, alignItems: 'center' }}>
+        <T style={{ color: '#fff', fontWeight: '700', fontSize: 14 }}>Find a {sport} coach →</T>
+      </TouchableOpacity>
     </View>
   );
 }

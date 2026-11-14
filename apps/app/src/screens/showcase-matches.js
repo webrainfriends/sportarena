@@ -1,127 +1,72 @@
 import React, { useState } from 'react';
-import { Pressable, ScrollView, View } from 'react-native';
-import { c, r } from '../theme';
-import { Btn, Card, T } from '../ui';
+import { View, TouchableOpacity, ScrollView } from 'react-native';
+import { T } from '../ui';
+import { palette } from '../theme';
 
-const FORMATS = ['Knockout', 'League', 'Groups', 'Round Robin'];
-const TIMELINE = ['Create', 'Register', 'Schedule', 'Officiate', 'Results'];
-
-const QF = [['Team A', 'Team B'], ['Team C', 'Team D'], ['Team E', 'Team F'], ['Team G', 'Team H']];
-const SF = [['Winner QF1', 'Winner QF2'], ['Winner QF3', 'Winner QF4']];
-const FINAL = [['Winner SF1', 'Winner SF2']];
-
-const LEAGUE_ROWS = [
-  { pos: 1, team: 'Team A', p: 10, w: 7, d: 2, l: 1, pts: 23 },
-  { pos: 2, team: 'Team B', p: 10, w: 6, d: 2, l: 2, pts: 20 },
-  { pos: 3, team: 'Team C', p: 10, w: 5, d: 3, l: 2, pts: 18 },
-  { pos: 4, team: 'Team D', p: 10, w: 4, d: 2, l: 4, pts: 14 },
+const FORMATS = [
+  { key: 'knockout',    label: 'Knockout',    desc: 'Single-elimination bracket. Lose once and you are out. Maximum drama.' },
+  { key: 'league',      label: 'League',      desc: 'Full round-robin. Every team plays every other team once. Points table decides the champion.' },
+  { key: 'round_robin', label: 'Round Robin', desc: 'Group stage then knockout. 4–6 teams per group, top 2 advance to knock-out rounds.' },
+  { key: 'swiss',       label: 'Swiss',       desc: 'No eliminations. Paired by score after each round. Best record after N rounds wins.' },
 ];
+const BRACKET = [
+  ['Nadal Academy', 'Rafa Elite'],
+  ['FC Barcelona B', 'Ajax Youth'],
+  ['Mumbai CC', 'Chennai Stars'],
+  ['Seoul Tigers', 'Tokyo Knights'],
+];
+const SPORTS = ['Tennis', 'Football', 'Cricket', 'Basketball', 'Badminton', 'Hockey'];
 
-function MatchBox({ home, away }) {
-  return (
-    <View style={{ backgroundColor: c.paper, borderRadius: 10, borderWidth: 1, borderColor: c.line, paddingVertical: 8, paddingHorizontal: 12, width: 180, gap: 4 }}>
-      <T size={12} weight="600" color={c.mute}>{home}</T>
-      <View style={{ height: 1, backgroundColor: c.line }} />
-      <T size={12} weight="600" color={c.mute}>{away}</T>
-    </View>
-  );
-}
+export function ShowcaseMatches({ manifest, block, onNavigate }) {
+  const [format, setFormat] = useState('knockout');
+  const [sport, setSport]   = useState('Tennis');
+  const f = FORMATS.find((x) => x.key === format);
 
-function KnockoutBracket() {
   return (
-    <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-      <View style={{ flexDirection: 'row', gap: 24, alignItems: 'center', paddingVertical: 8 }}>
-        <View style={{ gap: 12 }}>
-          <T size={10} weight="700" color={c.mute} style={{ marginBottom: 4 }}>QUARTER-FINALS</T>
-          {QF.map(([h, a], i) => <MatchBox key={i} home={h} away={a} />)}
-        </View>
-        <View style={{ gap: 48, marginTop: 32 }}>
-          <T size={10} weight="700" color={c.mute} style={{ marginBottom: 4 }}>SEMI-FINALS</T>
-          {SF.map(([h, a], i) => <MatchBox key={i} home={h} away={a} />)}
-        </View>
-        <View style={{ marginTop: 72 }}>
-          <T size={10} weight="700" color={c.mute} style={{ marginBottom: 4 }}>FINAL</T>
-          <MatchBox home={FINAL[0][0]} away={FINAL[0][1]} />
-        </View>
-      </View>
-    </ScrollView>
-  );
-}
+    <View style={{ padding: 16, flex: 1 }}>
+      <T style={{ color: '#fff', fontSize: 20, fontWeight: '800', marginBottom: 4 }}>Matches & Tournaments</T>
+      <T style={{ color: 'rgba(255,255,255,0.6)', fontSize: 13, marginBottom: 12 }}>Enter, organise and follow results across every format</T>
 
-function LeagueTable() {
-  return (
-    <View>
-      <View style={{ flexDirection: 'row', paddingHorizontal: 8, paddingVertical: 6, backgroundColor: c.pinkSoft, borderRadius: 8, marginBottom: 4 }}>
-        {['#', 'Team', 'P', 'W', 'D', 'L', 'Pts'].map((h, i) => (
-          <T key={h} size={11} weight="700" color={c.pink} style={{ flex: i === 1 ? 3 : 1, textAlign: i > 1 ? 'center' : 'left' }}>{h}</T>
+      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 10 }} contentContainerStyle={{ gap: 6, flexDirection: 'row' }}>
+        {SPORTS.map((s) => (
+          <TouchableOpacity key={s} onPress={() => setSport(s)} style={{ paddingHorizontal: 10, paddingVertical: 5, borderRadius: 20, backgroundColor: s === sport ? palette.p2 : 'rgba(255,255,255,0.08)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.15)' }}>
+            <T style={{ color: s === sport ? '#fff' : 'rgba(255,255,255,0.7)', fontSize: 11, fontWeight: '600' }}>{s}</T>
+          </TouchableOpacity>
+        ))}
+      </ScrollView>
+
+      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginBottom: 12 }}>
+        {FORMATS.map((x) => (
+          <TouchableOpacity key={x.key} onPress={() => setFormat(x.key)} style={{ paddingHorizontal: 12, paddingVertical: 6, borderRadius: 10, backgroundColor: x.key === format ? palette.p2 : 'rgba(255,255,255,0.08)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.15)' }}>
+            <T style={{ color: x.key === format ? '#fff' : 'rgba(255,255,255,0.65)', fontSize: 12, fontWeight: '600' }}>{x.label}</T>
+          </TouchableOpacity>
         ))}
       </View>
-      {LEAGUE_ROWS.map((row) => (
-        <View key={row.pos} style={{ flexDirection: 'row', paddingHorizontal: 8, paddingVertical: 10, borderBottomWidth: 1, borderColor: c.line }}>
-          {[row.pos, row.team, row.p, row.w, row.d, row.l, row.pts].map((v, i) => (
-            <T key={i} size={13} weight={i === 6 ? '700' : '500'} color={i === 6 ? c.pink : c.ink} style={{ flex: i === 1 ? 3 : 1, textAlign: i > 1 ? 'center' : 'left' }}>{v}</T>
-          ))}
-        </View>
-      ))}
-    </View>
-  );
-}
 
-export function ShowcaseMatches({ block, manifest, onCta }) {
-  const [format, setFormat] = useState('Knockout');
-  const [timelineStep, setTimelineStep] = useState(0);
-
-  return (
-    <View style={{ gap: 20 }}>
-      <T weight="800" size={22} style={{ letterSpacing: -0.5 }}>Matches & Tournaments</T>
-
-      {/* Format selector */}
-      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
-        {FORMATS.map((f) => {
-          const sel = format === f;
-          return (
-            <Pressable key={f} onPress={() => setFormat(f)} accessibilityRole="button" accessibilityLabel={f} accessibilityState={{ selected: sel }}>
-              <View style={{ paddingVertical: 10, paddingHorizontal: 16, borderRadius: r.pill, backgroundColor: sel ? c.pink : c.paper, borderWidth: 1, borderColor: sel ? c.pink : c.line, minHeight: 44, justifyContent: 'center' }}>
-                <T size={13} weight="600" color={sel ? '#fff' : c.mute}>{f}</T>
-              </View>
-            </Pressable>
-          );
-        })}
+      <View style={{ padding: 10, borderRadius: 10, backgroundColor: 'rgba(255,255,255,0.05)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.10)', marginBottom: 12 }}>
+        <T style={{ color: 'rgba(255,255,255,0.75)', fontSize: 12, lineHeight: 18 }}>{f.desc}</T>
       </View>
 
-      {/* Bracket or table */}
-      <Card pad={12}>
-        <T weight="700" size={14} style={{ marginBottom: 12 }}>{format} · Example bracket</T>
-        {format === 'Knockout' && <KnockoutBracket />}
-        {format === 'League' && <LeagueTable />}
-        {(format === 'Groups' || format === 'Round Robin') && (
-          <View style={{ padding: 12, alignItems: 'center' }}>
-            <T size={13} color={c.mute}>{format} format — groups drawn from registered teams</T>
-          </View>
-        )}
-      </Card>
-
-      {/* Tournament timeline */}
-      <Card>
-        <T weight="700" size={14} style={{ marginBottom: 12 }}>Tournament journey</T>
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ alignItems: 'center', gap: 0 }}>
-          {TIMELINE.map((s, i) => (
-            <React.Fragment key={s}>
-              <Pressable onPress={() => setTimelineStep(i)} accessibilityRole="button" accessibilityLabel={`${s} phase`} accessibilityState={{ selected: i === timelineStep }}>
-                <View style={{ alignItems: 'center', paddingHorizontal: 4 }}>
-                  <View style={{ width: 36, height: 36, borderRadius: 18, backgroundColor: i <= timelineStep ? c.pink : c.line, alignItems: 'center', justifyContent: 'center' }}>
-                    <T size={12} weight="800" color={i <= timelineStep ? '#fff' : c.mute}>{i + 1}</T>
-                  </View>
-                  <T size={10} weight="600" color={i === timelineStep ? c.pink : c.mute} style={{ marginTop: 4 }}>{s}</T>
-                </View>
-              </Pressable>
-              {i < TIMELINE.length - 1 && <View style={{ width: 20, height: 2, backgroundColor: i < timelineStep ? c.pink : c.line, marginBottom: 16 }} />}
-            </React.Fragment>
+      {format === 'knockout' && (
+        <View style={{ marginBottom: 12 }}>
+          <T style={{ color: 'rgba(255,255,255,0.45)', fontSize: 10, fontWeight: '700', letterSpacing: 1.2, marginBottom: 8 }}>QUARTER-FINALS — {sport.toUpperCase()}</T>
+          {BRACKET.map(([a, b], i) => (
+            <View key={i} style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 6 }}>
+              <View style={{ flex: 1, padding: 8, borderRadius: 8, backgroundColor: 'rgba(255,255,255,0.08)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.15)' }}>
+                <T style={{ color: '#fff', fontSize: 11, fontWeight: '600' }}>{a}</T>
+              </View>
+              <T style={{ color: palette.p3, fontSize: 10, fontWeight: '700' }}>vs</T>
+              <View style={{ flex: 1, padding: 8, borderRadius: 8, backgroundColor: 'rgba(255,255,255,0.08)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.15)' }}>
+                <T style={{ color: '#fff', fontSize: 11, fontWeight: '600' }}>{b}</T>
+              </View>
+            </View>
           ))}
-        </ScrollView>
-      </Card>
+        </View>
+      )}
 
-      <Btn title="Find tournaments →" onPress={() => onCta('tournament-discovery')} />
+      <TouchableOpacity onPress={() => onNavigate?.('join')} style={{ paddingVertical: 12, borderRadius: 12, backgroundColor: palette.p2, alignItems: 'center' }}>
+        <T style={{ color: '#fff', fontWeight: '700', fontSize: 14 }}>Enter a tournament →</T>
+      </TouchableOpacity>
     </View>
   );
 }
