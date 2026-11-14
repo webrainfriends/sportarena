@@ -15,7 +15,7 @@ import { fixtureContext } from './match-tracking.js';
 import { canScoreSession } from './live-scoring.js';
 import {
   STATUSES, generateCandidates, requestProcessing, reviewCandidate, publishCandidate, withdrawCandidate, publicClip, publicReel, bumperBookingOk, addSubject,
-  recordUsage, usageOf, momentLabel,
+  recordUsage, usageOf, momentLabel, renderScorecardFrame, renderBumperFrame,
 } from '../smart-clips.js';
 
 const TAG = 'Smart clips';
@@ -406,7 +406,7 @@ const reelOf = async (user, rid, c = pool) => {
 };
 const shapeReel = async (r, c = pool) => ({
   ...r, items: (await c.query(
-    `SELECT i.position, i.kind, i.candidate_id, i.inventory_booking_id, i.label, cc.title AS clip_title, cc.status AS clip_status FROM clip_reel_items i LEFT JOIN clip_candidates cc ON cc.id=i.candidate_id WHERE i.reel_id=$1 AND i.removed_at IS NULL ORDER BY i.position`, [r.id])).rows,
+    `SELECT i.position, i.kind, i.candidate_id, i.inventory_booking_id, i.label, i.frame_url, i.frame_data, cc.title AS clip_title, cc.status AS clip_status FROM clip_reel_items i LEFT JOIN clip_candidates cc ON cc.id=i.candidate_id WHERE i.reel_id=$1 AND i.removed_at IS NULL ORDER BY i.position`, [r.id])).rows,
 });
 
 cap({
@@ -471,6 +471,55 @@ cap({
     if (!(await isOrganiserOf(user, ev))) throw notFound('Event');
     const rows = (await pool.query('SELECT * FROM clip_reels WHERE event_id=$1 ORDER BY created_at DESC LIMIT 100', [i.id])).rows;
     return { total: rows.length, items: await Promise.all(rows.map((r) => shapeReel(r))) };
+  },
+});
+
+// ---------------------------------------------------------------- frame generation (scorecard + sponsor bumper)
+cap({
+  name: 'generate_reel_scorecard', method: 'POST', path: '/reels/:id/scorecard-frame', tag: TAG, status: 200,
+  summary: 'Organiser only. Generate (or regenerate) a scorecard SVG frame for the reel using the canonical event result. Only available once at least one fixture has a completed result. Idempotent: re-generating replaces the existing frame.',
+  input: z.object({ id }),
+  handler: ({ user }, i) => tx(async (c) => {
+    const r = await reelOf(user, i.id, c);
+    if (!r.fixture_id) {
+      // Fall back to event-level scorecard (team standings or event name)
+    }
+    const eventId = r.event_id;
+    const frame = await renderScorecardFrame(c, eventId);
+    // Update every scorecard reel item for this reel
+    const rows = (await c.query("SELECT id FROM clip_reel_items WHERE reel_id=$1 AND kind='scorecard' AND removed_at IS NULL", [r.id])).rows;
+    if (!rows.length) throw badRequest('Add a scorecard card to the reel first');
+    for (const row of rows) await c.query('UPDATE clip_reel_items SET frame_url=$2, frame_data=$3 WHERE id=$1', [row.id, frame.url, JSON.stringify({ width: frame.width, height: frame.height, generatedAt: frame.generatedAt })]);
+    return { generated: rows.length, frame_url: frame.url, width: frame.width, height: frame.height, generatedAt: frame.generatedAt };
+  }),
+});
+
+cap({
+  name: 'refresh_reel_bumper_frame', method: 'POST', path: '/reels/:id/items/:itemId/bumper-frame', tag: TAG, status: 200,
+  summary: 'Organiser only. Generate (or regenerate) the sponsor-bumper frame SVG for one reel item. The booking must be confirmed and running today. Idempotent.',
+  input: z.object({ id, itemId: id }),
+  handler: ({ user }, i) => tx(async (c) => {
+    const r = await reelOf(user, i.id, c);
+    const item = (await c.query("SELECT * FROM clip_reel_items WHERE id=$1 AND reel_id=$2 AND kind='sponsor_bumper' AND removed_at IS NULL", [i.itemId, r.id])).rows[0];
+    if (!item) throw notFound('Reel item');
+    const frame = await renderBumperFrame(c, r.event_id, item.inventory_booking_id);
+    await c.query('UPDATE clip_reel_items SET frame_url=$2, frame_data=$3 WHERE id=$1', [item.id, frame.url, JSON.stringify({ logo_url: frame.logo_url, sponsor_name: frame.sponsor_name, unit_kind: frame.unit_kind, duration_ms: frame.duration_ms, generatedAt: frame.generatedAt })]);
+    return { frame_url: frame.url, logo_url: frame.logo_url, sponsor_name: frame.sponsor_name, unit_kind: frame.unit_kind, duration_ms: frame.duration_ms, generatedAt: frame.generatedAt };
+  }),
+});
+
+cap({
+  name: 'get_reel_frames', method: 'GET', path: '/reels/:id/frames', tag: TAG,
+  summary: 'Organiser or public viewer. Returns the generated frame previews for every scorecard and sponsor-bumper item in the reel. Items with no frame yet have frame_url: null.',
+  input: z.object({ id }),
+  async handler({ user }, i) {
+    const r = (await pool.query('SELECT * FROM clip_reels WHERE id=$1', [i.id])).rows[0];
+    if (!r) throw notFound('Reel');
+    const ev = await eventOf(r.event_id);
+    const isOrg = user && await isOrganiserOf(user, ev);
+    if (!isOrg && r.status !== 'published') throw notFound('Reel');
+    const items = (await pool.query("SELECT id, position, kind, frame_url, frame_data FROM clip_reel_items WHERE reel_id=$1 AND kind IN ('scorecard','sponsor_bumper') AND removed_at IS NULL ORDER BY position", [i.id])).rows;
+    return { items: items.map((it) => ({ id: it.id, position: it.position, kind: it.kind, frame_url: it.frame_url ?? null, frame_data: it.frame_data ?? null })) };
   },
 });
 

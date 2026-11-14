@@ -207,6 +207,21 @@ export const ACADEMY_STEPS = [
     modules: ['academy-dev-plan.js', 'academy-video.js', 'academy-promotions.js'], sources: ['apps/app/src/screens/academy-dev-plan.js', 'apps/app/src/screens/academy-video.js', 'apps/app/src/screens/academy-dev-builder.js', 'apps/app/src/screens/dev-plan-trend.js', 'apps/app/src/screens/academy-promotions.js'],
   },
   {
+    id: 'smart_clips', title: 'Create highlight clips and reels',
+    why: 'Turn every event recording into media-rights-governed highlight clips and sponsor-branded reels. Athletes keep their passport copy; every clip is re-checked on each view, so a takedown or lapsed consent removes access within seconds.',
+    steps: [
+      'Align the recording: open the event, go to Broadcast → Highlights, pick the recording asset and set the wall-clock anchor.',
+      'Find moments: tap "Find moments" to generate AI-assisted candidates from the canonical score log. For track & field or judged sports, valid attempts and routine scores are detected automatically; for all other sports a bookmark is added for each noteworthy moment.',
+      'Review a clip: open a candidate, check the Facts section (canonical score-log data, never fabricated), adjust the in/out scrubber, approve or reject. Human review is always required before publication under the default policy.',
+      'Build a reel: tap "New reel", order clips, add intro/outro title cards, generate the scorecard frame once the result is final, and attach a confirmed sponsor bumper from the inventory.',
+      'Publish: set audience (members / public) and publish. All tagged athletes receive a passport offer; each accepts or declines individually.',
+      'Takedown: withdraw a clip or revoke media rights at any time — public access is blocked within seconds.',
+    ],
+    target: { event: 'media' },
+    modules: ['smart-clips.js'],
+    sources: ['apps/app/src/screens/clips.js', 'apps/app/src/screens/clip-gallery.js'],
+  },
+  {
     id: 'content', title: 'License your curriculum',
     why: 'Package your approved methodology, curricula, drills and micro-courses as a licensed pack, so affiliated and independent organisations can buy seats for their coaches while you keep the rights, the versions and the revenue record.',
     steps: ['Open Academy, then Content, then Packs, and tap New pack. Choose the sport, level, ages and languages, credit the authors, and set who may license it (open, affiliated or by invitation), the territory, the seat limit and whether offline copies are allowed.', 'Add items: pick your published curriculum versions, methodology versions and approved drills (they are linked, never copied), then add micro-courses and video references. Mark footage that shows young people: it is stream-only, watermarked and never offline.', 'State the learning objectives, assessment and coach development hours, set the price per seat, the term, the grace period and the revenue split, then publish. A published version never changes.', 'When an organisation requests a pack, open Licences granted, set the terms (seats, dates, version, price) and send the offer. The buyer accepts and pays through the normal checkout, then assigns seats to its coaches. A coach then opens a session, goes to its Curriculum tab, links licensed items under Licensed content and adds them to their own coaching plan.', 'Watch Overview and a pack’s Usage and Money tabs for seats, completion, renewals due and the revenue statement. Suspend, revoke or renew a licence with a reason: access ends at once and the buyer\'s own academy data is untouched. Handle support and takedown cases under Support & takedowns.'],

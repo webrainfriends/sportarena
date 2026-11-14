@@ -43,12 +43,31 @@ Every step writes `clip_usage` (processing seconds, storage bytes, AI tokens, cr
 
 ## Sports coverage (walked by a test over the whole catalogue)
 
-Native moment detection from the scoring record: **cricket** (wicket, six, boundary), **goal games** (goal, and any points event), **racket and set sports** (set won, match won), **timed/measured sports run as sessions** (win, finish). Sports scored as plain totals, judged sports and others without a citable scoring log are **bookmarks-only** and say so in the API (`notes`, `native_model`) and the screen; they are never given a silent default. Current split of the 219-sport catalogue: ~54 sports auto-detect moments, the rest are bookmarks-only; 128 sports use the labelled generic family fallback.
+Native moment detection from the scoring record:
+
+| Family | Detected moments | Example sports |
+|---|---|---|
+| **cricket** | wicket, six, boundary | cricket |
+| **goal_game** | goal, any points event | football, basketball, hockey |
+| **racket** | set won, match won | tennis, badminton, squash |
+| **measured** | win, finish (session events) | athletics running/swimming/rowing |
+| **track_field** | `attempt_valid` (priority 55), `personal_best` (priority 90) | long jump, shot put, discus, javelin, high jump, pole vault |
+| **judged** | `score_announced` (priority 72), `routine_complete` (priority 48) | gymnastics, diving, figure skating |
+| **generic** | bookmarks only (labelled fallback) | ~128 sports with no citable scoring log |
+
+Sports in **track_field** and **judged** auto-detect moments from canonical `session_events` rows — valid attempts, personal-best flags, panel scores and routine-end markers. No data is fabricated; if no matching events exist the session produces zero candidates and `notes` explains the gap. Sports outside any native family are **bookmarks-only** and say so via `native_model: false`.
+
+## In-app video preview and trim scrubber
+
+`VideoScrubber` (`apps/app/src/components/VideoScrubber.js`) provides an inline preview and draggable in/out trim handles on iOS, iPadOS, Android and web. It uses `UrlPlayer` from `video-player.js` for playback and `PanResponder` for cross-platform drag handles. Media-fragment URLs (`video.mp4#t=15,45`) play inline via UrlPlayer. When no URI is available, the component shows time labels and fallback controls without crashing.
+
+## Scorecard and sponsor bumper frames
+
+`renderScorecardFrame(pool, eventId)` queries the canonical event result (teams, scores, sport) and returns an 800×200 SVG data-URI in the Dusk palette. `renderBumperFrame(pool, eventId, bookingId)` validates the sponsor booking via `bumperBookingOk`, queries `sponsor_identities` for the logo URL, and returns an 800×120 SVG data-URI. Both renderers are swappable with `setScorecardRenderer(fn)` / `setBumperRenderer(fn)`. REST: `POST /reels/:id/scorecard-frame`, `POST /reels/:id/items/:itemId/bumper-frame`, `GET /reels/:id/frames`.
 
 ## Honest limits
 
-- Video stays where it is hosted: there is no transcoding unless a renderer is configured, and the clip sheet opens the link rather than embedding a player. Trimming is ±1 second steppers, not a scrubber.
-- Field-event attempts, set/match *point* (as opposed to the point that wins the set/match) and judged-sport moments are not auto-detected yet; use bookmarks.
-- Sponsor bumpers are validated cards in the reel order; no frame is rendered by this module.
-- Web build verified at phone, tablet and desktop widths and the iOS and Android bundles export; no native device run.
+- Video stays where it is hosted: there is no transcoding unless a clip renderer is configured.
+- Set/match *point* (as opposed to the point that wins the set/match) is not auto-detected; use bookmarks.
+- Web build verified at phone, tablet and desktop widths and the iOS and Android bundles export; no native device run documented.
 - Translations are machine-drafted and `reviewed: false` until a native speaker signs them off.
