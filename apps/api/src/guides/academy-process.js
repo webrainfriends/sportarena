@@ -1141,6 +1141,24 @@ id: 'wellbeing', title: 'Support student wellbeing and development',
       'apps/app/src/screens/selection-decision-pack.js',
     ],
   },
+  {
+    id: 'feedback_reputation',
+    title: 'Build a Trusted Reputation',
+    summary: 'Collect verified reviews from every interaction — hires, bookings, events, programmes and appointments — reply to feedback, track NPS and dimension scores, and use blind reviews to gather honest developmental input.',
+    modules: ['feedback', 'community', 'coaches', 'events', 'venues'],
+    sources: [
+      'apps/app/src/screens/feedback-hub.js',
+      'apps/app/src/screens/feedback-submit.js',
+      'apps/app/src/screens/feedback-analytics.js',
+    ],
+    tips: [
+      'Invite your whole cohort after each programme block — a single API call sends 72-hour-throttled reminders to every participant.',
+      'Reply within 48 hours: the platform surfaces your average response time publicly.',
+      'Enable blind reviews for peer-to-peer developmental feedback so both parties answer honestly before seeing each other's rating.',
+      'Private performance feedback (coach → athlete) is field-level encrypted and never appears in public aggregates.',
+      'Monitor your NPS wheel — a score of 50+ signals an elite-tier reputation that attracts top-tier partnerships.',
+    ],
+  },
 ];
 
 /** Org/academy API modules with no step of their own, and why. Anything not here and not in a step fails the guard test. */
