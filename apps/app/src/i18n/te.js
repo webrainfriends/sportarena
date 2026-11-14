@@ -16275,6 +16275,81 @@ export default {
   'nav.title.OfficialReportDetail': 'Official Report', // reviewed: false
   'nav.title.OfficialReportProvenance': 'Report Provenance', // reviewed: false
   'nav.title.DisciplineCases': 'Discipline Cases', // reviewed: false
+  'nav.title.GovernanceCase': 'Discipline Case', // reviewed: false
+  // ---- gcase.* GovernanceCase screen keys ----
+  'gcase.ref': 'Case', // reviewed: false
+  'gcase.subject': 'Subject', // reviewed: false
+  'gcase.source': 'Source', // reviewed: false
+  'gcase.policy_v': 'Policy v{v}', // reviewed: false
+  'gcase.interim_banner': 'Interim measure', // reviewed: false
+  'gcase.interim_detail': 'This is an interim measure while the case is reviewed. It is not a finding.', // reviewed: false
+  'gcase.summary_heading': 'Summary', // reviewed: false
+  'gcase.sanctions_heading': 'Sanctions', // reviewed: false
+  'gcase.evidence_heading': 'Evidence & links', // reviewed: false
+  'gcase.history_heading': 'Case history', // reviewed: false
+  'gcase.assign_btn': 'Assign', // reviewed: false
+  'gcase.decide_btn': 'Decide', // reviewed: false
+  'gcase.appeal_btn': 'File appeal', // reviewed: false
+  'gcase.decide_title': 'Decide case', // reviewed: false
+  'gcase.outcome_label': 'Outcome', // reviewed: false
+  'gcase.outcome.upheld': 'Upheld', // reviewed: false
+  'gcase.outcome.no_case': 'No case to answer', // reviewed: false
+  'gcase.outcome.granted': 'Granted', // reviewed: false
+  'gcase.outcome.refused': 'Refused', // reviewed: false
+  'gcase.outcome.reduced': 'Reduced', // reviewed: false
+  'gcase.outcome.overturned': 'Overturned', // reviewed: false
+  'gcase.outcome.remitted': 'Remitted', // reviewed: false
+  'gcase.reason_label': 'Reason', // reviewed: false
+  'gcase.add_sanction': 'Add sanction', // reviewed: false
+  'gcase.sanction_kind_label': 'Sanction type', // reviewed: false
+  'gcase.matches_label': 'Matches', // reviewed: false
+  'gcase.fine_amount': 'Fine amount', // reviewed: false
+  'gcase.fine_currency': 'Currency', // reviewed: false
+  'gcase.points_label': 'Points deducted', // reviewed: false
+  'gcase.team_label': 'Team', // reviewed: false
+  'gcase.starts_on': 'Starts on', // reviewed: false
+  'gcase.ends_on': 'Ends on', // reviewed: false
+  'gcase.public_label': 'Public record', // reviewed: false
+  'gcase.sanction_reason': 'Sanction reason (optional)', // reviewed: false
+  'gcase.submit_decision': 'Submit decision', // reviewed: false
+  'gcase.submit_appeal': 'Submit appeal', // reviewed: false
+  'gcase.appeal_title': 'Appeal this decision', // reviewed: false
+  'gcase.grounds_label': 'Grounds for appeal', // reviewed: false
+  'gcase.grounds_placeholder': 'Describe the factual, procedural or legal basis for the appeal…', // reviewed: false
+  'gcase.appeal_decision_title': 'Decide appeal', // reviewed: false
+  'gcase.reduced_matches': 'Reduced to (matches)', // reviewed: false
+  'gcase.fine_state_label': 'Fine status', // reviewed: false
+  'gcase.mark_invoiced': 'Mark invoiced', // reviewed: false
+  'gcase.mark_paid': 'Mark paid', // reviewed: false
+  'gcase.waive_fine': 'Waive', // reviewed: false
+  'gcase.invoice_ref': 'Invoice reference', // reviewed: false
+  'gcase.review_title': 'Review required', // reviewed: false
+  'gcase.review_detail': 'The source event was corrected. Review this case and confirm it still stands, or withdraw it.', // reviewed: false
+  'gcase.confirm_stands': 'Case stands', // reviewed: false
+  'gcase.withdraw_case': 'Withdraw case', // reviewed: false
+  'gcase.review_reason': 'Review note (optional)', // reviewed: false
+  'gcase.youth_private': 'Subject details are private (youth)', // reviewed: false
+  'gcase.served_of': '{served} of {total} matches served', // reviewed: false
+  'gcase.blocking': 'Blocking selection', // reviewed: false
+  'gcase.not_blocking': 'Not blocking', // reviewed: false
+  'gcase.link_report': 'Official report', // reviewed: false
+  'gcase.link_match_event': 'Match event', // reviewed: false
+  'gcase.link_fixture': 'Fixture', // reviewed: false
+  'gcase.link_other': 'Related case', // reviewed: false
+  'gcase.view_appeal': 'View appeal', // reviewed: false
+  'gcase.view_original': 'View original case', // reviewed: false
+  'gcase.days_remaining': '{n} day(s) to appeal', // reviewed: false
+  'gcase.fine_outstanding': 'Fine outstanding', // reviewed: false
+  'gcase.add_evidence': 'Add evidence', // reviewed: false
+  'gcase.evidence_kind': 'Link type', // reviewed: false
+  'gcase.assign_title': 'Assign case', // reviewed: false
+  'gcase.hearing_at': 'Hearing date & time (optional)', // reviewed: false
+  'gcase.assign_ok': 'Assign', // reviewed: false
+  'gcase.no_evidence': 'No evidence linked yet', // reviewed: false
+  'gcase.assigned_to': 'Assigned to', // reviewed: false
+  'gcase.hearing_scheduled': 'Hearing', // reviewed: false
+  'gcase.stay_note': 'Sanctions stayed pending appeal outcome', // reviewed: false
+  'gcase.appeal_open': 'Appeal window open', // reviewed: false
   'or.tab.overview': 'Overview', // reviewed: false
   'or.tab.incidents': 'Incidents', // reviewed: false
   'or.tab.venue': 'Venue', // reviewed: false
