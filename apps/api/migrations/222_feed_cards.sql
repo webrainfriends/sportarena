@@ -40,7 +40,36 @@ CREATE INDEX IF NOT EXISTS feed_cards_city       ON feed_cards (geo_city, publis
 ALTER TABLE market_reactions  ADD COLUMN IF NOT EXISTS feed_card_id uuid REFERENCES feed_cards;
 ALTER TABLE market_comments   ADD COLUMN IF NOT EXISTS feed_card_id uuid REFERENCES feed_cards;
 -- Make post_id nullable so a reaction/comment may belong to either a market_post or a feed_card.
+-- market_reactions has a composite PK (post_id, user_id) from migration 016; Postgres prevents
+-- DROP NOT NULL on a PK column. Migrate to a surrogate PK first, then relax post_id.
+DO $$
+BEGIN
+  -- Only migrate if the PK is still the original composite (post_id, user_id).
+  IF EXISTS (
+    SELECT 1 FROM pg_index i
+    JOIN pg_attribute a ON a.attrelid = i.indrelid AND a.attnum = ANY(i.indkey)
+    WHERE i.indrelid = 'market_reactions'::regclass
+      AND i.indisprimary
+      AND a.attname = 'post_id'
+  ) THEN
+    ALTER TABLE market_reactions ADD COLUMN IF NOT EXISTS id uuid DEFAULT gen_random_uuid();
+    UPDATE market_reactions SET id = gen_random_uuid() WHERE id IS NULL;
+    ALTER TABLE market_reactions ALTER COLUMN id SET NOT NULL;
+    ALTER TABLE market_reactions DROP CONSTRAINT market_reactions_pkey;
+    ALTER TABLE market_reactions ADD PRIMARY KEY (id);
+    -- Preserve uniqueness for market-post reactions.
+    IF NOT EXISTS (
+      SELECT 1 FROM pg_indexes
+      WHERE tablename = 'market_reactions' AND indexname = 'market_reactions_post_user_uniq'
+    ) THEN
+      CREATE UNIQUE INDEX market_reactions_post_user_uniq
+        ON market_reactions (post_id, user_id) WHERE post_id IS NOT NULL;
+    END IF;
+  END IF;
+END;
+$$;
 ALTER TABLE market_reactions  ALTER COLUMN post_id DROP NOT NULL;
+-- market_comments.post_id is NOT NULL but not a PK column — safe to relax directly.
 ALTER TABLE market_comments   ALTER COLUMN post_id DROP NOT NULL;
 
 -- Trigger: when a market_post is hidden, retract any feed card that references it.
