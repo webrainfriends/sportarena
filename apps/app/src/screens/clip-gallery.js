@@ -12,6 +12,7 @@ import { c } from '../theme';
 import { Btn, Card, ErrorBox, H2, Loading, T, Tag } from '../ui';
 import { A, ABtn, ACard, AT, ATag } from '../arena';
 import { momentName, stateName } from './clips';
+import { VideoScrubber } from '../components/VideoScrubber';
 
 const shareUrl = (id) => (Platform.OS === 'web' && typeof window !== 'undefined' ? `${window.location.origin}/?clip=${id}` : `https://gotmygame.app/?clip=${id}`);
 const share = (id, title) => (Platform.OS === 'web' && typeof navigator !== 'undefined' && navigator.share
@@ -80,8 +81,9 @@ export function PublicClipView({ id }) {
           {v.scorecard ? <AT size={13} color={A.mute}>{`${t('clips.final_score')}: ${v.scorecard.home} ${v.scorecard.home_score} – ${v.scorecard.away_score} ${v.scorecard.away}`}</AT> : null}
         </View>
       </ACard>
+      {v.link ? <VideoScrubber uri={v.link} inPoint={v.window?.start_s ?? 0} outPoint={v.window?.end_s ?? 60} readOnly title={v.title} /> : null}
       <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10 }}>
-        <ABtn tone="neon" title={t('clips.watch')} onPress={() => WebBrowser.openBrowserAsync(v.link)} />
+        {v.link ? <ABtn tone="ghost" title={t('clips.watch_full')} onPress={() => WebBrowser.openBrowserAsync(v.link)} /> : null}
         <ABtn tone="ghost" title={t('clips.share')} onPress={() => share(v.id, v.title)} />
       </View>
     </View>

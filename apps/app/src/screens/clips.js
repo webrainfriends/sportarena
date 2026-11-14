@@ -2,7 +2,7 @@
 // review and edit the clips, publish only what the rights allow, and assemble recap reels. The server decides every rule (rights, consent, review); this screen
 // shows the live state and the reason when something is held back. Built from the shared arena components, so it adapts from phone to desktop.
 import React, { useMemo, useState } from 'react';
-import { View } from 'react-native';
+import { Image, View } from 'react-native';
 import * as WebBrowser from 'expo-web-browser';
 import { api } from '../api';
 import { useLoad } from '../hooks';
@@ -12,6 +12,7 @@ import { A, ABtn, ACard, AChip, AEmpty, ARow, ASection, AStepper, AT, ATag, Reas
 import { ErrorBox, Field, Loading, Sheet } from '../ui';
 import { FormSheet } from '../FormSheet';
 import { MenuField, MultiMenuField } from '../menu-field';
+import { VideoScrubber } from '../components/VideoScrubber';
 
 export const CLIP_STATUSES = ['candidate', 'processing', 'review', 'approved', 'published', 'withdrawn', 'rejected', 'failed'];
 const TONE = { candidate: A.mute, processing: A.sun, review: A.cyan, approved: A.lime, published: A.green, withdrawn: A.orange, rejected: A.red, failed: A.red };
@@ -172,10 +173,12 @@ function ClipSheet({ id, onClose, onChanged }) {
         {c.status === 'failed' && c.last_error ? <ErrorBox error={new Error(c.last_error)} /> : null}
         {editable ? (
           <>
-            <View style={{ flexDirection: 'row', gap: 12 }}>
-              <AStepper label={t('clips.trim_start')} value={e.start} min={0} max={86400} onChange={(v) => upd('start', v)} />
-              <AStepper label={t('clips.trim_end')} value={e.end} min={1} max={86400} onChange={(v) => upd('end', v)} />
-            </View>
+            {c.link
+              ? <VideoScrubber uri={c.link} inPoint={e.start} outPoint={e.end} durationSeconds={Math.max(c.media.end_s, e.end) + 30} onInChange={(v) => upd('start', v)} onOutChange={(v) => upd('end', v)} title={c.title} />
+              : <View style={{ flexDirection: 'row', gap: 12 }}>
+                  <AStepper label={t('clips.trim_start')} value={e.start} min={0} max={86400} onChange={(v) => upd('start', v)} />
+                  <AStepper label={t('clips.trim_end')} value={e.end} min={1} max={86400} onChange={(v) => upd('end', v)} />
+                </View>}
             <Field label={t('clips.title_label')} value={e.title} onChangeText={(v) => upd('title', v)} maxLength={140} />
             <Field label={t('clips.caption_label')} value={e.prose} onChangeText={(v) => upd('prose', v)} multiline maxLength={500} />
             {c.caption.prose_by_ai && !dirty ? <ATag label={t('clips.ai_drafted')} tone={A.sun} /> : null}
@@ -220,7 +223,7 @@ function ClipSheet({ id, onClose, onChanged }) {
 /** A reel: approved clips in order, with intro / outro / scorecard cards and sponsor bumpers backed by real confirmed inventory bookings. */
 function ReelSheet({ eventId, reel, clips, games, onClose, onChanged }) {
   const { toast } = useSession();
-  const [items, setItems] = useState(() => (reel?.items ?? []).map((i) => ({ kind: i.kind, candidate_id: i.candidate_id ?? undefined, inventory_booking_id: i.inventory_booking_id ?? undefined, label: i.label ?? undefined, title: i.clip_title })));
+  const [items, setItems] = useState(() => (reel?.items ?? []).map((i) => ({ id: i.id ?? undefined, kind: i.kind, candidate_id: i.candidate_id ?? undefined, inventory_booking_id: i.inventory_booking_id ?? undefined, label: i.label ?? undefined, title: i.clip_title, frame_url: i.frame_url ?? undefined, frame_data: i.frame_data ?? undefined })));
   const [title, setTitle] = useState(reel?.title ?? '');
   const [game, setGame] = useState(reel?.fixture_id ?? null);
   const [busy, setBusy] = useState(false);
@@ -241,10 +244,17 @@ function ReelSheet({ eventId, reel, clips, games, onClose, onChanged }) {
         <Field label={t('clips.reel_title')} value={title} onChangeText={setTitle} maxLength={140} />
         {!reel ? <MenuField label={t('clips.reel_game')} value={game} onChange={setGame} options={games.slice(0, 60).map((g) => ({ value: g.id, label: `${g.home?.name ?? g.home_name ?? '–'} v ${g.away?.name ?? g.away_name ?? '–'}` }))} placeholder={t('common.all')} /> : null}
         {items.map((i, n) => (
-          <ARow key={`${i.kind}-${n}`} title={label(i)} sub={i.kind === 'sponsor_bumper' ? bookings.find((o) => o.value === i.inventory_booking_id)?.label : undefined}
-            right={reel?.status === 'published' ? undefined : <View style={{ flexDirection: 'row', gap: 6 }}>
-              <ABtn small tone="ghost" title="↑" onPress={() => move(n, -1)} /><ABtn small tone="ghost" title="↓" onPress={() => move(n, 1)} /><ABtn small tone="ghost" title="✕" onPress={() => setItems((a) => a.filter((_, k) => k !== n))} />
-            </View>} />
+          <View key={`${i.kind}-${n}`} style={{ gap: 6 }}>
+            <ARow title={label(i)} sub={i.kind === 'sponsor_bumper' ? bookings.find((o) => o.value === i.inventory_booking_id)?.label : undefined}
+              right={reel?.status === 'published' ? undefined : <View style={{ flexDirection: 'row', gap: 6 }}>
+                <ABtn small tone="ghost" title="↑" onPress={() => move(n, -1)} /><ABtn small tone="ghost" title="↓" onPress={() => move(n, 1)} /><ABtn small tone="ghost" title="✕" onPress={() => setItems((a) => a.filter((_, k) => k !== n))} />
+              </View>} />
+            {i.frame_url ? <Image source={{ uri: i.frame_url }} style={{ width: '100%', height: 100, borderRadius: 8 }} resizeMode="contain" accessibilityLabel={t('clips.frame.preview')} /> : null}
+            {reel?.id && i.kind === 'scorecard' && reel.status !== 'published'
+              ? <ABtn small tone="ghost" title={i.frame_url ? t('clips.frame.refresh') : t('clips.frame.generate')} loading={busy} onPress={() => run(async () => { const f = await api.post(`/reels/${reel.id}/scorecard-frame`); setItems((a) => a.map((x, k) => k === n ? { ...x, frame_url: f.frame_url } : x)); }, t('clips.frame.generate'))} /> : null}
+            {reel?.id && i.kind === 'sponsor_bumper' && i.inventory_booking_id && reel.status !== 'published'
+              ? <ABtn small tone="ghost" title={i.frame_url ? t('clips.frame.refresh') : t('clips.frame.generate')} loading={busy} onPress={() => run(async () => { const f = await api.post(`/reels/${reel.id}/items/${i.id}/bumper-frame`); setItems((a) => a.map((x, k) => k === n ? { ...x, frame_url: f.frame_url, frame_data: { sponsor_name: f.sponsor_name, logo_url: f.logo_url } } : x)); }, t('clips.frame.generate'))} /> : null}
+          </View>
         ))}
         {reel?.status !== 'published' ? (
           <>

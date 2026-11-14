@@ -28,6 +28,7 @@ const PRE_S = 8, POST_S = 6, MAX_REPLAY_EVENTS = 800;
 const MOMENT_LABELS = {
   goal: 'Goal', wicket: 'Wicket', six: 'Six', boundary: 'Boundary', set_won: 'Set won', match_won: 'Match won', win: 'Win', finish: 'Finish',
   bookmark: 'Bookmarked moment', score: 'Score',
+  attempt_valid: 'Valid attempt', personal_best: 'Personal best', score_announced: 'Score announced', routine_complete: 'Routine complete',
 };
 export const momentLabel = (k) => MOMENT_LABELS[k] ?? k.replace(/_/g, ' ').replace(/^./, (m) => m.toUpperCase());
 
@@ -93,14 +94,48 @@ export function momentsOfFixture(rs, events, fx) {
 }
 
 async function sessionMoments(c, sessionId) {
-  const rows = (await c.query(
+  const sport = (await c.query(
+    'SELECT s.scoring, s.category, s.slug FROM event_sessions es JOIN event_disciplines d ON d.id=es.discipline_id JOIN sports s ON s.id=d.sport_id WHERE es.id=$1',
+    [sessionId])).rows[0];
+  const fam = sport ? familyOf(sport) : 'measured';
+  const out = [];
+
+  // Finish / heat result events (all families)
+  const finishRows = (await c.query(
     `SELECT se.id, se.seq, se.kind, se.recorded_at, se.payload, se.entry_id, en.position, ep.user_id
        FROM session_events se LEFT JOIN event_session_entries en ON en.id=se.entry_id LEFT JOIN event_participants ep ON ep.id=en.participant_id
       WHERE se.session_id=$1 AND se.voided_at IS NULL AND se.kind='finish' ORDER BY se.seq`, [sessionId])).rows;
-  return rows.map((r) => ({
-    source_kind: 'session_event', source_ref: r.id, seq: r.seq, at: { at: r.recorded_at, period: null, clock_seconds: null }, player_id: r.user_id ?? null, team: null, period: null, minute: null,
-    moment_kind: r.position === 1 ? 'win' : 'finish', priority: r.position === 1 ? 92 : 45, facts: { position: r.position ?? null, result: r.payload?.value ?? null },
-  }));
+  for (const r of finishRows) out.push({ source_kind: 'session_event', source_ref: r.id, seq: r.seq, at: { at: r.recorded_at, period: null, clock_seconds: null }, player_id: r.user_id ?? null, team: null, period: null, minute: null, moment_kind: r.position === 1 ? 'win' : 'finish', priority: r.position === 1 ? 92 : 45, facts: { position: r.position ?? null, result: r.payload?.value ?? null } });
+
+  if (fam === 'track_field') {
+    // Valid attempts (long jump, shot put, discus, javelin, etc.) and personal-best flags from attempt session events
+    const attRows = (await c.query(
+      `SELECT se.id, se.seq, se.recorded_at, se.payload, ep.user_id
+         FROM session_events se LEFT JOIN event_session_entries en ON en.id=se.entry_id LEFT JOIN event_participants ep ON ep.id=en.participant_id
+        WHERE se.session_id=$1 AND se.voided_at IS NULL AND se.kind='attempt' AND (se.payload->>'valid')::boolean IS NOT DISTINCT FROM TRUE ORDER BY se.seq`, [sessionId])).rows;
+    for (const r of attRows) {
+      const isPB = r.payload?.is_pb === true;
+      out.push({ source_kind: 'session_event', source_ref: r.id, seq: r.seq, at: { at: r.recorded_at, period: null, clock_seconds: null }, player_id: r.user_id ?? null, team: null, period: null, minute: null, moment_kind: isPB ? 'personal_best' : 'attempt_valid', priority: isPB ? 90 : 55, facts: { result: r.payload?.value ?? null, is_pb: isPB } });
+    }
+  }
+
+  if (fam === 'judged') {
+    // Panel score announcement (gymnastics, diving, figure skating) — kind='score'
+    const scoreRows = (await c.query(
+      `SELECT se.id, se.seq, se.recorded_at, se.payload, ep.user_id
+         FROM session_events se LEFT JOIN event_session_entries en ON en.id=se.entry_id LEFT JOIN event_participants ep ON ep.id=en.participant_id
+        WHERE se.session_id=$1 AND se.voided_at IS NULL AND se.kind='score' ORDER BY se.seq`, [sessionId])).rows;
+    for (const r of scoreRows) out.push({ source_kind: 'session_event', source_ref: r.id, seq: r.seq, at: { at: r.recorded_at, period: null, clock_seconds: null }, player_id: r.user_id ?? null, team: null, period: null, minute: null, moment_kind: 'score_announced', priority: 72, facts: { score: r.payload?.total ?? r.payload?.value ?? null } });
+
+    // Routine end (the moment the athlete finishes their routine — good for a reaction clip)
+    const routineRows = (await c.query(
+      `SELECT se.id, se.seq, se.recorded_at, se.payload, ep.user_id
+         FROM session_events se LEFT JOIN event_session_entries en ON en.id=se.entry_id LEFT JOIN event_participants ep ON ep.id=en.participant_id
+        WHERE se.session_id=$1 AND se.voided_at IS NULL AND se.kind='routine_end' ORDER BY se.seq`, [sessionId])).rows;
+    for (const r of routineRows) out.push({ source_kind: 'session_event', source_ref: r.id, seq: r.seq, at: { at: r.recorded_at, period: null, clock_seconds: null }, player_id: r.user_id ?? null, team: null, period: null, minute: null, moment_kind: 'routine_complete', priority: 48, facts: { apparatus: r.payload?.apparatus ?? null } });
+  }
+
+  return out;
 }
 
 // ------------------------------------------------------------------ usage ledger and metering (#504)
@@ -131,6 +166,59 @@ export async function usageOf(c, eventId) {
   const m = await one('SELECT 1 FROM commercial_meters WHERE key=$1', [METER_KEY]);
   return { meter_key: METER_KEY, metered: !!m, by_kind: rows.map((r) => ({ ...r, storage_bytes: Number(r.storage_bytes) })), total };
 }
+
+// ------------------------------------------------------------------ frame renderers (scorecard + sponsor bumper, swappable like the clip renderer)
+let scorecardRenderer = null;
+let bumperRenderer = null;
+export const setScorecardRenderer = (fn) => { scorecardRenderer = fn; };
+export const setBumperRenderer = (fn) => { bumperRenderer = fn; };
+
+/** Build an SVG scorecard frame using canonical result data. Returns { url (data-URI or https), width, height, generatedAt }. No external calls; no fabricated data. */
+export async function renderScorecardFrame(c, eventId) {
+  if (scorecardRenderer) return scorecardRenderer({ eventId });
+  // Pull canonical result: event name + sport + fixture result if available
+  const ev = (await c.query('SELECT e.name, s.name AS sport_name FROM events e JOIN sports s ON s.id=e.sport_id WHERE e.id=$1', [eventId])).rows[0];
+  if (!ev) throw new Error('Event not found');
+  const fx = (await c.query('SELECT f.home_score, f.away_score, h.name AS home, a.name AS away FROM fixtures f LEFT JOIN teams h ON h.id=f.home_team_id LEFT JOIN teams a ON a.id=f.away_team_id WHERE f.event_id=$1 AND f.status=\'completed\' ORDER BY f.played_at DESC LIMIT 1', [eventId])).rows[0];
+  const scoreText = fx ? `${fx.home}  ${fx.home_score} – ${fx.away_score}  ${fx.away}` : ev.name;
+  const svgW = 800, svgH = 200;
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${svgW}" height="${svgH}" viewBox="0 0 ${svgW} ${svgH}">
+  <rect width="${svgW}" height="${svgH}" fill="#2A2D3A"/>
+  <rect x="0" y="0" width="6" height="${svgH}" fill="#8458B3"/>
+  <text x="40" y="72" font-family="system-ui,sans-serif" font-size="13" font-weight="600" fill="#D0BDF4">${escSvg(ev.sport_name)}</text>
+  <text x="40" y="118" font-family="system-ui,sans-serif" font-size="${fx ? 32 : 24}" font-weight="800" fill="#E5EAF5">${escSvg(scoreText)}</text>
+  <text x="40" y="166" font-family="system-ui,sans-serif" font-size="13" fill="#8458B3">${escSvg(ev.name)}</text>
+  <text x="${svgW - 24}" y="${svgH - 20}" font-family="system-ui,sans-serif" font-size="11" fill="#6B728E" text-anchor="end">gotmygame.app</text>
+</svg>`;
+  const url = `data:image/svg+xml;base64,${Buffer.from(svg).toString('base64')}`;
+  return { url, width: svgW, height: svgH, generatedAt: new Date().toISOString() };
+}
+
+/** Build an SVG sponsor-bumper frame. Returns { url, logo_url, sponsor_name, unit_kind, duration_ms, generatedAt }. */
+export async function renderBumperFrame(c, eventId, bookingId) {
+  const check = await bumperBookingOk(c, eventId, bookingId);
+  if (!check.ok) throw new Error(check.reason);
+  if (bumperRenderer) return bumperRenderer({ eventId, bookingId, booking: check.booking });
+  const sp = (await c.query(
+    'SELECT sp.name, si.logo_url FROM sponsor_inventory_bookings b JOIN sponsorships s ON s.id=b.sponsorship_id JOIN sponsors sp ON sp.id=s.sponsor_id LEFT JOIN sponsor_identities si ON si.sponsor_id=sp.id WHERE b.id=$1 ORDER BY si.created_at DESC LIMIT 1',
+    [bookingId])).rows[0];
+  const sponsorName = sp?.name ?? check.booking.name;
+  const logoUrl = sp?.logo_url ?? null;
+  const svgW = 800, svgH = 120;
+  const logoTag = logoUrl ? `<image href="${escSvgAttr(logoUrl)}" x="560" y="20" width="200" height="80" preserveAspectRatio="xMidYMid meet"/>` : `<text x="720" y="70" font-family="system-ui,sans-serif" font-size="22" font-weight="800" fill="#E5EAF5" text-anchor="middle">${escSvg(sponsorName)}</text>`;
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${svgW}" height="${svgH}" viewBox="0 0 ${svgW} ${svgH}">
+  <rect width="${svgW}" height="${svgH}" fill="#1A1D2A"/>
+  <rect x="0" y="0" width="${svgW}" height="4" fill="#8458B3"/>
+  <text x="40" y="46" font-family="system-ui,sans-serif" font-size="12" fill="#6B728E">BROUGHT TO YOU BY</text>
+  <text x="40" y="88" font-family="system-ui,sans-serif" font-size="28" font-weight="800" fill="#D0BDF4">${escSvg(sponsorName)}</text>
+  ${logoTag}
+</svg>`;
+  const url = `data:image/svg+xml;base64,${Buffer.from(svg).toString('base64')}`;
+  return { url, logo_url: logoUrl, sponsor_name: sponsorName, unit_kind: check.booking.kind, duration_ms: 5000, generatedAt: new Date().toISOString() };
+}
+
+function escSvg(s) { return String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;'); }
+function escSvgAttr(s) { return String(s ?? '').replace(/&/g, '&amp;').replace(/"/g, '&quot;'); }
 
 // ------------------------------------------------------------------ the render provider (a stub by default; swap with setClipRenderer)
 let renderer = null;

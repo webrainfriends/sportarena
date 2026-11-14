@@ -1,6 +1,6 @@
 // AI highlights & smart clips (#505): score-synchronised candidates that always cite a real event, the review gate, rights/consent re-checked on every view,
 // idempotent processing, reels with real sponsor inventory, player passport links, and metering for the commercial engine. Cricket, football, a racket sport and a heat
-// are exercised natively; a referee-totals sport shows the labelled bookmark-only fallback; the whole sport catalogue is walked.
+// are exercised natively; a referee-totals sport shows the labelled bookmark-only fallback; track_field and judged families get native moment detection; the whole sport catalogue is walked.
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 
@@ -9,7 +9,7 @@ const { pool } = await import('../src/db.js');
 const { migrate } = await import('../src/migrate.js');
 const { createApp } = await import('../src/http.js');
 const { setAiTransport } = await import('../src/ai.js');
-const { runClipJobs, renderCandidate, setClipRenderer, placeOnMedia, familyInfo } = await import('../src/smart-clips.js');
+const { runClipJobs, renderCandidate, setClipRenderer, placeOnMedia, familyInfo, renderScorecardFrame, renderBumperFrame, setScorecardRenderer, setBumperRenderer, bumperBookingOk } = await import('../src/smart-clips.js');
 const { builtinRuleset } = await import('../src/scoring/rulesets.js');
 
 let server, base, n = 0;
@@ -472,5 +472,240 @@ test('every sport in the catalogue resolves to a labelled model: native families
     tally[key] = (tally[key] ?? 0) + 1;
   }
   assert.ok(Object.keys(tally).some((k) => k.startsWith('cricket')) && Object.keys(tally).some((k) => k.startsWith('goal_game')) && Object.keys(tally).some((k) => k.startsWith('racket')) && Object.keys(tally).some((k) => k.startsWith('measured')));
+  // track_field and judged must appear as native families now
+  assert.ok(Object.keys(tally).some((k) => k.startsWith('track_field')), 'track_field family covered');
+  assert.ok(Object.keys(tally).some((k) => k.startsWith('judged')), 'judged family covered');
   console.log('# sport coverage:', JSON.stringify(tally));
+});
+
+test('track_field: valid attempts are detected; personal_best has highest priority', async () => {
+  // Find a distance/weight sport (track_field family)
+  const sp = (await q("SELECT id, slug FROM sports WHERE scoring='distance' OR scoring='weight' LIMIT 1"))[0];
+  if (!sp) { console.log('# skip: no track_field sport in catalogue'); return; }
+  const ev = await mkEvent(org, sp.slug);
+  const disc = (await q('INSERT INTO event_disciplines(event_id, sport_id, name) VALUES ($1,$2,$3) RETURNING id', [ev.id, sp.id, 'Field Event']))[0];
+  const ses = (await q("INSERT INTO event_sessions(event_id, discipline_id, stage, label, status) VALUES ($1,$2,'final','Field Event Final','completed') RETURNING id", [ev.id, disc.id]))[0];
+  const athletes = [await signup(['athlete']), await signup(['athlete'])];
+  const entryIds = [];
+  for (const [i, u] of athletes.entries()) {
+    const part = (await q('INSERT INTO event_participants(event_id, user_id, full_name) VALUES ($1,$2,$3) RETURNING id', [ev.id, u.id, u.display_name]))[0];
+    const en = (await q("INSERT INTO event_session_entries(session_id, participant_id, position, result_status) VALUES ($1,$2,$3,'finished') RETURNING id", [ses.id, part.id, i + 1]))[0];
+    entryIds.push(en.id);
+  }
+  // athlete 0: two valid attempts, second is a PB
+  const att1 = (await q("INSERT INTO session_events(session_id, event_id, seq, kind, entry_id, payload, recorded_by, recorded_at) VALUES ($1,$2,1,'attempt',$3,$4,$5,$6) RETURNING id", [ses.id, ev.id, entryIds[0], JSON.stringify({ value: 7.5, valid: true, is_pb: false }), org.id, at(100)]))[0].id;
+  const att2 = (await q("INSERT INTO session_events(session_id, event_id, seq, kind, entry_id, payload, recorded_by, recorded_at) VALUES ($1,$2,2,'attempt',$3,$4,$5,$6) RETURNING id", [ses.id, ev.id, entryIds[0], JSON.stringify({ value: 7.82, valid: true, is_pb: true }), org.id, at(200)]))[0].id;
+  // athlete 1: one invalid attempt (should be excluded)
+  await q("INSERT INTO session_events(session_id, event_id, seq, kind, entry_id, payload, recorded_by, recorded_at) VALUES ($1,$2,3,'attempt',$3,$4,$5,$6) RETURNING id", [ses.id, ev.id, entryIds[1], JSON.stringify({ value: 0, valid: false }), org.id, at(300)]);
+  const src = await mkSource(org, ev, null);
+  must(await api('POST', `/media/assets/${src.id}/clip-alignment`, { token: org.token, body: { session_id: ses.id, method: 'wall_clock', anchor_media_s: 0, anchor_at: at(0) } }), 201);
+  const r = await generate(org, src);
+  assert.equal(r.sport_family, 'track_field'); assert.equal(r.native_model, true);
+  const kinds = r.created.map((c) => c.moment_kind);
+  assert.ok(kinds.includes('personal_best'), 'PB detected');
+  assert.ok(kinds.includes('attempt_valid'), 'valid attempt detected');
+  const pb = r.created.find((c) => c.moment_kind === 'personal_best');
+  const av = r.created.find((c) => c.moment_kind === 'attempt_valid');
+  assert.equal(pb.cites.id, att2, 'PB cites the right session event');
+  assert.equal(av.cites.id, att1, 'valid attempt cites the right session event');
+  assert.ok(pb.priority > av.priority, 'personal_best (90) outranks attempt_valid (55)');
+  assert.equal(pb.participants[0].user_id, athletes[0].id, 'correct athlete on the PB');
+  assert.equal(r.created.filter((c) => ['attempt_valid', 'personal_best'].includes(c.moment_kind)).length, 2, 'invalid attempt excluded');
+});
+
+test('judged sport: score_announced and routine_complete moments from canonical events', async () => {
+  const sp = (await q("SELECT id, slug FROM sports WHERE scoring='judged' LIMIT 1"))[0];
+  if (!sp) { console.log('# skip: no judged sport in catalogue'); return; }
+  const ev = await mkEvent(org, sp.slug);
+  const disc = (await q('INSERT INTO event_disciplines(event_id, sport_id, name) VALUES ($1,$2,$3) RETURNING id', [ev.id, sp.id, 'Floor Exercise']))[0];
+  const ses = (await q("INSERT INTO event_sessions(event_id, discipline_id, stage, label, status) VALUES ($1,$2,'final','Floor Exercise Final','completed') RETURNING id", [ev.id, disc.id]))[0];
+  const athlete = await signup(['athlete']);
+  const part = (await q('INSERT INTO event_participants(event_id, user_id, full_name) VALUES ($1,$2,$3) RETURNING id', [ev.id, athlete.id, athlete.display_name]))[0];
+  const en = (await q("INSERT INTO event_session_entries(session_id, participant_id, position, result_status) VALUES ($1,$2,1,'finished') RETURNING id", [ses.id, part.id]))[0];
+  const routineEvId = (await q("INSERT INTO session_events(session_id, event_id, seq, kind, entry_id, payload, recorded_by, recorded_at) VALUES ($1,$2,1,'routine_end',$3,$4,$5,$6) RETURNING id", [ses.id, ev.id, en.id, JSON.stringify({ apparatus: 'floor' }), org.id, at(50)]))[0].id;
+  const scoreEvId = (await q("INSERT INTO session_events(session_id, event_id, seq, kind, entry_id, payload, recorded_by, recorded_at) VALUES ($1,$2,2,'score',$3,$4,$5,$6) RETURNING id", [ses.id, ev.id, en.id, JSON.stringify({ total: 14.5, difficulty: 5.2, execution: 9.3 }), org.id, at(80)]))[0].id;
+  const src = await mkSource(org, ev, null);
+  must(await api('POST', `/media/assets/${src.id}/clip-alignment`, { token: org.token, body: { session_id: ses.id, method: 'wall_clock', anchor_media_s: 0, anchor_at: at(0) } }), 201);
+  const r = await generate(org, src);
+  assert.equal(r.sport_family, 'judged'); assert.equal(r.native_model, true);
+  const kinds = r.created.map((c) => c.moment_kind);
+  assert.ok(kinds.includes('score_announced'), 'score_announced moment produced');
+  assert.ok(kinds.includes('routine_complete'), 'routine_complete moment produced');
+  const sa = r.created.find((c) => c.moment_kind === 'score_announced');
+  const rc = r.created.find((c) => c.moment_kind === 'routine_complete');
+  assert.equal(sa.cites.id, scoreEvId);
+  assert.equal(rc.cites.id, routineEvId);
+  assert.ok(sa.priority > rc.priority, 'score_announced (72) outranks routine_complete (48)');
+  assert.equal(sa.participants[0].user_id, athlete.id);
+  // idempotent: second generate produces no new candidates
+  const r2 = await generate(org, src);
+  assert.equal(r2.created.length, 0, 'second generate produces no duplicates');
+});
+
+test('scorecard frame: canonical data only, no fabrication; SVG is well-formed; re-generate replaces frame_url idempotently', async () => {
+  const ev = await mkEvent(org, 'football');
+  const h = await mkTeam(org, 'football', 'Atlas'), a = await mkTeam(org, 'football', 'Rovers');
+  const fx = await mkFixture(ev, h, a);
+  await q("UPDATE fixtures SET status='completed', home_score=3, away_score=1 WHERE id=$1", [fx.id]);
+  const frame1 = await renderScorecardFrame(pool, ev.id);
+  assert.ok(frame1.url.startsWith('data:image/svg+xml;base64,'), 'produces a data-URI');
+  assert.equal(frame1.width, 800); assert.equal(frame1.height, 200);
+  const svg1 = Buffer.from(frame1.url.split(',')[1], 'base64').toString();
+  assert.ok(svg1.includes('<svg'), 'SVG well-formed');
+  assert.ok(svg1.includes('Atlas'), 'home team name in frame');
+  assert.ok(svg1.includes('Rovers'), 'away team name in frame');
+  assert.ok(!svg1.includes('undefined'), 'no undefined values fabricated');
+  // swappable renderer
+  setScorecardRenderer(() => ({ url: 'https://cdn.example.com/sc.svg', width: 1920, height: 1080, generatedAt: new Date().toISOString() }));
+  const frame3 = await renderScorecardFrame(pool, ev.id);
+  assert.equal(frame3.url, 'https://cdn.example.com/sc.svg', 'custom renderer used when set');
+  setScorecardRenderer(null);
+  // REST endpoint: POST /reels/:id/scorecard-frame
+  const src = await mkSource(org, ev, fx);
+  must(await align(org, src, { fixture_id: fx.id }), 201);
+  await generate(org, src);
+  const reel = must(await api('POST', `/events/${ev.id}/clip-reels`, { token: org.token, body: { title: 'Sc Test Reel', kind: 'event_highlights' } }), 201);
+  await api('POST', `/reels/${reel.id}/items`, { token: org.token, body: { kind: 'scorecard', position: 1, label: 'Final Score' } });
+  const sc = must(await api('POST', `/reels/${reel.id}/scorecard-frame`, { token: org.token }));
+  assert.ok(sc.frame_url.startsWith('data:image/svg+xml;base64,'), 'REST endpoint returns frame_url');
+  // re-posting replaces frame, does not add a second scorecard item
+  must(await api('POST', `/reels/${reel.id}/scorecard-frame`, { token: org.token }));
+  const rows = await q('SELECT count(*)::int AS n FROM clip_reel_items WHERE reel_id=$1 AND kind=$2', [reel.id, 'scorecard']);
+  assert.equal(rows[0].n, 1, 're-generate replaces the frame, not adds a second item');
+});
+
+test('bumper frame: validates sponsor logo from identity system; wrong booking rejects; re-generate is idempotent', async () => {
+  const ev = await mkEvent(org, 'football');
+  const fx = await mkFixture(ev, await mkTeam(org, 'football', 'C'), await mkTeam(org, 'football', 'D'));
+  const src = await mkSource(org, ev, fx);
+  must(await align(org, src, { fixture_id: fx.id }), 201);
+  await generate(org, src);
+  const reel = must(await api('POST', `/events/${ev.id}/clip-reels`, { token: org.token, body: { title: 'Bumper Test Reel', kind: 'event_highlights' } }), 201);
+  // wrong booking id must reject
+  const bad = await api('POST', `/reels/${reel.id}/items/999999/bumper-frame`, { token: org.token });
+  assert.ok([400, 404].includes(bad.status), 'wrong booking id rejected');
+  // set up a minimal valid sponsor booking
+  const uniq = Date.now();
+  await q(`INSERT INTO sponsors(id, name, slug) VALUES (${uniq},'Apex Sport ${uniq}','apex-sport-${uniq}') ON CONFLICT DO NOTHING`);
+  await q(`INSERT INTO sponsorships(id, sponsor_id, status, starts_on, ends_on) VALUES (${uniq},${uniq},'active',current_date,current_date+30) ON CONFLICT DO NOTHING`);
+  await q(`INSERT INTO sponsor_identities(sponsor_id, logo_url, created_at) VALUES (${uniq},'https://cdn.example.com/apex.svg',now()) ON CONFLICT DO NOTHING`);
+  await q(`INSERT INTO sponsor_inventory_units(id, kind, target_type, target_id, name, duration_ms) VALUES (${uniq},'overlay','event',$1,'Intro bumper',5000) ON CONFLICT DO NOTHING`, [ev.id]);
+  await q(`INSERT INTO sponsor_inventory_bookings(id, unit_id, sponsorship_id, status, starts_on, ends_on) VALUES (${uniq},${uniq},${uniq},'confirmed',current_date,current_date+30) ON CONFLICT DO NOTHING`);
+  // bumperBookingOk must pass
+  const chk = await bumperBookingOk(pool, ev.id, uniq);
+  assert.equal(chk.ok, true, 'valid booking passes check');
+  // frame renders with canonical sponsor data
+  const frame = await renderBumperFrame(pool, ev.id, uniq);
+  assert.ok(frame.url.startsWith('data:image/svg+xml;base64,'), 'bumper produces a data-URI');
+  assert.ok(frame.sponsor_name.startsWith('Apex Sport'), 'sponsor name from identity system');
+  assert.equal(frame.logo_url, 'https://cdn.example.com/apex.svg', 'logo_url from sponsor_identities');
+  const svg = Buffer.from(frame.url.split(',')[1], 'base64').toString();
+  assert.ok(!svg.includes('undefined'), 'no undefined values in SVG');
+  // swappable renderer
+  setBumperRenderer(() => ({ url: 'https://cdn.example.com/bumper.mp4', logo_url: null, sponsor_name: 'Override', unit_kind: 'overlay', duration_ms: 6000, generatedAt: new Date().toISOString() }));
+  const frame2 = await renderBumperFrame(pool, ev.id, uniq);
+  assert.equal(frame2.url, 'https://cdn.example.com/bumper.mp4', 'custom bumper renderer used when set');
+  setBumperRenderer(null);
+  // REST endpoint via reel item
+  const item = must(await api('POST', `/reels/${reel.id}/items`, { token: org.token, body: { kind: 'sponsor_bumper', position: 1, label: 'Apex intro', inventory_booking_id: uniq } }), 201);
+  const bf = must(await api('POST', `/reels/${reel.id}/items/${item.id}/bumper-frame`, { token: org.token }));
+  assert.ok(bf.frame_url.startsWith('data:image/svg+xml;base64,'), 'REST bumper-frame returns frame_url');
+  // idempotent: second call replaces frame data, item count unchanged
+  must(await api('POST', `/reels/${reel.id}/items/${item.id}/bumper-frame`, { token: org.token }));
+  const rows = await q('SELECT count(*)::int AS n FROM clip_reel_items WHERE reel_id=$1 AND id=$2', [reel.id, item.id]);
+  assert.equal(rows[0].n, 1, 'reel item count unchanged after re-generate');
+});
+
+test('track_field: valid attempt and personal-best moments are detected natively from session events', async () => {
+  // Find or create a sport in the track_field family (scoring=distance or scoring=weight)
+  const sports = await q("SELECT slug, name, scoring, category FROM sports WHERE scoring IN ('distance','weight') LIMIT 1");
+  if (!sports.length) { console.log('# no track_field sport in catalogue — skipping native moment test'); return; }
+  const sport = sports[0].slug;
+  const ev = await mkEvent(org, sport);
+  const fx = await mkFixture(ev, null, null);
+  // Log an attempt event: valid=true; a second one that is a personal best
+  await logEv(fx, org, 'attempt', 'home', { sec: 90, payload: { valid: true, distance_m: 18.5 } });
+  await logEv(fx, org, 'attempt', 'home', { sec: 180, payload: { valid: true, distance_m: 21.0, personal_best: true } });
+  const src = await mkSource(org, ev, fx);
+  must(await align(org, src, { fixture_id: fx.id }), 201);
+  const { created } = await generate(org, src);
+  assert.ok(created.length >= 1, 'at least one clip candidate generated for track_field attempt events');
+  const labels = created.map((c) => c.moment_kind);
+  assert.ok(labels.some((l) => ['attempt_valid', 'personal_best'].includes(l)), `expected attempt_valid or personal_best moment; got: ${JSON.stringify(labels)}`);
+  const pbClips = created.filter((c) => c.moment_kind === 'personal_best');
+  assert.ok(pbClips.length >= 1, 'personal_best moment detected when payload.personal_best is true');
+});
+
+test('judged: score_announced and routine_complete moments are detected natively from session events', async () => {
+  const sports = await q("SELECT slug, name, scoring, category FROM sports WHERE scoring = 'judged' LIMIT 1");
+  if (!sports.length) { console.log('# no judged sport in catalogue — skipping native moment test'); return; }
+  const sport = sports[0].slug;
+  const ev = await mkEvent(org, sport);
+  const fx = await mkFixture(ev, null, null);
+  await logEv(fx, org, 'score', 'home', { sec: 60, payload: { panel_score: 15.4 } });
+  await logEv(fx, org, 'routine_end', 'home', { sec: 55, payload: {} });
+  const src = await mkSource(org, ev, fx);
+  must(await align(org, src, { fixture_id: fx.id }), 201);
+  const { created } = await generate(org, src);
+  assert.ok(created.length >= 1, 'clip candidates generated for judged sport events');
+  const labels = created.map((c) => c.moment_kind);
+  assert.ok(labels.some((l) => ['score_announced', 'routine_complete'].includes(l)), `expected score_announced or routine_complete; got: ${JSON.stringify(labels)}`);
+});
+
+test('scorecard frame: generate_reel_scorecard creates SVG data-URI frames for scorecard items; get_reel_frames returns them', async () => {
+  const ev = await mkEvent(org, 'football');
+  const teamA = await mkTeam(org, 'football', 'TF_A');
+  const teamB = await mkTeam(org, 'football', 'TF_B');
+  const fx = await mkFixture(ev, teamA, teamB);
+  await logEv(fx, org, 'goal', 'home', { clock: 100, sec: 100 });
+  await logEv(fx, org, 'goal', 'home', { clock: 200, sec: 200 });
+  await logEv(fx, org, 'goal', 'away', { clock: 300, sec: 300 });
+  const src = await mkSource(org, ev, fx);
+  must(await align(org, src, { fixture_id: fx.id }), 201);
+  const cands = (await generate(org, src)).created;
+  const clip = await cut(org, cands[0].id);
+  await approve(org, clip);
+  must(await publish(org, clip.id), 200);
+  const reel = must(await api('POST', `/events/${ev.id}/reels`, { token: org.token, body: { kind: 'event', title: 'Frame test reel', items: [{ kind: 'clip', candidate_id: cands[0].id }, { kind: 'scorecard' }] } }), 201);
+  // generate scorecard frames
+  let captured = null;
+  setScorecardRenderer(async (c, eventId) => { captured = { eventId }; return 'data:image/svg+xml;base64,PHN2ZyAvPg=='; });
+  const gen = must(await api('POST', `/reels/${reel.id}/scorecard-frame`, { token: org.token }));
+  assert.ok(gen.updated >= 0, 'scorecard frame generation ran');
+  setScorecardRenderer(null);
+  assert.ok(captured !== null, 'custom renderer was called');
+  // get_reel_frames returns frame data for scorecard items
+  const frames = must(await api('GET', `/reels/${reel.id}/frames`, { token: org.token }));
+  assert.ok(Array.isArray(frames.items), 'frames response has items');
+  const sc = frames.items.find((i) => i.kind === 'scorecard');
+  assert.ok(sc, 'scorecard item present in frames');
+});
+
+test('bumper frame: refresh_reel_bumper_frame generates SVG data-URI for sponsor_bumper items; invalid booking is rejected', async () => {
+  const ev = await mkEvent(org, 'football');
+  const teamA = await mkTeam(org, 'football', 'BF_A');
+  const teamB = await mkTeam(org, 'football', 'BF_B');
+  const fx = await mkFixture(ev, teamA, teamB);
+  await logEv(fx, org, 'goal', 'home', { clock: 100, sec: 100 });
+  const src = await mkSource(org, ev, fx);
+  must(await align(org, src, { fixture_id: fx.id }), 201);
+  const cands = (await generate(org, src)).created;
+  const clip = await cut(org, cands[0].id);
+  await approve(org, clip); must(await publish(org, clip.id), 200);
+  // set up a confirmed inventory booking
+  const [inv] = await q("INSERT INTO sponsor_inventory(owner_id, name, kind, event_id, status) VALUES ($1,'BF Bumper','pre_roll',$2,'available') RETURNING *", [org.id, ev.id]);
+  const [bk] = await q("INSERT INTO sponsor_inventory_bookings(inventory_id, booker_id, sponsor_name, status, confirmed_at, starts_at, ends_at) VALUES ($1,$2,'BF Drinks','confirmed',now(),now()-interval'1h',now()+interval'7d') RETURNING *", [inv.id, org.id]);
+  const reel = must(await api('POST', `/events/${ev.id}/reels`, { token: org.token, body: { kind: 'event', title: 'Bumper frame reel', items: [{ kind: 'clip', candidate_id: cands[0].id }, { kind: 'sponsor_bumper', booking_id: bk.id }] } }), 201);
+  const bumperItem = reel.items.find((i) => i.kind === 'sponsor_bumper');
+  assert.ok(bumperItem, 'sponsor_bumper item in reel');
+  let bumperCalled = false;
+  setBumperRenderer(async (c, eventId, bookingId) => { bumperCalled = true; return 'data:image/svg+xml;base64,PHN2ZyAvPg=='; });
+  const gen = must(await api('POST', `/reels/${reel.id}/items/${bumperItem.id}/bumper-frame`, { token: org.token }));
+  assert.ok(gen.frame_url || gen.updated !== undefined, 'bumper frame generated');
+  setBumperRenderer(null);
+  assert.ok(bumperCalled, 'bumper renderer was called');
+  // invalid booking (released) must be rejected
+  await q("UPDATE sponsor_inventory_bookings SET status='released', released_at=now(), released_by=$2, release_reason='test' WHERE id=$1", [bk.id, org.id]);
+  const rej = await api('POST', `/reels/${reel.id}/items/${bumperItem.id}/bumper-frame`, { token: org.token });
+  assert.equal(rej.status, 400, 'released booking produces 400 on bumper frame refresh');
 });
