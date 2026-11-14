@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { locale } from '../locale';
-import { Platform, Pressable, ScrollView, TextInput, View, useWindowDimensions } from 'react-native';
+import { Image, Platform, Pressable, ScrollView, TextInput, View, useWindowDimensions } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { api } from '../api';
 import { useLoad } from '../hooks';
@@ -325,7 +325,7 @@ export default function Landing() {
             <View style={{ flexDirection: wide ? 'row' : 'column', gap: wide ? 48 : 32, alignItems: wide ? 'flex-start' : 'stretch' }}>
               {/* Brand */}
               <View style={{ flex: wide ? 2 : undefined, gap: 8 }}>
-                <Wordmark width={180} tagline onDark />
+                <Image source={require('../../assets/brand/meezh.png')} accessible accessibilityLabel="Meezh" style={{ width: 180, height: Math.round(180 / 3.51), marginBottom: 4 }} resizeMode="contain" />
                 <T color="#94A3B8" size={13} style={{ marginTop: 4, lineHeight: 20, maxWidth: 320 }}>The home of sport. Athletes, coaches, venues, academies, sponsors and physios — all in one arena.</T>
               </View>
               {/* Platform links */}
@@ -352,7 +352,7 @@ export default function Landing() {
             </View>
             {/* Divider + bottom */}
             <View style={{ borderTopWidth: 1, borderColor: 'rgba(255,255,255,0.08)', paddingTop: 20, flexDirection: wide ? 'row' : 'column', gap: 10, alignItems: wide ? 'center' : 'flex-start', justifyContent: 'space-between' }}>
-              <T color="#64748B" size={12}>© {new Date().getFullYear()} GotMyGame. All rights reserved. Beta — not for public or commercial use.</T>
+              <T color="#64748B" size={12}>© {new Date().getFullYear()} Meezh. All rights reserved. Beta — not for public or commercial use.</T>
               <View style={{ flexDirection: 'row', gap: 16 }}>
                 <T color="#64748B" size={12}>Privacy</T>
                 <T color="#64748B" size={12}>Terms</T>
