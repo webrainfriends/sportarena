@@ -4032,6 +4032,53 @@ export default {
   'setup.step.team.w': 'আপনার তালিকা, প্রাপ্যতা ও সময়সূচি এখানে থাকে।',
   'setup.step.first_transaction_coach.t': 'আপনার খেলোয়াড়দের আমন্ত্রণ জানান',
   'setup.step.first_transaction_coach.w': 'আপনার চেনা মানুষদের আমন্ত্রণ জানান, অথবা কোনো প্রতিষ্ঠানের ওয়ার্কস্পেস থেকে পুরো তালিকা আনুন।',
+
+  // Coach onboard wizard (cow.*) — machine-drafted, reviewed: false
+  'cow.title': 'COACH SETUP',
+  'cow.setup_steps': 'Your coach journey',
+  'cow.n_of': '{done} of {total} steps done',
+  'cow.done': 'Go to Coach Home',
+  'cow.open_step': 'Open step: {title}',
+  'cow.open_step_active': 'Start this step →',
+  'cow.edit_step': 'Edit',
+  'cow.tip_label': 'PRO TIP',
+  'cow.all_done_toast': "You're live! 🎉",
+
+  'cow.step.profile.label': 'Set up your profile',
+  'cow.step.profile.title': 'Create your coach profile',
+  'cow.step.profile.why': 'Your headline, photo and bio are the first thing athletes and clubs see.',
+  'cow.step.profile.tip': 'A professional headshot and a compelling bio get 3× more booking enquiries.',
+
+  'cow.step.sports.label': 'Add sports & skills',
+  'cow.step.sports.title': 'Your sports and expertise',
+  'cow.step.sports.why': 'Tell athletes exactly what disciplines you coach and at what level.',
+  'cow.step.sports.tip': 'Listing your highest qualification for each sport boosts search ranking.',
+
+  'cow.step.drills.label': 'Build your drill library',
+  'cow.step.drills.title': 'Build your drill library',
+  'cow.step.drills.why': 'Save the drills and sessions you use most so you can assign them in seconds.',
+  'cow.step.drills.tip': 'Start with 5–10 core drills. You can add progressions and variations later.',
+
+  'cow.step.classes.label': 'Set your availability',
+  'cow.step.classes.title': 'Classes & availability',
+  'cow.step.classes.why': 'Publish time slots and group classes so athletes can book directly — no back-and-forth.',
+  'cow.step.classes.tip': 'Open slots at the same times each week build a predictable coaching income.',
+
+  'cow.step.rates.label': 'Set your rate cards',
+  'cow.step.rates.title': 'Pricing & packages',
+  'cow.step.rates.why': 'Define your intro session, hourly rate and any multi-session packages.',
+  'cow.step.rates.tip': 'An intro offer at a lower rate is the fastest way to convert your first booking.',
+
+  'cow.step.payout.label': 'Set up payout',
+  'cow.step.payout.title': 'Connect your bank account',
+  'cow.step.payout.why': 'Link a bank account so payments from bookings land directly with you.',
+  'cow.step.payout.tip': 'Payouts are processed within 2 business days of a completed session.',
+
+  'cow.step.publish.label': 'Review & go live',
+  'cow.step.publish.title': 'Preview and publish',
+  'cow.step.publish.why': 'Review your public profile one last time, then publish to start receiving bookings.',
+  'cow.step.publish.tip': 'Share your profile link on social media right after publishing for your first enquiries.',
+
   "paycountry.title": "দেশ অনুযায়ী পেমেন্ট পদ্ধতি",
   "paycountry.intro": "পেমেন্ট পদ্ধতি চালু বা বন্ধ করতে পারেন শুধু প্ল্যাটফর্ম অ্যাডমিন। যে দেশে সুইচ নেই সেখানে সব পদ্ধতি বন্ধ। প্রতিটি বুকিং, ক্লাস, টিকিট, রেজিস্ট্রেশন ও শপ চেকআউটে সেই দেশের জন্য চালু পদ্ধতিগুলোই দেখানো হয়।",
   "paycountry.choose": "দেশ বেছে নিন",
