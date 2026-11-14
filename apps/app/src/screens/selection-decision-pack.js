@@ -4,11 +4,7 @@ import { View, Text, ScrollView, StyleSheet, Share, Platform } from 'react-nativ
 import { useTranslation } from '../i18n';
 import { useTheme } from '../theme';
 import { useApi, useApiMutation } from '../api';
-import { Screen } from '../components/Screen';
-import { Card } from '../components/Card';
-import { Button } from '../components/Button';
-import { Chip } from '../components/Chip';
-import { TextField } from '../components/TextField';
+import { Btn, Card, Chip, Field, Screen } from '../ui';
 
 export default function SelectionDecisionPack({ route }) {
   const { t } = useTranslation();
@@ -56,8 +52,8 @@ export default function SelectionDecisionPack({ route }) {
         <Card style={S.exportCard}>
           <Text style={S.heading}>{t('sel.pack.export')}</Text>
           <View style={S.exportRow}>
-            <Button label={t('sel.pack.pdfExport')} icon="file-text" onPress={exportPDF} style={{ flex: 1 }} accessibilityLabel={t('sel.pack.pdfExport')} />
-            <Button label={t('sel.pack.csvExport')} icon="download" onPress={exportCSV} variant="outline" style={{ flex: 1 }} accessibilityLabel={t('sel.pack.csvExport')} />
+            <Btn label={t('sel.pack.pdfExport')} icon="file-text" onPress={exportPDF} style={{ flex: 1 }} accessibilityLabel={t('sel.pack.pdfExport')} />
+            <Btn label={t('sel.pack.csvExport')} icon="download" onPress={exportCSV} variant="outline" style={{ flex: 1 }} accessibilityLabel={t('sel.pack.csvExport')} />
           </View>
         </Card>
 
@@ -91,10 +87,10 @@ export default function SelectionDecisionPack({ route }) {
           <Text style={S.heading}>{t('sel.pack.appeal')}</Text>
           <Text style={S.hint}>{t('sel.pack.appealHint')}</Text>
           {!showAppeal ? (
-            <Button label={t('sel.pack.submitAppeal')} onPress={() => setShowAppeal(true)} variant="outline" accessibilityLabel={t('sel.pack.submitAppeal')} />
+            <Btn label={t('sel.pack.submitAppeal')} onPress={() => setShowAppeal(true)} variant="outline" accessibilityLabel={t('sel.pack.submitAppeal')} />
           ) : (
             <>
-              <TextField
+              <Field
                 label={t('sel.pack.appealGrounds')}
                 value={grounds}
                 onChangeText={setGrounds}
@@ -102,7 +98,7 @@ export default function SelectionDecisionPack({ route }) {
                 numberOfLines={5}
                 accessibilityLabel={t('sel.pack.appealGrounds')}
               />
-              <Button
+              <Btn
                 label={t('sel.pack.sendAppeal')}
                 onPress={() => submitAppeal({ grounds }).then(() => setShowAppeal(false))}
                 loading={appealLoading}

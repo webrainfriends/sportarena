@@ -4,12 +4,9 @@ import { View, Text, ScrollView, StyleSheet } from 'react-native';
 import { useTranslation } from '../i18n';
 import { useTheme } from '../theme';
 import { useApi, useApiMutation } from '../api';
-import { Screen } from '../components/Screen';
-import { Card } from '../components/Card';
-import { Button } from '../components/Button';
-import { TextField } from '../components/TextField';
-import { MultiMenuField } from '../components/MultiMenuField';
 import { useNavigation } from '@react-navigation/native';
+import { MultiMenuField } from '../menu-field';
+import { Btn, Card, Field, Screen } from '../ui';
 
 export default function SelectionRecommendation({ route }) {
   const { t } = useTranslation();
@@ -79,7 +76,7 @@ export default function SelectionRecommendation({ route }) {
 
         <Card style={S.card}>
           <Text style={S.heading}>{t('sel.recommendation.rationale')}</Text>
-          <TextField
+          <Field
             label={t('sel.recommendation.tacticalNotes')}
             value={tacticalNotes}
             onChangeText={setTacticalNotes}
@@ -87,7 +84,7 @@ export default function SelectionRecommendation({ route }) {
             numberOfLines={4}
             accessibilityLabel={t('sel.recommendation.tacticalNotes')}
           />
-          <TextField
+          <Field
             label={t('sel.recommendation.generalRationale')}
             value={rationale}
             onChangeText={setRationale}
@@ -98,7 +95,7 @@ export default function SelectionRecommendation({ route }) {
           />
         </Card>
 
-        <Button
+        <Btn
           label={t('sel.recommendation.submit')}
           onPress={submit}
           loading={loading}

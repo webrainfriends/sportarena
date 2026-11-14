@@ -5,11 +5,9 @@ import { Svg, Polygon, Circle, Line, Text as SvgText } from 'react-native-svg';
 import { useTranslation } from '../i18n';
 import { useTheme } from '../theme';
 import { useApi, useApiMutation } from '../api';
-import { Screen } from '../components/Screen';
-import { Card } from '../components/Card';
-import { Button } from '../components/Button';
-import { MultiMenuField } from '../components/MultiMenuField';
 import { useNavigation } from '@react-navigation/native';
+import { MultiMenuField } from '../menu-field';
+import { Btn, Card, Screen } from '../ui';
 
 const { width: SCREEN_W } = Dimensions.get('window');
 const RADAR_SIZE = Math.min(SCREEN_W - 48, 320);
@@ -105,7 +103,7 @@ export default function SelectionComparisonLab({ route }) {
             max={12}
             accessibilityLabel={t('sel.lab.players')}
           />
-          <Button
+          <Btn
             label={t('sel.lab.runComparison')}
             onPress={run}
             loading={loading}
@@ -158,14 +156,14 @@ export default function SelectionComparisonLab({ route }) {
               </Card>
             )}
 
-            <Button
+            <Btn
               label={t('sel.lab.saveScenario')}
               onPress={() => {/* save handled by API already */}}
               variant="outline"
               style={S.saveBtn}
               accessibilityLabel={t('sel.lab.saveScenario')}
             />
-            <Button
+            <Btn
               label={t('sel.lab.formationCanvas')}
               onPress={() => nav.navigate('SelectionScenarioSimulator', { campaignId, result })}
               icon="layout"

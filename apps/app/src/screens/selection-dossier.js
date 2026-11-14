@@ -4,14 +4,8 @@ import { View, Text, ScrollView, StyleSheet } from 'react-native';
 import { useTranslation } from '../i18n';
 import { useTheme } from '../theme';
 import { useApi } from '../api';
-import { Screen } from '../components/Screen';
-import { Card } from '../components/Card';
-import { Avatar } from '../components/Avatar';
-import { Chip } from '../components/Chip';
-import { Button } from '../components/Button';
-import { MetricStrip } from '../components/MetricStrip';
-import { TabBar } from '../components/TabBar';
 import { useNavigation } from '@react-navigation/native';
+import { Avatar, Btn, Card, Chip, Screen, Seg, StatPill } from '../ui';
 
 export default function SelectionDossier({ route }) {
   const { t } = useTranslation();
@@ -51,7 +45,7 @@ export default function SelectionDossier({ route }) {
               </View>
             </View>
           </View>
-          <MetricStrip items={[
+          <StatPill items={[
             { label: t('sel.dossier.completeness'), value: `${dossier.evidence_quality?.completeness ?? 0}%` },
             { label: t('sel.dossier.observations'), value: dossier.evidence_quality?.observation_count ?? 0 },
             { label: t('sel.dossier.sources'), value: dossier.evidence_quality?.source_count ?? 0 },
@@ -66,7 +60,7 @@ export default function SelectionDossier({ route }) {
           )}
         </Card>
 
-        <TabBar tabs={tabs} selected={tab} onSelect={setTab} style={S.tabs} />
+        <Seg tabs={tabs} selected={tab} onSelect={setTab} style={S.tabs} />
 
         {tab === 0 && (
           <Card style={S.section}>
@@ -136,7 +130,7 @@ export default function SelectionDossier({ route }) {
           </Card>
         )}
 
-        <Button
+        <Btn
           label={t('sel.dossier.addToComparison')}
           onPress={() => nav.navigate('SelectionComparisonLab', { campaignId, addNominationId: nominationId })}
           icon="bar-chart"

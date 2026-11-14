@@ -4,12 +4,8 @@ import { View, Text, ScrollView, TouchableOpacity, StyleSheet } from 'react-nati
 import { useTranslation } from '../i18n';
 import { useTheme } from '../theme';
 import { useApi, useApiMutation } from '../api';
-import { Screen } from '../components/Screen';
-import { Button } from '../components/Button';
-import { Avatar } from '../components/Avatar';
-import { Chip } from '../components/Chip';
-import { EmptyState } from '../components/EmptyState';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
+import { Avatar, Btn, Chip, Empty, Screen } from '../ui';
 
 const KANBAN_COLS = ['nominated','eligibility_check','shortlisted','assessing','comparison','recommended'];
 
@@ -68,7 +64,7 @@ export default function SelectionCandidatePipeline({ route }) {
                 );
               })}
             </ScrollView>
-            <Button
+            <Btn
               label={t('sel.pipeline.addNominee')}
               icon="plus"
               variant="ghost"
@@ -82,13 +78,13 @@ export default function SelectionCandidatePipeline({ route }) {
       </ScrollView>
 
       <View style={S.footer}>
-        <Button
+        <Btn
           label={t('sel.pipeline.advanceStage')}
           onPress={() => advance({}).then(() => refetch?.())}
           icon="arrow-right"
           accessibilityLabel={t('sel.pipeline.advanceStage')}
         />
-        <Button
+        <Btn
           label={t('sel.pipeline.comparisonLab')}
           onPress={() => nav.navigate('SelectionComparisonLab', { campaignId })}
           variant="outline"

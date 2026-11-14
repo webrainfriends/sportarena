@@ -5,12 +5,8 @@ import { Svg, Circle, Line, Text as SvgText } from 'react-native-svg';
 import { useTranslation } from '../i18n';
 import { useTheme } from '../theme';
 import { useApi, useApiMutation } from '../api';
-import { Screen } from '../components/Screen';
-import { Card } from '../components/Card';
-import { Button } from '../components/Button';
-import { TextField } from '../components/TextField';
-import { Chip } from '../components/Chip';
 import { useNavigation } from '@react-navigation/native';
+import { Btn, Card, Chip, Field, Screen } from '../ui';
 
 function ApprovalChain({ routes, C }) {
   if (!routes?.length) return null;
@@ -79,7 +75,7 @@ export default function SelectionApprovalInbox({ route }) {
 
             <View style={S.decisionRow}>
               {['approve','reject','return','abstain'].map(d => (
-                <Button
+                <Btn
                   key={d}
                   label={t(`sel.approval.${d}`)}
                   variant={decision === d ? 'primary' : 'outline'}
@@ -92,7 +88,7 @@ export default function SelectionApprovalInbox({ route }) {
             </View>
 
             {decision && (
-              <TextField
+              <Field
                 label={t('sel.approval.reason')}
                 value={reason}
                 onChangeText={setReason}
@@ -104,7 +100,7 @@ export default function SelectionApprovalInbox({ route }) {
               />
             )}
 
-            <Button
+            <Btn
               label={t('sel.approval.submit')}
               onPress={submit}
               loading={loading}

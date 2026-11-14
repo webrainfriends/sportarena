@@ -1,16 +1,11 @@
 // Issue #1194: Committee review — voting, comments, conflict declarations
 import React, { useState } from 'react';
-import { View, Text, ScrollView, StyleSheet } from 'react-native';
+import { View, Text, ScrollView, StyleSheet , Switch } from 'react-native';
 import { useTranslation } from '../i18n';
 import { useTheme } from '../theme';
 import { useApi, useApiMutation } from '../api';
-import { Screen } from '../components/Screen';
-import { Card } from '../components/Card';
-import { Button } from '../components/Button';
-import { TextField } from '../components/TextField';
-import { Switch } from '../components/Switch';
-import { Chip } from '../components/Chip';
 import { useNavigation } from '@react-navigation/native';
+import { Btn, Card, Chip, Field, Screen } from '../ui';
 
 export default function SelectionReview({ route }) {
   const { t } = useTranslation();
@@ -60,7 +55,7 @@ export default function SelectionReview({ route }) {
           <Text style={S.sectionTitle}>{t('sel.review.castVote')}</Text>
           <View style={S.voteRow}>
             {voteOptions.map(v => (
-              <Button
+              <Btn
                 key={v}
                 label={t(`sel.review.vote.${v}`)}
                 variant={vote === v ? 'primary' : 'outline'}
@@ -71,7 +66,7 @@ export default function SelectionReview({ route }) {
               />
             ))}
           </View>
-          <TextField
+          <Field
             label={t('sel.review.comment')}
             value={comment}
             onChangeText={setComment}
@@ -87,7 +82,7 @@ export default function SelectionReview({ route }) {
             accessibilityLabel={t('sel.review.declareConflict')}
           />
           {conflict && (
-            <TextField
+            <Field
               label={t('sel.review.conflictNote')}
               value={conflictNote}
               onChangeText={setConflictNote}
@@ -97,7 +92,7 @@ export default function SelectionReview({ route }) {
             />
           )}
           {vote === 'challenge' && (
-            <TextField
+            <Field
               label={t('sel.review.dissent')}
               value={dissent}
               onChangeText={setDissent}
@@ -106,7 +101,7 @@ export default function SelectionReview({ route }) {
               accessibilityLabel={t('sel.review.dissent')}
             />
           )}
-          <Button
+          <Btn
             label={t('sel.review.submitVote')}
             onPress={submitVote}
             loading={loading}
@@ -116,7 +111,7 @@ export default function SelectionReview({ route }) {
           />
         </Card>
 
-        <Button
+        <Btn
           label={t('sel.review.proceedApproval')}
           onPress={() => nav.navigate('SelectionApprovalInbox', { campaignId, recommendationId })}
           icon="check"
