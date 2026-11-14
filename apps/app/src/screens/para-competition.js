@@ -89,7 +89,7 @@ export function ParaDesk({ id, setup }) {
         <ACard key={a.registration_id} style={{ gap: 6 }} accessibilityLabel={[a.athlete, word(a)].join(', ')}>
           <View style={{ flexDirection: 'row', justifyContent: 'space-between', gap: 8 }}><AT weight="800" style={{ flexShrink: 1 }}>{a.athlete}</AT><ATag label={a.bucket === 'provisional' ? t('pc.provisional') : t(`pc.bucket.${a.bucket}`)} /></View>
           <AT size={13} color={A.mute}>{[a.category, a.reason].filter(Boolean).join(' · ')}</AT>
-          {allow && a.bucket === 'pending' ? <ABtn small tone="ghost" title={t('pc.prov_grant')} onPress={() => setProv(a)} style={{ alignSelf: 'flex-start' }} /> : null}
+          {allow && a.bucket === 'pending' ? <ABtn small tone="ghost" title={t('pc.prov_grant')} accessibilityLabel={t('pc.prov_grant')} onPress={() => setProv(a)} style={{ alignSelf: 'flex-start' }} /> : null}
         </ACard>))}
       <FormSheet visible={check} onClose={() => setCheck(false)} title={t('pc.check_title')} submitLabel={t('pc.check_go')} initial={{}}
         fields={[

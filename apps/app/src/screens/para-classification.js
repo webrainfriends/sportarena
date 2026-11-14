@@ -7,7 +7,7 @@ import { api } from '../api';
 import { useLoad } from '../hooks';
 import { useLayout } from '../layout';
 import { useSession } from '../session';
-import { Btn, Card, Empty, ErrorBox, Field, Loading, Screen, Seg, Sheet, T, Tag } from '../ui';
+import { Btn, Card, Empty, ErrorBox, Field, Loading, Screen, Seg, Sheet, T, Tag, Wrap } from '../ui';
 import { FormSheet } from '../FormSheet';
 import { MenuField } from '../menu-field';
 import { Kpi } from './academy-ui';
@@ -49,12 +49,12 @@ function StageTrack({ status }) {
 }
 
 const Disclaimer = () => (
-  <View style={{ backgroundColor: c.cyanSoft, borderRadius: 14, padding: 12 }} accessible accessibilityRole="text">
+  <View style={{ backgroundColor: c.cyanSoft, borderRadius: 14, padding: 12, borderWidth: 1, borderColor: c.line }} accessible accessibilityRole="text">
     <T size={13} color={c.ink}>{t('para.disclaimer')}</T>
   </View>
 );
 
-const Row2 = ({ children }) => <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 12 }}>{children}</View>;
+const Row2 = ({ children }) => <Wrap gap={12}>{children}</Wrap>;
 const Block = ({ title, right, children }) => (
   <View style={{ gap: 10 }}>
     <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}><T size={18} weight="800" style={{ flexShrink: 1 }} accessibilityRole="header">{title}</T>{right}</View>
@@ -118,11 +118,11 @@ function CaseSheet({ id, onClose, reload }) {
             {x.history.map((h, i) => <T key={i} size={12} color={c.mute}>{when(h.created_at)} · {t(`para.action.${h.action}`)}{h.to_status ? ` → ${label('stage', h.to_status)}` : ''}</T>)}
           </Block>
           <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
-            {(v === 'staff' || v === 'panel') ? x.next.filter((n) => n !== 'closed' || v === 'staff').map((n) => <Btn key={n} small color={n === 'incomplete' ? c.paper : c.pink} ink={n === 'incomplete' ? c.red : '#fff'} title={label('stage', n)} onPress={() => setForm(n)} />) : null}
+            {(v === 'staff' || v === 'panel') ? x.next.filter((n) => n !== 'closed' || v === 'staff').map((n) => <Btn key={n} small color={n === 'incomplete' ? c.paper : c.pink} ink={n === 'incomplete' ? c.red : c.on} title={label('stage', n)} accessibilityLabel={label('stage', n)} onPress={() => setForm(n)} />) : null}
             {v === 'staff' ? <Btn small title={t('para.assign_panel')} onPress={() => setForm('panel')} /> : null}
             {v === 'panel' && x.status === 'panel_review' ? <Btn small title={t('para.record_decision')} onPress={() => setForm('decision')} /> : null}
-            {v === 'panel' && x.status === 'panel_review' && isLead ? <Btn small color={c.mint} ink={c.ink} title={t('para.issue')} onPress={() => run(() => api.post(`/para/cases/${id}/outcome`, {}), t('para.issued'))} /> : null}
-            {(v === 'athlete' || v === 'guardian') && ['submitted', 'evidence_review', 'assessment_scheduled', 'assessment_completed', 'panel_review'].includes(x.status) ? <Btn small color={c.paper} ink={c.red} title={t('para.withdraw')} onPress={() => run(() => api.post(`/para/cases/${id}/withdraw`, {}), t('para.withdrawn'))} /> : null}
+            {v === 'panel' && x.status === 'panel_review' && isLead ? <Btn small color={c.mint} ink={c.inkOn} title={t('para.issue')} accessibilityLabel={t('para.issue')} onPress={() => run(() => api.post(`/para/cases/${id}/outcome`, {}), t('para.issued'))} /> : null}
+            {(v === 'athlete' || v === 'guardian') && ['submitted', 'evidence_review', 'assessment_scheduled', 'assessment_completed', 'panel_review'].includes(x.status) ? <Btn small color={c.paper} ink={c.red} title={t('para.withdraw')} accessibilityLabel={t('para.withdraw')} onPress={() => run(() => api.post(`/para/cases/${id}/withdraw`, {}), t('para.withdrawn'))} /> : null}
           </View>
           <FormSheet visible={form === 'evidence'} onClose={() => setForm(null)} title={t('para.add_evidence')} notice={t('para.evidence_notice')}
             fields={[{ key: 'label', label: t('para.f_label'), type: 'text' }, { key: 'reference', label: t('para.f_reference'), type: 'url', optional: true }, { key: 'files', label: t('para.f_file'), type: 'files', max: 1, optional: true }]}
@@ -142,7 +142,7 @@ function CaseSheet({ id, onClose, reload }) {
             initial={{ role: 'member' }}
             onSubmit={async (val) => { await api.post(`/para/cases/${id}/panel`, { members: [{ classifier_id: [].concat(val.classifier)[0], role: val.role }] }); toast(t('para.assigned')); await d.reload(); }} />
           {['evidence_review', 'assessment_completed', 'panel_review'].includes(form) ? (
-            <Btn title={label('stage', form)} onPress={async () => { await run(() => api.post(`/para/cases/${id}/advance`, { to: form }), t('para.updated')); setForm(null); }} />
+            <Btn title={label('stage', form)} accessibilityLabel={label('stage', form)} onPress={async () => { await run(() => api.post(`/para/cases/${id}/advance`, { to: form }), t('para.updated')); setForm(null); }} />
           ) : null}
         </View>
       )}
@@ -157,7 +157,7 @@ function Steps({ current, total }) {
       {Array.from({ length: total }, (_, i) => (
         <React.Fragment key={i}>
           <View style={{ width: 28, height: 28, borderRadius: 14, alignItems: 'center', justifyContent: 'center', backgroundColor: i < current ? c.pink : i === current ? c.pink : c.violetSoft, ...(i === current ? { shadowColor: c.pink, shadowOpacity: 0.35, shadowRadius: 6, shadowOffset: { width: 0, height: 0 }, elevation: 4 } : {}) }}>
-            <T size={12} weight="900" color={i <= current ? '#fff' : c.mute}>{i < current ? '✓' : i + 1}</T>
+            <T size={12} weight="900" color={i <= current ? c.on : c.mute}>{i < current ? '✓' : i + 1}</T>
           </View>
           {i < total - 1 ? <View style={{ flex: 1, height: 2, backgroundColor: i < current ? c.pink : c.line }} /> : null}
         </React.Fragment>
@@ -274,7 +274,7 @@ function StartClassificationSheet({ visible, onClose, published, coverage, athle
               );
             })}
           </ScrollView>
-          <Btn title={t('para.next')} disabled={!selectedSportId} onPress={() => {
+          <Btn title={t('para.next')} accessibilityLabel={t('para.next_step_a11y', { n: 2 })} disabled={!selectedSportId} onPress={() => {
             const vers = sportMap.find((s) => s.sport_id === selectedSportId)?.versions ?? [];
             if (vers.length === 1) setSelectedVersion(vers[0]);
             setStep(1);
@@ -322,7 +322,7 @@ function StartClassificationSheet({ visible, onClose, published, coverage, athle
             <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
               {['initial', 'review', 'reassessment', 'international'].map((k) => (
                 <Pressable key={k} onPress={() => setContext(k)} accessibilityRole="radio" accessibilityChecked={context === k}
-                  style={{ paddingVertical: 8, paddingHorizontal: 14, borderRadius: 12, borderWidth: 1.5, borderColor: context === k ? c.pink : c.line, backgroundColor: context === k ? c.pinkSoft : c.paper }}>
+                  style={{ paddingVertical: 12, paddingHorizontal: 14, minHeight: 44, borderRadius: 12, borderWidth: 1.5, borderColor: context === k ? c.pink : c.line, backgroundColor: context === k ? c.pinkSoft : c.paper, justifyContent: 'center' }}>
                   <T size={13} weight="700" color={context === k ? c.pink : c.ink}>{label('context', k)}</T>
                 </Pressable>
               ))}
@@ -333,9 +333,9 @@ function StartClassificationSheet({ visible, onClose, published, coverage, athle
           <Field label={t('para.f_note')} value={note} onChangeText={setNote} multiline hint={t('para.f_note_hint')} />
 
           <View style={{ flexDirection: 'row', gap: 8 }}>
-            <Btn small color={c.paper} ink={c.ink} title={t('common.back')} onPress={() => setStep(0)} style={{ flex: 1 }} />
+            <Btn small color={c.paper} ink={c.ink} title={t('common.back')} accessibilityLabel={t('para.back_to_sport')} onPress={() => setStep(0)} style={{ flex: 1 }} />
             <View style={{ flex: 2 }}>
-              <Btn title={t('para.next')} disabled={versionOptions.length > 1 && !selectedVersion} onPress={() => { if (versionOptions.length === 1) setSelectedVersion(versionOptions[0]); setStep(2); }} />
+              <Btn title={t('para.next')} accessibilityLabel={t('para.next_step_a11y', { n: 3 })} disabled={versionOptions.length > 1 && !selectedVersion} onPress={() => { if (versionOptions.length === 1) setSelectedVersion(versionOptions[0]); setStep(2); }} />
             </View>
           </View>
         </View>
@@ -383,9 +383,9 @@ function StartClassificationSheet({ visible, onClose, published, coverage, athle
           </View>
 
           <View style={{ flexDirection: 'row', gap: 8 }}>
-            <Btn small color={c.paper} ink={c.ink} title={t('common.back')} onPress={() => setStep(1)} style={{ flex: 1 }} />
+            <Btn small color={c.paper} ink={c.ink} title={t('common.back')} accessibilityLabel={t('para.back_to_authority')} onPress={() => setStep(1)} style={{ flex: 1 }} />
             <View style={{ flex: 2 }}>
-              <Btn title={submitting ? t('common.loading') : t('para.submit_case')} disabled={submitting} onPress={submit} />
+              <Btn title={submitting ? t('common.loading') : t('para.submit_case')} accessibilityLabel={t('para.submit_case')} disabled={submitting} onPress={submit} />
             </View>
           </View>
         </View>
@@ -494,7 +494,7 @@ function Mine({ athleteId, wards, onWard }) {
       {hasActions ? (
         <Block title={t('para.next_steps')}>
           {x.pending_actions.map((a, i) => (
-            <Card key={i} pad={14} style={{ borderLeftWidth: 4, borderLeftColor: a.kind === 'review_due' ? c.red : c.orange }}>
+            <Card key={i} pad={14} style={{ borderStartWidth: 4, borderStartColor: a.kind === 'review_due' ? c.red : c.orange }}>
               <T size={14} weight="800">
                 {a.kind === 'appointment' ? t('para.appointment', { at: when(a.at) }) : a.kind === 'review_due' ? t('para.review_by', { date: a.by }) : a.label ? t('para.evidence_may_be_asked') : ''}
               </T>
@@ -504,7 +504,7 @@ function Mine({ athleteId, wards, onWard }) {
       ) : null}
 
       {/* Current classifications — rich cards */}
-      <Block title={t('para.current')} right={<Btn small title={t('para.start')} onPress={() => setStartVisible(true)} />}>
+      <Block title={t('para.current')} right={<Btn small title={t('para.start')} accessibilityLabel={t('para.start_classification_a11y')} onPress={() => setStartVisible(true)} />}>
         {x.outcomes.length ? (
           <View style={{ gap: 10, flexDirection: tablet ? 'row' : 'column', flexWrap: 'wrap' }}>
             {x.outcomes.map((o) => (
@@ -615,7 +615,7 @@ function Desk({ desk }) {
         {cases.data?.cases?.length ? cases.data.cases.map((k) => {
           const needsDecision = k.status === 'panel_review' && k.panel_decided < k.panel_assigned;
           return (
-            <Card key={k.id} pad={16} onPress={() => setCaseId(k.id)} style={{ gap: 10, borderLeftWidth: needsDecision ? 4 : 0, borderLeftColor: c.pink }} accessibilityLabel={join(k.sport, label('stage', k.status))}>
+            <Card key={k.id} pad={16} onPress={() => setCaseId(k.id)} style={{ gap: 10, borderStartWidth: needsDecision ? 4 : 0, borderStartColor: c.pink }} accessibilityLabel={join(k.sport, label('stage', k.status))}>
               <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8, flexWrap: 'wrap' }}>
                 <View style={{ flexShrink: 1 }}>
                   <T weight="800" size={14}>{k.athlete}</T>
@@ -700,11 +700,11 @@ function Authority({ desk }) {
             <T size={13}>{v.classes.map((k) => k.code).join(' · ')}</T>
             {v.publisher || v.source_url ? <T size={12} color={c.mute}>{[v.publisher, v.source_url].filter(Boolean).join(' · ')}</T> : null}
             <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
-              {v.status === 'draft' && v.approval_status === 'draft' && v.source_url ? <Btn small color={c.cyan} title={t('ps.act_submit')} onPress={() => run(() => api.post(`/para/class-versions/${v.id}/submit`, {}), t('ps.submitted'))} /> : null}
-              {v.status === 'draft' && v.approval_status === 'submitted' ? <Btn small color={c.paper} ink={c.red} title={t('ps.act_reject')} onPress={() => setForm({ reject: v })} /> : null}
-              {v.status === 'draft' && v.approval_status !== 'rejected' && (!v.source_url || v.approval_status === 'submitted') ? <Btn small title={t('para.publish')} onPress={() => run(() => api.post(`/para/class-versions/${v.id}/publish`, {}), t('para.published'))} /> : null}
-              {v.status === 'published' ? <Btn small color={c.paper} ink={c.red} title={t('ps.act_deprecate')} onPress={() => setForm({ deprecate: v })} /> : null}
-              {v.status === 'retired' ? <Btn small color={c.paper} ink={c.ink} title={t('ps.act_rollback')} onPress={() => setForm({ rollback: v })} /> : null}
+              {v.status === 'draft' && v.approval_status === 'draft' && v.source_url ? <Btn small color={c.cyan} title={t('ps.act_submit')} accessibilityLabel={t('ps.act_submit')} onPress={() => run(() => api.post(`/para/class-versions/${v.id}/submit`, {}), t('ps.submitted'))} /> : null}
+              {v.status === 'draft' && v.approval_status === 'submitted' ? <Btn small color={c.paper} ink={c.red} title={t('ps.act_reject')} accessibilityLabel={t('ps.act_reject')} onPress={() => setForm({ reject: v })} /> : null}
+              {v.status === 'draft' && v.approval_status !== 'rejected' && (!v.source_url || v.approval_status === 'submitted') ? <Btn small title={t('para.publish')} accessibilityLabel={t('para.publish')} onPress={() => run(() => api.post(`/para/class-versions/${v.id}/publish`, {}), t('para.published'))} /> : null}
+              {v.status === 'published' ? <Btn small color={c.paper} ink={c.red} title={t('ps.act_deprecate')} accessibilityLabel={t('ps.act_deprecate')} onPress={() => setForm({ deprecate: v })} /> : null}
+              {v.status === 'retired' ? <Btn small color={c.paper} ink={c.ink} title={t('ps.act_rollback')} accessibilityLabel={t('ps.act_rollback')} onPress={() => setForm({ rollback: v })} /> : null}
             </View>
           </Card>
         )) : <Empty emoji="📘" title={t('para.no_definitions')} sub={t('para.no_definitions_sub')} />}
