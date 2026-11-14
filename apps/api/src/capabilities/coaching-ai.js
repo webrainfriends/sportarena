@@ -16,7 +16,7 @@ import { authorise, series } from './coaching-goals.js';
 const TAG = 'Coaching copilot';
 const COACH = ['coach'];
 const day = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
-const TASKS = ['plan_session', 'player_focus', 'summarise_session', 'player_progress', 'team_patterns', 'suggest_actions', 'match_debrief', 'ask', 'compare_metrics', 'para_insight'];
+const TASKS = ['plan_session', 'player_focus', 'summarise_session', 'player_progress', 'team_patterns', 'suggest_actions', 'match_debrief', 'ask', 'compare_metrics', 'para_insight', 'sport_intelligence'];
 const letters = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
 const MEDICAL = /\b(diagnos\w*|prescrib\w*|medicat\w*|dosage|injur\w*|rehab\w*|treatment|return[- ]to[- ]play|cleared (to|for) (play|train)|fit to play)\b/i;
 const clip = (s, n) => String(s ?? '').slice(0, n);
@@ -41,6 +41,7 @@ const TASK_BRIEF = {
   ask: 'Answer the coach\'s question using only the records in the data. If the records do not answer it, say so.',
   compare_metrics: 'Explain how each selected metric changed from the previous period to the current one, one item per metric, citing its ref (M1, M2 …). Do not combine metrics into a single score, do not compare metrics with different units, and say plainly when a period has too little data. Subjective coach scores, athlete-reported numbers and official counts must stay distinct.',
   para_insight: 'Describe measurable metric trends for this para-sport athlete using only the numeric data provided. You MUST NOT infer, suggest, reference or imply: physical impairment, medical diagnosis, disability category, competition classification status, eligibility determination, or any clinical assessment. Cite only source refs provided. Use insight_type: trend (consistent direction), plateau (no meaningful change), milestone (new best), regression (decline), or training_recommendation (suggested focus area). Set insufficient_data:true and return nothing else if fewer than 3 data points exist.',
+  sport_intelligence: 'Produce sport-specific performance insights from the computed analytics data provided. You MUST only describe metrics that are explicitly present in the analytics_data payload — you cannot invent, estimate, or extrapolate any statistic not present. For each insight cite exactly which metrics you used in cited_metrics[] (using the metric key names as given). Keep all numbers from the data verbatim — do not round differently or convert units. Separate insights by evidence track (official vs self-reported). Identify strengths (top-performing metrics relative to the period mean or personal best), development areas (metrics below personal best or insufficient sample), and form trend (improving / declining / stable) where sample_size >= 5. Never produce medical commentary. If analytics_data is empty or all metrics are marked insufficient, set insufficient_data:true.',
 };
 
 /** Read what the model may see. Permission is checked before any record is queried, and only the coach's own records are read. */
@@ -208,13 +209,31 @@ cap({
     metric_keys: z.array(z.string().max(120)).max(6).optional().describe('compare_metrics: the metrics to explain, for example attendance_rate, measurement:Sprint, official:event:goal'),
     include_private_summaries: z.boolean().default(false).describe('also share your private session summaries with the AI (private-copy drafts only)'),
     audience: z.enum(['coach_private', 'athlete', 'guardian', 'team_staff']).default('coach_private').describe('who the result is meant for; anything other than coach_private restricts the evidence to notes, goals and actions already shared with that audience, so the draft can go into a report for them'), question: z.string().max(400).optional(),
+    sport_slug: z.string().min(1).max(60).optional().describe('sport_intelligence: sport slug (e.g. cricket, football, tennis) whose adapter data to cite in the insights'),
+    sport_evidence: z.enum(['approved_competition', 'self_reported', 'combined']).optional().describe('sport_intelligence: which evidence track to draw analytics from'),
   }),
   async handler({ user }, i) {
     if (i.task === 'ask' && !i.question) throw badRequest('Ask a question');
     if (i.task === 'compare_metrics' && (!i.athlete_id || !i.metric_keys?.length)) throw badRequest('Choose an athlete and the metrics to compare');
     if (i.task === 'summarise_session' && !i.session_record_id) throw badRequest('session_record_id is required to summarise a session');
     if (i.task === 'plan_session' && !i.session_record_id) throw badRequest('Open the session record you are planning (session_record_id)');
+    if (i.task === 'sport_intelligence' && (!i.athlete_id || !i.sport_slug)) throw badRequest('sport_intelligence requires athlete_id and sport_slug');
     const g = await gather(user, i);
+    if (i.task === 'sport_intelligence') {
+      // Gather sport-native analytics from the sport adapter and attach as anonymous numeric data (no PII)
+      try {
+        const { many: manyDb, pool: dbPool } = await import('../db.js');
+        const sportRow = (await dbPool.query('SELECT id, slug, name FROM sports WHERE slug=$1 AND archived_at IS NULL LIMIT 1', [i.sport_slug])).rows[0];
+        if (sportRow) {
+          const { compute, CALC_VERSION } = await import(`../sport-adapters/${['cricket','football','tennis','squash','badminton','table-tennis','padel','pickleball','racquetball'].includes(sportRow.slug) ? sportRow.slug === 'cricket' ? 'cricket' : ['football','soccer','futsal','five-a-side','seven-a-side','beach-soccer'].includes(sportRow.slug) ? 'football' : ['tennis','squash','badminton','table-tennis','padel','pickleball','racquetball'].includes(sportRow.slug) ? 'racket' : 'generic' : ['athletics','swimming','cycling','rowing','triathlon','duathlon','running','track-and-field','cross-country','road-cycling','open-water-swimming'].includes(sportRow.slug) ? 'athletics' : 'generic'}.js`);
+          const analyticsData = await compute(dbPool, i.athlete_id, { sportId: sportRow.id, evidence: i.sport_evidence ?? 'approved_competition', from: i.from ?? null, to: i.to ?? null });
+          g.facts.analytics_data = analyticsData;
+          g.facts.sport_slug = sportRow.slug;
+          g.facts.sport_name = sportRow.name;
+          g.refs.push({ ref: 'SPI1', type: 'sport_analytics', id: sportRow.slug, at: null, label: `${sportRow.name} analytics (${i.sport_evidence ?? 'approved_competition'})` });
+        }
+      } catch (e) { g.limitations.push(`Sport analytics unavailable: ${e.message}`); }
+    }
     // the coach's own stated approach (their profile) keeps drafts consistent with how they coach; it holds no player data
     const approach = await one('SELECT philosophy, coaching_styles FROM coach_profiles WHERE user_id=$1', [user.id]);
     if (approach?.philosophy || approach?.coaching_styles?.length) g.facts.coach_approach = { philosophy: approach.philosophy ? quoteData(approach.philosophy, 600) : undefined, styles: approach.coaching_styles };
@@ -226,8 +245,9 @@ cap({
       const hit = await one("SELECT id, output FROM ai_outputs WHERE kind='coaching_assist' AND subject_id=$1 AND input_hash=$2", [user.id, hash]);
       if (hit) { out = hit.output; aiOutputId = hit.id; model = aiModel(); } else {
         await audit(null, user.id, 'ai_coaching_assist', 'coaching_draft', null);
+        const sportIntelligenceExtra = i.task === 'sport_intelligence' ? ' IMPORTANT: For sport_intelligence you MUST include a cited_metrics array in each item listing the exact metric keys from analytics_data that the item is based on. Never invent a metric value. If analytics_data is absent or empty, set insufficient_data:true in the item detail.' : '';
         const aiResult = await askJsonDetailed({
-          system: `You are a careful assistant to a sports coach. ${TASK_BRIEF[i.task]} Players appear only as labels such as "Player A"; keep using the labels. Cite the source refs (e.g. O1, G2) that support each item. Separate what the coach observed (basis "observed", needs a source ref) from your own suggestion (basis "suggestion"). Never diagnose, never mention injuries or treatment, never clear anyone to play, and never rank or compare players. Where facts.coach_approach is present it is the coach's own stated philosophy; keep suggestions consistent with it, but never treat it as evidence about a player. Keep it short and practical. ${AI_RULES}`,
+          system: `You are a careful assistant to a sports coach. ${TASK_BRIEF[i.task]}${sportIntelligenceExtra} Players appear only as labels such as "Player A"; keep using the labels. Cite the source refs (e.g. O1, G2, SPI1) that support each item. Separate what the coach observed (basis "observed", needs a source ref) from your own suggestion (basis "suggestion"). Never diagnose, never mention injuries or treatment, never clear anyone to play, and never rank or compare players. Where facts.coach_approach is present it is the coach's own stated philosophy; keep suggestions consistent with it, but never treat it as evidence about a player. Keep it short and practical. ${AI_RULES}`,
           user: `<data>${JSON.stringify(payload)}</data>`, schema: outSchema, shape: SHAPE, maxTokens: 1400,
         });
         out = aiResult?.data ?? null;
