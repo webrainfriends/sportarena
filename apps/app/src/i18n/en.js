@@ -22797,5 +22797,5 @@ export default {
   'fin.rec.method.bank_transfer': 'Bank transfer',
   'fin.rec.method.cheque': 'Cheque',
   'fin.rec.method.upi': 'UPI',
-  'fin.rec.method.other': 'Other',};
+  'fin.rec.method.other': 'Other',
 };
