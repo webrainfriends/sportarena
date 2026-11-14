@@ -9,6 +9,7 @@ import { Btn, Card, Chip, Empty, H1, Loading, Screen, Section, Seg, T, Tag } fro
 import { FormSheet } from '../FormSheet';
 import { BudgetWizard } from './budget-wizard';
 import { BudgetCoverage, BudgetTrace, LinkProgramsSheet } from './budget-trace';
+import { BudgetForecastSection } from './budget-forecast';
 import { DocumentsSheet } from './insurance';
 import { c } from '../theme';
 import { asSponsorRole } from '../sponsor-roles';
@@ -65,6 +66,12 @@ const editFields = [
   { key: 'authorized_cents', label: 'Authorized amount', type: 'money', currency: (v) => v.currency ?? 'USD' },
   { key: 'approval_over_cents', label: 'Second approver needed above', type: 'money', currency: (v) => v.currency ?? 'USD', optional: true, hint: 'Offers and awards larger than this wait for another person to approve. Leave empty for none.' },
   { key: 'fx_policy', label: 'Other currencies', type: 'chips', options: [{ value: 'none', label: 'Not allowed' }, { value: 'explicit', label: 'Only at a sourced rate' }], default: 'none', hint: 'Different currencies are never added together unless you record a rate with its source.' },
+  { key: 'cost_centre', label: 'Cost centre', type: 'chips', optional: true, options: [{ value: 'coaching', label: 'Coaching' }, { value: 'medical', label: 'Medical' }, { value: 'facilities', label: 'Facilities' }, { value: 'travel', label: 'Travel' }, { value: 'equipment', label: 'Equipment' }, { value: 'scouting', label: 'Scouting' }, { value: 'marketing', label: 'Marketing' }, { value: 'admin', label: 'Admin' }, { value: 'it', label: 'IT' }, { value: 'legal', label: 'Legal' }, { value: 'other', label: 'Other' }] },
+  { key: 'capex_cents', label: 'Capital expenditure (CapEx)', type: 'money', currency: (v) => v.currency ?? 'USD', optional: true, hint: 'The CapEx portion of this budget. Leave empty for all-OpEx.' },
+  { key: 'grant_restricted', label: 'Restricted grant', type: 'switch', optional: true, hint: 'Turn on when this budget is funded by a grant with restricted spend rules.' },
+  { key: 'grant_source', label: 'Grant source / programme', optional: true, hint: 'The funding body or programme name. Required when "Restricted grant" is on.' },
+  { key: 'vat_exclusive', label: 'VAT exclusive (net amounts)', type: 'switch', optional: true, hint: 'When on, amounts entered are net of VAT; finance reports will show the gross.' },
+  { key: 'alert_at_pcts', label: 'Spend alert thresholds', type: 'chips', optional: true, multiselect: true, options: [70, 80, 90, 100, 110].map((p) => ({ value: p, label: `${p}%` })), hint: 'You are notified when utilisation crosses these percentages.' },
 ];
 
 /** Brand staff: the budgets of the brands I can see. */
@@ -97,7 +104,14 @@ export function SponsorBudgets() {
             <Card key={b.id} onPress={() => push('SponsorBudget', { id: b.id })} accessibilityLabel={`${b.name}, ${KIND[b.kind]} budget, ${fmt(b.available_cents, b.currency)} available of ${fmt(b.authorized_cents, b.currency)}. Open budget`}>
               <View style={{ flexDirection: 'row', gap: 8, alignItems: 'center' }}>
                 <T weight="900" style={{ flex: 1 }}>{b.name}</T>
+                {b.locked_at ? <T accessibilityLabel="Locked">🔒</T> : null}
+                {b.pending_alerts > 0 ? <T accessibilityLabel={`${b.pending_alerts} alerts`}>🔔</T> : null}
                 <Tag label={KIND[b.kind] + (b.fiscal_year ? ` ${b.fiscal_year}` : '')} color={KIND_TONE[b.kind]} />
+              </View>
+              <View style={{ flexDirection: 'row', gap: 6, flexWrap: 'wrap', marginBottom: 2 }}>
+                {b.cost_centre ? <Tag label={COST_CENTRE_LABEL[b.cost_centre] ?? b.cost_centre} color={c.violetSoft} /> : null}
+                {b.grant_restricted ? <Tag label="Grant" color={c.limeSoft} /> : null}
+                {b.capex_cents > 0 ? <Tag label="CapEx" color={c.sunSoft} /> : null}
               </View>
               <T size={12} color={c.mute}>{b.code} · {b.parent_id && byId[b.parent_id] ? `Part of ${byId[b.parent_id].name} · ` : ''}{b.fx_policy === 'explicit' ? 'Other currencies at a sourced rate' : `${b.currency} only`}{b.approval_over_cents != null ? ` · approval above ${fmt(b.approval_over_cents, b.currency)}` : ''}</T>
               <BudgetBar b={b} />
@@ -117,6 +131,7 @@ export function SponsorBudgets() {
 }
 
 const REF_KIND = { approval: 'Approval', board_minutes: 'Board minutes', forecast: 'Forecast', purchase_order: 'Purchase order', contract: 'Contract', policy: 'Policy', other: 'Other' };
+const COST_CENTRE_LABEL = { coaching: 'Coaching', medical: 'Medical', facilities: 'Facilities', travel: 'Travel', equipment: 'Equipment', scouting: 'Scouting', marketing: 'Marketing', admin: 'Admin', it: 'IT', legal: 'Legal', other: 'Other' };
 /** One budget: balances, commitments, children, linked programs and sourced FX rates. */
 export function SponsorBudget({ id }) {
   const { toast } = useSession();
@@ -169,12 +184,57 @@ export function SponsorBudget({ id }) {
         ) : b.can.includes('export') ? <Btn small title="Export (CSV)" color={c.paper} ink={c.ink} style={{ alignSelf: 'flex-start', marginTop: 10 }} onPress={download} /> : <T size={12} color={c.mute} style={{ marginTop: 8 }}>Your role can read this budget; managers and finance change it.</T>}
       </Card>
 
+      {b.locked_at ? (
+        <Banner tone={c.sunSoft} action={may && active ? 'Unlock' : undefined} onAction={() => act(() => api.del(`/sponsorship-budgets/${b.id}/lock`), 'Period lock removed')}>
+          🔒 Period locked by {b.locked_by_name ?? 'finance'} on {stamp(b.locked_at)}.{b.lock_reason ? ` Reason: ${b.lock_reason}` : ''} Reservations and new commitments are blocked while locked.
+        </Banner>
+      ) : (may && active ? (
+        <Banner tone={c.violetSoft} action="Lock period" onAction={() => setForm('lock')}>
+          Lock this period to prevent new reservations and commitments. Useful when closing out a fiscal period.
+        </Banner>
+      ) : null)}
+
+      {(b.cost_centre || b.capex_cents > 0 || b.grant_restricted || b.vat_exclusive) ? (
+        <Section title="Classification" color={c.sun}>
+          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+            {b.cost_centre ? <View><T size={11} color={c.mute} weight="700">COST CENTRE</T><Tag label={COST_CENTRE_LABEL[b.cost_centre] ?? b.cost_centre} color={c.violetSoft} /></View> : null}
+            {b.capex_cents > 0 ? <View><T size={11} color={c.mute} weight="700">CAPEX</T><T weight="800">{fmt(b.capex_cents, b.currency)}</T><T size={12} color={c.mute}>OpEx {fmt(b.authorized_cents - b.capex_cents, b.currency)}</T></View> : null}
+            {b.grant_restricted ? <View><T size={11} color={c.mute} weight="700">GRANT</T><Tag label={b.grant_source ?? 'Restricted'} color={c.limeSoft} /></View> : null}
+            {b.vat_exclusive ? <View><T size={11} color={c.mute} weight="700">VAT</T><Tag label="Exclusive (net)" color={c.sunSoft} /></View> : null}
+          </View>
+        </Section>
+      ) : null}
+
+      {b.alert_at_pcts?.length ? (
+        <Section title="Spend alerts" color={c.sun}>
+          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, alignItems: 'center' }}>
+            <T size={12} color={c.mute}>Thresholds:</T>
+            {b.alert_at_pcts.map((p) => <Tag key={p} label={`${p}%`} color={c.sunSoft} />)}
+          </View>
+          {(b.alert_events ?? []).filter(a => !a.dismissed_at).map((a) => (
+            <Card key={a.id} pad={12}>
+              <View style={{ flexDirection: 'row', gap: 8, alignItems: 'center' }}>
+                <T size={18}>🔔</T>
+                <View style={{ flex: 1 }}>
+                  <T weight="800">Utilisation reached {a.threshold_pct}%</T>
+                  <T size={12} color={c.mute}>Actual: {a.utilisation_pct}% · {stamp(a.triggered_at)}</T>
+                </View>
+                {may ? <Btn small title="Dismiss" color={c.paper} ink={c.ink} onPress={() => act(() => api.post(`/sponsorship-budgets/${b.id}/alerts/${a.id}/dismiss`), 'Alert dismissed')} accessibilityLabel={`Dismiss alert at ${a.threshold_pct}%`} /> : null}
+              </View>
+            </Card>
+          ))}
+          {!(b.alert_events ?? []).filter(a => !a.dismissed_at).length ? <T size={13} color={c.mute}>No pending alerts — you will be notified when utilisation crosses a threshold.</T> : null}
+        </Section>
+      ) : null}
+
       {b.notes || b.basis ? (
         <Section title="Why this amount" color={c.violet}>
           {b.notes ? <T size={13}>{b.notes}</T> : null}
           {b.basis ? <Card onPress={() => push('SponsorBudget', { id: b.basis.id })} accessibilityLabel={`Built on ${b.basis.name}. Open budget`}><T size={12} color={c.mute}>Built on an earlier budget</T><T weight="900">{b.basis.name}{b.basis.fiscal_year ? ` · ${b.basis.fiscal_year}` : ''}</T></Card> : null}
         </Section>
       ) : null}
+
+      <BudgetForecastSection budget={b} may={may && active} tick={tick} />
 
       <Section title="References and documents" color={c.cyan} action={may && active ? '+ Reference' : undefined} onAction={() => setForm('ref')}>
         <T size={12} color={c.mute}>Where the authority for this budget is recorded. Files are encrypted and open only to the people who can see this budget; removing a reference or file only hides it.</T>
@@ -235,7 +295,10 @@ export function SponsorBudget({ id }) {
 
       <FormSheet visible={form === 'edit'} onClose={() => setForm(null)} title="Edit budget" fields={editFields}
         initial={{ ...b }}
-        onSubmit={async (v) => { await api.patch(`/sponsorship-budgets/${b.id}`, { version: b.row_version, name: v.name, notes: v.notes ?? null, authorized_cents: v.authorized_cents, approval_over_cents: v.approval_over_cents ?? null, fx_policy: v.fx_policy }); reloadAll(); return 'Budget saved'; }} />
+        onSubmit={async (v) => { await api.patch(`/sponsorship-budgets/${b.id}`, { version: b.row_version, name: v.name, notes: v.notes ?? null, authorized_cents: v.authorized_cents, approval_over_cents: v.approval_over_cents ?? null, fx_policy: v.fx_policy, cost_centre: v.cost_centre ?? null, capex_cents: v.capex_cents ? Number(v.capex_cents) : null, grant_restricted: !!v.grant_restricted, grant_source: v.grant_source ?? null, vat_exclusive: !!v.vat_exclusive, alert_at_pcts: v.alert_at_pcts ?? [] }); reloadAll(); return 'Budget saved'; }} />
+      <FormSheet visible={form === 'lock'} onClose={() => setForm(null)} title="Lock this period" submitLabel="Lock"
+        fields={[{ key: 'lock_reason', label: 'Reason (optional)', optional: true, type: 'multiline', hint: 'Why this period is being locked. Shown to the team.' }]}
+        onSubmit={async (v) => { await api.post(`/sponsorship-budgets/${b.id}/lock`, { reason: v.lock_reason ?? '' }); reloadAll(); return 'Period locked'; }} />
       <LinkProgramsSheet visible={form === 'programs'} onClose={() => setForm(null)} budget={b} linkedIds={b.programs.map((x) => x.id)} onDone={reloadAll} />
       <FormSheet visible={form === 'ref'} onClose={() => setForm(null)} title="Add a reference" submitLabel="Add reference"
         fields={[

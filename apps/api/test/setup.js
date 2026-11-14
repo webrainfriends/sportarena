@@ -12,7 +12,7 @@ async function chunkedReset(pool, rest) {
   const client = await pool.connect();
   try {
     const { rows } = await client.query("SELECT quote_ident(tablename) AS t FROM pg_tables WHERE schemaname = 'public' ORDER BY tablename DESC");
-    for (let i = 0; i < rows.length; i += 60) await client.query(`DROP TABLE IF EXISTS ${rows.slice(i, i + 60).map((r) => `public.${r.t}`).join(', ')} CASCADE`);
+    for (let i = 0; i < rows.length; i += 10) await client.query(`DROP TABLE IF EXISTS ${rows.slice(i, i + 10).map((r) => `public.${r.t}`).join(', ')} CASCADE`);
     await client.query('DROP SCHEMA public CASCADE; CREATE SCHEMA public');
     if (rest.trim()) await client.query(rest);
     return { rows: [], rowCount: null };

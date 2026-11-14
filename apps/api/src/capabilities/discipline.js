@@ -274,7 +274,7 @@ cap({
 cap({
   name: 'file_appeal', method: 'POST', path: '/governance/cases/:id/appeal', tag: TAG, status: 201,
   summary: 'Appeal a decided case within the policy\'s appeal window. The person concerned, their verified guardian or their team\'s manager may appeal. If the policy stays sanctions pending appeal, blocking sanctions stop blocking until the appeal is decided. One appeal per decision.',
-  input: z.object({ id, grounds: z.string().trim().min(10).max(2000) }),
+  input: z.object({ id, grounds: z.string().trim().min(10).max(2000), links: z.array(z.object({ entity_type: z.string().trim().max(50), entity_id: id })).max(10).default([]) }),
   handler: ({ user }, i) => tx(async (c) => {
     const k = await lockCase(c, i.id); await mustSee(c, user, k);
     if (k.status !== 'decided') throw conflict(`Only a decided case can be appealed (this one is ${k.status})`, { code: 'not_decided' });
@@ -292,7 +292,8 @@ cap({
     const r = (await c.query("UPDATE gov_cases SET status='appealed', stay=$2, row_version=row_version+1, updated_at=now() WHERE id=$1 RETURNING *", [k.id, stay])).rows[0];
     if (stay) await c.query("UPDATE disc_sanctions SET status='stayed' WHERE case_id=$1 AND status='active' AND superseded_at IS NULL", [k.id]);
     await log(c, r, 'appeal_filed', user.id, { from: 'decided', to: 'appealed', detail: { appeal_id: a.id, stay } });
-    await log(c, a, 'opened', user.id, { to: 'received', detail: { appeal_of: k.id } });
+    for (const lk of i.links) await c.query('INSERT INTO gov_case_links(case_id,entity_type,entity_id,created_by) VALUES ($1,$2,$3,$4)', [a.id, lk.entity_type, lk.entity_id, user.id]);
+    await log(c, a, 'opened', user.id, { to: 'received', detail: { appeal_of: k.id, links: i.links.length } });
     await audit(c, user.id, 'governance.appeal_file', 'gov_case', a.id);
     return present(c, user, a, await ctxOf(c, user, a));
   }),
@@ -441,6 +442,46 @@ cap({
     }
     return { items };
   },
+});
+
+cap({
+  name: 'assign_case', method: 'POST', path: '/governance/cases/:id/assign', tag: TAG,
+  summary: 'Assign a governance case to a staff member and optionally schedule a hearing date/time. Moves the case to under_review if it was at received or interim. Only competition staff may assign.',
+  input: z.object({ id, assignee_id: id, hearing_at: z.string().datetime({ offset: true }).optional() }),
+  handler: ({ user }, i) => tx(async (c) => {
+    const k = await lockCase(c, i.id); const x = await mustSee(c, user, k);
+    if (!x.staff) throw forbidden('Only competition staff may assign a case');
+    if (!['received', 'under_review', 'interim'].includes(k.status)) throw conflict(`A ${k.status} case cannot be assigned`, { code: 'bad_transition' });
+    const assignee = (await c.query('SELECT id FROM users WHERE id=$1', [i.assignee_id])).rows[0];
+    if (!assignee) throw notFound('Assignee');
+    const toStatus = k.status === 'received' ? 'under_review' : k.status;
+    const r = (await c.query(
+      'UPDATE gov_cases SET assigned_to=$2, hearing_at=$3, status=$4, row_version=row_version+1, updated_at=now() WHERE id=$1 RETURNING *',
+      [k.id, i.assignee_id, i.hearing_at ?? null, toStatus])).rows[0];
+    await log(c, r, 'assigned', user.id, { from: k.status, to: toStatus, detail: { assignee_id: i.assignee_id, hearing_at: i.hearing_at ?? null } });
+    await audit(c, user.id, 'governance.case_assign', 'gov_case', k.id);
+    await notify(c, i.assignee_id, { kind: 'discipline_assign', title: 'A discipline case has been assigned to you', body: 'Open Discipline Cases to review it.', data: { case_id: k.id } });
+    return present(c, user, r, x);
+  }),
+});
+
+cap({
+  name: 'add_case_evidence', method: 'POST', path: '/governance/cases/:id/evidence', tag: TAG, status: 201,
+  summary: 'Attach a link to a canonical record (official report, match event, fixture, another case) as evidence. Allowed while the case is not yet closed. Competition staff, the subject person, their guardian or their team manager may add evidence.',
+  input: z.object({ id, entity_type: z.string().trim().min(1).max(50), entity_id: id }),
+  handler: ({ user }, i) => tx(async (c) => {
+    const k = await lockCase(c, i.id);
+    const x = await mustSee(c, user, k);
+    if (['closed', 'dismissed', 'withdrawn'].includes(k.status)) throw conflict(`Evidence cannot be added to a ${k.status} case`, { code: 'bad_transition' });
+    const may = x.staff || user.id === k.subject_user_id || user.id === k.opened_by
+      || (k.subject_user_id && (await guardianLink(user.id, k.subject_user_id, c)))
+      || (k.subject_team_id && (await canManageTeam(user, (await c.query('SELECT * FROM teams WHERE id=$1', [k.subject_team_id])).rows[0] ?? {})));
+    if (!may) throw forbidden('Only competition staff, the subject or their guardian/team manager may add evidence');
+    const lk = (await c.query('INSERT INTO gov_case_links(case_id,entity_type,entity_id,created_by) VALUES ($1,$2,$3,$4) RETURNING *', [k.id, i.entity_type, i.entity_id, user.id])).rows[0];
+    await log(c, k, 'linked', user.id, { detail: { entity_type: i.entity_type, entity_id: i.entity_id } });
+    await audit(c, user.id, 'governance.evidence_add', 'gov_case', k.id);
+    return { id: lk.id, case_id: k.id, entity_type: lk.entity_type, entity_id: lk.entity_id, created_at: lk.created_at };
+  }),
 });
 
 cap({

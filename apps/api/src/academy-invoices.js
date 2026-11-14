@@ -7,6 +7,7 @@ import { activateUserPlan } from './booking/plans.js';
 import { conflict } from './errors.js';
 import { returnCredits } from './booking/credits.js';
 import { academyChargePaid } from './rewards/activity.js';
+import { resolveIndiaGst, freezeGstDetail, currentBillingProfile, freezeIssuerSnapshot } from './india-tax.js';
 
 const ZERO = 0;
 /** A short, unique, readable prefix for an organisation's invoices: the profile's own, else 3 letters of the name + a slice of the id. */
@@ -83,11 +84,31 @@ export async function syncChargeInvoice(c, chargeId) {
     return (await c.query('UPDATE invoices SET lines=$2, total_cents=$3, tax_cents=$4, revision=revision+$5, seller=$6 WHERE id=$1 RETURNING *',
       [inv.id, JSON.stringify(linesOf(ctx)), Number(ctx.amount_minor), Number(ctx.tax_minor), changed ? 1 : 0, JSON.stringify(await sellerOf(c, ctx))])).rows[0];
   }
-  return (await c.query(
+  const newInv = (await c.query(
     `INSERT INTO invoices(kind, number, organisation_id, academy_charge_id, user_id, currency, total_cents, tax_cents, tax_name, tax_rate_bp, tax_inclusive, seller, buyer_enc, lines)
      VALUES ('invoice',$1,$2,$3,$4,$5,$6,$7,'Tax',$8,true,$9,$10,$11) RETURNING *`,
     [await nextNumber(c, org, 'invoice'), ctx.org_id, chargeId, ctx.payer_id, ctx.currency, Number(ctx.amount_minor), Number(ctx.tax_minor), rate, JSON.stringify(await sellerOf(c, ctx)),
       encrypt(JSON.stringify({ name: ctx.payer_name, address: null, tax_id: null }), 'invoices.buyer'), JSON.stringify(linesOf(ctx))])).rows[0];
+  // Best-effort: enrich with GST detail if an org billing profile exists
+  try {
+    const profile = await currentBillingProfile(c, ctx.org_id).catch(() => null);
+    if (profile) {
+      const gst = await resolveIndiaGst(c, {
+        orgId: ctx.org_id,
+        gross: Number(ctx.amount_minor),
+        taxInclusive: false,
+        sacCode: profile.default_sac_code,
+        supplierState: profile.state_code,
+        buyerState: profile.state_code,
+        rateBp: profile.default_rate_bp,
+      });
+      await c.query(
+        `UPDATE invoices SET gst_detail=$1, gst_issuer_snapshot=$2 WHERE id=$3`,
+        [JSON.stringify(freezeGstDetail(gst)), JSON.stringify(freezeIssuerSnapshot(profile)), newInv.id],
+      );
+    }
+  } catch (_) { /* non-fatal */ }
+  return newInv;
 }
 
 /** What is still owed on a charge: the amount less what was received and what was waived or conceded. */

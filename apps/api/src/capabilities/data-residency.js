@@ -222,3 +222,73 @@ cap({
     return { home_country: i.home_country };
   },
 });
+
+// ---- list all regions (provisioned and not) for admin; public endpoint returns only provisioned+healthy+approved
+cap({
+  name: 'list_all_data_regions',
+  method: 'GET', path: '/data-residency/admin/regions', tag: TAG,
+  summary: 'Platform admin: list all residency_region_catalog entries including unprovisioned and suspended regions, with full status fields.',
+  async handler({ user }) {
+    await mustBePlatformAdmin(user);
+    const rows = await many(`SELECT id, country_code, aws_region, display_name, is_provisioned, is_healthy, is_policy_approved, policy_version, effective_at, retired_at, notes
+      FROM residency_region_catalog WHERE retired_at IS NULL ORDER BY country_code, effective_at DESC`);
+    return { regions: rows };
+  },
+});
+
+// ---- admin: suspend a region (sets is_healthy=false to prevent new placements)
+cap({
+  name: 'suspend_region',
+  method: 'POST', path: '/data-residency/admin/regions/:region_id/suspend', tag: TAG,
+  summary: 'Platform admin: suspend a region — sets is_healthy=false so no new assignments are made to it. Existing assignments are not moved.',
+  input: z.object({ region_id: id, reason: z.string().max(500).optional() }),
+  async handler({ user }, i) {
+    await mustBePlatformAdmin(user);
+    const row = await one('UPDATE residency_region_catalog SET is_healthy=false, notes=COALESCE($2,notes) WHERE id=$1 RETURNING *',
+      [i.region_id, i.reason ?? null]);
+    if (!row) throw notFound('region catalog entry');
+    await audit(null, user.id, 'suspend_region', 'residency_region_catalog', i.region_id);
+    return { suspended: true, region: row };
+  },
+});
+
+// ---- org residency: return org's current assignment + member consent summary
+cap({
+  name: 'get_org_data_residency',
+  method: 'GET', path: '/data-residency/org/:org_id', tag: TAG,
+  summary: 'Return an organisation\'s current residency assignment and an aggregate member consent summary. Requires org admin role.',
+  input: z.object({ org_id: id }),
+  async handler({ user }, i) {
+    const membership = await one('SELECT role FROM org_members WHERE org_id=$1 AND user_id=$2 AND left_at IS NULL', [i.org_id, user.id]);
+    if (!membership && !isAdmin(user)) throw notFound('organisation');
+    if (!['admin', 'owner'].includes(membership?.role) && !isAdmin(user)) throw notFound('organisation');
+    const assignment = await one("SELECT * FROM residency_assignments WHERE subject_kind='org' AND subject_id=$1", [i.org_id]);
+    const org = await one('SELECT id, name, country FROM orgs WHERE id=$1', [i.org_id]);
+    if (!org) throw notFound('organisation');
+    const memberSummary = await one(`
+      SELECT
+        count(*) FILTER (WHERE ra.id IS NOT NULL AND ra.lifecycle_status='active') AS consented,
+        count(*) FILTER (WHERE ra.id IS NULL) AS pending,
+        count(*) FILTER (WHERE om.role IS NOT NULL AND u.birth_date IS NOT NULL AND date_part('year',age(u.birth_date)) < 16) AS youth_total
+      FROM org_members om
+      JOIN users u ON u.id = om.user_id
+      LEFT JOIN residency_assignments ra ON ra.subject_kind='user' AND ra.subject_id=u.id
+      WHERE om.org_id=$1 AND om.left_at IS NULL`, [i.org_id]);
+    return { org: { id: org.id, name: org.name, country: org.country }, assignment: assignment ?? null, member_summary: memberSummary };
+  },
+});
+
+// ---- waitlist: record notification preference for when a region becomes available
+cap({
+  name: 'join_region_waitlist',
+  method: 'POST', path: '/data-residency/waitlist', tag: TAG,
+  summary: 'Record that the user wants to be notified when a local data region becomes available for their home country. Stores only the user\'s preference — no personal data transfer occurs.',
+  input: z.object({ country: z.string().length(2).toUpperCase() }),
+  async handler({ user }, i) {
+    await one(`INSERT INTO residency_consents(subject_id, source_country, destination_region, purposes, affirmative, policy_version, policy_text_hash, data_categories)
+      VALUES($1,$2,'waitlist',ARRAY['notification'],false,$3,$4,ARRAY['none'])
+      ON CONFLICT DO NOTHING RETURNING id`,
+      [user.id, i.country, POLICY_VERSION, policyHash()]);
+    return { waitlisted: true, country: i.country };
+  },
+});

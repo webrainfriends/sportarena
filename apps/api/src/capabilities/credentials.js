@@ -92,8 +92,8 @@ cap({
 });
 
 cap({
-  name: 'list_my_credentials', method: 'GET', path: '/me/credentials', tag: TAG,
-  summary: 'Your certificates and badges, with the institution that issued each, whether it is still valid and whether it shows on your profile.',
+  name: 'list_my_org_credentials', method: 'GET', path: '/me/credentials', tag: TAG,
+  summary: 'Your organisation-issued certificates and badges, with the institution that issued each, whether it is still valid and whether it shows on your profile.',
   input: z.object({ ...page }),
   handler: ({ user }, i) => many(`SELECT ${MINE} FROM credentials c JOIN organisations o ON o.id=c.organisation_id LEFT JOIN sports s ON s.id=c.sport_id WHERE c.user_id=$1 ORDER BY c.issued_on DESC, c.created_at DESC LIMIT $2 OFFSET $3`, [user.id, i.limit, i.offset]),
 });

@@ -3,6 +3,7 @@ import { cap } from '../registry.js';
 import { one, many } from '../db.js';
 import { encrypt, decrypt } from '../crypto.js';
 import { forbidden, notFound } from '../errors.js';
+import { resolveIndiaGst, freezeGstDetail } from '../india-tax.js';
 
 const encNotes = (v) => (v ? encrypt(v, 'physio_invoices.notes') : null);
 const decNotes = (v) => (v ? decrypt(v, 'physio_invoices.notes') : null);
@@ -37,6 +38,11 @@ cap({
        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,'draft') RETURNING *`,
       [num, user.id, i.patient_id, i.appointment_id ?? null, i.currency, subtotal, tax, total, i.tax_rate_bp, i.due_date ?? null, encNotes(i.notes), JSON.stringify(i.line_items)],
     );
+    // Best-effort GST enrichment
+    try {
+      const gst = await resolveIndiaGst(null, { gross: subtotal, taxInclusive: false, rateBp: i.tax_rate_bp });
+      await one(`UPDATE physio_invoices SET gst_detail=$1 WHERE id=$2 RETURNING id`, [JSON.stringify(freezeGstDetail(gst)), row.id]);
+    } catch (_) { /* non-fatal */ }
     return decRow(row);
   },
 });

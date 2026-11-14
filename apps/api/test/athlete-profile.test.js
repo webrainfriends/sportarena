@@ -139,6 +139,53 @@ test('verified affiliations and completeness come from existing records', async 
   assert.ok(prof.completeness.missing.includes('measurement'), 'a measurement is never required');
 });
 
+test('public profile view returns only fields shared at viewer tier', async () => {
+  const owner = await signup();
+  const stranger = await signup();
+  const p = await profile(owner, 'football');
+  // Set positions public, dominant_side coach only
+  await api('PATCH', `/me/sport-profiles/${p.id}/athlete`, { token: owner.token, body: { dominant_side: 'left', positions: ['Striker'], field_scopes: { positions: 'public', dominant_side: 'coach' } } });
+  // Public viewer sees positions but not dominant_side
+  const pub = (await api('GET', `/people/${owner.id}/sport-profiles/${p.id}/athlete`, { token: stranger.token })).body;
+  assert.deepEqual(pub.positions, ['Striker'], 'public tier sees public-scoped positions');
+  assert.ok(!('dominant_side' in pub), 'coach-only field hidden from public viewer');
+  // Self redirect
+  const selfR = await api('GET', `/people/${owner.id}/sport-profiles/${p.id}/athlete`, { token: owner.token });
+  assert.equal(selfR.status, 400, 'self should use /me/');
+  // Unknown profile returns 404
+  const fake = '00000000-0000-0000-0000-000000000000';
+  assert.equal((await api('GET', `/people/${owner.id}/sport-profiles/${fake}/athlete`, { token: stranger.token })).status, 404);
+});
+
+test('elite metrics (standing_long_jump, beep_test_level, reaction_time) are accepted and stored encrypted', async () => {
+  const u = await signup();
+  const p = await profile(u, 'athletics');
+  const r1 = await api('POST', `/me/sport-profiles/${p.id}/measurements`, { token: u.token, body: { metric: 'standing_long_jump', unit: 'cm', value: 220, measured_on: '2026-01-15', source: 'test', scope: 'private' } });
+  assert.equal(r1.status, 201, JSON.stringify(r1.body));
+  const r2 = await api('POST', `/me/sport-profiles/${p.id}/measurements`, { token: u.token, body: { metric: 'beep_test_level', unit: 'level', value: 12.3, measured_on: '2026-01-15', source: 'coach', scope: 'private' } });
+  assert.equal(r2.status, 201, JSON.stringify(r2.body));
+  const r3 = await api('POST', `/me/sport-profiles/${p.id}/measurements`, { token: u.token, body: { metric: 'reaction_time', unit: 'ms', value: 180, measured_on: '2026-01-15', source: 'test', scope: 'private' } });
+  assert.equal(r3.status, 201, JSON.stringify(r3.body));
+  // Out of range: reaction_time below 50 ms
+  const r4 = await api('POST', `/me/sport-profiles/${p.id}/measurements`, { token: u.token, body: { metric: 'reaction_time', unit: 'ms', value: 10, measured_on: '2026-01-15', source: 'test', scope: 'private' } });
+  assert.equal(r4.status, 400, 'reaction_time below 50ms should be rejected');
+  // Values are stored encrypted
+  const rows = await q('SELECT value_enc FROM athlete_measurements WHERE sport_profile_id=$1', [p.id]);
+  assert.ok(rows.every((r) => r.value_enc.startsWith('v1.')), 'all values encrypted');
+});
+
+test('new sport positions returned by get_profile_options', async () => {
+  const tennis = (await api('GET', '/sports/tennis/profile-options')).body;
+  assert.ok(tennis.positions.includes('Singles') && tennis.positions.includes('Doubles'), 'tennis positions');
+  assert.ok(!tennis.positions_open, 'tennis should not be open');
+  const swimming = (await api('GET', '/sports/swimming/profile-options')).body;
+  assert.ok(swimming.positions.includes('Freestyle') && swimming.positions.includes('Butterfly'), 'swimming positions');
+  const athletics = (await api('GET', '/sports/athletics/profile-options')).body;
+  assert.ok(athletics.positions.includes('Sprints') && athletics.positions.includes('Hurdles'), 'athletics positions');
+  const netball = (await api('GET', '/sports/netball/profile-options')).body;
+  assert.ok(netball.positions.includes('Goal shooter') && netball.positions.includes('Goal keeper'), 'netball positions');
+});
+
 test('young athletes cannot share profile fields beyond private (guardian authority)', async () => {
   const u = await signup();
   const p = await profile(u, 'football');

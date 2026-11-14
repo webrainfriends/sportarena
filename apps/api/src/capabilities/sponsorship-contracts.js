@@ -18,15 +18,40 @@ import { ORG_TARGETS, targetOrgId } from '../sponsor-beneficiaries.js';
 import { starterFor } from '../documents/layout.js';
 import { renderSponsorshipContract } from '../documents/render.js';
 import { decrypt } from '../crypto.js';
-import { PROVIDERS, providerList, verifyCallback, verifyDocusign, createDocusignRequest, voidDocusignRequest } from '../signatures/providers.js';
+import { PROVIDERS, providerList, verifyCallback, verifyDocusign, createDocusignRequest, voidDocusignRequest, createAdobeSignRequest, voidAdobeSignRequest, verifyAdobeSign } from '../signatures/providers.js';
 import { checkLevel, ruleFor, POLICY, DEFAULT_RULE } from '../signatures/policy.js';
 
 const TAG = 'Sponsorship contracts';
 const sha = (b) => createHash('sha256').update(b).digest('hex');
+
+/** Insert a row into sponsorship_contract_events. Never throws — a failed audit row must not roll back the main transaction. */
+async function logContractEvent(c, { contractId, eventType, actorId = null, providerEventId = null, ipAddress = null, userAgent = null, metadata = {} }) {
+  try {
+    await c.query(
+      'INSERT INTO sponsorship_contract_events(contract_id, event_type, actor_id, provider_event_id, ip_address, user_agent, metadata) VALUES ($1,$2,$3,$4,$5,$6,$7)',
+      [contractId, eventType, actorId, providerEventId, ipAddress, userAgent, JSON.stringify(metadata)]);
+  } catch (e) {
+    console.error('[contract-event]', e.message);
+  }
+}
+
+/** Schedule reminder rows for the given days-before-deadline array. Called inside a transaction after request_signatures. */
+async function scheduleReminders(c, contractId, deadlineAt, reminderDays) {
+  if (!deadlineAt || !reminderDays?.length) return;
+  const dl = new Date(deadlineAt);
+  for (const d of reminderDays) {
+    const scheduledFor = new Date(dl.getTime() - d * 86400 * 1000);
+    if (scheduledFor > new Date()) {
+      await c.query(
+        'INSERT INTO sponsorship_contract_reminders(contract_id, scheduled_for) VALUES ($1,$2) ON CONFLICT DO NOTHING',
+        [contractId, scheduledFor.toISOString()]);
+    }
+  }
+}
 /** JSON with sorted keys, so the same content always hashes the same whatever order the database returns it in. */
 const canonical = (v) => (Array.isArray(v) ? `[${v.map(canonical).join(',')}]` : v && typeof v === 'object' ? `{${Object.keys(v).sort().map((k) => `${JSON.stringify(k)}:${canonical(v[k])}`).join(',')}}` : JSON.stringify(v ?? null));
 const OPEN_DEAL = ['proposed', 'active'];
-const COLS = 'c.id, c.sponsorship_id, c.terms_version, c.status, c.snapshot_sha256, c.document_id, c.template_version_id, c.created_by, c.requested_at, c.signed_at, c.voided_at, c.void_reason, c.row_version, c.created_at';
+const COLS = 'c.id, c.sponsorship_id, c.terms_version, c.status, c.snapshot_sha256, c.document_id, c.template_version_id, c.created_by, c.requested_at, c.signed_at, c.voided_at, c.void_reason, c.row_version, c.created_at, c.signing_order, c.deadline_at, c.reminder_schedule, c.signing_level, c.provider_envelope_id';
 const fileUrl = (docId) => `/api/v1/branded-documents/${docId}/file`;
 
 /** The caller's side of a deal as a contract party, or null. Recipient-side parties are the target owner / organisation representatives. */
@@ -97,12 +122,14 @@ async function view(c, row, ctx, userId) {
   try { mustManage(ctx); canManage = ['draft', 'awaiting_signatures'].includes(row.status); } catch { /* read-only for this caller */ }
   const req = (await c.query('SELECT provider, level, jurisdiction, status, recipients, created_at FROM sponsorship_signature_requests WHERE contract_id=$1 ORDER BY created_at DESC LIMIT 1', [row.id])).rows[0] ?? null;
   const viaVendor = req?.status === 'sent' && row.status === 'awaiting_signatures';
+  const contract_meta = { signing_order: row.signing_order ?? 'parallel', deadline_at: row.deadline_at ?? null, reminder_schedule: row.reminder_schedule ?? { days: [7, 3, 1], sent: [] }, signing_level: row.signing_level ?? null, provider_envelope_id: row.provider_envelope_id ?? null };
   return {
     ...row, signed_state: row.status === 'signed' ? 'signed' : 'unsigned', current, stale, accepted_terms_version: d.accepted_version ?? null,
     draft_url: fileUrl(row.document_id), signed_url: signedDoc ? fileUrl(signedDoc.document_id) : null, signed_sha256: signedDoc?.sha256 ?? null,
     signatories: sigs, my_signatory_id: mine?.id ?? null,
     signature_request: req ? { provider: req.provider, provider_label: PROVIDERS[req.provider]?.label ?? req.provider, level: req.level, jurisdiction: req.jurisdiction, status: req.status, sent_at: req.created_at } : null,
     can: { manage: canManage, sign: !!mine && mine.status === 'pending' && row.status === 'awaiting_signatures' && !stale && !viaVendor },
+    ...contract_meta,
     snapshot: undefined,
   };
 }
@@ -132,6 +159,7 @@ async function sealIfComplete(c, row, actorId) {
   await c.query("UPDATE sponsorship_contracts SET status='signed', signed_at=now(), row_version=row_version+1 WHERE id=$1", [row.id]);
   await logHistory(c, row.sponsorship_id, row.terms_version, actorId, 'contract_signed');
   await audit(c, actorId, 'seal_sponsorship_contract', 'sponsorship_contracts', row.id);
+  await logContractEvent(c, { contractId: row.id, eventType: 'certificate_issued', actorId });
   const people = (await c.query("SELECT user_id FROM sponsorship_signatories WHERE contract_id=$1 AND status='signed'", [row.id])).rows;
   for (const p of people) await notify(c, p.user_id, { kind: 'sponsorship_contract', title: 'Sponsorship contract signed', body: 'Everyone has signed. The signed copy is on the agreement.', data: { sponsorship_id: row.sponsorship_id, contract_id: row.id }, dedupe_key: `contract-signed:${row.id}` });
   return true;
@@ -164,6 +192,7 @@ export async function applySignature(c, { contractId, userId, documentSha256, pr
   await c.query("UPDATE sponsorship_signatories SET status='signed' WHERE id=$1", [g.id]);
   await logHistory(c, row.sponsorship_id, row.terms_version, actorId, 'contract_signature');
   await audit(c, actorId, 'sign_sponsorship_contract', 'sponsorship_contracts', row.id);
+  await logContractEvent(c, { contractId: contractId, eventType: 'signed', actorId: userId, providerEventId: providerRef, metadata: { provider, side: g.side } });
   const sealed = await sealIfComplete(c, row, actorId);
   return { duplicate: false, signature_id: s.id, signed_at: s.signed_at, contract_status: sealed ? 'signed' : 'awaiting_signatures' };
 }
@@ -290,8 +319,15 @@ cap({
 
 cap({
   name: 'request_contract_signatures', method: 'POST', path: '/sponsorship-contracts/:id/request-signatures', tag: TAG,
-  summary: 'Send a draft for signature: locks the text and asks every named signatory to sign. Needs at least one signatory on each side and the agreement still at the contract\'s terms version. provider "internal" (default) has people sign in GotMyGame (simple electronic signature); "docusign" creates a signing request with the vendor (advanced signature, each signatory is emailed by the vendor) and the vendor\'s callback records the signatures. jurisdiction (ISO country) checks the provider meets that country\'s expected level.',
-  input: z.object({ id, row_version: z.number().int().min(1), provider: z.enum(['internal', 'docusign']).default('internal'), jurisdiction: z.string().length(2).toUpperCase().optional() }),
+  summary: 'Send a draft for signature: locks the text and asks every named signatory to sign. Needs at least one signatory on each side. provider "internal" signs in GotMyGame (simple); "docusign" or "adobe_sign" emails each signatory via the vendor (advanced). signing_order "sequential" routes signatories in creation order; "parallel" (default) sends to all at once. deadline_at and reminder_schedule.days configure the auto-reminder system.',
+  input: z.object({
+    id, row_version: z.number().int().min(1),
+    provider: z.enum(['internal', 'docusign', 'adobe_sign']).default('internal'),
+    jurisdiction: z.string().length(2).toUpperCase().optional(),
+    signing_order: z.enum(['parallel', 'sequential']).default('parallel'),
+    deadline_at: z.string().datetime().optional(),
+    reminder_schedule: z.object({ days: z.array(z.number().int().min(1).max(365)).max(10) }).optional(),
+  }),
   async handler({ user }, i) {
     requireApproved(user);
     await tx(async (c) => {
@@ -312,17 +348,30 @@ cap({
         const people = (await c.query("SELECT g.user_id, u.display_name AS name, u.email_enc FROM sponsorship_signatories g JOIN users u ON u.id=g.user_id WHERE g.contract_id=$1 AND g.status='pending' ORDER BY g.side DESC, g.created_at, g.id", [row.id])).rows;
         const doc = (await c.query('SELECT file_name, pages FROM generated_documents WHERE id=$1', [row.document_id])).rows[0];
         const pdf = await loadEncrypted('documents', 'generated_documents.file', doc.file_name);
-        sent = await createDocusignRequest({ pdf, name: `Sponsorship contract v${row.terms_version}`, pages: doc.pages ?? 1, signers: people.map((x) => ({ user_id: x.user_id, name: x.name, email: decrypt(x.email_enc, 'users.email') })) });
+        const signers = people.map((x) => ({ user_id: x.user_id, name: x.name, email: decrypt(x.email_enc, 'users.email') }));
+        if (i.provider === 'adobe_sign') {
+          sent = await createAdobeSignRequest({ pdf, name: `Sponsorship contract v${row.terms_version}`, signers });
+        } else {
+          sent = await createDocusignRequest({ pdf, name: `Sponsorship contract v${row.terms_version}`, pages: doc.pages ?? 1, signers });
+        }
       }
+      const reminderDays = i.reminder_schedule?.days ?? [7, 3, 1];
       try {
-        await c.query("UPDATE sponsorship_contracts SET status='awaiting_signatures', requested_at=now(), row_version=row_version+1 WHERE id=$1", [row.id]);
+        await c.query(
+          "UPDATE sponsorship_contracts SET status='awaiting_signatures', requested_at=now(), signing_order=$2, deadline_at=$3, reminder_schedule=$4, signing_level=$5, provider_envelope_id=$6, row_version=row_version+1 WHERE id=$1",
+          [row.id, i.signing_order, i.deadline_at ?? null, JSON.stringify({ days: reminderDays, sent: [] }), p.level, sent?.external_ref ?? null]);
         if (sent) await c.query('INSERT INTO sponsorship_signature_requests(contract_id, provider, external_ref, jurisdiction, level, recipients, document_sha256, created_by) VALUES ($1,$2,$3,$4,$5,$6,$7,$8)', [row.id, p.id, sent.external_ref, i.jurisdiction ?? null, p.level, JSON.stringify(sent.recipients), row.snapshot_sha256, user.id]);
         await logHistory(c, row.sponsorship_id, row.terms_version, user.id, 'contract_sent');
         await audit(c, user.id, 'request_contract_signatures', 'sponsorship_contracts', row.id);
+        await logContractEvent(c, { contractId: row.id, eventType: 'sent', actorId: user.id, metadata: { provider: p.id, signing_order: i.signing_order, jurisdiction: i.jurisdiction ?? null, signing_level: p.level } });
+        await scheduleReminders(c, row.id, i.deadline_at, reminderDays);
         for (const s of (await c.query("SELECT user_id FROM sponsorship_signatories WHERE contract_id=$1 AND status='pending'", [row.id])).rows)
           await notify(c, s.user_id, { kind: 'sponsorship_contract', title: 'A sponsorship contract needs your signature', body: sent ? `${p.label} has emailed you the contract to sign.` : 'Review the contract and sign it on the agreement.', data: { sponsorship_id: row.sponsorship_id, contract_id: row.id }, dedupe_key: `contract-request:${row.id}:${s.user_id}` });
       } catch (e) {
-        if (sent) await voidDocusignRequest(sent.external_ref, 'Could not be recorded').catch(() => {}); // do not leave a live envelope GotMyGame does not know about
+        if (sent) {
+          if (i.provider === 'adobe_sign') await voidAdobeSignRequest(sent.external_ref, 'Could not be recorded').catch(() => {});
+          else await voidDocusignRequest(sent.external_ref, 'Could not be recorded').catch(() => {});
+        }
         throw e;
       }
     });
@@ -361,6 +410,7 @@ cap({
       await c.query("UPDATE sponsorship_signatories SET status='removed' WHERE contract_id=$1 AND status='pending'", [row.id]);
       for (const r of (await c.query("UPDATE sponsorship_signature_requests SET status='voided' WHERE contract_id=$1 AND status='sent' RETURNING provider, external_ref", [row.id])).rows)
         if (r.provider === 'docusign') await voidDocusignRequest(r.external_ref, i.reason).catch((e) => console.error('[signature-void]', e.message)); // the callback guard below still refuses a late signature
+        else if (r.provider === 'adobe_sign') await voidAdobeSignRequest(r.external_ref, i.reason).catch((e) => console.error('[signature-void]', e.message));
       await logHistory(c, row.sponsorship_id, row.terms_version, user.id, 'contract_voided', i.reason);
       await audit(c, user.id, 'void_sponsorship_contract', 'sponsorship_contracts', row.id);
     });
@@ -432,5 +482,121 @@ export function signatureCallbackRouter() {
       res.status(500).json({ error: 'processing_failed' });
     }
   });
+  // Adobe Sign (Acrobat Sign): webhook for AGREEMENT_ACTION_COMPLETED, AGREEMENT_ACTION_DELEGATED, AGREEMENT_CANCELLED
+  r.post('/adobe_sign', express.raw({ type: '*/*', limit: '2mb' }), async (req, res) => {
+    try {
+      const raw = req.body.toString('utf8');
+      if (!PROVIDERS.adobe_sign.enabled()) return res.status(404).json({ error: 'provider_disabled' });
+      if (!verifyAdobeSign(raw, req.headers['x-adobesign-signature'])) return res.status(400).json({ error: 'bad_signature' });
+      const b = JSON.parse(raw);
+      const agreementId = b?.agreement?.id, event = String(b?.event?.code ?? '');
+      const participantEmail = b?.participant?.email?.toLowerCase() ?? null;
+      if (!agreementId || !event) return res.status(422).json({ error: 'bad_payload' });
+      const out = await tx(async (c) => {
+        const fresh = await c.query("INSERT INTO provider_events(provider, event_id, kind) VALUES ('adobe_sign',$1,$2) ON CONFLICT DO NOTHING RETURNING event_id", [`${agreementId}:${participantEmail ?? '-'}:${event}`, event]);
+        if (!fresh.rowCount) return { duplicate: true };
+        const rq = (await c.query("SELECT * FROM sponsorship_signature_requests WHERE provider='adobe_sign' AND external_ref=$1 FOR UPDATE", [agreementId])).rows[0];
+        if (!rq) throw notFound('Signature request');
+        if (event === 'AGREEMENT_ACTION_COMPLETED' && participantEmail) {
+          const who = rq.recipients.find((x) => x.email?.toLowerCase() === participantEmail || x.recipient_id != null);
+          const user = participantEmail ? (await c.query('SELECT id FROM users WHERE lower(decrypt(email_enc,$2))=$1 LIMIT 1', [participantEmail, 'users.email'])).rows[0] : null;
+          const userId = user?.id ?? who?.user_id;
+          if (!userId) throw badRequest('Unknown participant');
+          if (rq.status !== 'sent') return { ignored: rq.status };
+          const done = await applySignature(c, { contractId: rq.contract_id, userId, documentSha256: rq.document_sha256, provider: 'adobe_sign', providerRef: `${agreementId}/${participantEmail ?? userId}` });
+          if (done.contract_status === 'signed') await c.query("UPDATE sponsorship_signature_requests SET status='completed' WHERE id=$1", [rq.id]);
+          return done;
+        }
+        if (event === 'AGREEMENT_CANCELLED') await c.query("UPDATE sponsorship_signature_requests SET status='voided' WHERE id=$1 AND status='sent'", [rq.id]);
+        return { recorded: event };
+      });
+      res.json({ received: true, ...out });
+    } catch (e) {
+      if (e.status && e.status < 500) return res.status(e.status).json({ error: e.code ?? 'rejected', message: e.message });
+      console.error('[adobe-sign-callback]', e.message);
+      res.status(500).json({ error: 'processing_failed' });
+    }
+  });
   return r;
 }
+
+cap({
+  name: 'get_contract_audit_trail', method: 'GET', path: '/sponsorship-contracts/:id/audit', tag: TAG,
+  summary: 'Full chronological audit trail for a contract: every signed, sent, reminded, deadline_extended, voided and certificate_issued event with actor, provider event ID, timestamp and metadata. Only accessible to parties of the agreement.',
+  input: z.object({ id, ...page }),
+  async handler({ user }, i) {
+    const { row } = await contractFor(pool, i.id, user);
+    const events = (await pool.query(
+      `SELECT e.id, e.event_type, e.actor_id, u.display_name AS actor_name, e.provider_event_id, e.ip_address, e.user_agent, e.metadata, e.created_at
+         FROM sponsorship_contract_events e LEFT JOIN users u ON u.id=e.actor_id
+        WHERE e.contract_id=$1 ORDER BY e.created_at ASC, e.id LIMIT $2 OFFSET $3`,
+      [row.id, i.limit, i.offset])).rows;
+    return { contract_id: row.id, contract_status: row.status, events };
+  },
+});
+
+cap({
+  name: 'send_signing_reminder', method: 'POST', path: '/sponsorship-contracts/:id/remind', tag: TAG,
+  summary: 'Manually send a signing reminder to one or all pending signatories. Rate-limited: at most once per signatory per 4 hours. Only the parties who can manage the contract may trigger reminders.',
+  input: z.object({ id, signatory_id: id.optional() }),
+  async handler({ user }, i) {
+    requireApproved(user);
+    const result = await tx(async (c) => {
+      const { row, ctx } = await contractFor(c, i.id, user, { lock: true });
+      mustManage(ctx);
+      if (row.status !== 'awaiting_signatures') throw conflict('Reminders can only be sent while the contract is awaiting signatures');
+      const signatories = (await c.query(
+        "SELECT g.id, g.user_id, u.display_name AS name FROM sponsorship_signatories g JOIN users u ON u.id=g.user_id WHERE g.contract_id=$1 AND g.status='pending'" + (i.signatory_id ? ' AND g.id=$2' : ''),
+        i.signatory_id ? [row.id, i.signatory_id] : [row.id])).rows;
+      if (!signatories.length) throw badRequest(i.signatory_id ? 'That signatory is not pending on this contract' : 'No pending signatories');
+      const reminded = [];
+      for (const s of signatories) {
+        const last = (await c.query("SELECT sent_at FROM sponsorship_contract_reminders WHERE contract_id=$1 AND signatory_id=$2 AND sent_at IS NOT NULL ORDER BY sent_at DESC LIMIT 1", [row.id, s.id])).rows[0];
+        if (last && (Date.now() - new Date(last.sent_at).getTime()) < 4 * 60 * 60 * 1000) continue;
+        await notify(c, s.user_id, { kind: 'sponsorship_contract', title: 'Reminder: contract needs your signature', body: 'Please sign the sponsorship contract.', data: { sponsorship_id: row.sponsorship_id, contract_id: row.id }, dedupe_key: `contract-remind:${row.id}:${s.id}:${Date.now()}` });
+        await c.query('INSERT INTO sponsorship_contract_reminders(contract_id, signatory_id, channel, scheduled_for, sent_at) VALUES ($1,$2,$3,now(),now())', [row.id, s.id, 'push']);
+        await logContractEvent(c, { contractId: row.id, eventType: 'reminded', actorId: user.id, metadata: { signatory_id: s.id, name: s.name } });
+        reminded.push(s.id);
+      }
+      await audit(c, user.id, 'send_signing_reminder', 'sponsorship_contracts', row.id);
+      return { reminded_count: reminded.length, reminded_signatories: reminded };
+    });
+    return result;
+  },
+});
+
+cap({
+  name: 'extend_contract_deadline', method: 'PATCH', path: '/sponsorship-contracts/:id/deadline', tag: TAG,
+  summary: 'Extend (or set) the signing deadline on a contract that is awaiting signatures. The new date must be in the future. Logs an audit event and optionally reschedules reminders.',
+  input: z.object({ id, deadline_at: z.string().datetime(), reminder_schedule: z.object({ days: z.array(z.number().int().min(1).max(365)).max(10) }).optional() }),
+  async handler({ user }, i) {
+    requireApproved(user);
+    await tx(async (c) => {
+      const { row, ctx } = await contractFor(c, i.id, user, { lock: true });
+      mustManage(ctx);
+      if (row.status !== 'awaiting_signatures') throw conflict('Deadline can only be changed while the contract is awaiting signatures');
+      if (new Date(i.deadline_at) <= new Date()) throw badRequest('The new deadline must be in the future');
+      const reminderDays = i.reminder_schedule?.days ?? (row.reminder_schedule?.days ?? [7, 3, 1]);
+      await c.query('UPDATE sponsorship_contracts SET deadline_at=$2, reminder_schedule=$3, row_version=row_version+1 WHERE id=$1', [row.id, i.deadline_at, JSON.stringify({ days: reminderDays, sent: [] })]);
+      await scheduleReminders(c, row.id, i.deadline_at, reminderDays);
+      await logContractEvent(c, { contractId: row.id, eventType: 'deadline_extended', actorId: user.id, metadata: { deadline_at: i.deadline_at, reminder_days: reminderDays } });
+      await audit(c, user.id, 'extend_contract_deadline', 'sponsorship_contracts', row.id);
+    });
+    const { row, ctx } = await contractFor(pool, i.id, user);
+    return view(pool, row, ctx, user.id);
+  },
+});
+
+cap({
+  name: 'get_contract_certificate', method: 'GET', path: '/sponsorship-contracts/:id/certificate', tag: TAG,
+  summary: 'Download the signed completion certificate PDF for a fully-executed contract. Only available once status is "signed". Accessible to all signatories and parties of the agreement.',
+  input: z.object({ id }),
+  async handler({ user }, i) {
+    const { row } = await contractFor(pool, i.id, user);
+    if (row.status !== 'signed') throw conflict('The certificate is only available once all parties have signed');
+    const signed = (await pool.query('SELECT sd.document_id, sd.sha256 FROM sponsorship_signed_documents sd WHERE sd.contract_id=$1', [row.id])).rows[0];
+    if (!signed) throw conflict('The signed document is not yet available');
+    await audit(pool, user.id, 'download_contract_certificate', 'sponsorship_contracts', row.id);
+    return { document_id: signed.document_id, sha256: signed.sha256, download_url: fileUrl(signed.document_id) };
+  },
+});

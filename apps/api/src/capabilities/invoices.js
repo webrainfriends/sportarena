@@ -47,7 +47,7 @@ cap({
   summary: 'One invoice or credit note, complete and printable: seller (legal name, tax id, address), bill-to (decrypted; audit-logged), lines, tax breakdown, payments and any credit notes against it. The buyer or the venue team only.',
   input: z.object({ id }),
   async handler({ user }, i) {
-    const inv = await one(`SELECT i.*, v.name AS venue_name, rs.code AS reservation_code, o.name AS organisation_name FROM invoices i LEFT JOIN venues v ON v.id=i.venue_id LEFT JOIN reservations rs ON rs.id=i.reservation_id LEFT JOIN organisations o ON o.id=i.organisation_id WHERE i.id=$1`, [i.id]);
+    const inv = await one(`SELECT i.*, i.gst_detail, i.tds_detail, i.document_type, i.linked_invoice_id, i.gst_issuer_snapshot, v.name AS venue_name, rs.code AS reservation_code, o.name AS organisation_name FROM invoices i LEFT JOIN venues v ON v.id=i.venue_id LEFT JOIN reservations rs ON rs.id=i.reservation_id LEFT JOIN organisations o ON o.id=i.organisation_id WHERE i.id=$1`, [i.id]);
     if (!inv) throw notFound('Invoice');
     const academy = !!inv.organisation_id;
     const forTeam = !!inv.team_id;
