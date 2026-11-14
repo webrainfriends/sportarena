@@ -420,3 +420,57 @@ test('branch scorecard: each status is a stated rule over a measured figure; fin
   const after = must(await api('GET', `/organisations/${a.org.id}/academy/branch-scorecard?${q}`, { token: a.owner.token })).branches.find((b) => b.branch_id === north.id);
   assert.equal(after.people.target_pct, 40); assert.equal(after.manager, null);
 });
+
+test('executive home: people, delivery and outcomes respect the branch_id filter', async () => {
+  const a = await academy('Branch Filter');
+  // Create two branches and assign programmes to each
+  const branchA = must(await api('POST', `/organisations/${a.org.id}/academy/branches`, { token: a.owner.token, body: { name: 'Branch A', idempotency_key: key() } }), 201);
+  const branchB = must(await api('POST', `/organisations/${a.org.id}/academy/branches`, { token: a.owner.token, body: { name: 'Branch B', idempotency_key: key() } }), 201);
+  // Existing programme → Branch A
+  must(await api('POST', `/academy/programmes/${a.programme.id}/branch`, { token: a.owner.token, body: { branch_id: branchA.id } }));
+  // Second programme → Branch B
+  const progB = must(await api('POST', `/organisations/${a.org.id}/academy/programmes`, { token: a.owner.token, body: { sport: 'football', title: 'Branch B Prog', admission_mode: 'direct', public: true } }), 201);
+  must(await api('POST', `/academy/programmes/${progB.id}/branch`, { token: a.owner.token, body: { branch_id: branchB.id } }));
+  const cohortB = must(await api('POST', `/organisations/${a.org.id}/cohorts`, { token: a.owner.token, body: { name: 'Branch B cohort', coach_id: a.coach.id } }), 201);
+  await pool.query('UPDATE org_cohorts SET programme_id=$2 WHERE id=$1', [cohortB.id, progB.id]);
+
+  // 3 athletes enrolled in Branch A, 5 in Branch B
+  for (let i = 0; i < 3; i++) {
+    const u = await signup();
+    await pool.query("INSERT INTO org_enrolments(cohort_id, user_id, status, programme_id, consent_at, enrolled_by) VALUES ($1,$2,'enrolled',$3,now(),$4)", [a.cohort.id, u.id, a.programme.id, a.owner.id]);
+  }
+  for (let i = 0; i < 5; i++) {
+    const u = await signup();
+    await pool.query("INSERT INTO org_enrolments(cohort_id, user_id, status, programme_id, consent_at, enrolled_by) VALUES ($1,$2,'enrolled',$3,now(),$4)", [cohortB.id, u.id, progB.id, a.owner.id]);
+  }
+
+  // 1 completed session in Branch A, 2 in Branch B
+  await session(a, { status: 'completed', day: addDays(today, -3) });
+  await pool.query(
+    `INSERT INTO academy_sessions(organisation_id, cohort_id, programme_id, title, starts_at, ends_at, status, created_by)
+     VALUES ($1,$2,$3,'B Sess 1',($4::date + make_interval(hours => 10)) AT TIME ZONE 'UTC',($4::date + make_interval(hours => 11)) AT TIME ZONE 'UTC','completed',$5)`,
+    [a.org.id, cohortB.id, progB.id, addDays(today, -2), a.owner.id]);
+  await pool.query(
+    `INSERT INTO academy_sessions(organisation_id, cohort_id, programme_id, title, starts_at, ends_at, status, created_by)
+     VALUES ($1,$2,$3,'B Sess 2',($4::date + make_interval(hours => 14)) AT TIME ZONE 'UTC',($4::date + make_interval(hours => 15)) AT TIME ZONE 'UTC','completed',$5)`,
+    [a.org.id, cohortB.id, progB.id, addDays(today, -1), a.owner.id]);
+
+  const q = `from=${addDays(today, -10)}&to=${today}`;
+
+  // people: branch A → 3 athletes; branch B → 5 athletes; no filter → 8
+  const homeA = must(await api('GET', `/organisations/${a.org.id}/academy/executive?${q}&branch_id=${branchA.id}`, { token: a.owner.token }));
+  assert.equal(homeA.people.enrolled_athletes, 3, 'people: branch A has 3 enrolled athletes');
+  const homeB = must(await api('GET', `/organisations/${a.org.id}/academy/executive?${q}&branch_id=${branchB.id}`, { token: a.owner.token }));
+  assert.equal(homeB.people.enrolled_athletes, 5, 'people: branch B has 5 enrolled athletes');
+  const homeAll = must(await api('GET', `/organisations/${a.org.id}/academy/executive?${q}`, { token: a.owner.token }));
+  assert.equal(homeAll.people.enrolled_athletes, 8, 'people: all 8 athletes when no branch filter');
+
+  // delivery: branch A → 1 completed session; branch B → 2 completed sessions
+  assert.equal(homeA.delivery.sessions_completed, 1, 'delivery: branch A has 1 completed session');
+  assert.equal(homeB.delivery.sessions_completed, 2, 'delivery: branch B has 2 completed sessions');
+  assert.equal(homeAll.delivery.sessions_completed, 3, 'delivery: 3 total completed sessions with no filter');
+
+  // outcomes: no progression decisions seeded → review_queue and decisions are empty for both branches
+  assert.equal(homeA.outcomes.review_queue, 0, 'outcomes: empty queue for branch A with no pathways');
+  assert.equal(homeB.outcomes.review_queue, 0, 'outcomes: empty queue for branch B with no pathways');
+});
