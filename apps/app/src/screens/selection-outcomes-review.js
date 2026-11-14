@@ -4,13 +4,8 @@ import { View, Text, ScrollView, StyleSheet } from 'react-native';
 import { useTranslation } from '../i18n';
 import { useTheme } from '../theme';
 import { useApi } from '../api';
-import { Screen } from '../components/Screen';
-import { Card } from '../components/Card';
-import { Button } from '../components/Button';
-import { Chip } from '../components/Chip';
-import { Avatar } from '../components/Avatar';
-import { MetricStrip } from '../components/MetricStrip';
 import { useNavigation } from '@react-navigation/native';
+import { Avatar, Btn, Card, Chip, Screen, StatPill } from '../ui';
 
 function ForecastRow({ nom, C, S, t }) {
   const delta = (nom.actual_rank ?? 0) - (nom.forecast_rank ?? 0);
@@ -66,7 +61,7 @@ export default function SelectionOutcomesReview({ route }) {
         </Card>
 
         {/* Summary strip */}
-        <MetricStrip items={[
+        <StatPill items={[
           { label: t('sel.outcomes.starters'), value: starters },
           { label: t('sel.outcomes.reserves'), value: reserves },
           { label: t('sel.outcomes.development'), value: development },
@@ -140,7 +135,7 @@ export default function SelectionOutcomesReview({ route }) {
           </Card>
         )}
 
-        <Button
+        <Btn
           label={t('sel.outcomes.viewDecisionPack')}
           onPress={() => nav.navigate('SelectionDecisionPack', { campaignId })}
           variant="outline"

@@ -4,14 +4,8 @@ import { View, Text, ScrollView, TouchableOpacity, StyleSheet, Platform } from '
 import { useTranslation } from '../i18n';
 import { useTheme } from '../theme';
 import { useApi } from '../api';
-import { Screen } from '../components/Screen';
-import { Card } from '../components/Card';
-import { Chip } from '../components/Chip';
-import { Button } from '../components/Button';
-import { SearchBar } from '../components/SearchBar';
-import { EmptyState } from '../components/EmptyState';
-import { MetricStrip } from '../components/MetricStrip';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
+import { Btn, Card, Chip, Empty, Field, Screen, StatPill } from '../ui';
 
 const STAGE_LABELS = [
   'draft','mandate','nominations','eligibility','shortlist',
@@ -52,7 +46,7 @@ export default function SelectionStudio({ route }) {
 
         <View style={S.headerRow}>
           <Text style={S.heading}>{t('sel.studio.campaigns')}</Text>
-          <Button
+          <Btn
             label={t('sel.studio.newCampaign')}
             onPress={() => nav.navigate('SelectionCampaignSetup', { orgId })}
             icon="plus"
@@ -61,7 +55,7 @@ export default function SelectionStudio({ route }) {
           />
         </View>
 
-        <SearchBar
+        <Field
           value={q}
           onChangeText={setQ}
           placeholder={t('sel.studio.search')}
@@ -70,7 +64,7 @@ export default function SelectionStudio({ route }) {
         />
 
         {campaigns.length === 0 ? (
-          <EmptyState
+          <Empty
             icon="trophy"
             title={t('sel.studio.empty.title')}
             body={t('sel.studio.empty.body')}
@@ -104,7 +98,7 @@ export default function SelectionStudio({ route }) {
               ))}
             </View>
 
-            <MetricStrip items={[
+            <StatPill items={[
               { label: t('sel.nominations'), value: cam.nomination_count ?? 0 },
               { label: t('sel.eligible'), value: cam.eligible_count ?? 0 },
               { label: t('sel.stage'), value: `${cam.stage + 1}/12` },

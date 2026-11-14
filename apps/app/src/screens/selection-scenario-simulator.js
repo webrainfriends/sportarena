@@ -4,11 +4,9 @@ import { View, Text, ScrollView, TouchableOpacity, StyleSheet, Dimensions } from
 import { Svg, Rect, Circle, Text as SvgText, Line } from 'react-native-svg';
 import { useTranslation } from '../i18n';
 import { useTheme } from '../theme';
-import { Screen } from '../components/Screen';
-import { Card } from '../components/Card';
-import { Button } from '../components/Button';
-import { MenuField } from '../components/MenuField';
 import { useNavigation } from '@react-navigation/native';
+import { MenuField } from '../menu-field';
+import { Btn, Card, Screen } from '../ui';
 
 const { width: W } = Dimensions.get('window');
 const PITCH_W = Math.min(W - 32, 400);
@@ -104,12 +102,12 @@ export default function SelectionScenarioSimulator({ route }) {
           ))}
         </Card>
 
-        <Button
+        <Btn
           label={t('sel.simulator.saveScenario')}
           onPress={() => {}}
           accessibilityLabel={t('sel.simulator.saveScenario')}
         />
-        <Button
+        <Btn
           label={t('sel.recommendation.start')}
           onPress={() => nav.navigate('SelectionRecommendation', { campaignId, assignments, formation })}
           icon="check-circle"

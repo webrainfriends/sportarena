@@ -1,16 +1,12 @@
 // Issue #1194: Selection Policy Builder — rubric weights, eligibility rules, approval config
 import React, { useState, useEffect } from 'react';
-import { View, Text, ScrollView, StyleSheet } from 'react-native';
+import { View, Text, ScrollView, StyleSheet , Switch } from 'react-native';
 import { useTranslation } from '../i18n';
 import { useTheme } from '../theme';
 import { useApi, useApiMutation } from '../api';
-import { Screen } from '../components/Screen';
-import { Card } from '../components/Card';
-import { Button } from '../components/Button';
-import { StepperField } from '../components/StepperField';
-import { Switch } from '../components/Switch';
-import { Chip } from '../components/Chip';
 import { useNavigation } from '@react-navigation/native';
+import { Stepper } from '../pickers';
+import { Btn, Card, Chip, Screen } from '../ui';
 
 const RUBRIC_KEYS = ['physical', 'technical', 'tactical', 'mental', 'experience', 'potential'];
 
@@ -94,7 +90,7 @@ export default function SelectionPolicyBuilder({ route }) {
           </View>
           <Text style={S.hint}>{t('sel.policy.rubricHint')}</Text>
           {RUBRIC_KEYS.map(key => (
-            <StepperField
+            <Stepper
               key={key}
               label={t(`sel.rubric.${key}`)}
               value={weights[key]}
@@ -111,7 +107,7 @@ export default function SelectionPolicyBuilder({ route }) {
         {/* Eligibility rules */}
         <Card style={S.card}>
           <Text style={S.sectionTitle}>{t('sel.policy.eligibility')}</Text>
-          <StepperField
+          <Stepper
             label={t('sel.policy.minAge')}
             value={minAge}
             min={5}
@@ -120,7 +116,7 @@ export default function SelectionPolicyBuilder({ route }) {
             disabled={isLocked}
             accessibilityLabel={t('sel.policy.minAge')}
           />
-          <StepperField
+          <Stepper
             label={t('sel.policy.maxAge')}
             value={maxAge}
             min={5}
@@ -129,7 +125,7 @@ export default function SelectionPolicyBuilder({ route }) {
             disabled={isLocked}
             accessibilityLabel={t('sel.policy.maxAge')}
           />
-          <StepperField
+          <Stepper
             label={t('sel.policy.minAppearances')}
             value={minAppearances}
             min={0}
@@ -143,7 +139,7 @@ export default function SelectionPolicyBuilder({ route }) {
         {/* Scoring config */}
         <Card style={S.card}>
           <Text style={S.sectionTitle}>{t('sel.policy.scoringConfig')}</Text>
-          <StepperField
+          <Stepper
             label={t('sel.policy.minEvidence')}
             value={minEvidenceThreshold}
             min={1}
@@ -152,7 +148,7 @@ export default function SelectionPolicyBuilder({ route }) {
             disabled={isLocked}
             accessibilityLabel={t('sel.policy.minEvidence')}
           />
-          <StepperField
+          <Stepper
             label={t('sel.policy.confidencePenalty')}
             value={confidencePenaltyPct}
             min={0}
@@ -178,7 +174,7 @@ export default function SelectionPolicyBuilder({ route }) {
         </Card>
 
         {!isLocked && (
-          <Button
+          <Btn
             label={t('sel.policy.lockAndApply')}
             onPress={lock}
             loading={loading}
