@@ -71,7 +71,7 @@ export function Advertising() {
     <Screen onRefresh={() => { home.reload(); policy.reload(); }} wide>
       <H1 style={{ marginTop: 8 }}>Advertising</H1>
       <T color={c.mute} weight="600">Reach people by sport and place. Every ad is labelled, reviewed before it runs, and kept apart from search results, rankings and reviews — paying never changes where anyone ranks.</T>
-      {isAdmin ? <View style={{ marginVertical: 10 }}><Seg options={[{ value: 'campaigns', label: 'My campaigns' }, { value: 'review', label: 'Review desk' }, { value: 'reports', label: 'Reports' }, { value: 'policy', label: 'Policy & overview' }]} value={tab} onChange={setTab} /></View> : null}
+      {isAdmin ? <View style={{ marginVertical: 10 }}><Seg options={[{ value: 'campaigns', label: 'My campaigns' }, { value: 'review', label: 'Review desk' }, { value: 'reports', label: 'Reports' }, { value: 'policy', label: 'Policy & overview' }, { value: 'studio', label: 'Experience Studio' }]} value={tab} onChange={setTab} /></View> : null}
 
       {tab !== 'campaigns' && isAdmin ? <AdminAds tab={tab} onOpen={(id) => push('AdCampaign', { id, admin: true })} /> : (
         <>
