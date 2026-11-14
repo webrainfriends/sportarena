@@ -187,12 +187,12 @@ function Today({ h, reload, go, tz }) {
           const onPress = act(it);
           return (
             <Card key={`${it.kind}${it.official_id ?? it.case_id ?? i}`} onPress={onPress ?? undefined} pad={14} accessibilityLabel={`${it.title}. ${it.detail ?? ''}`}>
-              <View style={{ flexDirection: 'row', gap: 10, alignItems: 'center', justifyContent: 'space-between' }}>
-                <View style={{ flex: 1 }}>
-                  <T weight="800" size={14.5}>{it.title}</T>
-                  {it.detail ? <T size={12.5} color={c.mute}>{it.detail}</T> : null}
+              <View style={{ flexDirection: 'row', gap: 10, alignItems: 'center' }}>
+                <View style={{ flex: 1, minWidth: 0 }}>
+                  <T weight="800" size={14.5} numberOfLines={2}>{it.title}</T>
+                  {it.detail ? <T size={12.5} color={c.mute} numberOfLines={2}>{it.detail}</T> : null}
                 </View>
-                {it.kind === 'changed' ? <Btn small title="Acknowledge" onPress={() => respond({ id: it.official_id }, 'accept')} style={{ minHeight: 44 }} /> : onPress ? <T size={20} color={c.mute}>›</T> : null}
+                {it.kind === 'changed' ? <Btn title="Acknowledge" onPress={() => respond({ id: it.official_id }, 'accept')} style={{ minHeight: 44, flexShrink: 0 }} /> : onPress ? <View style={{ width: 44, height: 44, alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}><T size={20} color={c.mute}>›</T></View> : null}
               </View>
             </Card>
           );
@@ -279,7 +279,7 @@ function Feedback() {
           {f.comments.map((m) => (
             <Card key={m.id} pad={14}><View style={{ gap: 6 }}>
               <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}><Tag label={m.capacity === 'event_official' ? 'Event official' : 'Team official'} color={c.violetSoft} />{m.status === 'contested' ? <Tag label="Under review" color={c.sunSoft} /> : null}</View>
-              {m.comment ? <T>“{m.comment}”</T> : null}
+              {m.comment ? <T>"{m.comment}"</T> : null}
               <T size={12} color={c.mute}>{m.event_name}</T>
               {m.reply ? <T size={13}><T weight="800">Your reply: </T>{m.reply}</T> : null}
               <View style={{ flexDirection: 'row', gap: 8, flexWrap: 'wrap' }}>
