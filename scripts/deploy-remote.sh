@@ -98,7 +98,7 @@ done
 
 # ---- web build (same-origin API: nginx proxies /api and /mcp) ----
 echo "[deploy] building the app for web"
-(cd apps/app && NODE_OPTIONS=--max-old-space-size=1536 CI=1 EXPO_PUBLIC_API_URL= npx expo export --platform web --output-dir dist) \
+(cd apps/app && NODE_OPTIONS=--max-old-space-size=1536 CI=1 EXPO_PUBLIC_API_URL= npx expo export --platform web --output-dir dist --clear) \
   || abort_deploy "Web build failed - previous version still running."
 WEB_ROOT=/var/www/sportarena-web
 sudo rm -rf "$WEB_ROOT"; sudo mkdir -p "$WEB_ROOT"
