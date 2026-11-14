@@ -507,9 +507,83 @@ async function syncCrossRoleLinks() {
   return { linked };
 }
 
+/** Sync confirmed offline receipts that haven't yet reached the ledger. */
+async function syncOfflineReceipts(limit = 500) {
+  const rows = await many(
+    `SELECT r.*, r.organisation_id, r.customer_id, r.currency, r.amount, r.method, r.confirmed_at
+       FROM fin_offline_receipts r WHERE r.status = 'confirmed' AND r.tx_id IS NULL LIMIT $1`,
+    [limit]
+  );
+  let posted = 0;
+  for (const r of rows) {
+    await tx(async (client) => {
+      const txId = await insert(client, {
+        kind: 'payment', status: 'settled', module: 'other',
+        sourceType: 'offline_receipt', sourceId: r.id,
+        payeeOrgId: r.organisation_id, payerId: r.customer_id ?? null,
+        currency: r.currency, gross: Math.round(Number(r.amount) * 100),
+        provider: r.method, key: `offline_receipt:${r.id}`, at: r.confirmed_at,
+      });
+      if (txId) await client.query('UPDATE fin_offline_receipts SET tx_id=$2 WHERE id=$1', [r.id, txId]);
+    });
+    posted++;
+  }
+  return { posted };
+}
+
+/** Mark overdue instalment items and post paid items missing ledger entries. */
+async function syncInstalments(limit = 500) {
+  await many(`UPDATE fin_instalment_items SET status='overdue' WHERE status='pending' AND due_date < CURRENT_DATE`, []);
+  const rows = await many(
+    `SELECT ii.*, s.organisation_id, s.currency FROM fin_instalment_items ii
+       JOIN fin_instalments s ON s.id = ii.instalment_id
+       WHERE ii.status = 'paid' AND ii.tx_id IS NULL LIMIT $1`,
+    [limit]
+  );
+  let posted = 0;
+  for (const r of rows) {
+    await tx(async (client) => {
+      const txId = await insert(client, {
+        kind: 'payment', status: 'settled', module: 'other',
+        sourceType: 'fin_instalment_item', sourceId: r.id,
+        payeeOrgId: r.organisation_id, currency: r.currency,
+        gross: Math.round(Number(r.paid_amount ?? r.amount) * 100),
+        key: `instalment_item:${r.id}`, at: r.paid_at,
+      });
+      if (txId) await client.query('UPDATE fin_instalment_items SET tx_id=$2 WHERE id=$1', [r.id, txId]);
+    });
+    posted++;
+  }
+  return { posted };
+}
+
+/** Sync deposit receipts that have been received but not yet ledgered. */
+async function syncDeposits(limit = 500) {
+  const rows = await many(
+    `SELECT * FROM fin_deposits WHERE status IN ('received','partially_released','released','forfeited')
+       AND receipt_tx_id IS NULL AND received_at IS NOT NULL LIMIT $1`,
+    [limit]
+  );
+  let posted = 0;
+  for (const r of rows) {
+    await tx(async (client) => {
+      const txId = await insert(client, {
+        kind: 'payment', status: 'settled', module: 'other',
+        sourceType: 'fin_deposit', sourceId: r.id,
+        payeeOrgId: r.organisation_id, payerId: r.customer_id ?? null,
+        currency: r.currency, gross: Math.round(Number(r.amount) * 100),
+        key: `deposit:${r.id}:payment`, at: r.received_at,
+      });
+      if (txId) await client.query('UPDATE fin_deposits SET receipt_tx_id=$2 WHERE id=$1', [r.id, txId]);
+    });
+    posted++;
+  }
+  return { posted };
+}
+
 /** Catch the canonical ledger up with every source above and fill the filter dimensions. Idempotent; called by reconcileFinance (worker step `finance`). */
 export async function syncLedger({ limit = 500 } = {}) {
-  const out = { obligations: 0, obligations_updated: 0, receipts: 0, spend: 0, spend_reversed: 0, more: false, commissions: 0, contract_credit_notes: 0, venue_credit_notes: 0, pos: 0, wallet: 0, credit_notes: 0, trip_payments: 0, sponsorship_refunds: 0 };
+  const out = { obligations: 0, obligations_updated: 0, receipts: 0, spend: 0, spend_reversed: 0, more: false, commissions: 0, contract_credit_notes: 0, venue_credit_notes: 0, pos: 0, wallet: 0, credit_notes: 0, trip_payments: 0, sponsorship_refunds: 0, offline_receipts: 0, instalments: 0, deposits: 0 };
   for (const d of OBLIGATIONS) {
     const o = await syncObligations(d, limit);
     out.obligations += o.posted; out.obligations_updated += o.updated; out.more ||= o.more;
@@ -525,6 +599,9 @@ export async function syncLedger({ limit = 500 } = {}) {
   for (const [name, fn] of parts) { const r = await fn(limit); out[name] = (r.posted ?? 0) + (r.receipts ?? 0); }
   // after the wallet and front-desk tenders, so what they already hold is netted before the rest is treated as paid at the venue
   out.receipts += (await syncCumulativeReceipts(VENUE_INVOICE_RECEIPTS, limit)).posted;
+  const or = await syncOfflineReceipts(limit); out.offline_receipts = or.posted;
+  const ins = await syncInstalments(limit); out.instalments = ins.posted;
+  const dep = await syncDeposits(limit); out.deposits = dep.posted;
   await applyDimensions(null, null);
   const links = await syncCrossRoleLinks();
   out.role_links = links.linked;

@@ -14,11 +14,13 @@ import { c, day } from '../theme';
 import { Bars, Kpi, Split, saveCsv } from './academy-ui';
 import { Obligations, Settlements, AccessAudit, SixRoleAudit } from './finance-books';
 import { AccountingIntegration } from './accounting-integration';
+import { FinanceInstruments } from './finance-instruments-screen';
+import { FinanceReceipts } from './finance-receipts-screen';
 import { Tax } from './finance-tax';
 import { Detail, TxRow, atLeast, catLabel, kindLabel, modLabel, money } from './finance-parts';
 
 const FINANCE_ROLES = ['owner', 'admin', 'finance'];
-const TABS = ['overview', 'transactions', 'receivables', 'payables', 'settlements', 'reconciliation', 'tax', 'budget_health', 'accounting', 'access', 'six_role'];
+const TABS = ['overview', 'transactions', 'receivables', 'payables', 'settlements', 'reconciliation', 'tax', 'budget_health', 'invoices', 'receipts', 'accounting', 'access', 'six_role'];
 const RECON_KINDS = ['payment_unrecorded', 'refund_drift', 'amount_drift', 'paid_without_ledger', 'amount_mismatch', 'refund_unrecorded', 'provider_dispute', 'payout_failed', 'ledger_drift', 'share_mismatch'];
 const iso = (d) => (d ? String(d).slice(0, 10) : undefined);
 const join = (v) => (v?.length ? v.join(',') : undefined);
@@ -95,7 +97,7 @@ export function Finance({ id: routeOrg }) {
       <View style={{ marginVertical: 12 }}><Seg options={TABS.filter((value) => (value !== 'tax' || atLeast(level, 'accountant')) && (value !== 'accounting' || atLeast(level, 'accountant')) && (value !== 'six_role' || whole)).map((value) => ({ value, label: value === 'reconciliation' && needs ? `${t(`fin.tab.${value}`)} (${needs})` : t(`fin.tab.${value}`) }))} value={tab} onChange={setTab} /></View>
       {!ready ? <Loading /> : sum.error ? <ErrorBox error={sum.error} onRetry={sum.reload} /> : sum.loading && !sum.data ? <Loading /> : (
         <>
-          {tab === 'overview' ? <Overview shown={shown} head={head} needs={needs} onReview={() => setTab('reconciliation')} onCategory={(k) => { setDims({ ...dims, category: [k] }); setTab('transactions'); }} /> : null}
+          {tab === 'overview' ? <Overview shown={shown} head={head} needs={needs} onReview={() => setTab('reconciliation')} onCategory={(k) => { setDims({ ...dims, category: [k] }); setTab('transactions'); }} onTab={setTab} /> : null}
           {tab === 'transactions' ? <Transactions q={q} scope={scope} level={level} toast={toast} /> : null}
           {tab === 'receivables' ? <Obligations direction="in" q={q} scope={scope} cur={cur} /> : null}
           {tab === 'payables' ? <Obligations direction="out" q={q} scope={scope} cur={cur} /> : null}
@@ -103,6 +105,8 @@ export function Finance({ id: routeOrg }) {
           {tab === 'reconciliation' ? <Reconciliation scope={scope} whole={whole} platform={platform} level={level} onChanged={() => { sum.reload(); everyCurrency.reload(); }} toast={toast} /> : null}
           {tab === 'tax' && atLeast(level, 'accountant') ? <Tax scope={scope} whole={whole} level={level} q={q} toast={toast} /> : null}
           {tab === 'budget_health' ? <BudgetHealth scope={scope} toast={toast} /> : null}
+          {tab === 'invoices' && atLeast(level, 'accountant') ? <FinanceInstruments scope={scope} level={level} toast={toast} /> : null}
+          {tab === 'receipts' && atLeast(level, 'accountant') ? <FinanceReceipts scope={scope} level={level} toast={toast} /> : null}
           {tab === 'accounting' && atLeast(level, 'accountant') ? <AccountingIntegration orgId={scope.org_id} /> : null}
           {tab === 'access' ? <AccessAudit scope={scope} whole={whole} level={level} toast={toast} onChanged={sum.reload} /> : null}
           {tab === 'six_role' && whole ? <SixRoleAudit scope={scope} whole={whole} toast={toast} /> : null}
@@ -112,7 +116,7 @@ export function Finance({ id: routeOrg }) {
   );
 }
 
-function Overview({ shown, head, needs, onReview, onCategory }) {
+function Overview({ shown, head, needs, onReview, onCategory, onTab }) {
   if (!head) return <Empty emoji="💸" title={t('fin.empty_title')} sub={t('fin.empty_sub')} />;
   return (
     <View style={{ gap: 12 }}>
@@ -123,6 +127,11 @@ function Overview({ shown, head, needs, onReview, onCategory }) {
             <T size={34} weight="800" color="#fff" style={{ letterSpacing: -1.2, fontVariant: ['tabular-nums'] }}>{money(x.net, x.currency)}</T>
             <T size={13} color="#fff" style={{ opacity: 0.85 }}>{t('fin.net_sub', { n: x.payments })}</T>
           </GradCard>
+          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+            <Btn label={t('fin.quick.new_invoice')} onPress={() => onTab('invoices')} />
+            <Btn label={t('fin.quick.new_receipt')} onPress={() => onTab('receipts')} />
+            <Btn label={t('fin.quick.instalments')} onPress={() => onTab('invoices')} />
+          </View>
           <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10 }}>
             <Kpi label={t('fin.kpi.gross')} value={money(x.gross, x.currency)} sub={t('fin.kpi.gross_sub')} />
             <Kpi label={t('fin.kpi.receivables')} value={money(x.receivable, x.currency)} sub={t('fin.kpi.receivables_sub')} />
