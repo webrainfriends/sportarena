@@ -142,7 +142,10 @@ test('branded invoice PDF: canonical numbers, stored immutably, access re-checke
   await assert.rejects(pool.query('UPDATE generated_documents SET pages=9'), /append-only/);
 });
 
-test('preview renders SAMPLE through the same engine; non-Latin text is refused rather than garbled', async () => {
+test('preview renders SAMPLE through the same engine; non-Latin text renders with an auto-detected Unicode font or fails cleanly without one', async () => {
+  const { existsSync } = await import('node:fs');
+  const SYSTEM_FONTS = ['/usr/share/fonts/opentype/unifont/unifont_sample.otf', '/usr/share/fonts/truetype/noto/NotoSans-Regular.ttf', '/usr/share/fonts/truetype/freefont/FreeSans.ttf'];
+  const hasSystemFont = SYSTEM_FONTS.some(existsSync);
   const u = await signup();
   const kit = must(await api('POST', '/brand-kits', { token: u.token, body: kitBody }));
   const r = await api('POST', '/branded-documents/preview', { token: u.token, body: { layout: { blocks: [{ type: 'header' }, { type: 'title' }, { type: 'parties' }, { type: 'lines' }, { type: 'totals' }, { type: 'footer' }] }, kit_id: kit.id } });
@@ -150,8 +153,13 @@ test('preview renders SAMPLE through the same engine; non-Latin text is refused 
   assert.equal((await api('POST', '/branded-documents/preview', { token: u.token, body: { layout: { blocks: [{ type: 'title' }] } } })).status, 400);
   const other = await signup();
   assert.equal((await api('POST', '/branded-documents/preview', { token: other.token, body: { layout: { blocks: [{ type: 'header' }, { type: 'title' }, { type: 'parties' }, { type: 'lines' }, { type: 'totals' }] }, kit_id: kit.id } })).status, 404);
+  // Tamil text: renders correctly when a Unicode font is auto-detected, or returns 422 cleanly if none is available
   const ta = await api('POST', '/branded-documents/preview', { token: u.token, body: { layout: { blocks: [{ type: 'title' }, { type: 'parties' }, { type: 'lines' }, { type: 'totals' }, { type: 'text', text: 'வணக்கம்' }] } } });
-  assert.equal(ta.status, 422); assert.equal(ta.body.error.code, 'unsupported_characters');
+  if (hasSystemFont) {
+    assert.equal(ta.status, 200, 'Tamil text renders with the auto-detected system Unicode font'); assert.equal(ta.body.subarray(0, 5).toString(), '%PDF-');
+  } else {
+    assert.equal(ta.status, 422); assert.equal(ta.body.error.code, 'unsupported_characters');
+  }
 });
 
 test('text blocks may carry alignment and size; other blocks may not', async () => {

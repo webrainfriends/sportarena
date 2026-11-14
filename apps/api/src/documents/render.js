@@ -1,6 +1,7 @@
 // Invoice PDF renderer (pdfkit). Layout comes from a validated template; every figure comes from the canonical invoice row and is only
 // formatted here - nothing is recalculated. The same function renders previews (sample data, labelled SAMPLE) and issued documents.
 import PDFDocument from 'pdfkit';
+import { existsSync } from 'node:fs';
 import { AppError } from '../errors.js';
 import { toMajor } from '../currency.js';
 import { drawForm } from './sheet-forms.js';
@@ -9,8 +10,17 @@ import { drawWordmark, ICON } from './brand-font.js';
 
 const MM = 72 / 25.4;
 const BASE_FONTS = { regular: 'Helvetica', bold: 'Helvetica-Bold' };
-export const fonts = () => ({ regular: process.env.DOC_FONT_REGULAR || BASE_FONTS.regular, bold: process.env.DOC_FONT_BOLD || process.env.DOC_FONT_REGULAR || BASE_FONTS.bold, unicode: !!process.env.DOC_FONT_REGULAR });
-// What the built-in PDF fonts can show (Latin-1 plus common punctuation). Anything else needs DOC_FONT_REGULAR (e.g. Noto Sans Tamil).
+// System Unicode fonts tried in order when DOC_FONT_REGULAR is not set.
+// GNU Unifont covers the full Unicode BMP (all Indic scripts, Arabic/Urdu, Sinhala, etc.).
+const SYSTEM_FONTS = [
+  { regular: '/usr/share/fonts/opentype/unifont/unifont_sample.otf', bold: '/usr/share/fonts/opentype/unifont/unifont_sample.otf' },
+  { regular: '/usr/share/fonts/truetype/noto/NotoSans-Regular.ttf',  bold: '/usr/share/fonts/truetype/noto/NotoSans-Bold.ttf' },
+  { regular: '/usr/share/fonts/truetype/freefont/FreeSans.ttf',      bold: '/usr/share/fonts/truetype/freefont/FreeSansBold.ttf' },
+];
+let _sysFonts;
+const detectSystemFonts = () => { if (_sysFonts === undefined) _sysFonts = SYSTEM_FONTS.find(p => existsSync(p.regular)) ?? null; return _sysFonts; };
+export const fonts = () => { const cfg = process.env.DOC_FONT_REGULAR || null; const sys = cfg ? null : detectSystemFonts(); return { regular: cfg || sys?.regular || BASE_FONTS.regular, bold: process.env.DOC_FONT_BOLD || cfg || sys?.bold || BASE_FONTS.bold, unicode: !!(cfg || sys) }; };
+// What the built-in PDF fonts can show (Latin-1 plus common punctuation). Anything else needs a Unicode font (auto-detected above, or set DOC_FONT_REGULAR).
 const BASIC = /^[ -~ -ÿ‐-‟•…€\n]*$/;
 
 const TEXT_SIZE = { small: 8, normal: 9, large: 12 };
