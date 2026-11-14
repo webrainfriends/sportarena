@@ -252,6 +252,23 @@ export const ACADEMY_STEPS = [
     modules: ['event-external.js'], sources: ['apps/app/src/screens/event-command.js'],
   },
   {
+    id: 'invoices_receipts', title: 'Issue invoices and record payments',
+    why: 'Generate professional invoices for customers, issue credit notes for adjustments, set up instalment plans for large payments, hold security deposits and record every offline payment (cash, bank transfer, cheque, UPI) through a single auditable workflow that posts automatically to the canonical ledger.',
+    steps: [
+      'Open Finance and choose the Invoices tab (accountant or above access is required).',
+      'Invoice sub-tab — tap New Invoice, choose the customer and currency, set a due date, then add one or more line items with description, quantity, unit price and optional tax rate. Tap Create invoice: the invoice is numbered automatically (INV-0001…) and starts as Draft.',
+      'Once ready, tap the invoice and choose Mark as sent. The status moves to Sent. When the balance is fully paid the status becomes Paid; a partial payment gives Partial.',
+      'Credit notes sub-tab — tap New Credit Note, pick the currency and optionally link it to an invoice, add the reason and line items. Create the note (CN-0001…). Once issued, tap Allocate from the invoice detail to apply the balance and reduce what is owed.',
+      'Instalments sub-tab — tap New Instalment Plan, choose the currency, schedule type (weekly, fortnightly, monthly or custom), start date and add the per-instalment due dates and amounts (minimum 2). The platform marks items overdue automatically and updates the plan status to Completed when all items are paid.',
+      'Deposits sub-tab — tap New Deposit to record a security deposit with amount, purpose, reference and expected release date. Use Release to record a full or partial release, or Forfeit to close out.',
+      'Receipts tab — tap Record Payment to log any offline payment: choose cash, bank transfer, cheque, UPI or other, enter the amount and an optional encrypted reference (bank ref, cheque number). Save as Pending, then tap Confirm receipt once cleared: the receipt is posted to the canonical ledger and the linked invoice is updated automatically.',
+      'All confirmed receipts, invoice payments and deposit movements appear in Finance → Transactions for a full audit trail.',
+    ],
+    target: { screen: 'Finance' },
+    modules: ['finance-instruments.js', 'finance-receipts.js'],
+    sources: ['apps/app/src/screens/finance-instruments-screen.js', 'apps/app/src/screens/finance-receipts-screen.js', 'apps/app/src/screens/finance.js'],
+  },
+  {
     id: 'tax', title: 'Set up taxation & India GST',
     why: 'Know the tax collected and paid, with your own tax rules and legally-compliant GST details frozen on every invoice.',
     steps: [

@@ -632,3 +632,52 @@ export async function taxReport(scope, { from, to, currency, period = 'month', .
   for (const c of cur.values()) c.net_tax = c.collected.tax - c.paid.tax;
   return { period, currencies: [...cur.values()].sort((a, b) => a.currency.localeCompare(b.currency)) };
 }
+
+// ------------------------------------------------------------------------------------------------ Finance Stage 2 helpers (#564)
+
+/** Post an offline receipt to the canonical ledger once confirmed. Idempotent (idem_key). */
+export async function recordOfflineReceipt(c, receipt) {
+  if (receipt.status !== 'confirmed') return null;
+  return insert(c, {
+    kind: 'payment', status: 'settled', module: 'other',
+    sourceType: 'offline_receipt', sourceId: receipt.id,
+    payeeOrgId: receipt.organisation_id,
+    payerId: receipt.customer_id ?? null,
+    currency: receipt.currency,
+    gross: Math.round(Number(receipt.amount) * 100),
+    provider: receipt.method,
+    key: `offline_receipt:${receipt.id}`,
+    at: receipt.confirmed_at ?? null,
+  });
+}
+
+/** Post an instalment-plan item to the ledger (charge when due, settled when paid). Idempotent. */
+export async function recordInstalmentCharge(c, item) {
+  return insert(c, {
+    kind: 'charge',
+    status: item.status === 'paid' ? 'settled' : 'open',
+    module: 'other', sourceType: 'fin_instalment_item', sourceId: item.id,
+    payeeOrgId: item.organisation_id ?? null,
+    currency: item.currency,
+    gross: Math.round(Number(item.amount) * 100),
+    key: `instalment_item:${item.id}`,
+    dueOn: item.due_date ?? null,
+    at: item.paid_at ?? null,
+  });
+}
+
+/** Post a deposit receipt (kind='payment') or release (kind='refund') to the ledger. Idempotent. */
+export async function recordDepositMovement(c, movement) {
+  return insert(c, {
+    kind: movement.kind,
+    status: 'settled', module: 'other',
+    sourceType: 'fin_deposit', sourceId: movement.deposit_id,
+    payeeOrgId: movement.kind === 'payment' ? movement.organisation_id : null,
+    payerOrgId: movement.kind === 'refund' ? movement.organisation_id : null,
+    currency: movement.currency,
+    gross: Math.round(Number(movement.amount) * 100),
+    provider: movement.method ?? null,
+    key: `deposit:${movement.deposit_id}:${movement.kind}`,
+    at: movement.at ?? null,
+  });
+}
