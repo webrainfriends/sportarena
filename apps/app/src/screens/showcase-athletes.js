@@ -1,5 +1,5 @@
-import React, { useState, useRef } from 'react';
-import { View, TouchableOpacity, ScrollView, Animated } from 'react-native';
+import React, { useState, useRef, useEffect } from 'react';
+import { View, TouchableOpacity, ScrollView, Animated, Platform } from 'react-native';
 import { T } from '../ui';
 import { palette } from '../theme';
 
@@ -13,45 +13,115 @@ const STAGES = [
 ];
 const SPORTS = ['Tennis', 'Football', 'Cricket', 'Athletics', 'Swimming', 'Basketball', 'Badminton', 'Hockey'];
 
+function ChapterHero() {
+  const glow = useRef(new Animated.Value(0.3)).current;
+  const bar  = useRef(new Animated.Value(0)).current;
+  useEffect(() => {
+    Animated.loop(Animated.sequence([
+      Animated.timing(glow, { toValue: 0.8, duration: 1800, useNativeDriver: true }),
+      Animated.timing(glow, { toValue: 0.3, duration: 1800, useNativeDriver: true }),
+    ])).start();
+    Animated.timing(bar, { toValue: 1, duration: 600, delay: 200, useNativeDriver: false }).start();
+  }, []);
+  const accent = 'rgba(132,88,179,0.4)';
+  return (
+    <View style={{ alignItems: 'center', paddingTop: 20, paddingBottom: 16 }}>
+      <View style={{ position: 'relative', marginBottom: 12 }}>
+        <Animated.View style={{ position: 'absolute', top: -8, left: -8, right: -8, bottom: -8, borderRadius: 36, backgroundColor: accent, opacity: glow }} />
+        <View style={{ width: 56, height: 56, borderRadius: 28, backgroundColor: 'rgba(255,255,255,0.08)', alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: 'rgba(255,255,255,0.15)' }}>
+          <T style={{ fontSize: 28 }}>🏃</T>
+        </View>
+      </View>
+      <T style={{ color: '#fff', fontSize: 20, fontWeight: '700', marginBottom: 4, textAlign: 'center' }}>Athlete Profiles</T>
+      <T style={{ color: 'rgba(208,189,244,0.7)', fontSize: 13, textAlign: 'center', marginBottom: 12 }}>From discovery to international selection — one platform</T>
+      <Animated.View style={{ height: 2, borderRadius: 1, backgroundColor: accent, width: bar.interpolate({ inputRange: [0, 1], outputRange: ['0%', '100%'] }) }} />
+    </View>
+  );
+}
+
 export function ShowcaseAthletes({ manifest, block, onNavigate }) {
   const [stageIdx, setStageIdx] = useState(0);
   const [sport, setSport]       = useState('Tennis');
   const anim                    = useRef(new Animated.Value(1)).current;
+  const progressAnim            = useRef(new Animated.Value(0)).current;
+  const sportScale              = useRef(new Animated.Value(1)).current;
   const stage                   = STAGES[stageIdx];
+
+  const anims = useRef(STAGES.map(() => new Animated.Value(0))).current;
+  useEffect(() => {
+    Animated.stagger(55, anims.map((a) => Animated.timing(a, { toValue: 1, duration: 300, useNativeDriver: true }))).start();
+    Animated.timing(progressAnim, { toValue: stageIdx / (STAGES.length - 1), duration: 400, useNativeDriver: false }).start();
+  }, []);
 
   const go = (dir) => {
     const next = stageIdx + dir;
     if (next < 0 || next >= STAGES.length) return;
     Animated.sequence([
-      Animated.timing(anim, { toValue: 0, duration: 100, useNativeDriver: true }),
+      Animated.timing(anim, { toValue: 0, duration: 80, useNativeDriver: true }),
       Animated.timing(anim, { toValue: 1, duration: 180, useNativeDriver: true }),
     ]).start();
+    Animated.timing(progressAnim, { toValue: next / (STAGES.length - 1), duration: 300, useNativeDriver: false }).start();
     setStageIdx(next);
+  };
+
+  const pickSport = (s) => {
+    setSport(s);
+    Animated.sequence([
+      Animated.spring(sportScale, { toValue: 0.85, useNativeDriver: true, tension: 300, friction: 5 }),
+      Animated.spring(sportScale, { toValue: 1.1, useNativeDriver: true, tension: 300, friction: 5 }),
+      Animated.spring(sportScale, { toValue: 1.0, useNativeDriver: true, tension: 300, friction: 5 }),
+    ]).start();
+  };
+
+  const glass = {
+    backgroundColor: 'rgba(255,255,255,0.05)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.12)',
+    borderRadius: 14,
+    ...(Platform.OS === 'web' ? { backdropFilter: 'blur(10px)', WebkitBackdropFilter: 'blur(10px)' } : {}),
   };
 
   return (
     <View style={{ padding: 16, flex: 1 }}>
-      <T style={{ color: '#fff', fontSize: 20, fontWeight: '800', marginBottom: 4 }}>Athlete Profiles</T>
-      <T style={{ color: 'rgba(255,255,255,0.6)', fontSize: 13, marginBottom: 14 }}>From discovery to international selection — one platform</T>
+      <ChapterHero />
 
       <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 14 }} contentContainerStyle={{ gap: 6, flexDirection: 'row' }}>
         {SPORTS.map((s) => (
-          <TouchableOpacity key={s} onPress={() => setSport(s)} style={{ paddingHorizontal: 10, paddingVertical: 5, borderRadius: 20, backgroundColor: s === sport ? palette.p2 : 'rgba(255,255,255,0.08)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.15)' }}>
-            <T style={{ color: s === sport ? '#fff' : 'rgba(255,255,255,0.7)', fontSize: 11, fontWeight: '600' }}>{s}</T>
+          <TouchableOpacity key={s} onPress={() => pickSport(s)} style={{ paddingHorizontal: 10, paddingVertical: 5, borderRadius: 20, backgroundColor: s === sport ? palette.p2 : 'rgba(255,255,255,0.08)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.15)' }}>
+            <Animated.View style={{ transform: [{ scale: s === sport ? sportScale : 1 }] }}>
+              <T style={{ color: s === sport ? '#fff' : 'rgba(255,255,255,0.7)', fontSize: 11, fontWeight: '600' }}>{s}</T>
+            </Animated.View>
           </TouchableOpacity>
         ))}
       </ScrollView>
+
+      {/* Animated progress bar */}
+      <View style={{ height: 4, borderRadius: 4, backgroundColor: 'rgba(255,255,255,0.12)', marginBottom: 6, overflow: 'hidden' }}>
+        <Animated.View style={{
+          height: '100%',
+          borderRadius: 4,
+          backgroundColor: palette.p2,
+          width: progressAnim.interpolate({ inputRange: [0, 1], outputRange: ['0%', '100%'] }),
+        }} />
+      </View>
 
       <View style={{ flexDirection: 'row', gap: 4, marginBottom: 14 }}>
         {STAGES.map((s, i) => (
           <TouchableOpacity
             key={s.key}
-            onPress={() => { anim.setValue(0); setStageIdx(i); Animated.timing(anim, { toValue: 1, duration: 180, useNativeDriver: true }).start(); }}
+            onPress={() => {
+              Animated.timing(progressAnim, { toValue: i / (STAGES.length - 1), duration: 300, useNativeDriver: false }).start();
+              Animated.sequence([
+                Animated.timing(anim, { toValue: 0, duration: 80, useNativeDriver: true }),
+                Animated.timing(anim, { toValue: 1, duration: 180, useNativeDriver: true }),
+              ]).start();
+              setStageIdx(i);
+            }}
             style={{ flex: 1, height: 3, borderRadius: 3, backgroundColor: i <= stageIdx ? palette.p2 : 'rgba(255,255,255,0.18)' }} />
         ))}
       </View>
 
-      <Animated.View style={{ opacity: anim, padding: 16, borderRadius: 14, backgroundColor: 'rgba(255,255,255,0.07)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.14)', marginBottom: 14 }}>
+      <Animated.View style={[glass, { opacity: anim, padding: 16, marginBottom: 14 }]}>
         <T style={{ fontSize: 28, marginBottom: 8 }}>{stage.icon}</T>
         <T style={{ color: palette.p3, fontSize: 11, fontWeight: '700', letterSpacing: 1.2, textTransform: 'uppercase', marginBottom: 4 }}>Stage {stageIdx + 1} of {STAGES.length}</T>
         <T style={{ color: '#fff', fontSize: 17, fontWeight: '800', marginBottom: 8 }}>{stage.label}</T>
