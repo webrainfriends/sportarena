@@ -220,7 +220,7 @@ export default function Landing() {
       <ScrollView ref={scroller} showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 0 }}>
         <Hero counts={d?.counts} wide={wide} onJoin={() => start('join')} onBrowse={browse} onFind={() => find('sponsors')} onAdvertise={() => start('advertise')} />
         <Ticker games={d?.games ?? []} events={d?.events ?? []} />
-        {manifest ? <ShowcaseLanding manifest={manifest} onNavigate={(key) => { if (key === 'venue-discovery') browse(); else if (key === 'news-discovery') find('study'); else start('join'); }} /> : null}
+        <ShowcaseLanding manifest={manifest} onNavigate={(key) => { if (key === 'venue-discovery') browse(); else if (key === 'news-discovery') find('study'); else start('join'); }} />
 
         <View style={[wrap, { paddingTop: 44, gap: 44 }]}>
           <Featured items={d?.featured ?? []} gate={gate} user={null} />

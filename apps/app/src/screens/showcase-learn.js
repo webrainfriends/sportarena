@@ -1,85 +1,73 @@
 import React, { useState } from 'react';
-import { Pressable, ScrollView, View } from 'react-native';
-import { c, r } from '../theme';
-import { Btn, Card, T } from '../ui';
+import { View, TouchableOpacity, ScrollView } from 'react-native';
+import { T } from '../ui';
+import { palette } from '../theme';
 
-const ROLES = ['Athlete', 'Coach', 'Referee', 'Manager'];
-
-const ROLE_OBJECTIVES = {
-  Athlete: ['Earn a scholarship', 'Degree in Sport Science', 'Elite pathway', 'Nutrition & Recovery'],
-  Coach: ['Get UEFA licence', 'Sports psychology', 'Talent ID course', 'Academy management'],
-  Referee: ['Officiating licence', 'Laws of the game', 'Fitness standards', 'Video review training'],
-  Manager: ['FA Youth award', 'Leadership & comms', 'Club operations', 'Finance & governance'],
+const ROLES = [
+  { key: 'athlete',  label: 'Athlete',       emoji: '🏃' },
+  { key: 'coach',    label: 'Coach',         emoji: '👨‍🏫' },
+  { key: 'official', label: 'Official',      emoji: '🏁' },
+  { key: 'manager',  label: 'Team manager',  emoji: '📋' },
+  { key: 'admin',    label: 'Administrator', emoji: '🏛' },
+];
+const OBJECTIVES = {
+  athlete:  ['Performance analytics', 'Strength & conditioning', 'Mental resilience', 'Nutrition science', 'Sports law', 'Doping regulations'],
+  coach:    ['Periodisation', 'Tactical frameworks', 'Athlete psychology', 'Safeguarding', 'Video analysis', 'CPD portfolio'],
+  official: ['Laws of the sport', 'VAR/technology', 'Fitness standards', 'Communication', 'Ethics & integrity', 'Appointment system'],
+  manager:  ['Budget & finance', 'Contracts', 'Travel logistics', 'Media relations', 'Player welfare', 'Federation rules'],
+  admin:    ['Governance', 'Commercial rights', 'Event management', 'Digital transformation', 'HR & recruitment', 'Compliance'],
 };
+const LEVELS = ['Foundation', 'Intermediate', 'Advanced', 'Professional', 'Elite'];
 
-const ROLE_PATHWAYS = {
-  Athlete: ['Sport Science BSc', 'Elite Academy', 'Scholarship Fund', 'Nutrition Certificate', 'Psychology Diploma', 'Performance Analysis'],
-  Coach: ['UEFA B Licence', 'FA Youth Award', 'Sports Psychology', 'Academy Management', 'Talent ID Course', 'Video Analysis'],
-  Referee: ['FA Referee Licence', 'Laws of the Game', 'Video Review', 'Fitness Programme', 'Match Assessor', 'Elite Panel'],
-  Manager: ['FA Youth Award', 'Club Leadership', 'Operations Cert', 'Finance Course', 'Governance Module', 'Media & Comms'],
-};
-
-export function ShowcaseLearn({ block, manifest, onCta }) {
-  const [role, setRole] = useState('Athlete');
-  const [objective, setObjective] = useState(ROLE_OBJECTIVES['Athlete'][0]);
-  const pathways = ROLE_PATHWAYS[role];
-
-  const handleRoleChange = (r) => {
-    setRole(r);
-    setObjective(ROLE_OBJECTIVES[r][0]);
-  };
+export function ShowcaseLearn({ manifest, block, onNavigate }) {
+  const [role, setRole] = useState('athlete');
+  const [obj, setObj]   = useState('Performance analytics');
+  const objs            = OBJECTIVES[role] || [];
+  const levelIdx        = Math.min(objs.indexOf(obj) + 1, LEVELS.length - 1);
 
   return (
-    <View style={{ gap: 20 }}>
-      <T weight="800" size={22} style={{ letterSpacing: -0.5 }}>Learn & Study</T>
+    <View style={{ padding: 16, flex: 1 }}>
+      <T style={{ color: '#fff', fontSize: 20, fontWeight: '800', marginBottom: 4 }}>Learn & Develop</T>
+      <T style={{ color: 'rgba(255,255,255,0.6)', fontSize: 13, marginBottom: 12 }}>Courses, certifications and career pathways in sport</T>
 
-      {/* Role selector */}
-      <View style={{ flexDirection: 'row', backgroundColor: c.line, borderRadius: r.pill, padding: 3, gap: 2 }}>
-        {ROLES.map((rl) => {
-          const sel = role === rl;
-          return (
-            <Pressable key={rl} onPress={() => handleRoleChange(rl)} accessibilityRole="button" accessibilityLabel={rl} accessibilityState={{ selected: sel }} style={{ flex: 1 }}>
-              <View style={{ paddingVertical: 10, borderRadius: r.pill, backgroundColor: sel ? c.paper : 'transparent', alignItems: 'center', minHeight: 44, justifyContent: 'center' }}>
-                <T size={12} weight="700" color={sel ? c.pink : c.mute}>{rl}</T>
-              </View>
-            </Pressable>
-          );
-        })}
-      </View>
-
-      {/* Objective chips */}
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8 }}>
-        {ROLE_OBJECTIVES[role].map((obj) => {
-          const sel = objective === obj;
-          return (
-            <Pressable key={obj} onPress={() => setObjective(obj)} accessibilityRole="button" accessibilityLabel={obj} accessibilityState={{ selected: sel }}>
-              <View style={{ paddingVertical: 8, paddingHorizontal: 14, borderRadius: r.pill, backgroundColor: sel ? c.violet : c.paper, borderWidth: 1, borderColor: sel ? c.violet : c.line, minHeight: 44, justifyContent: 'center' }}>
-                <T size={13} weight="600" color={sel ? '#fff' : c.mute}>{obj}</T>
-              </View>
-            </Pressable>
-          );
-        })}
+      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 12 }} contentContainerStyle={{ gap: 6, flexDirection: 'row' }}>
+        {ROLES.map((r) => (
+          <TouchableOpacity key={r.key} onPress={() => { setRole(r.key); setObj(OBJECTIVES[r.key][0]); }} style={{ alignItems: 'center', paddingHorizontal: 12, paddingVertical: 8, borderRadius: 12, backgroundColor: r.key === role ? palette.p2 : 'rgba(255,255,255,0.08)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.15)' }}>
+            <T style={{ fontSize: 18, marginBottom: 2 }}>{r.emoji}</T>
+            <T style={{ color: r.key === role ? '#fff' : 'rgba(255,255,255,0.65)', fontSize: 10, fontWeight: '600' }}>{r.label}</T>
+          </TouchableOpacity>
+        ))}
       </ScrollView>
 
-      {/* Pathway constellation grid */}
-      <Card>
-        <T weight="700" size={14} style={{ marginBottom: 12 }}>Pathway constellation · {role}</T>
-        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10 }}>
-          {pathways.map((path, i) => {
-            const isHighlighted = i < 2;
-            return (
-              <View key={path} style={{ width: '45%', backgroundColor: isHighlighted ? c.pinkSoft : c.violetSoft, borderRadius: r.card, padding: 12, borderWidth: isHighlighted ? 2 : 1, borderColor: isHighlighted ? c.pink : c.line, gap: 4 }}>
-                <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: isHighlighted ? c.pink : c.mute, marginBottom: 4 }} />
-                <T size={12} weight="700" color={isHighlighted ? c.pink : c.ink}>{path}</T>
-                {isHighlighted && <T size={10} color={c.mute}>Recommended for {role}</T>}
-              </View>
-            );
-          })}
-        </View>
-        <T size={11} color={c.mute} style={{ marginTop: 10 }}>Only source-verified, published listings shown. No fake certifications.</T>
-      </Card>
+      <T style={{ color: 'rgba(255,255,255,0.45)', fontSize: 10, fontWeight: '700', letterSpacing: 1.2, marginBottom: 8 }}>LEARNING OBJECTIVES</T>
+      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginBottom: 14 }}>
+        {objs.map((o) => (
+          <TouchableOpacity key={o} onPress={() => setObj(o)} style={{ paddingHorizontal: 10, paddingVertical: 5, borderRadius: 20, backgroundColor: o === obj ? palette.p2 : 'rgba(255,255,255,0.07)', borderWidth: 1, borderColor: o === obj ? palette.p2 : 'rgba(255,255,255,0.15)' }}>
+            <T style={{ color: o === obj ? '#fff' : 'rgba(255,255,255,0.65)', fontSize: 11, fontWeight: '600' }}>{o}</T>
+          </TouchableOpacity>
+        ))}
+      </View>
 
-      <Btn title="Explore learning →" onPress={() => onCta('learning-discovery')} />
+      <T style={{ color: 'rgba(255,255,255,0.45)', fontSize: 10, fontWeight: '700', letterSpacing: 1.2, marginBottom: 8 }}>CAREER PATHWAY — {obj.toUpperCase()}</T>
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, marginBottom: 14 }}>
+        {LEVELS.map((lv, i) => (
+          <React.Fragment key={lv}>
+            <View style={{ flex: 1, alignItems: 'center' }}>
+              <View style={{ width: 36, height: 36, borderRadius: 18, backgroundColor: i <= levelIdx ? palette.p2 : 'rgba(255,255,255,0.12)', alignItems: 'center', justifyContent: 'center', marginBottom: 4 }}>
+                <T style={{ color: '#fff', fontSize: 11, fontWeight: '700' }}>{i + 1}</T>
+              </View>
+              <T style={{ color: 'rgba(255,255,255,0.5)', fontSize: 8, textAlign: 'center' }}>{lv}</T>
+            </View>
+            {i < LEVELS.length - 1 && (
+              <View style={{ width: 12, height: 2, backgroundColor: i < levelIdx ? palette.p3 : 'rgba(255,255,255,0.15)', marginBottom: 16 }} />
+            )}
+          </React.Fragment>
+        ))}
+      </View>
+
+      <TouchableOpacity onPress={() => onNavigate?.('join')} style={{ paddingVertical: 12, borderRadius: 12, backgroundColor: palette.p2, alignItems: 'center' }}>
+        <T style={{ color: '#fff', fontWeight: '700', fontSize: 14 }}>Start learning →</T>
+      </TouchableOpacity>
     </View>
   );
 }

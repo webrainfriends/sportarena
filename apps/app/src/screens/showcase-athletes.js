@@ -1,98 +1,77 @@
-import React, { useRef, useState } from 'react';
-import { Animated, Pressable, ScrollView, View } from 'react-native';
-import { c, r } from '../theme';
-import { Btn, Card, T } from '../ui';
-
-const DEFAULT_SPORTS = ['Football', 'Cricket', 'Tennis', 'Basketball', 'Badminton'];
+import React, { useState, useRef } from 'react';
+import { View, TouchableOpacity, ScrollView, Animated } from 'react-native';
+import { T } from '../ui';
+import { palette } from '../theme';
 
 const STAGES = [
-  { key: 'profile',     label: 'Profile',     icon: '👤', desc: 'Build a verified athlete profile with stats, media and bio.' },
-  { key: 'performance', label: 'Performance', icon: '📊', desc: 'Log training data, match performance and progress metrics.', metrics: ['Speed', 'Agility', 'Strength', 'Endurance'] },
-  { key: 'achievement', label: 'Achievement', icon: '🏅', desc: 'Showcase verified trophies, records and milestones.' },
-  { key: 'scouting',    label: 'Scouting',    icon: '🔭', desc: 'Get shortlisted by coaches and academies based on your data.' },
-  { key: 'trials',      label: 'Trials',      icon: '📋', desc: 'Apply to open trials and receive structured feedback.' },
-  { key: 'recruitment', label: 'Recruitment', icon: '🤝', desc: 'Convert interest into contracts or academy placements.' },
+  { key: 'profile',     label: 'Build profile',       icon: '👤', desc: 'Sport history, PBs, club affiliations, media uploads — your complete sporting identity in one place.' },
+  { key: 'performance', label: 'Log performance',     icon: '📊', desc: 'GPS sessions, strength blocks, match stats synced from wearables. AI flags trend breaks and injury risk.' },
+  { key: 'achievement', label: 'Record achievements', icon: '🏅', desc: 'Rankings, medals, records, qualifications — with verified provenance from the governing body.' },
+  { key: 'scouting',    label: 'Get scouted',         icon: '🔭', desc: 'Discovery feed for 2 400+ academies and clubs. Opt-in visibility by sport, age and geography.' },
+  { key: 'trials',      label: 'Apply to trials',     icon: '📋', desc: 'One-tap application to open trials. Academies see your verified profile before you arrive.' },
+  { key: 'recruitment', label: 'Secure recruitment',  icon: '🤝', desc: 'Digital contract, guardian consent and payment schedule — from offer to enrolled in 24 hours.' },
 ];
+const SPORTS = ['Tennis', 'Football', 'Cricket', 'Athletics', 'Swimming', 'Basketball', 'Badminton', 'Hockey'];
 
-export function ShowcaseAthletes({ block, manifest, onCta }) {
-  const sports = block?.config?.sport_options ?? DEFAULT_SPORTS;
-  const [sport, setSport] = useState(sports[0] ?? 'Football');
+export function ShowcaseAthletes({ manifest, block, onNavigate }) {
   const [stageIdx, setStageIdx] = useState(0);
-  const fadeAnim = useRef(new Animated.Value(1)).current;
+  const [sport, setSport]       = useState('Tennis');
+  const anim                    = useRef(new Animated.Value(1)).current;
+  const stage                   = STAGES[stageIdx];
 
-  const switchStage = (idx) => {
-    Animated.timing(fadeAnim, { toValue: 0, duration: 100, useNativeDriver: true }).start(() => {
-      setStageIdx(idx);
-      Animated.timing(fadeAnim, { toValue: 1, duration: 200, useNativeDriver: true }).start();
-    });
+  const go = (dir) => {
+    const next = stageIdx + dir;
+    if (next < 0 || next >= STAGES.length) return;
+    Animated.sequence([
+      Animated.timing(anim, { toValue: 0, duration: 100, useNativeDriver: true }),
+      Animated.timing(anim, { toValue: 1, duration: 180, useNativeDriver: true }),
+    ]).start();
+    setStageIdx(next);
   };
 
-  const stage = STAGES[stageIdx];
-
   return (
-    <View style={{ gap: 20 }}>
-      <T weight="800" size={22} style={{ letterSpacing: -0.5 }}>Athletes</T>
+    <View style={{ padding: 16, flex: 1 }}>
+      <T style={{ color: '#fff', fontSize: 20, fontWeight: '800', marginBottom: 4 }}>Athlete Profiles</T>
+      <T style={{ color: 'rgba(255,255,255,0.6)', fontSize: 13, marginBottom: 14 }}>From discovery to international selection — one platform</T>
 
-      {/* Sport selector */}
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8 }}>
-        {sports.map((s) => {
-          const sel = sport === s;
-          return (
-            <Pressable key={s} onPress={() => setSport(s)} accessibilityRole="button" accessibilityLabel={s} accessibilityState={{ selected: sel }}>
-              <View style={{ paddingVertical: 8, paddingHorizontal: 16, borderRadius: r.pill, backgroundColor: sel ? c.pink : c.paper, borderWidth: 1, borderColor: sel ? c.pink : c.line, minHeight: 44, justifyContent: 'center' }}>
-                <T size={13} weight="600" color={sel ? '#fff' : c.mute}>{s}</T>
-              </View>
-            </Pressable>
-          );
-        })}
+      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 14 }} contentContainerStyle={{ gap: 6, flexDirection: 'row' }}>
+        {SPORTS.map((s) => (
+          <TouchableOpacity key={s} onPress={() => setSport(s)} style={{ paddingHorizontal: 10, paddingVertical: 5, borderRadius: 20, backgroundColor: s === sport ? palette.p2 : 'rgba(255,255,255,0.08)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.15)' }}>
+            <T style={{ color: s === sport ? '#fff' : 'rgba(255,255,255,0.7)', fontSize: 11, fontWeight: '600' }}>{s}</T>
+          </TouchableOpacity>
+        ))}
       </ScrollView>
 
-      {/* Journey stage rail */}
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 0 }}>
-        {STAGES.map((s, i) => {
-          const sel = i === stageIdx;
-          return (
-            <Pressable key={s.key} onPress={() => switchStage(i)} accessibilityRole="button" accessibilityLabel={s.label} accessibilityState={{ selected: sel }}
-              style={{ alignItems: 'center', paddingHorizontal: 4 }}>
-              <View style={{ paddingVertical: 10, paddingHorizontal: 14, borderRadius: r.card, backgroundColor: sel ? c.pinkSoft : 'transparent', minHeight: 44, alignItems: 'center', justifyContent: 'center' }}>
-                <T size={18}>{s.icon}</T>
-                <T size={11} weight={sel ? '700' : '500'} color={sel ? c.pink : c.mute}>{s.label}</T>
-              </View>
-              {i < STAGES.length - 1 && <View style={{ position: 'absolute', end: -2, top: 22, width: 8, height: 1, backgroundColor: c.line }} />}
-            </Pressable>
-          );
-        })}
-      </ScrollView>
+      <View style={{ flexDirection: 'row', gap: 4, marginBottom: 14 }}>
+        {STAGES.map((s, i) => (
+          <TouchableOpacity
+            key={s.key}
+            onPress={() => { anim.setValue(0); setStageIdx(i); Animated.timing(anim, { toValue: 1, duration: 180, useNativeDriver: true }).start(); }}
+            style={{ flex: 1, height: 3, borderRadius: 3, backgroundColor: i <= stageIdx ? palette.p2 : 'rgba(255,255,255,0.18)' }} />
+        ))}
+      </View>
 
-      {/* Stage detail card */}
-      <Animated.View style={{ opacity: fadeAnim }}>
-        <Card>
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 12 }}>
-            <View style={{ width: 44, height: 44, borderRadius: 14, backgroundColor: c.pinkSoft, alignItems: 'center', justifyContent: 'center' }}>
-              <T size={22}>{stage.icon}</T>
-            </View>
-            <T weight="800" size={18}>{stage.label}</T>
-          </View>
-          <T size={14} color={c.mute} style={{ lineHeight: 21, marginBottom: 12 }}>{stage.desc}</T>
-          {stage.metrics && (
-            <View style={{ gap: 10 }}>
-              {stage.metrics.map((m, i) => (
-                <View key={m}>
-                  <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 4 }}>
-                    <T size={12} weight="600" color={c.mute}>{m}</T>
-                    <T size={12} weight="600" color={c.pink}>{[82, 71, 76, 68][i]}%</T>
-                  </View>
-                  <View style={{ height: 6, backgroundColor: c.line, borderRadius: 3 }}>
-                    <View style={{ width: `${[82, 71, 76, 68][i]}%`, height: 6, backgroundColor: c.pink, borderRadius: 3 }} />
-                  </View>
-                </View>
-              ))}
-            </View>
-          )}
-        </Card>
+      <Animated.View style={{ opacity: anim, padding: 16, borderRadius: 14, backgroundColor: 'rgba(255,255,255,0.07)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.14)', marginBottom: 14 }}>
+        <T style={{ fontSize: 28, marginBottom: 8 }}>{stage.icon}</T>
+        <T style={{ color: palette.p3, fontSize: 11, fontWeight: '700', letterSpacing: 1.2, textTransform: 'uppercase', marginBottom: 4 }}>Stage {stageIdx + 1} of {STAGES.length}</T>
+        <T style={{ color: '#fff', fontSize: 17, fontWeight: '800', marginBottom: 8 }}>{stage.label}</T>
+        <T style={{ color: 'rgba(255,255,255,0.72)', fontSize: 13, lineHeight: 19 }}>{stage.desc}</T>
       </Animated.View>
 
-      <Btn title="Find athletes →" onPress={() => onCta('athlete-discovery')} />
+      <View style={{ flexDirection: 'row', gap: 8, marginBottom: 12 }}>
+        <TouchableOpacity onPress={() => go(-1)} style={{ flex: 1, paddingVertical: 10, borderRadius: 10, backgroundColor: 'rgba(255,255,255,0.08)', alignItems: 'center', opacity: stageIdx === 0 ? 0.4 : 1 }}>
+          <T style={{ color: '#fff', fontWeight: '600' }}>← Prev</T>
+        </TouchableOpacity>
+        <TouchableOpacity onPress={() => go(1)} style={{ flex: 1, paddingVertical: 10, borderRadius: 10, backgroundColor: stageIdx === STAGES.length - 1 ? palette.p2 : 'rgba(255,255,255,0.14)', alignItems: 'center' }}>
+          <T style={{ color: '#fff', fontWeight: '600' }}>{stageIdx === STAGES.length - 1 ? 'Join free →' : 'Next →'}</T>
+        </TouchableOpacity>
+      </View>
+
+      {stageIdx === STAGES.length - 1 && (
+        <TouchableOpacity onPress={() => onNavigate?.('join')} style={{ paddingVertical: 12, borderRadius: 12, backgroundColor: palette.p2, alignItems: 'center' }}>
+          <T style={{ color: '#fff', fontWeight: '700', fontSize: 14 }}>Create your {sport} profile →</T>
+        </TouchableOpacity>
+      )}
     </View>
   );
 }

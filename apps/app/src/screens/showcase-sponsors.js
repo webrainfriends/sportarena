@@ -1,138 +1,67 @@
-import React, { useEffect, useRef, useState } from 'react';
-import { Animated, Platform, Pressable, View } from 'react-native';
-import { c, r } from '../theme';
-import { Btn, Card, T } from '../ui';
+import React, { useState } from 'react';
+import { View, TouchableOpacity, ScrollView } from 'react-native';
+import { T } from '../ui';
+import { palette } from '../theme';
 
-const OBJECTIVES = ['Brand Awareness', 'Talent Support', 'Community'];
-const TYPES = ['Monetary', 'In-Kind', 'Endorsement'];
-const TIERS = ['Gold', 'Silver', 'Bronze'];
-const isWeb = Platform.OS === 'web';
-
-const NODES = [
-  { id: 'sponsor', label: 'Your Brand', x: 100, y: 90, r: 28, main: true },
-  { id: 'athlete', label: 'Athletes', x: 40, y: 30, r: 20 },
-  { id: 'team', label: 'Teams', x: 160, y: 30, r: 20 },
-  { id: 'event', label: 'Events', x: 100, y: 170, r: 20 },
+const TIERS = [
+  { key: 'presenting', label: 'Presenting',       rights: 'Logo on all event collateral, naming rights, 60 s activation slot, media partner access', value: '£50 000+' },
+  { key: 'associate',  label: 'Associate',        rights: 'Logo on digital assets, 30 s activation, social media mentions, athlete meet', value: '£15 000+' },
+  { key: 'media',      label: 'Media partner',    rights: 'Broadcast credits, editorial placement, athlete interview access, digital banner', value: '£8 000+' },
+  { key: 'supplier',   label: 'Official supplier', rights: 'Product placement, kit branding, locker room supply, B2B hospitality', value: '£5 000+' },
 ];
+const CATEGORIES = ['Academies', 'Tournaments', 'Athletes', 'Venues', 'National federations'];
+const OUTCOMES   = ['Brand reach', 'Youth engagement', 'B2B hospitality', 'Media placement', 'Data & insights'];
 
-function RelationshipMap({ pulse }) {
-  if (!isWeb) {
-    return (
-      <View style={{ height: 100, alignItems: 'center', justifyContent: 'center', gap: 8 }}>
-        <View style={{ flexDirection: 'row', gap: 24, alignItems: 'center' }}>
-          {['Athletes', 'Your Brand', 'Teams'].map((n, i) => (
-            <View key={n} style={{ width: i === 1 ? 70 : 54, height: i === 1 ? 70 : 54, borderRadius: 35, backgroundColor: i === 1 ? c.pink : c.pinkSoft, alignItems: 'center', justifyContent: 'center', borderWidth: 2, borderColor: c.pink }}>
-              <T size={10} weight="700" color={i === 1 ? '#fff' : c.pink} style={{ textAlign: 'center' }}>{n}</T>
-            </View>
-          ))}
-        </View>
-      </View>
-    );
-  }
-  return (
-    <View accessibilityLabel="Sponsor relationship map">
-      {/* eslint-disable-next-line react-native/no-inline-styles */}
-      <div dangerouslySetInnerHTML={{ __html: `<svg viewBox="0 0 200 200" width="100%" height="180" xmlns="http://www.w3.org/2000/svg">
-        <line x1="100" y1="90" x2="40" y2="30" stroke="${c.pink}" stroke-width="1.5" opacity="0.5" stroke-dasharray="4"/>
-        <line x1="100" y1="90" x2="160" y2="30" stroke="${c.pink}" stroke-width="1.5" opacity="0.5" stroke-dasharray="4"/>
-        <line x1="100" y1="90" x2="100" y2="170" stroke="${c.pink}" stroke-width="1.5" opacity="0.5" stroke-dasharray="4"/>
-        <circle cx="40" cy="30" r="20" fill="${c.pinkSoft}" stroke="${c.pink}" stroke-width="1.5"/>
-        <text x="40" y="34" text-anchor="middle" font-size="9" font-weight="700" fill="${c.pink}">Athletes</text>
-        <circle cx="160" cy="30" r="20" fill="${c.pinkSoft}" stroke="${c.pink}" stroke-width="1.5"/>
-        <text x="160" y="34" text-anchor="middle" font-size="9" font-weight="700" fill="${c.pink}">Teams</text>
-        <circle cx="100" cy="170" r="20" fill="${c.pinkSoft}" stroke="${c.pink}" stroke-width="1.5"/>
-        <text x="100" y="174" text-anchor="middle" font-size="9" font-weight="700" fill="${c.pink}">Events</text>
-        <circle cx="100" cy="90" r="30" fill="${c.pink}" opacity="0.9"/>
-        <text x="100" y="87" text-anchor="middle" font-size="9" font-weight="800" fill="white">Your</text>
-        <text x="100" y="99" text-anchor="middle" font-size="9" font-weight="800" fill="white">Brand</text>
-      </svg>` }} />
-    </View>
-  );
-}
-
-export function ShowcaseSponsors({ block, manifest, onCta }) {
-  const [objective, setObjective] = useState('Brand Awareness');
-  const [type, setType] = useState('Monetary');
-  const [tier, setTier] = useState('Gold');
-  const pulseAnim = useRef(new Animated.Value(1)).current;
-
-  useEffect(() => {
-    const anim = Animated.loop(
-      Animated.sequence([
-        Animated.timing(pulseAnim, { toValue: 1.08, duration: 1000, useNativeDriver: true }),
-        Animated.timing(pulseAnim, { toValue: 1, duration: 1000, useNativeDriver: true }),
-      ]),
-    );
-    anim.start();
-    return () => anim.stop();
-  }, [pulseAnim]);
-
-  const tierColors = { Gold: '#D97706', Silver: '#6B7280', Bronze: '#EA580C' };
+export function ShowcaseSponsors({ manifest, block, onNavigate }) {
+  const [tier, setTier]         = useState('presenting');
+  const [cat, setCat]           = useState('Academies');
+  const [outcomes, setOutcomes] = useState(['Brand reach', 'Youth engagement']);
+  const t = TIERS.find((x) => x.key === tier);
+  const toggle = (o) => setOutcomes((prev) => prev.includes(o) ? prev.filter((x) => x !== o) : [...prev, o]);
 
   return (
-    <View style={{ gap: 20 }}>
-      <T weight="800" size={22} style={{ letterSpacing: -0.5 }}>Sponsors</T>
+    <View style={{ padding: 16, flex: 1 }}>
+      <T style={{ color: '#fff', fontSize: 20, fontWeight: '800', marginBottom: 4 }}>Sponsorship</T>
+      <T style={{ color: 'rgba(255,255,255,0.6)', fontSize: 13, marginBottom: 12 }}>Connect your brand with athletes, academies and events</T>
 
-      <Card pad={12}>
-        <RelationshipMap pulse={pulseAnim} />
-      </Card>
+      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 10 }} contentContainerStyle={{ gap: 6, flexDirection: 'row' }}>
+        {CATEGORIES.map((c) => (
+          <TouchableOpacity key={c} onPress={() => setCat(c)} style={{ paddingHorizontal: 12, paddingVertical: 5, borderRadius: 20, backgroundColor: c === cat ? palette.p2 : 'rgba(255,255,255,0.08)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.15)' }}>
+            <T style={{ color: c === cat ? '#fff' : 'rgba(255,255,255,0.7)', fontSize: 11, fontWeight: '600' }}>{c}</T>
+          </TouchableOpacity>
+        ))}
+      </ScrollView>
 
-      {/* Strategy builder */}
-      <Card>
-        <T weight="700" size={15} style={{ marginBottom: 14 }}>Sponsorship strategy builder</T>
-
-        <T size={12} weight="600" color={c.mute} style={{ marginBottom: 8 }}>OBJECTIVE</T>
-        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 14 }}>
-          {OBJECTIVES.map((o) => {
-            const sel = objective === o;
-            return (
-              <Pressable key={o} onPress={() => setObjective(o)} accessibilityRole="button" accessibilityLabel={o} accessibilityState={{ selected: sel }}>
-                <View style={{ paddingVertical: 8, paddingHorizontal: 14, borderRadius: r.pill, backgroundColor: sel ? c.pink : c.paper, borderWidth: 1, borderColor: sel ? c.pink : c.line, minHeight: 44, justifyContent: 'center' }}>
-                  <T size={13} weight="600" color={sel ? '#fff' : c.mute}>{o}</T>
-                </View>
-              </Pressable>
-            );
-          })}
-        </View>
-
-        <T size={12} weight="600" color={c.mute} style={{ marginBottom: 8 }}>TYPE</T>
-        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 14 }}>
-          {TYPES.map((tp) => {
-            const sel = type === tp;
-            return (
-              <Pressable key={tp} onPress={() => setType(tp)} accessibilityRole="button" accessibilityLabel={tp} accessibilityState={{ selected: sel }}>
-                <View style={{ paddingVertical: 8, paddingHorizontal: 14, borderRadius: r.pill, backgroundColor: sel ? c.violet : c.paper, borderWidth: 1, borderColor: sel ? c.violet : c.line, minHeight: 44, justifyContent: 'center' }}>
-                  <T size={13} weight="600" color={sel ? '#fff' : c.mute}>{tp}</T>
-                </View>
-              </Pressable>
-            );
-          })}
-        </View>
-
-        <T size={12} weight="600" color={c.mute} style={{ marginBottom: 8 }}>TIER</T>
-        <View style={{ flexDirection: 'row', gap: 8 }}>
-          {TIERS.map((t) => {
-            const sel = tier === t;
-            const col = tierColors[t];
-            return (
-              <Pressable key={t} onPress={() => setTier(t)} accessibilityRole="button" accessibilityLabel={`${t} tier`} accessibilityState={{ selected: sel }}>
-                <View style={{ paddingVertical: 8, paddingHorizontal: 16, borderRadius: r.pill, backgroundColor: sel ? col : c.paper, borderWidth: sel ? 0 : 1, borderColor: c.line, minHeight: 44, justifyContent: 'center' }}>
-                  <T size={13} weight="700" color={sel ? '#fff' : c.mute}>{t}</T>
-                </View>
-              </Pressable>
-            );
-          })}
-        </View>
-      </Card>
-
-      {/* Package preview */}
-      <View style={{ backgroundColor: c.pinkSoft, borderRadius: r.card, padding: 16, borderWidth: 1, borderColor: c.pink }}>
-        <T weight="700" size={13} color={c.pink} style={{ marginBottom: 6 }}>Your package preview</T>
-        <T size={14} weight="600">{tier} · {type} · {objective}</T>
-        <T size={12} color={c.mute} style={{ marginTop: 4 }}>No real commitments — explore the builder</T>
+      <T style={{ color: 'rgba(255,255,255,0.45)', fontSize: 10, fontWeight: '700', letterSpacing: 1.2, marginBottom: 8 }}>SPONSORSHIP TIER</T>
+      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginBottom: 12 }}>
+        {TIERS.map((x) => (
+          <TouchableOpacity key={x.key} onPress={() => setTier(x.key)} style={{ flex: 1, minWidth: 80, padding: 8, borderRadius: 10, backgroundColor: x.key === tier ? palette.p2 : 'rgba(255,255,255,0.07)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.15)', alignItems: 'center' }}>
+            <T style={{ color: x.key === tier ? '#fff' : 'rgba(255,255,255,0.65)', fontSize: 11, fontWeight: '700', textAlign: 'center' }}>{x.label}</T>
+            <T style={{ color: x.key === tier ? palette.p3 : 'rgba(255,255,255,0.4)', fontSize: 10, fontWeight: '600', marginTop: 2 }}>{x.value}</T>
+          </TouchableOpacity>
+        ))}
       </View>
 
-      <Btn title="Explore sponsorship →" onPress={() => onCta('sponsor-marketplace')} />
+      <View style={{ padding: 12, borderRadius: 12, backgroundColor: 'rgba(255,255,255,0.06)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.12)', marginBottom: 12 }}>
+        <T style={{ color: palette.p3, fontSize: 11, fontWeight: '700', marginBottom: 4 }}>WHAT YOU GET — {t.label.toUpperCase()}</T>
+        <T style={{ color: 'rgba(255,255,255,0.78)', fontSize: 12, lineHeight: 18 }}>{t.rights}</T>
+      </View>
+
+      <T style={{ color: 'rgba(255,255,255,0.45)', fontSize: 10, fontWeight: '700', letterSpacing: 1.2, marginBottom: 8 }}>YOUR OBJECTIVES</T>
+      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginBottom: 12 }}>
+        {OUTCOMES.map((o) => {
+          const sel = outcomes.includes(o);
+          return (
+            <TouchableOpacity key={o} onPress={() => toggle(o)} style={{ paddingHorizontal: 10, paddingVertical: 5, borderRadius: 20, backgroundColor: sel ? palette.p3 + '40' : 'rgba(255,255,255,0.07)', borderWidth: 1, borderColor: sel ? palette.p3 : 'rgba(255,255,255,0.15)' }}>
+              <T style={{ color: sel ? palette.p3 : 'rgba(255,255,255,0.65)', fontSize: 11, fontWeight: '600' }}>{o}</T>
+            </TouchableOpacity>
+          );
+        })}
+      </View>
+
+      <TouchableOpacity onPress={() => onNavigate?.('join')} style={{ paddingVertical: 12, borderRadius: 12, backgroundColor: palette.p2, alignItems: 'center' }}>
+        <T style={{ color: '#fff', fontWeight: '700', fontSize: 14 }}>Become a sponsor →</T>
+      </TouchableOpacity>
     </View>
   );
 }
