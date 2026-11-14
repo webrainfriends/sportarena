@@ -56,7 +56,7 @@ function safeCredential(row, includePrivateProof = false) {
 
 // ------------------------------------------------------------------ official: list own credentials
 cap({
-  name: 'list_my_credentials', method: 'GET', path: '/me/credentials', tag: TAG,
+  name: 'list_my_official_credentials', method: 'GET', path: '/me/official-credentials', tag: TAG,
   summary: 'List all federation-issued credentials for the signed-in official, with expiry status and badge settings. Private proof is never returned here.',
   input: z.object({
     status: z.enum(CRED_STATUSES).optional(),

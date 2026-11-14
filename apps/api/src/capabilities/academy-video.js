@@ -331,10 +331,13 @@ cap({
   input: z.object({
     id,
     timestamp_ms: z.number().int().min(0),
-    text: z.string().max(2000).optional(),
+    end_timestamp_ms: z.number().int().min(0).optional(),
+    text: z.string().max(4000).optional(),
     drawing_data: z.string().max(50000).optional(),
+    tactical_category: z.enum(['attacking','defending','set_piece','transition','pressing','shape','individual_error','individual_excellence','fitness','other']).optional(),
+    parent_id: id.optional(),
   }),
-  async handler({ user }, { id: vid, timestamp_ms, text, drawing_data }) {
+  async handler({ user }, { id: vid, timestamp_ms, end_timestamp_ms, text, drawing_data, tactical_category, parent_id }) {
     const v = await annotationVideo(vid);
     const isOwner = v.user_id === user.id;
     const isStaff = COACH_ROLES.includes(user.role);
@@ -344,34 +347,47 @@ cap({
     const text_enc = text ? encrypt(text, `annotation:text:${vid}`) : null;
     const drawing_data_enc = drawing_data ? encrypt(drawing_data, `annotation:drawing:${vid}`) : null;
     const ann = await one(
-      `INSERT INTO video_annotations (video_id, author_id, timestamp_ms, text_enc, drawing_data_enc)
-       VALUES ($1,$2,$3,$4,$5) RETURNING id, timestamp_ms, resolved_at, created_at`,
-      [vid, user.id, timestamp_ms, text_enc, drawing_data_enc]);
+      `INSERT INTO video_annotations (video_id, author_id, parent_id, timestamp_ms, end_timestamp_ms, text_enc, drawing_data_enc, tactical_category)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING id, timestamp_ms, resolved_at, created_at`,
+      [vid, user.id, parent_id ?? null, timestamp_ms, end_timestamp_ms ?? null, text_enc, drawing_data_enc, tactical_category ?? null]);
     await audit(null, user.id, 'video_annotation_added', 'video_annotations', ann.id);
-    return { ...ann, text: text || null, has_drawing: !!drawing_data };
+    return { ...ann, text: text || null, has_drawing: !!drawing_data, tactical_category: tactical_category ?? null };
   },
 });
 
 cap({
   name: 'list_video_annotations',
   method: 'GET', path: '/me/videos/:id/annotations', tag: 'Video',
-  summary: 'List timestamped annotations on a video. Owner sees all; coach/staff see annotations on shared/public clips. Every call is audit-logged.',
-  input: z.object({ id }),
-  async handler({ user }, { id: vid }) {
+  summary: 'List timestamped annotations on a video. Owner sees all; coach/staff see annotations on shared/public clips. Every call is audit-logged. Filter by tactical_category, resolved status, ai_only.',
+  input: z.object({
+    id,
+    tactical_category: z.enum(['attacking','defending','set_piece','transition','pressing','shape','individual_error','individual_excellence','fitness','other']).optional(),
+    resolved: z.coerce.boolean().optional(),
+    ai_only: z.coerce.boolean().default(false),
+    from_ms: z.coerce.number().int().optional(),
+    to_ms: z.coerce.number().int().optional(),
+  }),
+  async handler({ user }, { id: vid, tactical_category, resolved, ai_only, from_ms, to_ms }) {
     const v = await annotationVideo(vid);
     const isOwner = v.user_id === user.id;
     const isStaff = COACH_ROLES.includes(user.role);
     if (!isOwner && !isStaff) throw forbidden('not authorised');
     if (!isOwner && v.visibility === 'private') throw notFound('Video');
     const rows = await many(
-      `SELECT a.id, a.timestamp_ms, a.text_enc, a.drawing_data_enc,
+      `SELECT a.id, a.parent_id, a.timestamp_ms, a.end_timestamp_ms, a.text_enc, a.drawing_data_enc,
+              a.tactical_category, a.ai_generated, a.ai_model, a.ai_inference_label, a.ai_confidence,
               a.resolved_at, a.row_version, a.created_at,
               u.id AS author_id, u.display_name AS author_name, u.role AS author_role,
               (SELECT COUNT(*)::int FROM video_annotation_replies r WHERE r.annotation_id=a.id AND r.archived_at IS NULL) AS reply_count
        FROM video_annotations a JOIN users u ON u.id=a.author_id
-       WHERE a.video_id=$1 AND a.archived_at IS NULL
+       WHERE a.video_id=$1 AND a.archived_at IS NULL AND a.parent_id IS NULL
+         AND ($2::text IS NULL OR a.tactical_category=$2)
+         AND ($3::boolean IS NULL OR (a.resolved_at IS NOT NULL)=$3)
+         AND (NOT $4 OR a.ai_generated)
+         AND ($5::int IS NULL OR a.timestamp_ms>=$5)
+         AND ($6::int IS NULL OR a.timestamp_ms<=$6)
        ORDER BY a.timestamp_ms ASC, a.created_at ASC`,
-      [vid]);
+      [vid, tactical_category ?? null, resolved ?? null, ai_only, from_ms ?? null, to_ms ?? null]);
     await audit(null, user.id, 'video_annotations_listed', 'video_annotations', vid);
     return rows.map(({ text_enc, drawing_data_enc, ...r }) => ({
       ...r,

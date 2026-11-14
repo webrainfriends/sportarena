@@ -219,6 +219,8 @@ import { RecruiterHome, RecruiterAccess } from './screens/recruiter';
 import { TalentCRM } from './screens/talent-crm';
 import { MoreWheel } from './screens/more-wheel';
 import { VideoAnalysisScreen } from './screens/video-analysis';
+import { TacticalBoardScreen } from './screens/tactical-board';
+import { ClipComparisonScreen } from './screens/clip-comparison';
 import { ConnectedDevicesScreen } from './screens/connected-devices';
 import { VideoIntelligenceHub } from './screens/video-intelligence-hub';
 import { VideoMatchTagsScreen } from './screens/video-match-tags';
