@@ -458,6 +458,13 @@ import './data-residency.js';
 import './officials-para.js';
 import './officials-para-training.js';
 import './official-career-portfolio.js';
+import './official-references.js';
+import './official-reputation.js';
+import './official-discounts.js';
+import './official-scheduling-recommendations.js';
+import './officials-role-taxonomy.js';
+import './officials-safeguarding.js';
+import './officials-services.js';
 
 import './coach-profile.js';
 import './physio-profile.js';
