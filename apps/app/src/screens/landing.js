@@ -39,6 +39,14 @@ const CSS = `
 .sa-rise { animation: sa-rise .9s cubic-bezier(.2,.7,.2,1) both; }
 .sa-live { width:10px; height:10px; border-radius:50%; background:#34D399; animation: sa-pulse 1.6s infinite; display:inline-block; }
 .sa-shine { background: linear-gradient(100deg,#fff 20%,#FDE68A 40%,#F9A8D4 60%,#fff 80%); background-size: 200% 100%; -webkit-background-clip: text; background-clip: text; color: transparent; animation: sa-shine 5s linear infinite; }
+@keyframes sa-aurora-1 { 0%,100%{transform:translate(0,0) scale(1);} 50%{transform:translate(80px,-50px) scale(1.2);} }
+@keyframes sa-aurora-2 { 0%,100%{transform:translate(0,0) scale(1);} 50%{transform:translate(-60px,40px) scale(0.85);} }
+@keyframes sa-aurora-3 { 0%,100%{transform:translate(0,0) scale(1);} 50%{transform:translate(30px,70px) scale(1.1);} }
+.sa-aurora { position:absolute; border-radius:50%; filter:blur(90px); pointer-events:none; opacity:0.35; }
+.sa-aurora-1 { animation: sa-aurora-1 14s ease-in-out infinite; }
+.sa-aurora-2 { animation: sa-aurora-2 18s ease-in-out infinite; }
+.sa-aurora-3 { animation: sa-aurora-3 22s ease-in-out infinite; }
+.sa-gtext { background:linear-gradient(135deg,#fff 0%,#D0BDF4 45%,#A0D2EB 100%); -webkit-background-clip:text; background-clip:text; color:transparent; display:inline; }
 `;
 function useWebCss() {
   useEffect(() => {
@@ -80,7 +88,7 @@ function Hero({ counts, onJoin, onBrowse, onAdvertise, onFind, wide }) {
         <T color="#E5EAF5" weight="700" size={12} style={{ letterSpacing: 2.5 }}>THE HOME OF SPORT · LIVE NOW</T>
       </View>
       {isWeb
-        ? h('div', { className: 'sa-rise', style: { fontFamily: 'Inter, system-ui, sans-serif', fontWeight: 900, letterSpacing: '-0.04em', lineHeight: 1.02, fontSize: wide ? 72 : 44, color: '#fff', maxWidth: 900 } }, 'Where every game finds its ', h('span', { className: 'sa-shine' }, 'players, venues & sponsors.'))
+        ? h('div', { className: 'sa-rise', style: { fontFamily: 'Inter, system-ui, sans-serif', fontWeight: 900, letterSpacing: '-0.04em', lineHeight: 1.02, fontSize: wide ? 72 : 44, color: '#fff', maxWidth: 900 } }, 'Where every game finds its players, venues & ', h('span', { className: 'sa-gtext' }, 'sponsors.'))
         : <T color="#fff" weight="800" size={40} style={{ letterSpacing: -1.5 }}>Where every game finds its players, venues & sponsors.</T>}
       <T color="#E5EAF5" size={wide ? 20 : 16} weight="500" style={{ lineHeight: wide ? 30 : 24, maxWidth: 680 }}>Athletes wanted. Matches to join. Fixtures to follow. Kit to buy. Campaigns that move the crowd. One arena for athletes, coaches, organizers, venues and sponsors.</T>
       <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 12, marginTop: 6 }}>
@@ -101,6 +109,9 @@ function Hero({ counts, onJoin, onBrowse, onAdvertise, onFind, wide }) {
   );
   if (!isWeb) return <LinearGradient colors={BRAND} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}>{body}</LinearGradient>;
   return h('div', { className: 'sa-hero', style: { position: 'relative', overflow: 'hidden' } },
+    h('div', { className: 'sa-aurora sa-aurora-1', style: { width: 420, height: 420, backgroundColor: '#8458B3', left: '-8%', top: '-35%' } }),
+    h('div', { className: 'sa-aurora sa-aurora-2', style: { width: 340, height: 340, backgroundColor: '#A0D2EB', right: '3%', top: '5%' } }),
+    h('div', { className: 'sa-aurora sa-aurora-3', style: { width: 280, height: 280, backgroundColor: '#C026D3', left: '42%', bottom: '-15%' } }),
     ...FLOATERS.map((e, i) => h('span', { key: i, className: 'sa-float', style: { left: `${wide ? 56 + ((i * 7.7) % 40) : (i * 8.3 + 4) % 92}%`, top: `${[8, 62, 24, 74, 12, 50, 80, 30, 66, 6, 44, 18][i]}%`, fontSize: [54, 70, 44, 62, 50, 78, 46, 66, 56, 48, 72, 60][i], animationDelay: `${-i * 0.9}s`, animationDuration: `${6 + (i % 4)}s`, opacity: wide ? 0.55 : 0.28 } }, e)),
     h('div', { style: { position: 'absolute', inset: 0, background: 'radial-gradient(circle at 80% 20%, rgba(236,72,153,.28), transparent 45%), radial-gradient(circle at 10% 90%, rgba(56,189,248,.22), transparent 40%)', pointerEvents: 'none' } }),
     h('div', { style: { position: 'relative' } }, body));
@@ -153,7 +164,7 @@ export default function Landing() {
   const wide = width >= 900;
   // { mode, intent } while the sign-in flow is open. A page opened from Apple sign-in or a security email carries one of these query values:
   // the sign-in screen reads it, so it has to be open already.
-  const manifest = useManifest();
+  const { manifest } = useManifest();
   const [auth, setAuth] = useState(() => (isWeb && typeof location !== 'undefined' && ['apple_role', 'apple_error', 'apple_mfa', 'reset_password', 'verify_email'].some((k) => new URLSearchParams(location.search).has(k)) ? { mode: 'login', intent: null } : null));
   const [kind, setKind] = useState(null);
   const [sport, setSport] = useState(null);
@@ -334,8 +345,7 @@ export default function Landing() {
               {/* Contact */}
               <View style={{ flex: 1, gap: 10 }}>
                 <T color="#D0BDF4" weight="800" size={12} style={{ letterSpacing: 1, textTransform: 'uppercase', marginBottom: 2 }}>Contact</T>
-                <T color="#94A3B8" size={13}>hello@gotmygame.com</T>
-                <T color="#94A3B8" size={13}>support@gotmygame.com</T>
+                <T color="#94A3B8" size={13}>support.gotmygame@gmail.com</T>
                 <T color="#94A3B8" size={13} style={{ marginTop: 4 }}>GotMyGame — The Sportsverse</T>
                 <T color="#94A3B8" size={12} style={{ lineHeight: 18 }}>Connecting athletes, coaches, venues{'\n'}and sponsors worldwide.</T>
               </View>
