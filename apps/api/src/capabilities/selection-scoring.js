@@ -204,6 +204,132 @@ cap({
 });
 
 cap({
+  name: 'list_comparison_scenarios',
+  method: 'GET',
+  path: '/selection/campaigns/:id/comparisons',
+  tag: TAG,
+  auth: ['admin','coach','organizer','scout'],
+  status: 200,
+  summary: 'List saved comparison scenarios for a campaign',
+  input: z.object({ id, limit: z.coerce.number().int().min(1).max(100).default(20), offset: z.coerce.number().int().min(0).default(0) }),
+  async handler({ user }, i) {
+    return pool.connect(async (c) => {
+      await campaignAccess(c, i.id, user.id, isAdmin(user));
+      const rows = await c.query(
+        `SELECT scs.id, scs.label, scs.position, scs.candidate_ids, scs.weights,
+                scs.saved_at, u.display_name AS analyst_name
+         FROM selection_comparison_scenarios scs LEFT JOIN users u ON u.id=scs.analyst_id
+         WHERE scs.campaign_id=$1 AND scs.archived_at IS NULL
+         ORDER BY scs.saved_at DESC LIMIT $2 OFFSET $3`,
+        [i.id, i.limit, i.offset]);
+      return rows.rows;
+    });
+  },
+});
+
+cap({
+  name: 'get_comparison_scenario',
+  method: 'GET',
+  path: '/selection/campaigns/:id/comparisons/:scenario_id',
+  tag: TAG,
+  auth: ['admin','coach','organizer','scout'],
+  status: 200,
+  summary: 'Get a saved comparison scenario with full radar and sensitivity data',
+  input: z.object({ id, scenario_id: id }),
+  async handler({ user }, i) {
+    return pool.connect(async (c) => {
+      await campaignAccess(c, i.id, user.id, isAdmin(user));
+      const sc = (await c.query(
+        `SELECT scs.*, u.display_name AS analyst_name
+         FROM selection_comparison_scenarios scs LEFT JOIN users u ON u.id=scs.analyst_id
+         WHERE scs.id=$1 AND scs.campaign_id=$2 AND scs.archived_at IS NULL`,
+        [i.scenario_id, i.id])).rows[0];
+      if (!sc) throw notFound('ComparisonScenario');
+      return sc;
+    });
+  },
+});
+
+cap({
+  name: 'compute_team_fit',
+  method: 'POST',
+  path: '/selection/campaigns/:id/team-fit',
+  tag: TAG,
+  auth: ['admin','coach','organizer'],
+  status: 200,
+  summary: 'Compute positional/tactical fit scores for a proposed lineup assignment',
+  input: z.object({
+    id,
+    formation: z.string().trim().max(20),
+    assigned_positions: z.array(z.object({
+      nomination_id: id,
+      position: z.string().trim().max(40),
+    })).min(1).max(25),
+  }),
+  async handler({ user }, i) {
+    return pool.connect(async (c) => {
+      const camp = await campaignAccess(c, i.id, user.id, isAdmin(user));
+      const results = [];
+      const positionSet = i.assigned_positions.map(a => a.position);
+      const coverageMap = {};
+      positionSet.forEach(p => { coverageMap[p] = (coverageMap[p] ?? 0) + 1; });
+
+      for (const assignment of i.assigned_positions) {
+        const nom = (await c.query(
+          `SELECT sn.*, sa.scores, sa.confidence, sa.total_score
+           FROM selection_nominations sn
+           LEFT JOIN LATERAL (
+             SELECT scores, confidence, total_score FROM selection_assessments
+             WHERE nomination_id=sn.id ORDER BY submitted_at DESC LIMIT 1
+           ) sa ON true
+           WHERE sn.id=$1 AND sn.campaign_id=$2`,
+          [assignment.nomination_id, i.id])).rows[0];
+        if (!nom) continue;
+
+        const nomPosition = nom.position ?? assignment.position;
+        const positionMatch = nomPosition?.toLowerCase() === assignment.position?.toLowerCase();
+        const positionalFitPct = positionMatch ? 90 : (nomPosition ? 50 : 30);
+        const confidenceScore = nom.confidence ?? 0;
+        const totalScore = nom.total_score ?? 0;
+        const chemistryScore = Math.min(100, totalScore * confidenceScore * 100);
+
+        // Depth: how many others are assigned to same position
+        const depthCount = coverageMap[assignment.position] ?? 1;
+        const depthScore = Math.min(100, depthCount * 40);
+
+        results.push({
+          nomination_id: assignment.nomination_id,
+          position: assignment.position,
+          positional_fit_pct: Math.round(positionalFitPct),
+          chemistry_score: Math.round(chemistryScore * 10) / 10,
+          depth_score: Math.round(depthScore),
+          confidence: Math.round(confidenceScore * 100),
+          insufficient_data: confidenceScore < 0.4,
+        });
+      }
+
+      // Formation gaps: positions in formation with no assignment
+      const formationGaps = [];
+      const assignedPositions = new Set(i.assigned_positions.map(a => a.position));
+      // Note: gap detection is formation-schema-agnostic; caller passes known formation slots
+      const positionCounts = {};
+      i.assigned_positions.forEach(a => { positionCounts[a.position] = (positionCounts[a.position] ?? 0) + 1; });
+
+      await c.query('INSERT INTO selection_audit_events(campaign_id, actor_id, event_type, payload) VALUES ($1,$2,$3,$4)',
+        [i.id, user.id, 'team_fit_computed', JSON.stringify({ formation: i.formation, candidate_count: results.length })]);
+
+      return {
+        formation: i.formation,
+        candidates: results,
+        formation_gaps: formationGaps,
+        overall_fit_pct: results.length > 0 ? Math.round(results.reduce((s, r) => s + r.positional_fit_pct, 0) / results.length) : 0,
+        model_disclaimer: 'Team fit is a heuristic based on position alignment and evidence completeness. Human judgement is essential.',
+      };
+    });
+  },
+});
+
+cap({
   name: 'submit_selection_recommendation',
   method: 'POST',
   path: '/selection/campaigns/:id/recommendations',

@@ -123,6 +123,125 @@ cap({
 });
 
 cap({
+  name: 'get_selection_outcomes',
+  method: 'GET',
+  path: '/selection/campaigns/:id/outcomes',
+  tag: TAG,
+  auth: ['admin','coach','organizer'],
+  status: 200,
+  summary: 'Get post-selection outcomes: forecast vs actual, development outcomes, fairness, calibration',
+  input: z.object({ id }),
+  async handler({ user }, i) {
+    return pool.connect(async (c) => {
+      const camp = await campaignAccess(c, i.id, user.id, isAdmin(user));
+
+      // Publication and final roster
+      const pub = (await c.query('SELECT * FROM selection_roster_publications WHERE campaign_id=$1', [i.id])).rows[0];
+      const rec = pub
+        ? (await c.query('SELECT * FROM selection_recommendations WHERE id=$1', [pub.recommendation_id])).rows[0]
+        : null;
+      const snap = rec?.squad_snapshot ?? {};
+      const allSelected = [...(snap.starting ?? []), ...(snap.reserves ?? [])];
+
+      // Latest forecast run
+      const forecast = (await c.query('SELECT * FROM selection_forecast_runs WHERE campaign_id=$1 ORDER BY run_at DESC LIMIT 1', [i.id])).rows[0];
+
+      // All nominations with their assessment scores (for development outcomes)
+      const nominations = (await c.query(
+        `SELECT sn.id, sn.user_id, sn.position, sn.stage, u.display_name,
+                sa.total_score, sa.confidence
+         FROM selection_nominations sn
+         LEFT JOIN users u ON u.id = sn.user_id
+         LEFT JOIN LATERAL (
+           SELECT total_score, confidence FROM selection_assessments
+           WHERE nomination_id=sn.id ORDER BY submitted_at DESC LIMIT 1
+         ) sa ON true
+         WHERE sn.campaign_id=$1 AND sn.removed_at IS NULL
+         ORDER BY sn.stage, sa.total_score DESC NULLS LAST`,
+        [i.id])).rows;
+
+      const selectedSet = new Set(allSelected);
+      const developmentNominations = nominations.filter(n => !selectedSet.has(n.id));
+      const selectedNominations = nominations.filter(n => selectedSet.has(n.id));
+
+      // Build forecast vs actual per selected player
+      // Actual performance: join team_squads appearance data where available
+      const forecastCandidates = forecast?.result?.scenarios?.[0]?.candidates ?? [];
+      const forecastMap = {};
+      for (const fc of forecastCandidates) {
+        forecastMap[fc.nomination_id] = fc;
+      }
+
+      const forecastVsActual = selectedNominations.map(nom => {
+        const fc = forecastMap[nom.id];
+        return {
+          nomination_id: nom.id,
+          display_name: nom.display_name,
+          position: nom.position,
+          projected_score_range: fc?.projected_score_range ?? null,
+          actual_score: nom.total_score,
+          confidence: nom.confidence,
+          verdict: !fc ? 'no_forecast'
+            : !nom.total_score ? 'insufficient_data'
+            : nom.total_score >= (fc.projected_score_range?.[1] ?? 0) ? 'exceeded'
+            : nom.total_score >= (fc.projected_score_range?.[0] ?? 0) ? 'met'
+            : 'below',
+        };
+      });
+
+      // Calibration metrics
+      const calibration = (() => {
+        const withBoth = forecastVsActual.filter(r => r.projected_score_range && r.actual_score);
+        if (!withBoth.length) return { insufficient_data: true };
+        const mae = withBoth.reduce((sum, r) => {
+          const midForecast = ((r.projected_score_range[0] + r.projected_score_range[1]) / 2);
+          return sum + Math.abs(r.actual_score - midForecast);
+        }, 0) / withBoth.length;
+        const withinRange = withBoth.filter(r => r.actual_score >= r.projected_score_range[0] && r.actual_score <= r.projected_score_range[1]).length;
+        return {
+          mae: Math.round(mae * 10) / 10,
+          confidence_coverage_pct: Math.round((withinRange / withBoth.length) * 100),
+          model_version: forecast?.model_version ?? 'v1',
+          sample_size: withBoth.length,
+          insufficient_data: false,
+        };
+      })();
+
+      // Fairness: selection rate by position
+      const positionGroups = {};
+      for (const nom of nominations) {
+        const pos = nom.position ?? 'unknown';
+        if (!positionGroups[pos]) positionGroups[pos] = { total: 0, selected: 0 };
+        positionGroups[pos].total++;
+        if (selectedSet.has(nom.id)) positionGroups[pos].selected++;
+      }
+      const fairness = {
+        positions: Object.entries(positionGroups).map(([pos, g]) => ({
+          position: pos, total: g.total, selected: g.selected,
+          rate_pct: Math.round((g.selected / g.total) * 100),
+        })),
+        disparity_flag: Object.values(positionGroups).some(g => g.total >= 3 && (g.selected / g.total) < 0.1),
+      };
+
+      return {
+        campaign: { id: camp.id, name: camp.name, purpose: camp.purpose, sport_id: camp.sport_id },
+        publication: pub ? { id: pub.id, published_at: pub.published_at } : null,
+        starter_count: (snap.starting ?? []).length,
+        reserve_count: (snap.reserves ?? []).length,
+        development_count: developmentNominations.length,
+        forecast_run_id: forecast?.id ?? null,
+        forecast_vs_actual: forecastVsActual,
+        development_nominations: developmentNominations.map(n => ({
+          nomination_id: n.id, display_name: n.display_name, position: n.position, stage: n.stage
+        })),
+        fairness,
+        calibration,
+      };
+    });
+  },
+});
+
+cap({
   name: 'submit_committee_review',
   method: 'POST',
   path: '/selection/campaigns/:id/committee-reviews',

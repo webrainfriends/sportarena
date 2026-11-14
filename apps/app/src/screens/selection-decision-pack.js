@@ -1,6 +1,7 @@
 // Issue #1194: Decision pack — signed dossier export, audit trail, appeals
 import React, { useState } from 'react';
 import { View, Text, ScrollView, StyleSheet, Share, Platform } from 'react-native';
+import { useNavigation } from '@react-navigation/native';
 import { useTranslation } from '../i18n';
 import { useTheme } from '../theme';
 import { useApi, useApiMutation } from '../api';
@@ -9,6 +10,7 @@ import { Btn, Card, Chip, Field, Screen } from '../ui';
 export default function SelectionDecisionPack({ route }) {
   const { t } = useTranslation();
   const C = useTheme();
+  const nav = useNavigation();
   const { campaignId } = route?.params ?? {};
   const { data: pack } = useApi(`/selection-campaigns/${campaignId}/decision-pack`);
   const { data: audit } = useApi(`/selection-campaigns/${campaignId}/audit`);
@@ -109,6 +111,16 @@ export default function SelectionDecisionPack({ route }) {
             </>
           )}
         </Card>
+        {/* Outcomes review navigation */}
+        <Button
+          label={t('sel.outcomes.title')}
+          variant="outline"
+          icon="bar-chart-2"
+          onPress={() => nav.navigate('SelectionOutcomesReview', { campaignId })}
+          style={S.outcomesBtn}
+          accessibilityLabel={t('sel.outcomes.title')}
+        />
+
       </ScrollView>
     </Screen>
   );
@@ -135,4 +147,5 @@ const styles = (C) => StyleSheet.create({
   auditDate: { fontSize: 11, color: C.mute },
   empty: { color: C.mute, fontSize: 13 },
   hint: { fontSize: 12, color: C.mute, marginBottom: 10 },
+  outcomesBtn: { marginBottom: 24, marginTop: 8 },
 });

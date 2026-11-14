@@ -177,6 +177,117 @@ cap({
 });
 
 cap({
+  name: 'get_selection_approval_routes',
+  method: 'GET',
+  path: '/selection-campaigns/:id/approval-routes',
+  tag: TAG,
+  auth: ['admin', 'coach', 'organizer'],
+  status: 200,
+  summary: 'Get the full approval chain for a campaign with current status and decisions',
+  input: z.object({ id }),
+  async handler({ user }, i) {
+    await requireCampaignRole(user, i.id);
+    const routes = await many(
+      `SELECT sar.*,
+              u.display_name AS approver_name,
+              du.display_name AS delegate_name,
+              sad.decision AS last_decision,
+              sad.decided_at AS last_decided_at
+       FROM selection_approval_routes sar
+       LEFT JOIN users u ON u.id = sar.approver_id
+       LEFT JOIN users du ON du.id = sar.delegate_id
+       LEFT JOIN selection_approval_decisions sad ON sad.route_id = sar.id
+       WHERE sar.campaign_id = $1
+       ORDER BY sar.step_order ASC`,
+      [i.id]
+    );
+    return routes;
+  },
+});
+
+cap({
+  name: 'save_selection_policy',
+  method: 'POST',
+  path: '/organisations/:org_id/selection-policies',
+  tag: TAG,
+  auth: ['admin', 'organizer'],
+  status: 201,
+  summary: 'Save or update the organisation selection approval policy',
+  input: z.object({
+    org_id: id,
+    name: z.string().trim().min(1).max(120),
+    approval_chain: z.array(z.object({
+      step_order: z.number().int().min(1),
+      approver_role: z.enum(['org_owner','club_owner','academy_director','team_manager','head_coach','named_delegate']),
+      sla_hours: z.number().int().min(1).max(720).default(72),
+      parallel: z.boolean().default(false),
+      is_required: z.boolean().default(true),
+    })).min(1).max(10),
+    sod_rules: z.record(z.string(), z.boolean()).default({}),
+    sport_templates: z.record(z.string(), z.object({
+      weights: z.record(z.string(), z.number().min(0).max(100)).default({}),
+      evidence_min: z.number().int().min(0).max(20).default(1),
+    })).default({}),
+    delegation_rules: z.record(z.string(), z.any()).default({}),
+    changelog: z.string().trim().max(500).optional(),
+    effective_at: z.string().datetime().optional(),
+  }),
+  async handler({ user }, i) {
+    // Verify user is org owner/admin
+    const membership = await one(
+      `SELECT role FROM organisation_members WHERE organisation_id=$1 AND user_id=$2 AND left_at IS NULL`,
+      [i.org_id, user.id]
+    );
+    if (!membership || !['owner','admin'].includes(membership.role)) {
+      if (!isAdmin(user)) throw forbidden('Only organisation owners and admins can configure selection policies');
+    }
+    return tx(async (c) => {
+      // Supersede existing active policy
+      await c.one(
+        `UPDATE selection_org_policies SET superseded_at=now() WHERE org_id=$1 AND superseded_at IS NULL RETURNING id`,
+        [i.org_id]
+      ).catch(() => {}); // ok if none exists
+      const prevVersion = (await one(
+        `SELECT max(version_number)::int AS v FROM selection_org_policies WHERE org_id=$1`,
+        [i.org_id]
+      ))?.v ?? 0;
+      const policy = await c.one(
+        `INSERT INTO selection_org_policies(org_id, name, version_number, approval_chain, sod_rules, sport_templates, delegation_rules, effective_at, created_by)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING *`,
+        [i.org_id, i.name, prevVersion + 1, JSON.stringify(i.approval_chain), JSON.stringify(i.sod_rules), JSON.stringify(i.sport_templates), JSON.stringify(i.delegation_rules), i.effective_at ? new Date(i.effective_at) : new Date(), user.id]
+      );
+      await logAudit(c, null, user.id, 'selection_policy_saved', { org_id: i.org_id, policy_id: policy.id, version: prevVersion + 1, changelog: i.changelog });
+      return policy;
+    });
+  },
+});
+
+cap({
+  name: 'get_selection_policies',
+  method: 'GET',
+  path: '/organisations/:org_id/selection-policies',
+  tag: TAG,
+  auth: ['admin', 'coach', 'organizer'],
+  status: 200,
+  summary: 'List active and historical selection policies for an organisation',
+  input: z.object({ org_id: id }),
+  async handler({ user }, i) {
+    const membership = await one(
+      `SELECT role FROM organisation_members WHERE organisation_id=$1 AND user_id=$2 AND left_at IS NULL`,
+      [i.org_id, user.id]
+    );
+    if (!membership && !isAdmin(user)) throw forbidden();
+    const policies = await many(
+      `SELECT sop.*, u.display_name AS created_by_name
+       FROM selection_org_policies sop LEFT JOIN users u ON u.id=sop.created_by
+       WHERE sop.org_id=$1 ORDER BY sop.version_number DESC`,
+      [i.org_id]
+    );
+    return policies;
+  },
+});
+
+cap({
   name: 'delegate_selection_approval',
   method: 'POST',
   path: '/selection-campaigns/:id/delegate-approval',

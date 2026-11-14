@@ -1,147 +1,216 @@
-// Issue #1194: Outcomes Review — forecast vs actual, calibration, post-campaign analysis
-import React from 'react';
-import { View, Text, ScrollView, StyleSheet } from 'react-native';
+// Issue #1211: Post-selection outcomes — forecast vs actual, development feedback, fairness, calibration
+import React, { useState } from 'react';
+import { View, Text, ScrollView, StyleSheet, Share, Platform } from 'react-native';
 import { useTranslation } from '../i18n';
 import { useTheme } from '../theme';
-import { useApi } from '../api';
-import { useNavigation } from '@react-navigation/native';
-import { Avatar, Btn, Card, Chip, Screen, StatPill } from '../ui';
+import { Btn, Card, Chip, Empty, Field, Screen, StatPill } from '../ui';
+import { useApi, useApiMutation } from '../api';
 
-function ForecastRow({ nom, C, S, t }) {
-  const delta = (nom.actual_rank ?? 0) - (nom.forecast_rank ?? 0);
-  const deltaColor = delta === 0 ? C.mute : delta < 0 ? C.lime : C.red;
-  const deltaLabel = delta === 0 ? '—' : delta > 0 ? `+${delta}` : `${delta}`;
-  return (
-    <View style={S.forecastRow}>
-      <Avatar userId={nom.candidate_id} size={32} />
-      <View style={S.forecastInfo}>
-        <Text style={S.forecastName} numberOfLines={1}>{nom.candidate_name ?? '—'}</Text>
-        <Text style={S.forecastPos}>{nom.position ?? ''}</Text>
-      </View>
-      <View style={S.rankCol}>
-        <Text style={S.rankLabel}>{t('sel.outcomes.forecast')}</Text>
-        <Text style={S.rankVal}>{nom.forecast_rank ?? '—'}</Text>
-      </View>
-      <View style={S.rankCol}>
-        <Text style={S.rankLabel}>{t('sel.outcomes.actual')}</Text>
-        <Text style={S.rankVal}>{nom.actual_rank ?? '—'}</Text>
-      </View>
-      <Chip label={deltaLabel} color={deltaColor} size="xs" />
-    </View>
-  );
-}
+const VERDICT_COLOR = (verdict, C) => ({
+  exceeded: C.lime,
+  met: C.cyan,
+  below: C.red,
+  insufficient: C.mute,
+})[verdict] ?? C.mute;
 
 export default function SelectionOutcomesReview({ route }) {
   const { t } = useTranslation();
   const C = useTheme();
-  const nav = useNavigation();
   const { campaignId } = route?.params ?? {};
-  const { data: campaign } = useApi(`/selection-campaigns/${campaignId}`);
-  const { data: pack } = useApi(`/selection/campaigns/${campaignId}/decision-pack`);
-  const { data: nominations } = useApi(`/selection-campaigns/${campaignId}/nominations`);
+
+  const { data: outcomes } = useApi(`/selection/campaigns/${campaignId}/outcomes`);
+  const { mutate: saveLessons, loading: saving } = useApiMutation('POST', `/selection-campaigns/${campaignId}/audit`);
+
+  const [lessons, setLessons] = useState('');
   const S = styles(C);
 
-  const starters = (pack?.roster_snapshot?.starters ?? []).length;
-  const reserves = (pack?.roster_snapshot?.reserves ?? []).length;
-  const development = (pack?.roster_snapshot?.development_list ?? []).length;
+  const exportPDF = () => {
+    if (Platform.OS === 'web') {
+      if (outcomes?.pdf_url) window.open(outcomes.pdf_url, '_blank');
+    } else {
+      Share.share({ url: outcomes?.pdf_url ?? '', title: t('sel.outcomes.exportPDF') });
+    }
+  };
 
-  const withForecast = (nominations ?? []).filter(n => n.forecast_rank != null);
+  const exportXLSX = () => {
+    if (Platform.OS === 'web') {
+      if (outcomes?.xlsx_url) window.open(outcomes.xlsx_url, '_blank');
+    } else {
+      Share.share({ url: outcomes?.xlsx_url ?? '', title: t('sel.outcomes.exportXLSX') });
+    }
+  };
 
-  const mae = campaign?.forecast_mae;
-  const confidence = campaign?.forecast_confidence_pct;
-  const modelVersion = campaign?.forecast_model_version;
+  const onSaveLessons = async () => {
+    if (!lessons.trim()) return;
+    await saveLessons({ event_type: 'outcomes_review', payload: { lessons_enc: lessons } });
+    setLessons('');
+  };
+
+  const camp = outcomes?.campaign;
+  const forecastRows = outcomes?.forecast_vs_actual ?? [];
+  const devRows = outcomes?.development_outcomes ?? [];
+  const fairness = outcomes?.fairness ?? {};
+  const calibration = outcomes?.calibration ?? {};
 
   return (
     <Screen title={t('sel.outcomes.title')} back>
       <ScrollView contentContainerStyle={S.scroll}>
-        {/* Campaign header */}
-        <Card style={S.headerCard}>
-          <Text style={S.campaignName} numberOfLines={1}>{campaign?.name ?? '—'}</Text>
-          <Text style={S.campaignSub}>{campaign?.sport_name ?? '—'} · {campaign?.purpose ?? '—'}</Text>
+
+        {/* Campaign summary */}
+        <Card style={S.card}>
+          <Text style={S.heading}>{camp?.name ?? '—'}</Text>
+          <View style={S.row}>
+            <Text style={S.label}>{camp?.season ?? '—'}</Text>
+            <Chip label={camp?.status ?? 'completed'} color={C.lime} size="xs" />
+          </View>
+          <Text style={S.muted}>{camp?.team_name ?? '—'} · {camp?.approval_date?.slice(0, 10) ?? '—'}</Text>
+          <MetricStrip
+            items={[
+              { label: t('sel.recommendation.starters'), value: outcomes?.starters_count ?? 0 },
+              { label: t('sel.recommendation.reserves'), value: outcomes?.reserves_count ?? 0 },
+              { label: t('sel.recommendation.development'), value: outcomes?.development_count ?? 0 },
+            ]}
+            style={S.metricStrip}
+          />
         </Card>
 
-        {/* Summary strip */}
-        <StatPill items={[
-          { label: t('sel.outcomes.starters'), value: starters },
-          { label: t('sel.outcomes.reserves'), value: reserves },
-          { label: t('sel.outcomes.development'), value: development },
-        ]} />
-
-        {/* Forecast vs actual */}
-        {withForecast.length > 0 && (
-          <Card style={S.card}>
-            <Text style={S.sectionTitle}>{t('sel.outcomes.forecastVsActual')}</Text>
-            <Text style={S.hint}>{t('sel.outcomes.forecastHint')}</Text>
-            {withForecast.map(nom => (
-              <ForecastRow key={nom.id} nom={nom} C={C} S={S} t={t} />
-            ))}
-          </Card>
-        )}
-
-        {/* Calibration */}
-        {(mae != null || confidence != null) && (
-          <Card style={S.card}>
-            <Text style={S.sectionTitle}>{t('sel.outcomes.calibration')}</Text>
-            <View style={S.calibRow}>
-              {mae != null && (
-                <View style={S.calibMetric}>
-                  <Text style={S.calibVal}>{mae.toFixed(1)}</Text>
-                  <Text style={S.calibLabel}>{t('sel.outcomes.mae')}</Text>
-                </View>
-              )}
-              {confidence != null && (
-                <View style={S.calibMetric}>
-                  <Text style={S.calibVal}>{confidence}%</Text>
-                  <Text style={S.calibLabel}>{t('sel.outcomes.confidence')}</Text>
-                </View>
-              )}
-              {modelVersion && (
-                <View style={S.calibMetric}>
-                  <Text style={S.calibVal}>{modelVersion}</Text>
-                  <Text style={S.calibLabel}>{t('sel.outcomes.modelVersion')}</Text>
-                </View>
-              )}
+        {/* Forecast vs Actual */}
+        <Card style={S.card}>
+          <Text style={S.heading}>{t('sel.outcomes.forecastVsActual')}</Text>
+          {forecastRows.length === 0 ? (
+            <Empty icon="bar-chart-2" title={t('sel.outcomes.forecastVsActual')} body={t('sel.outcomes.insufficientData')} />
+          ) : forecastRows.map((row, idx) => (
+            <View key={row.nomination_id ?? idx} style={S.forecastRow}>
+              <View style={S.forecastPlayer}>
+                <Text style={S.playerName} numberOfLines={1}>{row.player_name}</Text>
+                {row.position && <Chip label={row.position} color={C.violet} size="xs" />}
+              </View>
+              <View style={S.forecastData}>
+                <Text style={S.forecastRange}>{row.forecast_range ?? '—'}</Text>
+                <Text style={S.arrow}>→</Text>
+                <Text style={S.actualVal}>{row.actual_value ?? '—'}</Text>
+                <Chip
+                  label={t(`sel.outcomes.${row.verdict ?? 'insufficient'}`)}
+                  color={VERDICT_COLOR(row.verdict, C)}
+                  size="xs"
+                />
+              </View>
             </View>
-          </Card>
-        )}
+          ))}
+        </Card>
 
-        {/* Published roster summary */}
-        {pack?.roster_snapshot && (
-          <Card style={S.card}>
-            <Text style={S.sectionTitle}>{t('sel.outcomes.publishedRoster')}</Text>
-            {['starters', 'reserves', 'development_list'].map(cat => {
-              const list = pack.roster_snapshot[cat] ?? [];
-              if (!list.length) return null;
-              return (
-                <View key={cat} style={S.rosterSection}>
-                  <Text style={S.rosterCat}>{t(`sel.outcomes.${cat}`)}</Text>
-                  {list.map((p, i) => (
-                    <View key={p.id ?? i} style={S.rosterRow}>
-                      <Avatar userId={p.id} size={28} />
-                      <Text style={S.rosterName}>{p.name ?? p.id ?? '—'}</Text>
-                      {p.position && <Text style={S.rosterPos}>{p.position}</Text>}
-                    </View>
-                  ))}
-                </View>
-              );
-            })}
-          </Card>
-        )}
+        {/* Development outcomes */}
+        <Card style={S.card}>
+          <Text style={S.heading}>{t('sel.outcomes.developmentOutcomes')}</Text>
+          <MetricStrip
+            items={[
+              { label: t('sel.outcomes.nomVsSelected'), value: `${outcomes?.nominated_count ?? 0} / ${outcomes?.selected_count ?? 0}` },
+              { label: t('sel.recommendation.development'), value: devRows.length },
+            ]}
+            style={S.metricStrip}
+          />
+          {devRows.length === 0 ? (
+            <Text style={S.empty}>—</Text>
+          ) : devRows.map((row, idx) => (
+            <View key={row.nomination_id ?? idx} style={S.devRow}>
+              <View style={S.devPlayer}>
+                <Text style={S.playerName} numberOfLines={1}>{row.player_name}</Text>
+                {row.position && <Text style={S.posText}>{row.position}</Text>}
+              </View>
+              <View style={S.devRight}>
+                <Chip
+                  label={row.dev_progress ?? t('sel.outcomes.developmentPlan')}
+                  color={row.dev_plan_assigned ? C.lime : C.mute}
+                  size="xs"
+                />
+              </View>
+            </View>
+          ))}
+        </Card>
 
-        {/* Published but no forecast data yet */}
-        {withForecast.length === 0 && mae == null && (
-          <Card style={S.emptyCard}>
-            <Text style={S.emptyText}>{t('sel.outcomes.noForecastData')}</Text>
-          </Card>
-        )}
+        {/* Fairness strip */}
+        <Card style={S.card}>
+          <Text style={S.heading}>{t('sel.outcomes.fairnessStrip')}</Text>
+          {fairness.disparity_flag && (
+            <View style={[S.warningBanner, { backgroundColor: C.sun + '22', borderLeftColor: C.sun }]}>
+              <Text style={[S.warningText, { color: C.sun }]}>{t('sel.outcomes.disparityWarning')}</Text>
+            </View>
+          )}
+          <MetricStrip
+            items={[
+              { label: t('sel.outcomes.ageGroups'), value: fairness.age_groups_covered ?? '—' },
+              { label: t('sel.outcomes.positionsCovered'), value: fairness.positions_covered ?? '—' },
+              { label: t('sel.outcomes.selectionRate'), value: fairness.selection_rate ? `${fairness.selection_rate}%` : '—' },
+            ]}
+          />
+        </Card>
 
-        <Btn
-          label={t('sel.outcomes.viewDecisionPack')}
-          onPress={() => nav.navigate('SelectionDecisionPack', { campaignId })}
-          variant="outline"
-          icon="file-text"
-          accessibilityLabel={t('sel.outcomes.viewDecisionPack')}
-        />
+        {/* Lessons learned */}
+        <Card style={S.card}>
+          <Text style={S.heading}>{t('sel.outcomes.lessonsLearned')}</Text>
+          <TextField
+            value={lessons}
+            onChangeText={setLessons}
+            multiline
+            numberOfLines={5}
+            placeholder={t('sel.outcomes.lessonsLearned')}
+            style={S.lessonsField}
+            accessibilityLabel={t('sel.outcomes.lessonsLearned')}
+          />
+          <Button
+            label={t('sel.outcomes.saveObservations')}
+            onPress={onSaveLessons}
+            loading={saving}
+            disabled={!lessons.trim()}
+            accessibilityLabel={t('sel.outcomes.saveObservations')}
+          />
+        </Card>
+
+        {/* Forecast calibration */}
+        <Card style={S.card}>
+          <Text style={S.heading}>{t('sel.outcomes.calibration')}</Text>
+          {!calibration.mae && !calibration.confidence_coverage ? (
+            <Empty icon="bar-chart-2" title={t('sel.outcomes.calibration')} body={t('sel.outcomes.insufficientData')} />
+          ) : (
+            <>
+              <View style={S.row}>
+                <Text style={S.label}>{t('sel.outcomes.maeLabel')}</Text>
+                <Text style={S.val}>{calibration.mae ?? '—'}</Text>
+              </View>
+              <View style={S.row}>
+                <Text style={S.label}>{t('sel.outcomes.confidenceCoverage')}</Text>
+                <Text style={S.val}>{calibration.confidence_coverage ? `${calibration.confidence_coverage}%` : '—'}</Text>
+              </View>
+              <View style={S.row}>
+                <Text style={S.label}>{t('sel.outcomes.modelVersion')}</Text>
+                <Chip label={calibration.model_version ?? '—'} color={C.violet} size="xs" />
+              </View>
+            </>
+          )}
+        </Card>
+
+        {/* Export */}
+        <Card style={S.card}>
+          <Text style={S.heading}>{t('sel.outcomes.export')}</Text>
+          <View style={S.exportRow}>
+            <Button
+              label={t('sel.outcomes.exportPDF')}
+              icon="file-text"
+              onPress={exportPDF}
+              style={{ flex: 1 }}
+              accessibilityLabel={t('sel.outcomes.exportPDF')}
+            />
+            <Button
+              label={t('sel.outcomes.exportXLSX')}
+              icon="download"
+              variant="outline"
+              onPress={exportXLSX}
+              style={{ flex: 1 }}
+              accessibilityLabel={t('sel.outcomes.exportXLSX')}
+            />
+          </View>
+        </Card>
+
       </ScrollView>
     </Screen>
   );
@@ -149,28 +218,27 @@ export default function SelectionOutcomesReview({ route }) {
 
 const styles = (C) => StyleSheet.create({
   scroll: { padding: 16, paddingBottom: 40 },
-  headerCard: { padding: 14, marginBottom: 14 },
-  campaignName: { fontSize: 16, fontWeight: '700', color: C.ink },
-  campaignSub: { fontSize: 12, color: C.mute, marginTop: 2 },
   card: { padding: 16, marginBottom: 14 },
-  sectionTitle: { fontSize: 14, fontWeight: '700', color: C.ink, marginBottom: 10 },
-  hint: { fontSize: 12, color: C.mute, marginBottom: 10 },
-  forecastRow: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 8, borderBottomWidth: 1, borderBottomColor: C.line },
-  forecastInfo: { flex: 1 },
-  forecastName: { fontSize: 13, fontWeight: '600', color: C.ink },
-  forecastPos: { fontSize: 11, color: C.mute },
-  rankCol: { alignItems: 'center', minWidth: 44 },
-  rankLabel: { fontSize: 10, color: C.mute },
-  rankVal: { fontSize: 14, fontWeight: '700', color: C.ink },
-  calibRow: { flexDirection: 'row', gap: 16, flexWrap: 'wrap' },
-  calibMetric: { alignItems: 'center', minWidth: 80, padding: 12, backgroundColor: C.bg, borderRadius: 10 },
-  calibVal: { fontSize: 22, fontWeight: '800', color: C.ink },
-  calibLabel: { fontSize: 11, color: C.mute, marginTop: 2 },
-  rosterSection: { marginBottom: 12 },
-  rosterCat: { fontSize: 12, fontWeight: '700', color: C.mute, textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 6 },
-  rosterRow: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 5 },
-  rosterName: { flex: 1, fontSize: 13, color: C.ink },
-  rosterPos: { fontSize: 11, color: C.mute },
-  emptyCard: { padding: 16, marginBottom: 14 },
-  emptyText: { fontSize: 13, color: C.mute, textAlign: 'center' },
+  heading: { fontSize: 15, fontWeight: '700', color: C.ink, marginBottom: 12 },
+  row: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: 6, borderBottomWidth: 1, borderBottomColor: C.line },
+  label: { fontSize: 13, color: C.mute },
+  val: { fontSize: 13, fontWeight: '700', color: C.ink },
+  muted: { fontSize: 12, color: C.mute, marginBottom: 8 },
+  empty: { fontSize: 13, color: C.mute },
+  metricStrip: { marginTop: 8 },
+  forecastRow: { paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: C.line },
+  forecastPlayer: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 6 },
+  playerName: { fontSize: 14, fontWeight: '700', color: C.ink, flex: 1 },
+  forecastData: { flexDirection: 'row', alignItems: 'center', gap: 6, flexWrap: 'wrap' },
+  forecastRange: { fontSize: 12, color: C.mute },
+  arrow: { fontSize: 12, color: C.mute },
+  actualVal: { fontSize: 13, fontWeight: '700', color: C.ink, flex: 1 },
+  devRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 8, borderBottomWidth: 1, borderBottomColor: C.line },
+  devPlayer: { flex: 1 },
+  posText: { fontSize: 11, color: C.mute, marginTop: 2 },
+  devRight: { alignItems: 'flex-end' },
+  warningBanner: { borderLeftWidth: 4, borderRadius: 6, padding: 10, marginBottom: 12 },
+  warningText: { fontSize: 13, fontWeight: '600' },
+  lessonsField: { marginBottom: 12 },
+  exportRow: { flexDirection: 'row', gap: 10 },
 });
