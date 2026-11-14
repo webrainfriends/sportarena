@@ -1,30 +1,24 @@
 -- Video Intelligence & Tactical Analysis (issue #581)
 -- Additive only: no DROP, no ON DELETE CASCADE on user data, no TRUNCATE.
+-- NOTE: video_annotations already exists from migration 169. Use ALTER TABLE to extend it.
 
-CREATE TABLE IF NOT EXISTS video_annotations (
-  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  video_id uuid NOT NULL REFERENCES passport_videos(id),
-  author_id uuid NOT NULL REFERENCES users(id),
-  parent_id uuid REFERENCES video_annotations(id),
-  timestamp_ms int NOT NULL,
-  end_timestamp_ms int,
-  text_enc text,
-  drawing_data jsonb,
-  tactical_category text CHECK (tactical_category IN (
+ALTER TABLE video_annotations
+  ADD COLUMN IF NOT EXISTS parent_id uuid REFERENCES video_annotations(id),
+  ADD COLUMN IF NOT EXISTS end_timestamp_ms int,
+  ADD COLUMN IF NOT EXISTS drawing_data jsonb,
+  ADD COLUMN IF NOT EXISTS tactical_category text CHECK (tactical_category IN (
     'attacking','defending','set_piece','transition','pressing','shape',
     'individual_error','individual_excellence','fitness','other'
   )),
-  ai_generated boolean NOT NULL DEFAULT false,
-  ai_model text,
-  ai_inference_label text,
-  ai_confidence numeric(4,3),
-  confirmed_at timestamptz,
-  confirmed_by_id uuid REFERENCES users(id),
-  resolved_at timestamptz,
-  resolved_by_id uuid REFERENCES users(id),
-  removed_at timestamptz,
-  created_at timestamptz NOT NULL DEFAULT now()
-);
+  ADD COLUMN IF NOT EXISTS ai_generated boolean NOT NULL DEFAULT false,
+  ADD COLUMN IF NOT EXISTS ai_model text,
+  ADD COLUMN IF NOT EXISTS ai_inference_label text,
+  ADD COLUMN IF NOT EXISTS ai_confidence numeric(4,3),
+  ADD COLUMN IF NOT EXISTS confirmed_at timestamptz,
+  ADD COLUMN IF NOT EXISTS confirmed_by_id uuid REFERENCES users(id),
+  ADD COLUMN IF NOT EXISTS resolved_by_id uuid REFERENCES users(id),
+  ADD COLUMN IF NOT EXISTS removed_at timestamptz;
+
 CREATE INDEX IF NOT EXISTS video_annotations_video_removed_ts ON video_annotations(video_id, removed_at, timestamp_ms);
 CREATE INDEX IF NOT EXISTS video_annotations_parent ON video_annotations(video_id, parent_id) WHERE parent_id IS NOT NULL;
 
