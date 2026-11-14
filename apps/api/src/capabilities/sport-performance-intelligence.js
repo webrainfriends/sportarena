@@ -18,6 +18,18 @@ import { compute as cricketCompute, CALC_VERSION as CRICKET_VER } from '../sport
 import { compute as footballCompute, CALC_VERSION as FOOTBALL_VER } from '../sport-adapters/football.js';
 import { compute as racketCompute, CALC_VERSION as RACKET_VER } from '../sport-adapters/racket.js';
 import { compute as athleticsCompute, CALC_VERSION as ATHLETICS_VER } from '../sport-adapters/athletics.js';
+import { compute as volleyballCompute, CALC_VERSION as VOLLEYBALL_VER } from '../sport-adapters/volleyball.js';
+import { compute as basketballCompute, CALC_VERSION as BASKETBALL_VER } from '../sport-adapters/basketball.js';
+import { compute as golfCompute, CALC_VERSION as GOLF_VER } from '../sport-adapters/golf.js';
+import { compute as chessCompute, CALC_VERSION as CHESS_VER } from '../sport-adapters/chess.js';
+import { compute as hockeyCompute, CALC_VERSION as HOCKEY_VER } from '../sport-adapters/hockey.js';
+import { compute as kabaddiCompute, CALC_VERSION as KABADDI_VER } from '../sport-adapters/kabaddi.js';
+import { compute as ballBadmintonCompute, CALC_VERSION as BALL_BADMINTON_VER } from '../sport-adapters/ball-badminton.js';
+import { compute as khoKhoCompute, CALC_VERSION as KHO_KHO_VER } from '../sport-adapters/kho-kho.js';
+import { compute as judoCompute, CALC_VERSION as JUDO_VER } from '../sport-adapters/judo.js';
+import { compute as wrestlingCompute, CALC_VERSION as WRESTLING_VER } from '../sport-adapters/wrestling.js';
+import { compute as boxingCompute, CALC_VERSION as BOXING_VER } from '../sport-adapters/boxing.js';
+import { compute as fencingCompute, CALC_VERSION as FENCING_VER } from '../sport-adapters/fencing.js';
 import { compute as genericCompute, CALC_VERSION as GENERIC_VER } from '../sport-adapters/generic.js';
 
 const TAG = 'Sport Performance Intelligence';
@@ -28,12 +40,36 @@ const CRICKET_SLUGS = new Set(['cricket']);
 const FOOTBALL_SLUGS = new Set(['football', 'soccer', 'futsal', 'beach-soccer', 'five-a-side', 'seven-a-side']);
 const RACKET_SLUGS = new Set(['tennis', 'squash', 'badminton', 'table-tennis', 'padel', 'pickleball', 'racquetball']);
 const ATHLETICS_SLUGS = new Set(['athletics', 'swimming', 'cycling', 'rowing', 'triathlon', 'duathlon', 'running', 'track-and-field', 'cross-country', 'road-cycling', 'open-water-swimming']);
+const VOLLEYBALL_SLUGS = new Set(['volleyball', 'beach-volleyball', 'sitting-volleyball']);
+const BASKETBALL_SLUGS = new Set(['basketball', '3x3-basketball', 'wheelchair-basketball']);
+const GOLF_SLUGS = new Set(['golf', 'disc-golf']);
+const CHESS_SLUGS = new Set(['chess', 'speed-chess', 'chess960']);
+const HOCKEY_SLUGS = new Set(['hockey', 'field-hockey', 'field-hockey-indoor', 'ice-hockey']);
+const KABADDI_SLUGS = new Set(['kabaddi', 'circle-kabaddi', 'beach-kabaddi']);
+const BALL_BADMINTON_SLUGS = new Set(['ball-badminton']);
+const KHO_KHO_SLUGS = new Set(['kho-kho']);
+const JUDO_SLUGS = new Set(['judo', 'para-judo']);
+const WRESTLING_SLUGS = new Set(['wrestling', 'freestyle-wrestling', 'greco-roman-wrestling']);
+const BOXING_SLUGS = new Set(['boxing', 'kickboxing', 'muay-thai', 'bare-knuckle-boxing']);
+const FENCING_SLUGS = new Set(['fencing', 'wheelchair-fencing']);
 
 function pickAdapter(slug) {
   if (CRICKET_SLUGS.has(slug)) return { fn: cricketCompute, version: CRICKET_VER, family: 'cricket' };
   if (FOOTBALL_SLUGS.has(slug)) return { fn: footballCompute, version: FOOTBALL_VER, family: 'football' };
   if (RACKET_SLUGS.has(slug)) return { fn: racketCompute, version: RACKET_VER, family: 'racket' };
   if (ATHLETICS_SLUGS.has(slug)) return { fn: athleticsCompute, version: ATHLETICS_VER, family: 'athletics' };
+  if (VOLLEYBALL_SLUGS.has(slug)) return { fn: volleyballCompute, version: VOLLEYBALL_VER, family: 'volleyball' };
+  if (BASKETBALL_SLUGS.has(slug)) return { fn: basketballCompute, version: BASKETBALL_VER, family: 'basketball' };
+  if (GOLF_SLUGS.has(slug)) return { fn: golfCompute, version: GOLF_VER, family: 'golf' };
+  if (CHESS_SLUGS.has(slug)) return { fn: chessCompute, version: CHESS_VER, family: 'chess' };
+  if (HOCKEY_SLUGS.has(slug)) return { fn: hockeyCompute, version: HOCKEY_VER, family: 'hockey' };
+  if (KABADDI_SLUGS.has(slug)) return { fn: kabaddiCompute, version: KABADDI_VER, family: 'kabaddi' };
+  if (BALL_BADMINTON_SLUGS.has(slug)) return { fn: ballBadmintonCompute, version: BALL_BADMINTON_VER, family: 'ball-badminton' };
+  if (KHO_KHO_SLUGS.has(slug)) return { fn: khoKhoCompute, version: KHO_KHO_VER, family: 'kho-kho' };
+  if (JUDO_SLUGS.has(slug)) return { fn: judoCompute, version: JUDO_VER, family: 'judo' };
+  if (WRESTLING_SLUGS.has(slug)) return { fn: wrestlingCompute, version: WRESTLING_VER, family: 'wrestling' };
+  if (BOXING_SLUGS.has(slug)) return { fn: boxingCompute, version: BOXING_VER, family: 'boxing' };
+  if (FENCING_SLUGS.has(slug)) return { fn: fencingCompute, version: FENCING_VER, family: 'fencing' };
   return { fn: genericCompute, version: GENERIC_VER, family: 'generic' };
 }
 
