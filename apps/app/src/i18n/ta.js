@@ -22308,7 +22308,6 @@ export default {
   'concierge.intent.scout_players': { text: 'Scout players', reviewed: false },
   'nav.title.Concierge': { text: 'Concierge', reviewed: false },
   'nav.title.ConciergeSessions': { text: 'Conversations', reviewed: false },
-};,
 
   // Finance Stage 2 (#564)
   'fin.tab.invoices': { text: 'Invoices', reviewed: false },
@@ -22438,4 +22437,5 @@ export default {
   'fin.rec.method.cheque': { text: 'Cheque', reviewed: false },
   'fin.rec.method.upi': { text: 'UPI', reviewed: false },
   'fin.rec.method.other': { text: 'Other', reviewed: false },
+};
 };
