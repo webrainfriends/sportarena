@@ -1,6 +1,6 @@
-import React, { useState } from 'react';
-import { View, TouchableOpacity, ScrollView } from 'react-native';
-import { Svg, Rect, Circle, Line, Text as SvgText } from 'react-native-svg';
+import React, { useState, useRef, useEffect } from 'react';
+import { View, TouchableOpacity, ScrollView, Animated, Platform } from 'react-native';
+import { Svg, Rect, Circle, Line, Text as SvgText, Path } from 'react-native-svg';
 import { T } from '../ui';
 import { palette } from '../theme';
 
@@ -15,10 +15,36 @@ const SURFACES = {
   Hockey:     ['Astroturf', 'Water-based'],
   Swimming:   ['50 m Olympic', '25 m pool'],
 };
-const AMENITIES = ['Floodlights', 'Changing rooms', 'Parking', 'Café', 'Physio room', 'Video analysis'];
-const STEPS = ['Select sport', 'Choose venue', 'Pick a slot', 'Confirm booking'];
+const TIME_SLOTS = ['Morning (6–10 am)', 'Afternoon (12–4 pm)', 'Evening (5–9 pm)'];
+const STEPS = ['Select sport', 'Pick a slot', 'Capacity', 'Confirm'];
 
-function TennisCourt() {
+function ChapterHero() {
+  const glow = useRef(new Animated.Value(0.3)).current;
+  const bar  = useRef(new Animated.Value(0)).current;
+  useEffect(() => {
+    Animated.loop(Animated.sequence([
+      Animated.timing(glow, { toValue: 0.8, duration: 1800, useNativeDriver: true }),
+      Animated.timing(glow, { toValue: 0.3, duration: 1800, useNativeDriver: true }),
+    ])).start();
+    Animated.timing(bar, { toValue: 1, duration: 600, delay: 200, useNativeDriver: false }).start();
+  }, []);
+  const accent = 'rgba(0,180,160,0.4)';
+  return (
+    <View style={{ alignItems: 'center', paddingTop: 20, paddingBottom: 16 }}>
+      <View style={{ position: 'relative', marginBottom: 12 }}>
+        <Animated.View style={{ position: 'absolute', top: -8, left: -8, right: -8, bottom: -8, borderRadius: 36, backgroundColor: accent, opacity: glow }} />
+        <View style={{ width: 56, height: 56, borderRadius: 28, backgroundColor: 'rgba(255,255,255,0.08)', alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: 'rgba(255,255,255,0.15)' }}>
+          <T style={{ fontSize: 28 }}>🏟️</T>
+        </View>
+      </View>
+      <T style={{ color: '#fff', fontSize: 20, fontWeight: '700', marginBottom: 4, textAlign: 'center' }}>Venues & Courts</T>
+      <T style={{ color: 'rgba(208,189,244,0.7)', fontSize: 13, textAlign: 'center', marginBottom: 12 }}>Find, compare and book sport venues near you</T>
+      <Animated.View style={{ height: 2, borderRadius: 1, backgroundColor: accent, width: bar.interpolate({ inputRange: [0, 1], outputRange: ['0%', '100%'] }) }} />
+    </View>
+  );
+}
+
+function TennisCourt({ drawAnim }) {
   return (
     <Svg width="100%" height={110} viewBox="0 0 320 130">
       <Rect x="10" y="10" width="300" height="110" rx="4" fill="rgba(132,88,179,0.12)" stroke={palette.p3} strokeWidth="2" />
@@ -63,49 +89,152 @@ function BasketballCourt() {
 export function ShowcaseVenues({ manifest, block, onNavigate }) {
   const [sport, setSport]     = useState('Tennis');
   const [step, setStep]       = useState(0);
-  const [amenities, setAm]    = useState(['Floodlights', 'Changing rooms']);
+  const [slot, setSlot]       = useState(null);
+  const [capacity, setCap]    = useState(8);
+  const [confirmed, setConf]  = useState(false);
+  const checkScale            = useRef(new Animated.Value(0)).current;
+  const stepAnim              = useRef(new Animated.Value(1)).current;
 
-  const toggleAm = (a) => setAm((prev) => prev.includes(a) ? prev.filter((x) => x !== a) : [...prev, a]);
+  const goStep = (next) => {
+    Animated.sequence([
+      Animated.timing(stepAnim, { toValue: 0, duration: 100, useNativeDriver: true }),
+      Animated.timing(stepAnim, { toValue: 1, duration: 180, useNativeDriver: true }),
+    ]).start();
+    setStep(next);
+    if (next === 3) {
+      setConf(false);
+    }
+  };
+
+  const confirmBooking = () => {
+    setConf(true);
+    checkScale.setValue(0);
+    Animated.spring(checkScale, { toValue: 1, tension: 60, friction: 6, useNativeDriver: true }).start();
+  };
+
+  const glass = {
+    backgroundColor: 'rgba(255,255,255,0.05)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.12)',
+    borderRadius: 14,
+    ...(Platform.OS === 'web' ? { backdropFilter: 'blur(10px)', WebkitBackdropFilter: 'blur(10px)' } : {}),
+  };
 
   const CourtSvg = sport === 'Football' ? FootballPitch : sport === 'Basketball' ? BasketballCourt : TennisCourt;
 
   return (
     <View style={{ padding: 16, flex: 1 }}>
-      <T style={{ color: '#fff', fontSize: 20, fontWeight: '800', marginBottom: 4 }}>Venues & Courts</T>
-      <T style={{ color: 'rgba(255,255,255,0.6)', fontSize: 13, marginBottom: 12 }}>Find, compare and book sport venues near you</T>
+      <ChapterHero />
 
+      {/* Step indicator */}
       <View style={{ flexDirection: 'row', gap: 4, marginBottom: 14 }}>
         {STEPS.map((s, i) => (
-          <View key={s} style={{ flex: 1 }}>
+          <TouchableOpacity key={s} onPress={() => goStep(i)} style={{ flex: 1 }}>
             <View style={{ height: 3, borderRadius: 3, backgroundColor: i <= step ? palette.p2 : 'rgba(255,255,255,0.18)' }} />
             <T style={{ color: i === step ? palette.p3 : 'rgba(255,255,255,0.3)', fontSize: 9, marginTop: 3, textAlign: 'center' }}>{s}</T>
-          </View>
-        ))}
-      </View>
-
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 12 }} contentContainerStyle={{ gap: 6, flexDirection: 'row' }}>
-        {SPORTS_LIST.map((s) => (
-          <TouchableOpacity key={s} onPress={() => { setSport(s); setStep(1); }} style={{ paddingHorizontal: 12, paddingVertical: 6, borderRadius: 20, backgroundColor: s === sport ? palette.p2 : 'rgba(255,255,255,0.08)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.15)' }}>
-            <T style={{ color: s === sport ? '#fff' : 'rgba(255,255,255,0.7)', fontSize: 12, fontWeight: '600' }}>{s}</T>
           </TouchableOpacity>
         ))}
-      </ScrollView>
-
-      <View style={{ marginBottom: 12, padding: 10, borderRadius: 12, backgroundColor: 'rgba(255,255,255,0.05)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.12)' }}>
-        <CourtSvg />
       </View>
 
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 10 }} contentContainerStyle={{ gap: 6, flexDirection: 'row' }}>
-        {(SURFACES[sport] || []).map((s) => (
-          <View key={s} style={{ paddingHorizontal: 10, paddingVertical: 4, borderRadius: 20, backgroundColor: 'rgba(160,210,235,0.15)', borderWidth: 1, borderColor: 'rgba(160,210,235,0.3)' }}>
-            <T style={{ color: palette.p4, fontSize: 11, fontWeight: '600' }}>{s}</T>
-          </View>
-        ))}
-      </ScrollView>
+      <Animated.View style={{ opacity: stepAnim }}>
+        {/* Step 0: sport picker + court */}
+        {step === 0 && (
+          <>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 12 }} contentContainerStyle={{ gap: 6, flexDirection: 'row' }}>
+              {SPORTS_LIST.map((s) => (
+                <TouchableOpacity key={s} onPress={() => { setSport(s); goStep(1); }} style={{ paddingHorizontal: 12, paddingVertical: 6, borderRadius: 20, backgroundColor: s === sport ? palette.p2 : 'rgba(255,255,255,0.08)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.15)' }}>
+                  <T style={{ color: s === sport ? '#fff' : 'rgba(255,255,255,0.7)', fontSize: 12, fontWeight: '600' }}>{s}</T>
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+            <View style={[glass, { padding: 10, marginBottom: 10 }]}>
+              <CourtSvg />
+            </View>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 6, flexDirection: 'row' }}>
+              {(SURFACES[sport] || []).map((s) => (
+                <View key={s} style={{ paddingHorizontal: 10, paddingVertical: 4, borderRadius: 20, backgroundColor: 'rgba(160,210,235,0.15)', borderWidth: 1, borderColor: 'rgba(160,210,235,0.3)' }}>
+                  <T style={{ color: palette.p4, fontSize: 11, fontWeight: '600' }}>{s}</T>
+                </View>
+              ))}
+            </ScrollView>
+          </>
+        )}
 
-      <TouchableOpacity onPress={() => onNavigate?.('venue-discovery')} style={{ paddingVertical: 12, borderRadius: 12, backgroundColor: palette.p2, alignItems: 'center', marginTop: 4 }}>
-        <T style={{ color: '#fff', fontWeight: '700', fontSize: 14 }}>Book a {sport} venue →</T>
-      </TouchableOpacity>
+        {/* Step 1: time slot */}
+        {step === 1 && (
+          <View>
+            <T style={{ color: 'rgba(255,255,255,0.5)', fontSize: 12, marginBottom: 10 }}>Select a time slot for your {sport} session:</T>
+            {TIME_SLOTS.map((t) => (
+              <TouchableOpacity key={t} onPress={() => { setSlot(t); goStep(2); }} style={[glass, { padding: 14, marginBottom: 8, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', borderColor: slot === t ? palette.p2 : 'rgba(255,255,255,0.12)' }]}>
+                <T style={{ color: '#fff', fontSize: 14, fontWeight: '600' }}>{t}</T>
+                {slot === t && <T style={{ color: palette.p3, fontSize: 16 }}>✓</T>}
+              </TouchableOpacity>
+            ))}
+          </View>
+        )}
+
+        {/* Step 2: capacity stepper */}
+        {step === 2 && (
+          <View>
+            <T style={{ color: 'rgba(255,255,255,0.5)', fontSize: 12, marginBottom: 16 }}>How many players?</T>
+            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 24, marginBottom: 20 }}>
+              <TouchableOpacity onPress={() => setCap((c) => Math.max(1, c - 1))} style={{ width: 44, height: 44, borderRadius: 22, backgroundColor: 'rgba(255,255,255,0.1)', alignItems: 'center', justifyContent: 'center' }}>
+                <T style={{ color: '#fff', fontSize: 22, fontWeight: '700' }}>−</T>
+              </TouchableOpacity>
+              <T style={{ color: '#fff', fontSize: 36, fontWeight: '800', minWidth: 50, textAlign: 'center' }}>{capacity}</T>
+              <TouchableOpacity onPress={() => setCap((c) => Math.min(20, c + 1))} style={{ width: 44, height: 44, borderRadius: 22, backgroundColor: palette.p2, alignItems: 'center', justifyContent: 'center' }}>
+                <T style={{ color: '#fff', fontSize: 22, fontWeight: '700' }}>+</T>
+              </TouchableOpacity>
+            </View>
+            <TouchableOpacity onPress={() => goStep(3)} style={{ paddingVertical: 12, borderRadius: 12, backgroundColor: palette.p2, alignItems: 'center' }}>
+              <T style={{ color: '#fff', fontWeight: '700' }}>Review booking →</T>
+            </TouchableOpacity>
+          </View>
+        )}
+
+        {/* Step 3: review + confirm */}
+        {step === 3 && (
+          <View>
+            <View style={[glass, { padding: 16, marginBottom: 12 }]}>
+              <T style={{ color: palette.p3, fontWeight: '700', fontSize: 13, marginBottom: 10 }}>BOOKING SUMMARY</T>
+              <View style={{ gap: 6 }}>
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+                  <T style={{ color: 'rgba(255,255,255,0.5)', fontSize: 12 }}>Sport</T>
+                  <T style={{ color: '#fff', fontSize: 12, fontWeight: '600' }}>{sport}</T>
+                </View>
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+                  <T style={{ color: 'rgba(255,255,255,0.5)', fontSize: 12 }}>Time slot</T>
+                  <T style={{ color: '#fff', fontSize: 12, fontWeight: '600' }}>{slot || '—'}</T>
+                </View>
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+                  <T style={{ color: 'rgba(255,255,255,0.5)', fontSize: 12 }}>Players</T>
+                  <T style={{ color: '#fff', fontSize: 12, fontWeight: '600' }}>{capacity}</T>
+                </View>
+              </View>
+            </View>
+            {confirmed ? (
+              <View style={{ alignItems: 'center', paddingVertical: 16 }}>
+                <Animated.View style={{ transform: [{ scale: checkScale }] }}>
+                  <View style={{ width: 64, height: 64, borderRadius: 32, backgroundColor: 'rgba(80,200,120,0.3)', alignItems: 'center', justifyContent: 'center', borderWidth: 2, borderColor: 'rgba(80,200,120,0.6)' }}>
+                    <T style={{ color: '#5fc878', fontSize: 28 }}>✓</T>
+                  </View>
+                </Animated.View>
+                <T style={{ color: '#5fc878', fontSize: 14, fontWeight: '700', marginTop: 10 }}>Booking confirmed!</T>
+              </View>
+            ) : (
+              <TouchableOpacity onPress={confirmBooking} style={{ paddingVertical: 12, borderRadius: 12, backgroundColor: palette.p2, alignItems: 'center' }}>
+                <T style={{ color: '#fff', fontWeight: '700', fontSize: 14 }}>Confirm booking →</T>
+              </TouchableOpacity>
+            )}
+          </View>
+        )}
+      </Animated.View>
+
+      {step !== 3 && (
+        <TouchableOpacity onPress={() => onNavigate?.('venue-discovery')} style={{ paddingVertical: 12, borderRadius: 12, backgroundColor: 'rgba(255,255,255,0.08)', alignItems: 'center', marginTop: 10 }}>
+          <T style={{ color: 'rgba(255,255,255,0.7)', fontWeight: '600', fontSize: 13 }}>Browse all venues →</T>
+        </TouchableOpacity>
+      )}
     </View>
   );
 }

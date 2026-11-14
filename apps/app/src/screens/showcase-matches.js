@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { View, TouchableOpacity, ScrollView } from 'react-native';
+import React, { useState, useRef, useEffect } from 'react';
+import { View, TouchableOpacity, ScrollView, Animated, Platform } from 'react-native';
 import { T } from '../ui';
 import { palette } from '../theme';
 
@@ -17,15 +17,63 @@ const BRACKET = [
 ];
 const SPORTS = ['Tennis', 'Football', 'Cricket', 'Basketball', 'Badminton', 'Hockey'];
 
+function ChapterHero() {
+  const glow = useRef(new Animated.Value(0.3)).current;
+  const bar  = useRef(new Animated.Value(0)).current;
+  const titleScale = useRef(new Animated.Value(0.85)).current;
+  useEffect(() => {
+    Animated.loop(Animated.sequence([
+      Animated.timing(glow, { toValue: 0.8, duration: 1800, useNativeDriver: true }),
+      Animated.timing(glow, { toValue: 0.3, duration: 1800, useNativeDriver: true }),
+    ])).start();
+    Animated.timing(bar, { toValue: 1, duration: 600, delay: 200, useNativeDriver: false }).start();
+    Animated.spring(titleScale, { toValue: 1.0, tension: 60, friction: 8, useNativeDriver: true }).start();
+  }, []);
+  const accent = 'rgba(255,180,0,0.4)';
+  return (
+    <View style={{ alignItems: 'center', paddingTop: 20, paddingBottom: 16 }}>
+      <View style={{ position: 'relative', marginBottom: 12 }}>
+        <Animated.View style={{ position: 'absolute', top: -8, left: -8, right: -8, bottom: -8, borderRadius: 36, backgroundColor: accent, opacity: glow }} />
+        <View style={{ width: 56, height: 56, borderRadius: 28, backgroundColor: 'rgba(255,255,255,0.08)', alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: 'rgba(255,255,255,0.15)' }}>
+          <T style={{ fontSize: 28 }}>🏆</T>
+        </View>
+      </View>
+      <Animated.View style={{ transform: [{ scale: titleScale }] }}>
+        <T style={{ color: '#fff', fontSize: 20, fontWeight: '700', marginBottom: 4, textAlign: 'center' }}>Matches & Tournaments</T>
+      </Animated.View>
+      <T style={{ color: 'rgba(208,189,244,0.7)', fontSize: 13, textAlign: 'center', marginBottom: 12 }}>Enter, organise and follow results across every format</T>
+      <Animated.View style={{ height: 2, borderRadius: 1, backgroundColor: accent, width: bar.interpolate({ inputRange: [0, 1], outputRange: ['0%', '100%'] }) }} />
+    </View>
+  );
+}
+
 export function ShowcaseMatches({ manifest, block, onNavigate }) {
   const [format, setFormat] = useState('knockout');
   const [sport, setSport]   = useState('Tennis');
   const f = FORMATS.find((x) => x.key === format);
 
+  const bracketAnims = useRef(BRACKET.map(() => new Animated.Value(0))).current;
+  const finalPulse   = useRef(new Animated.Value(0.6)).current;
+
+  useEffect(() => {
+    Animated.stagger(80, bracketAnims.map((a) => Animated.timing(a, { toValue: 1, duration: 300, useNativeDriver: true }))).start();
+    Animated.loop(Animated.sequence([
+      Animated.timing(finalPulse, { toValue: 1.0, duration: 900, useNativeDriver: true }),
+      Animated.timing(finalPulse, { toValue: 0.6, duration: 900, useNativeDriver: true }),
+    ])).start();
+  }, []);
+
+  const glass = {
+    backgroundColor: 'rgba(255,255,255,0.05)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.12)',
+    borderRadius: 14,
+    ...(Platform.OS === 'web' ? { backdropFilter: 'blur(10px)', WebkitBackdropFilter: 'blur(10px)' } : {}),
+  };
+
   return (
     <View style={{ padding: 16, flex: 1 }}>
-      <T style={{ color: '#fff', fontSize: 20, fontWeight: '800', marginBottom: 4 }}>Matches & Tournaments</T>
-      <T style={{ color: 'rgba(255,255,255,0.6)', fontSize: 13, marginBottom: 12 }}>Enter, organise and follow results across every format</T>
+      <ChapterHero />
 
       <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 10 }} contentContainerStyle={{ gap: 6, flexDirection: 'row' }}>
         {SPORTS.map((s) => (
@@ -43,24 +91,33 @@ export function ShowcaseMatches({ manifest, block, onNavigate }) {
         ))}
       </View>
 
-      <View style={{ padding: 10, borderRadius: 10, backgroundColor: 'rgba(255,255,255,0.05)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.10)', marginBottom: 12 }}>
+      <View style={[glass, { padding: 10, marginBottom: 12 }]}>
         <T style={{ color: 'rgba(255,255,255,0.75)', fontSize: 12, lineHeight: 18 }}>{f.desc}</T>
       </View>
 
       {format === 'knockout' && (
         <View style={{ marginBottom: 12 }}>
           <T style={{ color: 'rgba(255,255,255,0.45)', fontSize: 10, fontWeight: '700', letterSpacing: 1.2, marginBottom: 8 }}>QUARTER-FINALS — {sport.toUpperCase()}</T>
-          {BRACKET.map(([a, b], i) => (
-            <View key={i} style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 6 }}>
-              <View style={{ flex: 1, padding: 8, borderRadius: 8, backgroundColor: 'rgba(255,255,255,0.08)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.15)' }}>
-                <T style={{ color: '#fff', fontSize: 11, fontWeight: '600' }}>{a}</T>
-              </View>
-              <T style={{ color: palette.p3, fontSize: 10, fontWeight: '700' }}>vs</T>
-              <View style={{ flex: 1, padding: 8, borderRadius: 8, backgroundColor: 'rgba(255,255,255,0.08)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.15)' }}>
-                <T style={{ color: '#fff', fontSize: 11, fontWeight: '600' }}>{b}</T>
-              </View>
-            </View>
-          ))}
+          {BRACKET.map(([a, b], i) => {
+            const isFinal = i === 0;
+            return (
+              <Animated.View
+                key={i}
+                style={{
+                  opacity: bracketAnims[i],
+                  transform: [{ translateY: bracketAnims[i].interpolate({ inputRange: [0, 1], outputRange: [16, 0] }) }],
+                  flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 6,
+                }}>
+                <Animated.View style={[{ flex: 1, padding: 8, borderRadius: 8, borderWidth: 1 }, isFinal ? { borderColor: 'rgba(255,180,0,0.5)', backgroundColor: 'rgba(255,180,0,0.08)', opacity: finalPulse } : { borderColor: 'rgba(255,255,255,0.15)', backgroundColor: 'rgba(255,255,255,0.08)' }]}>
+                  <T style={{ color: '#fff', fontSize: 11, fontWeight: '600' }}>{a}</T>
+                </Animated.View>
+                <T style={{ color: palette.p3, fontSize: 10, fontWeight: '700' }}>vs</T>
+                <Animated.View style={[{ flex: 1, padding: 8, borderRadius: 8, borderWidth: 1 }, isFinal ? { borderColor: 'rgba(255,180,0,0.5)', backgroundColor: 'rgba(255,180,0,0.08)', opacity: finalPulse } : { borderColor: 'rgba(255,255,255,0.15)', backgroundColor: 'rgba(255,255,255,0.08)' }]}>
+                  <T style={{ color: '#fff', fontSize: 11, fontWeight: '600' }}>{b}</T>
+                </Animated.View>
+              </Animated.View>
+            );
+          })}
         </View>
       )}
 
