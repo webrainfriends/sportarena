@@ -1,5 +1,6 @@
-import React, { useState } from 'react';
-import { View, TouchableOpacity, ScrollView } from 'react-native';
+import React, { useState, useRef, useEffect } from 'react';
+import { View, TouchableOpacity, ScrollView, Animated, Platform } from 'react-native';
+import { Svg, Circle as SvgCircle, Line as SvgLine } from 'react-native-svg';
 import { T } from '../ui';
 import { palette } from '../theme';
 
@@ -19,16 +20,113 @@ const OBJECTIVES = {
 };
 const LEVELS = ['Foundation', 'Intermediate', 'Advanced', 'Professional', 'Elite'];
 
+const CONSTELLATION = [
+  { cx: 30, cy: 30 }, { cx: 70, cy: 20 }, { cx: 110, cy: 40 },
+  { cx: 150, cy: 15 }, { cx: 190, cy: 35 }, { cx: 230, cy: 20 },
+  { cx: 270, cy: 40 }, { cx: 310, cy: 25 },
+];
+const LINES = [
+  [0,1],[1,2],[2,3],[3,4],[4,5],[5,6],[6,7],[1,3],[3,5],
+];
+
+function ChapterHero() {
+  const glow = useRef(new Animated.Value(0.3)).current;
+  const bar  = useRef(new Animated.Value(0)).current;
+  useEffect(() => {
+    Animated.loop(Animated.sequence([
+      Animated.timing(glow, { toValue: 0.8, duration: 1800, useNativeDriver: true }),
+      Animated.timing(glow, { toValue: 0.3, duration: 1800, useNativeDriver: true }),
+    ])).start();
+    Animated.timing(bar, { toValue: 1, duration: 600, delay: 200, useNativeDriver: false }).start();
+  }, []);
+  const accent = 'rgba(180,120,255,0.4)';
+  return (
+    <View style={{ alignItems: 'center', paddingTop: 20, paddingBottom: 16 }}>
+      <View style={{ position: 'relative', marginBottom: 12 }}>
+        <Animated.View style={{ position: 'absolute', top: -8, left: -8, right: -8, bottom: -8, borderRadius: 36, backgroundColor: accent, opacity: glow }} />
+        <View style={{ width: 56, height: 56, borderRadius: 28, backgroundColor: 'rgba(255,255,255,0.08)', alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: 'rgba(255,255,255,0.15)' }}>
+          <T style={{ fontSize: 28 }}>📚</T>
+        </View>
+      </View>
+      <T style={{ color: '#fff', fontSize: 20, fontWeight: '700', marginBottom: 4, textAlign: 'center' }}>Learn & Develop</T>
+      <T style={{ color: 'rgba(208,189,244,0.7)', fontSize: 13, textAlign: 'center', marginBottom: 12 }}>Courses, certifications and career pathways in sport</T>
+      <Animated.View style={{ height: 2, borderRadius: 1, backgroundColor: accent, width: bar.interpolate({ inputRange: [0, 1], outputRange: ['0%', '100%'] }) }} />
+    </View>
+  );
+}
+
+function ConstellationView() {
+  const starAnims = useRef(CONSTELLATION.map(() => new Animated.Value(0.4))).current;
+  useEffect(() => {
+    starAnims.forEach((a, i) => {
+      Animated.loop(Animated.sequence([
+        Animated.delay(i * 300),
+        Animated.timing(a, { toValue: 1.0, duration: 1200, useNativeDriver: true }),
+        Animated.timing(a, { toValue: 0.4, duration: 1200, useNativeDriver: true }),
+      ])).start();
+    });
+  }, []);
+
+  return (
+    <View style={{ height: 60, marginBottom: 12, overflow: 'hidden' }}>
+      <Svg width="100%" height={60} viewBox="0 0 320 60">
+        {LINES.map(([a, b], i) => (
+          <SvgLine
+            key={i}
+            x1={CONSTELLATION[a].cx} y1={CONSTELLATION[a].cy}
+            x2={CONSTELLATION[b].cx} y2={CONSTELLATION[b].cy}
+            stroke="rgba(208,189,244,0.25)" strokeWidth="1"
+          />
+        ))}
+        {CONSTELLATION.map((s, i) => (
+          <SvgCircle key={i} cx={s.cx} cy={s.cy} r="3" fill={palette.p3} opacity={0.6} />
+        ))}
+      </Svg>
+      {/* Animated glow stars layered over SVG */}
+      {starAnims.map((a, i) => (
+        <Animated.View
+          key={i}
+          pointerEvents="none"
+          style={{
+            position: 'absolute',
+            left: `${(CONSTELLATION[i].cx / 320) * 100}%`,
+            top: `${(CONSTELLATION[i].cy / 60) * 100}%`,
+            width: 6, height: 6, borderRadius: 3,
+            backgroundColor: palette.p3,
+            marginLeft: -3, marginTop: -3,
+            opacity: a,
+          }}
+        />
+      ))}
+    </View>
+  );
+}
+
 export function ShowcaseLearn({ manifest, block, onNavigate }) {
   const [role, setRole] = useState('athlete');
   const [obj, setObj]   = useState('Performance analytics');
   const objs            = OBJECTIVES[role] || [];
   const levelIdx        = Math.min(objs.indexOf(obj) + 1, LEVELS.length - 1);
 
+  const objAnims = useRef(Array(6).fill(0).map(() => new Animated.Value(0))).current;
+  useEffect(() => {
+    objAnims.forEach((a) => a.setValue(0));
+    Animated.stagger(55, objAnims.map((a) => Animated.timing(a, { toValue: 1, duration: 280, useNativeDriver: true }))).start();
+  }, [role]);
+
+  const glass = {
+    backgroundColor: 'rgba(255,255,255,0.05)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.12)',
+    borderRadius: 14,
+    ...(Platform.OS === 'web' ? { backdropFilter: 'blur(10px)', WebkitBackdropFilter: 'blur(10px)' } : {}),
+  };
+
   return (
     <View style={{ padding: 16, flex: 1 }}>
-      <T style={{ color: '#fff', fontSize: 20, fontWeight: '800', marginBottom: 4 }}>Learn & Develop</T>
-      <T style={{ color: 'rgba(255,255,255,0.6)', fontSize: 13, marginBottom: 12 }}>Courses, certifications and career pathways in sport</T>
+      <ChapterHero />
+
+      <ConstellationView />
 
       <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 12 }} contentContainerStyle={{ gap: 6, flexDirection: 'row' }}>
         {ROLES.map((r) => (
@@ -41,10 +139,17 @@ export function ShowcaseLearn({ manifest, block, onNavigate }) {
 
       <T style={{ color: 'rgba(255,255,255,0.45)', fontSize: 10, fontWeight: '700', letterSpacing: 1.2, marginBottom: 8 }}>LEARNING OBJECTIVES</T>
       <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginBottom: 14 }}>
-        {objs.map((o) => (
-          <TouchableOpacity key={o} onPress={() => setObj(o)} style={{ paddingHorizontal: 10, paddingVertical: 5, borderRadius: 20, backgroundColor: o === obj ? palette.p2 : 'rgba(255,255,255,0.07)', borderWidth: 1, borderColor: o === obj ? palette.p2 : 'rgba(255,255,255,0.15)' }}>
-            <T style={{ color: o === obj ? '#fff' : 'rgba(255,255,255,0.65)', fontSize: 11, fontWeight: '600' }}>{o}</T>
-          </TouchableOpacity>
+        {objs.map((o, i) => (
+          <Animated.View
+            key={o}
+            style={{
+              opacity: objAnims[Math.min(i, objAnims.length - 1)],
+              transform: [{ translateY: objAnims[Math.min(i, objAnims.length - 1)].interpolate({ inputRange: [0, 1], outputRange: [10, 0] }) }],
+            }}>
+            <TouchableOpacity onPress={() => setObj(o)} style={[glass, { paddingHorizontal: 10, paddingVertical: 5, borderRadius: 20, backgroundColor: o === obj ? palette.p2 : 'rgba(255,255,255,0.07)', borderColor: o === obj ? palette.p2 : 'rgba(255,255,255,0.15)' }]}>
+              <T style={{ color: o === obj ? '#fff' : 'rgba(255,255,255,0.65)', fontSize: 11, fontWeight: '600' }}>{o}</T>
+            </TouchableOpacity>
+          </Animated.View>
         ))}
       </View>
 
