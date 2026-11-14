@@ -55,6 +55,11 @@ function FloatingTierCard({ x, tier, selected, onPress, delay }) {
     borderWidth: 1, borderColor: 'rgba(255,255,255,0.15)', alignItems: 'center',
     ...(Platform.OS === 'web' ? { backdropFilter: selected ? 'blur(10px)' : 'none', WebkitBackdropFilter: selected ? 'blur(10px)' : 'none' } : {}),
   };
+const glassWeb = { backdropFilter: 'blur(12px)', WebkitBackdropFilter: 'blur(12px)', backgroundColor: 'rgba(255,255,255,0.05)', borderColor: 'rgba(255,255,255,0.12)', borderWidth: 1, borderRadius: 14 };
+const CardWrap = Platform.OS === 'web'
+  ? ({ children, style }) => React.createElement(View, { style: [glassWeb, { overflow: 'hidden' }, style] }, children)
+  : ({ children, style }) => React.createElement(BlurView, { intensity: 12, tint: 'dark', style: [{ borderRadius: 14, overflow: 'hidden', borderWidth: 1, borderColor: 'rgba(255,255,255,0.12)' }, style] }, children);
+
 
   return (
     <Animated.View style={{ flex: 1, minWidth: 80, transform: [{ translateY: floatY }] }}>
