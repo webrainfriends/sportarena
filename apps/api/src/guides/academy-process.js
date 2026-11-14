@@ -1091,6 +1091,39 @@ id: 'wellbeing', title: 'Support student wellbeing and development',
     modules: ['event-reviews.js', 'community.js', 'events.js', 'registration-engine.js'],
     sources: ['apps/app/src/screens/event-review.js', 'apps/app/src/screens/event-public.js'],
   },
+  {
+    id: 'selection_studio',
+    title: 'Team Selection Studio',
+    why: 'Replace spreadsheets and WhatsApp threads with a stage-gated, approval-governed decision cockpit. Configure a selection mandate, run candidate nominations through eligibility gates, compare athletes in the Comparison Lab (radar charts, percentile bars, sensitivity analysis), place players on the tactical formation canvas, submit a formal recommendation with rationale, route it through a configurable approval hierarchy with Segregation of Duties, publish the roster atomically, and archive the signed decision pack with a full immutable audit trail.',
+    steps: [
+      'Open Academy, then Team Selection Studio, and tap New Campaign. Work through the wizard: name the mandate, choose the purpose (Season Roster, Matchday XI, Tournament Squad, etc.), link the sport and team, set the formation and squad-size limits, configure the age bracket, and set nomination, assessment and decision deadlines.',
+      'Lock the criteria: define the rubric (weighted scoring criteria per position) in the Criteria step and tap Lock — the policy version is snapshoted and cannot be changed once assessments begin.',
+      'Nominate candidates: tap the Nominations column and add players manually, or use Bulk Import to pull from a team roster, a scouting watchlist or an academy trial campaign.',
+      'Run eligibility checks: select a nomination and open Eligibility Check. Record age, registration, federation clearance, guardian consent, transfer window, visa, medical clearance and safeguarding checks. Ineligible candidates are hard-blocked from the shortlist and recommendation — this gate cannot be bypassed.',
+      'Shortlist and assess: move eligible candidates to the Assessing column and submit structured assessments against the locked rubric. Each assessor scores criteria, attaches evidence references, and optionally assigns a recommended role (starter, reserve, development, exclude).',
+      'Open the Comparison Lab: select 2–12 candidates to generate a weighted radar chart, opponent-adjusted percentile bars, ranked table, and sensitivity analysis (how the ranking changes if one metric is removed). Save scenarios for reference.',
+      'Open the Formation Canvas: drag players onto position spots in your formation (4-3-3, 4-4-2, 3-5-2, or custom). The canvas shows compatibility signals and forecast ranges from the scoring engine — not certainties, scenarios with uncertainty ranges.',
+      'Submit a Recommendation: name your starting list, reserves, development list and excluded players. All ineligible candidates are blocked from starting and reserves. Add tactical notes and written rationale for each selection decision.',
+      'Committee review: each committee member (up to your configured quorum) casts a vote (Approve / Challenge / Abstain), adds a comment, and declares any conflict of interest. Dissent notes are preserved in the decision pack.',
+      'Route for approval: the approval chain is resolved from the organisation hierarchy (org owner → club owner → team manager → head coach). The first approver cannot be the proposer unless a Segregation of Duties exception is explicitly configured. Each approver sees the full decision pack. Decisions (approve / reject / return / abstain) with mandatory written reasons are immutable.',
+      'On final approval the campaign advances to stage 11, the roster is published atomically (eligibility recheck at publish time), team_squads is updated, and athletes and guardians are notified.',
+      'Download the signed Decision Pack (PDF and CSV) from the Decision Pack screen. The pack includes the recommendation, all approval decisions with reasons, committee votes, the policy version snapshot, and the full audit trail. Athletes may submit appeals within the configured appeal window from this same screen.',
+    ],
+    target: { screen: 'SelectionStudio' },
+    modules: ['selection-campaigns.js', 'selection-intelligence.js', 'selection-scoring.js', 'selection-approval.js', 'selection-publication.js', 'selection-appeals.js'],
+    sources: [
+      'apps/app/src/screens/selection-studio.js',
+      'apps/app/src/screens/selection-campaign-setup.js',
+      'apps/app/src/screens/selection-candidate-pipeline.js',
+      'apps/app/src/screens/selection-dossier.js',
+      'apps/app/src/screens/selection-comparison-lab.js',
+      'apps/app/src/screens/selection-scenario-simulator.js',
+      'apps/app/src/screens/selection-recommendation.js',
+      'apps/app/src/screens/selection-review.js',
+      'apps/app/src/screens/selection-approval-inbox.js',
+      'apps/app/src/screens/selection-decision-pack.js',
+    ],
+  },
 ];
 
 /** Org/academy API modules with no step of their own, and why. Anything not here and not in a step fails the guard test. */
@@ -1116,7 +1149,7 @@ export const NOT_IN_GUIDE = {
 };
 
 /** The directories/files the guard test watches for org/academy/venue/coach/tax capability modules. */
-export const WATCHED_MODULES = /^(academy-.*|org-.*|organisations|venue-coaches|gst|provider-tax|coach-classes|para-sport-funding|para-sport-sponsorship-outcomes|para-pathway|para-readiness|para-learn|para-staff-credentials|para-spectator-accessibility|para-ux-conformance|boarding-.*|wearables|wellness.*|integrations|official-rate-card|official-rate-agreements|official-scheduling-recommendations|officials-bulk|officiating-analytics|officiating-season-intelligence|accounting-integrations|player|athlete-profile|performance-publishing|peer-skill-graph|event-reviews)\.js$/;
+export const WATCHED_MODULES = /^(academy-.*|org-.*|organisations|venue-coaches|gst|provider-tax|coach-classes|para-sport-funding|para-sport-sponsorship-outcomes|para-pathway|para-readiness|para-learn|para-staff-credentials|para-spectator-accessibility|para-ux-conformance|boarding-.*|wearables|wellness.*|integrations|official-rate-card|official-rate-agreements|official-scheduling-recommendations|officials-bulk|officiating-analytics|officiating-season-intelligence|accounting-integrations|player|athlete-profile|performance-publishing|peer-skill-graph|event-reviews|selection-.*)\.js$/;
 
 export const SHOT_SIZES = { phone: { width: 390, height: 1100 }, desktop: { width: 1280, height: 900 } };
 export const shotFile = (stepId, size) => `${String(ACADEMY_STEPS.findIndex((s) => s.id === stepId) + 1).padStart(2, '0')}-${stepId}-${size}.png`;
