@@ -308,13 +308,46 @@ export default function Landing() {
           </LinearGradient>
         </View>
 
-        <View style={{ backgroundColor: '#23252F', marginTop: 56, paddingVertical: 36 }}>
-          <View style={[wrap, { flexDirection: wide ? 'row' : 'column', gap: 14, justifyContent: 'space-between' }]}>
-            <View><Wordmark width={200} tagline onDark /><T color="#94A3B8" size={13} style={{ marginTop: 4 }}>The home of sport. Teams · Fixtures · Venues · Performance.</T></View>
-            <View style={{ flexDirection: 'row', gap: 22 }}>
-              <Pressable onPress={() => start('login')}><T color="#E5EAF5" weight="700" size={13}>Log in</T></Pressable>
-              <Pressable onPress={() => start('join')}><T color="#E5EAF5" weight="700" size={13}>Create account</T></Pressable>
-              <Pressable onPress={() => start('advertise')}><T color="#E5EAF5" weight="700" size={13}>Advertise</T></Pressable>
+        <View style={{ backgroundColor: '#1a1c27', marginTop: 56, paddingTop: 48, paddingBottom: 32 }}>
+          <View style={[wrap, { gap: 40 }]}>
+            {/* Top row: brand + nav columns */}
+            <View style={{ flexDirection: wide ? 'row' : 'column', gap: wide ? 48 : 32, alignItems: wide ? 'flex-start' : 'stretch' }}>
+              {/* Brand */}
+              <View style={{ flex: wide ? 2 : undefined, gap: 8 }}>
+                <Wordmark width={180} tagline onDark />
+                <T color="#94A3B8" size={13} style={{ marginTop: 4, lineHeight: 20, maxWidth: 320 }}>The home of sport. Athletes, coaches, venues, academies, sponsors and physios — all in one arena.</T>
+              </View>
+              {/* Platform links */}
+              <View style={{ flex: 1, gap: 10 }}>
+                <T color="#D0BDF4" weight="800" size={12} style={{ letterSpacing: 1, textTransform: 'uppercase', marginBottom: 2 }}>Platform</T>
+                {[['Opportunities', browse], ['Coaches', () => find('coaches')], ['Physio & doctors', () => find('health')], ['Sponsors', () => find('sponsors')], ['Study', () => find('study')]].map(([l, f]) => (
+                  <Pressable key={l} onPress={f} accessibilityRole="link"><T color="#94A3B8" size={13}>{l}</T></Pressable>
+                ))}
+              </View>
+              {/* Account links */}
+              <View style={{ flex: 1, gap: 10 }}>
+                <T color="#D0BDF4" weight="800" size={12} style={{ letterSpacing: 1, textTransform: 'uppercase', marginBottom: 2 }}>Account</T>
+                {[['Log in', () => start('login')], ['Create account', () => start('join')], ['Advertise', () => start('advertise')], ['Post for free', () => start('post')]].map(([l, f]) => (
+                  <Pressable key={l} onPress={f} accessibilityRole="link"><T color="#94A3B8" size={13}>{l}</T></Pressable>
+                ))}
+              </View>
+              {/* Contact */}
+              <View style={{ flex: 1, gap: 10 }}>
+                <T color="#D0BDF4" weight="800" size={12} style={{ letterSpacing: 1, textTransform: 'uppercase', marginBottom: 2 }}>Contact</T>
+                <T color="#94A3B8" size={13}>hello@gotmygame.com</T>
+                <T color="#94A3B8" size={13}>support@gotmygame.com</T>
+                <T color="#94A3B8" size={13} style={{ marginTop: 4 }}>GotMyGame — The Sportsverse</T>
+                <T color="#94A3B8" size={12} style={{ lineHeight: 18 }}>Connecting athletes, coaches, venues{'\n'}and sponsors worldwide.</T>
+              </View>
+            </View>
+            {/* Divider + bottom */}
+            <View style={{ borderTopWidth: 1, borderColor: 'rgba(255,255,255,0.08)', paddingTop: 20, flexDirection: wide ? 'row' : 'column', gap: 10, alignItems: wide ? 'center' : 'flex-start', justifyContent: 'space-between' }}>
+              <T color="#64748B" size={12}>© {new Date().getFullYear()} GotMyGame. All rights reserved. Beta — not for public or commercial use.</T>
+              <View style={{ flexDirection: 'row', gap: 16 }}>
+                <T color="#64748B" size={12}>Privacy</T>
+                <T color="#64748B" size={12}>Terms</T>
+                <T color="#64748B" size={12}>Cookies</T>
+              </View>
             </View>
           </View>
         </View>
