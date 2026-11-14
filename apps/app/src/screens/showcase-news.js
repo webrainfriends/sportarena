@@ -1,5 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { View, ScrollView, TouchableOpacity, Platform, LayoutAnimation, UIManager, Animated } from 'react-native';
+import { BlurView } from 'expo-blur';
 import { LinearGradient } from 'expo-linear-gradient';
 import { T } from '../ui';
 import { palette } from '../theme';
@@ -46,14 +47,14 @@ function ChapterHero() {
   return (
     <View style={{ alignItems: 'center', paddingTop: 20, paddingBottom: 16 }}>
       <View style={{ position: 'relative', marginBottom: 12 }}>
-        <Animated.View style={{ position: 'absolute', top: -8, left: -8, right: -8, bottom: -8, borderRadius: 36, backgroundColor: accent, opacity: glow }} />
-        <View style={{ width: 56, height: 56, borderRadius: 28, backgroundColor: 'rgba(255,255,255,0.08)', alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: 'rgba(255,255,255,0.15)' }}>
-          <T style={{ fontSize: 28 }}>📰</T>
+        <Animated.View style={{ position: 'absolute', top: -10, left: -10, right: -10, bottom: -10, borderRadius: 42, backgroundColor: accent, opacity: glow }} />
+        <View style={{ width: 64, height: 64, borderRadius: 32, backgroundColor: 'rgba(255,255,255,0.08)', alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: 'rgba(255,255,255,0.15)' }}>
+          <T style={{ fontSize: 32 }}>📰</T>
         </View>
       </View>
-      <T style={{ color: '#fff', fontSize: 20, fontWeight: '700', marginBottom: 4, textAlign: 'center' }}>Sports News</T>
-      <T style={{ color: 'rgba(208,189,244,0.7)', fontSize: 13, textAlign: 'center', marginBottom: 12 }}>Live editorial coverage across every sport</T>
-      <Animated.View style={{ height: 2, borderRadius: 1, backgroundColor: accent, width: bar.interpolate({ inputRange: [0, 1], outputRange: ['0%', '100%'] }) }} />
+      <T style={{ color: '#fff', fontSize: 24, fontWeight: '800', marginBottom: 4, textAlign: 'center', letterSpacing: -0.5 }}>Sports News</T>
+      <T style={{ color: 'rgba(208,189,244,0.7)', fontSize: 14, textAlign: 'center', marginBottom: 14 }}>Live editorial coverage across every sport</T>
+      <Animated.View style={{ height: 3, borderRadius: 2, backgroundColor: accent, width: bar.interpolate({ inputRange: [0, 1], outputRange: ['0%', '100%'] }) }} />
     </View>
   );
 }
@@ -85,6 +86,11 @@ export function ShowcaseNews({ manifest, block, onNavigate }) {
     borderRadius: 14,
     ...(Platform.OS === 'web' ? { backdropFilter: 'blur(10px)', WebkitBackdropFilter: 'blur(10px)' } : {}),
   };
+const glassWeb = { backdropFilter: "blur(12px)", WebkitBackdropFilter: "blur(12px)", backgroundColor: "rgba(255,255,255,0.05)", borderColor: "rgba(255,255,255,0.12)", borderWidth: 1, borderRadius: 14 };
+const CardWrap = Platform.OS === 'web'
+  ? ({ children, style }) => React.createElement(View, { style: [glassWeb, { overflow: 'hidden' }, style] }, children)
+  : ({ children, style }) => React.createElement(BlurView, { intensity: 12, tint: 'dark', style: [{ borderRadius: 14, overflow: 'hidden', borderWidth: 1, borderColor: "rgba(255,255,255,0.12)" }, style] }, children);
+
 
   return (
     <View style={{ padding: 16, flex: 1 }}>
