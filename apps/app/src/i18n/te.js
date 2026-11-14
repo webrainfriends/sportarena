@@ -22009,7 +22009,6 @@ export default {
   'a360.performances_title': { text: 'Performance Posts', reviewed: false },
   'a360.score_ring_label': { text: 'Level {{n}}', reviewed: false },
 
-};
   // Selection Studio — Issue #1194
   'sel.studio.title': { text: 'Team Selection Studio', reviewed: false },
   'sel.studio.campaigns': { text: 'Selection Campaigns', reviewed: false },
@@ -22170,3 +22169,4 @@ export default {
   'sel.pack.submitAppeal': { text: 'Submit an Appeal', reviewed: false },
   'sel.pack.appealGrounds': { text: 'Grounds for appeal', reviewed: false },
   'sel.pack.sendAppeal': { text: 'Send Appeal', reviewed: false },
+};
