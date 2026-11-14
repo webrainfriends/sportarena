@@ -64,6 +64,24 @@ export const ACADEMY_STEPS = [
     modules: ['venue-coaches.js', 'coach-classes.js', 'coaching-para.js'], sources: ['apps/app/src/screens/venue-coaches.js', 'apps/app/src/screens/manage.js', 'apps/app/src/screens/coaching-para.js'],
   },
   {
+    id: 'coach_crm', title: 'Manage leads, trials and clients',
+    why: 'Acquire and retain athletes without leaving the app — track every enquiry through trial to paid coaching, run outreach campaigns to consenting clients, and get structured video feedback across any sport.',
+    steps: [
+      'From the Coach hub, tap Business CRM to open your pipeline.',
+      'Leads tab: each inbound enquiry appears as a card in its stage column (New lead → Contacted → Trial offered → Trial booked → Trial completed → Proposal offered → Won / Lost / Nurture). Tap Add Lead to create one manually, or leads arrive from marketplace enquiries and billboard responses automatically.',
+      'Tap a lead card to open the detail view. Use the Overview sub-tab to move the stage, record a loss reason if needed, and set the next-action date. All notes and communications are field-level encrypted.',
+      'Communications sub-tab: log every touchpoint — calls, meetings, emails, messages, trial offers and outcomes — with a type, summary and optional follow-up date. Idempotency keys prevent duplicate logs.',
+      'Trial sub-tab: create a trial session with a date, duration, optional rate card and location. The trial is tracked separately from the coaching hire — once it completes, tap Convert to link the resulting hire, package or subscription and move the lead to Won.',
+      'Clients tab: see your full lifecycle dashboard — upcoming 7-day sessions, unused session credits, packages expiring within 14 days, inactive clients (30+ days), overdue payments and subscription renewals — all sourced from the canonical coaching records.',
+      'Analytics tab: review your conversion funnel (enquiry → trial rate, trial → won rate), attendance and no-show rates, package utilisation, revenue by service type (hire, package, subscription) and lead source attribution — all factual, no predicted scores.',
+      'Campaigns tab: create a draft outreach campaign (programme announcement, availability slots, package renewal, clinic, re-engagement, or general), define the audience and send. Marketing consent is checked automatically, and opt-outs are suppressed before delivery.',
+      'Video Review: tap Video Review from the coach hub or a lead card. Athletes submit a coaching observation for structured written feedback — the coach annotates specific timestamps, sets follow-up assignments, and the athlete acknowledges. No video bytes are stored here; all files go through the existing evidence system.',
+    ],
+    target: { screen: 'CoachCRM' },
+    modules: ['coach-crm.js', 'coach-video-review.js'],
+    sources: ['apps/app/src/screens/coach-crm.js', 'apps/app/src/screens/coach-hub.js'],
+  },
+  {
     id: 'coach_profile_wizard', title: 'Coach completes their platform profile',
     why: 'Each coach sets up their public-facing profile — sports, qualifications, availability and pricing — so they can be discovered, hired and managed through the academy. The profile is a draft until the coach publishes it at 60% completeness or above.',
     steps: [

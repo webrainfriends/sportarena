@@ -56,6 +56,7 @@ export function CoachHub() {
     { icon: '🩺', title: t('ch.physio'), sub: t('ws.hub.physio_sub'), onPress: () => push('Health', { tab: 'find' }) },
     { icon: '🛡️', title: t('ch.insurance'), sub: t('ch.insurance_sub'), onPress: () => push('Insurance') },
     { icon: '⏰', title: t('ch.cover'), sub: cover ? `${cover.plan_name}` : pol.data ? t('ch.cover_none') : t('ch.cover_sub'), onPress: () => push(cover ? 'Insure' : 'Insurance'), badge: coverBadge ?? undefined },
+    { icon: '📊', title: t('crm.hubTitle'), sub: t('crm.hubSub'), onPress: () => push('CoachCRM') },
   ];
   return (
     <View style={{ gap: 12 }}>

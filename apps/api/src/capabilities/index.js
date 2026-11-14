@@ -491,3 +491,5 @@ import './selection-approval.js';
 import './selection-publication.js';
 import './selection-appeals.js';
 import './concierge.js';
+import './coach-crm.js';
+import './coach-video-review.js';
