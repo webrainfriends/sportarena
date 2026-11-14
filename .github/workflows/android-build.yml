@@ -36,4 +36,4 @@ jobs:
         working-directory: apps/app
         env:
           PROFILE: ${{ inputs.profile }}
-        run: eas build --platform android --profile "$PROFILE" --non-interactive --no-wait
+        run: eas build --platform android --profile "$PROFILE" --non-interactive
