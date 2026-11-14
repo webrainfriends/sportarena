@@ -17,7 +17,7 @@ const PAYMENT = new Set([
   'set_finance_access', 'resolve_organisation_finance_reconciliation_item', 'set_org_tax_profile', 'add_org_tax_rule', 'end_org_tax_rule',
 ]);
 // Credential / role management must not be reachable with a narrow token (otherwise a read token could mint a wider one).
-const ACCOUNT = new Set(['create_api_token', 'revoke_api_token', 'list_api_tokens', 'update_my_roles', 'set_default_role', 'list_login_sessions', 'revoke_login_session', 'logout', 'logout_all', 'change_my_password', 'get_security_status', 'mfa_setup', 'mfa_enable', 'mfa_disable', 'verify_mfa', 'request_email_verification', 'admin_reset_mfa']);
+const ACCOUNT = new Set(['create_api_token', 'revoke_api_token', 'list_api_tokens', 'update_my_roles', 'set_default_role', 'list_login_sessions', 'revoke_login_session', 'logout', 'logout_all', 'change_my_password', 'get_security_status', 'mfa_setup', 'mfa_enable', 'mfa_disable', 'verify_mfa', 'request_email_verification', 'admin_reset_mfa', 'create_developer_app', 'rotate_developer_app_secret', 'revoke_developer_app', 'suspend_developer_app', 'create_developer_webhook', 'rotate_developer_webhook_secret', 'delete_developer_webhook', 'oauth_consent', 'revoke_my_oauth_grant']);
 const CLINICAL_TAGS = new Set(['Athlete health']);
 const CLINICAL_PATH = /^\/(medical|appointments|followups|me\/(wellness|body-pain|loads|load-history|workload|readiness)|people\/:id\/clearance)/;
 
@@ -56,6 +56,16 @@ export function enforceScope(credential, c) {
   if (!credential) return; // a signed-in session carries no extra limits
   const klass = c.scope ?? classify(c);
   if (!scopeAllows(credential.scopes, klass)) throw forbidden(`This API token does not have the "${klass}" scope needed for ${c.name}`);
+}
+
+/**
+ * Guard: developer OAuth tokens must never reach health/clinical data.
+ * Call at the top of any handler that could transitively reach medical tables.
+ */
+export function guardClinicalForDeveloperToken(credential) {
+  if (credential?.type === 'oauth_token') {
+    throw forbidden('Health data is not available through developer API tokens');
+  }
 }
 
 /** Resource restriction - needs the parsed input. A restricted token may only call capabilities that name an allowed resource. */

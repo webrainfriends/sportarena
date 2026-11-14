@@ -68,6 +68,7 @@ import { reconcileFinance } from './finance.js';
 import { sixRoleAuditStep } from './finance-audit.js';
 import { sealAuditLog } from './audit-chain.js';
 import { integrationSweep } from './integrations/engine.js';
+import { developerWebhookSweep } from './integrations/developer-webhooks.js';
 
 export const STEPS = [
   ['holds', 'holds_released', expireUnpaidHolds, 0],
@@ -142,6 +143,7 @@ export const STEPS = [
   ['finance', 'finance', reconcileFinance, null],
   ['six_role_audit', 'six_role_audit', sixRoleAuditStep, null],
   ['integrations', 'integrations', integrationSweep, null],
+  ['developer_webhooks', 'developer_webhooks', developerWebhookSweep, null],
   ['credential_renewals', 'credential_renewal_reminders_sent', sweepVerificationRenewals, 0],
 ];
 
