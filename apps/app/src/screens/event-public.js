@@ -10,6 +10,7 @@ import { useNav } from '../nav';
 import { A, ABtn, ACard, AChip, AEmpty, ARow, ASection, AStat, AT } from '../arena';
 import { ErrorBox, Loading } from '../ui';
 import { FormSheet } from '../FormSheet';
+import { RateEventSheet, EventReviewsTab, OrganizerReviewAnalyticsSheet } from './event-review';
 import { ShareButton } from './spectate';
 
 const VIS = [
@@ -22,6 +23,11 @@ const SLOT = { title_partner: 'Title partner · event page', leaderboard: 'Leade
 export function PublicPageTab({ id, e, games = [] }) {
   const { toast } = useSession();
   const { push } = useNav();
+  const [rating, setRating] = useState(false);
+  const [analytics, setAnalytics] = useState(false);
+  const [showReviews, setShowReviews] = useState(false);
+  const isCompleted = e?.status === 'completed';
+  const isOrganizer = e?.is_organizer;
   const s = useLoad(() => api.get(`/events/${id}/public-settings`), [id]);
   const pl = useLoad(() => api.get(`/events/${id}/sponsor-placements`, { include_ended: true }), [id]);
   const [adding, setAdding] = useState(false);
@@ -96,6 +102,23 @@ export function PublicPageTab({ id, e, games = [] }) {
           { key: 'cta_url', label: 'Button link (optional, https)', optional: true, keyboard: 'url' },
         ]}
         onSubmit={async (x) => { await api.post(`/events/${id}/sponsor-placements`, { sponsorship_id: x.sponsorship_id, slot: x.slot, fixture_id: x.slot === 'fixture' ? x.fixture_id : undefined, cta_label: x.cta_url ? x.cta_label : undefined, cta_url: x.cta_url || undefined }); pl.reload(); return 'Placement added'; }} />
+
+      {isCompleted ? (
+        <>
+          <ASection title="Reviews" action={isOrganizer ? 'Analytics' : null} onAction={() => setAnalytics(true)} />
+          <ACard>
+            <AT size={13} color={A.mute}>Verified attendees can rate this event. Ratings appear once at least 3 people have reviewed.</AT>
+            <View style={{ flexDirection: 'row', gap: 8, marginTop: 10, flexWrap: 'wrap' }}>
+              <ABtn small title="⭐ Rate this event" onPress={() => setRating(true)} />
+              <ABtn small tone="ghost" title={showReviews ? 'Hide reviews' : 'See all reviews'} onPress={() => setShowReviews((x) => !x)} />
+            </View>
+          </ACard>
+          {showReviews ? <EventReviewsTab eventId={id} isOrganizer={!!isOrganizer} /> : null}
+        </>
+      ) : null}
+
+      {rating ? <RateEventSheet visible onClose={() => setRating(false)} eventId={id} eventName={e?.name} /> : null}
+      {analytics ? <OrganizerReviewAnalyticsSheet visible onClose={() => setAnalytics(false)} eventId={id} /> : null}
     </View>
   );
 }
